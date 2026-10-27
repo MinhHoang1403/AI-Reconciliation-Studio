@@ -53,6 +53,11 @@ def test_T02_hash_scoped_bytes_not_mutated(config):
     assert stream.read() == raw
 
 
+def test_legitimate_PK_csv_header_is_not_zip_magic(config):
+    raw = b"PK,amount\n000123,10\n"
+    assert inspect_upload(io.BytesIO(raw), "a.csv", "text/csv", config).size == len(raw)
+
+
 def test_T03_document_route_cloud_off(config):
     inspection = inspect_upload(
         io.BytesIO(b"%PDF-1.7 synthetic"), "a.pdf", "application/pdf", config
@@ -93,6 +98,18 @@ def test_T04_T05_T06_excel_cells_formulas_and_header(tmp_path, config):
     assert "HIDDEN_SHEET_REVIEW" in tables[1].warnings
 
 
+def test_xlsx_parser_accepts_inspected_opaque_raw_storage_key(tmp_path, config):
+    book = openpyxl.Workbook()
+    book.active.append(["ID", "Amount"])
+    book.active.append(["000123", 12.5])
+    path = tmp_path / "opaque-raw-id"
+    book.save(path)
+    with path.open("rb") as stream:
+        inspection = inspect_upload(stream, "synthetic.xlsx", "application/octet-stream", config)
+    parsed = parse_to_artifacts(path, inspection, ParseConfig(), config)[0]
+    assert parsed.frame["c1"].to_list() == ["000123"]
+
+
 def test_T05_csv_prefix_quoted_empty_bom_and_injection(tmp_path, config):
     raw = '\ufeffid,value\r\n000123,""\r\n000124,\r\n000125,=1+1\r\n'.encode("utf-8")
     path = tmp_path / "a.csv"
@@ -118,6 +135,16 @@ def test_csv_blank_line_never_silently_lost(tmp_path, config):
         assert exc.code == "CSV_ROW_COUNT_MISMATCH"
 
 
+def test_csv_multiline_quoted_cell_keeps_physical_start_row(tmp_path, config):
+    raw = b'id,note\n000123,"line one\nline two"\n000124,done\n'
+    path = tmp_path / "multiline.csv"
+    path.write_bytes(raw)
+    inspection = inspect_upload(io.BytesIO(raw), path.name, "text/csv", config)
+    parsed = parse_to_artifacts(path, inspection, ParseConfig(), config)[0]
+    assert parsed.frame["_source_row"].to_list() == [2, 4]
+    assert parsed.frame["c2"][0] == "line one\nline two"
+
+
 def test_T07_profile_exact_null_empty_duplicate(profile):
     amount = profile.columns[1]
     assert (profile.row_count, amount.null_count, amount.empty_count, amount.distinct_count) == (
@@ -136,3 +163,19 @@ def test_T08_alias_candidates(profile, schema):
     candidates = find_mapping_candidates(profile, schema)
     assert candidates["c1"] == ["reference_id"]
     assert candidates["c2"] == []
+
+
+def test_decimal_zero_and_paid_header_are_not_identifier_candidates():
+    import polars as pl
+    from studio.contracts import SourceColumn
+    from studio.profiling import profile_table
+
+    frame = pl.DataFrame({"c1": ["0.00", "100.50"]})
+    result = profile_table(
+        frame,
+        [SourceColumn(id="c1", name="Paid amount", source_index=1)],
+        "table",
+        "workspace",
+        "parsed",
+    )
+    assert not result.columns[0].identifier_candidate

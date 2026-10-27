@@ -141,11 +141,41 @@ def test_T36_cloud_disabled_zero_http(config, profile, schema, tmp_path):
     assert route_ai_task(WorkspacePolicy(), qwen_enabled=False) == "REVIEW"
 
 
+def test_global_zero_budgets_block_even_when_workspace_allows_cloud(
+    config, profile, schema, tmp_path
+):
+    from pydantic import SecretStr
+
+    config.allow_external_ai = True
+    config.allow_cloud_parsing = True
+    config.external_ai_request_budget = 0
+    config.cloud_parser_request_budget = 0
+    config.gemini_api_key = SecretStr("synthetic-test-key")
+    config.llama_cloud_api_key = SecretStr("synthetic-test-key")
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED",
+        allow_external_ai=True,
+        external_request_budget=2,
+        allow_cloud_parsing=True,
+        parser_request_budget=1,
+    )
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Zero global budget must stop before reserving or sending HTTP")
+
+    with httpx.Client(transport=httpx.MockTransport(forbidden)) as client:
+        with pytest.raises(DomainError, match="CLOUD_BUDGET_EXHAUSTED"):
+            GeminiProvider(config, client).propose(profile, schema, policy, forbidden)
+        with pytest.raises(DomainError, match="PARSER_BUDGET_EXHAUSTED"):
+            parse_document(tmp_path / "not-opened.pdf", config, policy, client, forbidden)
+
+
 @pytest.mark.parametrize("kind", ["missing_key", "budget", "success", "invalid", "http"])
 def test_gemini_contract(kind, config, profile, schema):
     from pydantic import SecretStr
 
     config.allow_external_ai = True
+    config.external_ai_request_budget = 2
     config.gemini_api_key = SecretStr("" if kind == "missing_key" else "synthetic-test-key")
     policy = WorkspacePolicy(
         mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=2
@@ -191,6 +221,7 @@ def test_llamaparse_contract(kind, config, tmp_path):
     from pydantic import SecretStr
 
     config.allow_cloud_parsing = True
+    config.cloud_parser_request_budget = 1
     config.llama_cloud_api_key = SecretStr("" if kind == "missing_key" else "synthetic-test-key")
     policy = WorkspacePolicy(allow_cloud_parsing=True, parser_request_budget=1)
     path = tmp_path / "synthetic.pdf"

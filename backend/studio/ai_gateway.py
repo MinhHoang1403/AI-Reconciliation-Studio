@@ -222,6 +222,8 @@ class GeminiProvider:
             raise DomainError("CLOUD_AI_DISABLED", "AI cloud chưa được cấp phép.")
         if not self.config.gemini_api_key.get_secret_value():
             raise DomainError("GEMINI_KEY_MISSING", "Chưa cấu hình khóa Gemini.")
+        if self.config.external_ai_request_budget <= 0:
+            raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Ngân sách AI cloud toàn hệ thống bằng 0.")
         prompt = build_prompt(profile, schema, "propose_mapping")
         for attempt in range(2):
             if not reserve_request():

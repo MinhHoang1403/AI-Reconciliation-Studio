@@ -86,7 +86,10 @@ def validate_mapping(
                 decision.decision = MappingStatus.AMBIGUOUS
                 decision.unresolved_questions = ["Xác nhận định nghĩa số tiền, đơn vị và tiền tệ."]
             if for_approval and not all(
-                (field.semantic_metric, field.amount_basis, field.currency, field.unit)
+                value
+                and value.strip().casefold()
+                not in {"", "unknown", "ambiguous", "n/a", "none", "needs_review"}
+                for value in (field.semantic_metric, field.amount_basis, field.currency, field.unit)
             ):
                 raise DomainError(
                     "MONETARY_SEMANTICS_REQUIRED",
@@ -98,11 +101,13 @@ def validate_mapping(
             )
         if for_approval and decision.decision != MappingStatus.APPROVED:
             raise DomainError("MAPPING_NOT_APPROVED", "Từng trường sử dụng phải được xác nhận.")
+        if for_approval and decision.grain_assumption != schema.grain:
+            raise DomainError("GRAIN_ASSUMPTION_MISMATCH", "Grain của ánh xạ khác schema đã duyệt.")
     if for_approval:
         if (
             not seen_targets
-            or schema.grain.lower() in {"unknown", "ambiguous", ""}
-            or schema.entity_kind.lower() in {"unknown", ""}
+            or schema.grain.strip().casefold() in {"unknown", "ambiguous", ""}
+            or schema.entity_kind.strip().casefold() in {"unknown", "ambiguous", ""}
         ):
             raise DomainError(
                 "GRAIN_REVIEW_REQUIRED", "Cần xác nhận loại dữ liệu và ý nghĩa mỗi dòng."
@@ -147,11 +152,28 @@ def compile_transform_plan(
             if isinstance(transform, (ArithmeticTransform, CoalesceTransform)):
                 if not set(transform.fields) <= sources or transform.fields != rule.fields:
                     raise DomainError("TRANSFORM_RULE_FIELDS", "Đầu vào quy tắc không khớp.")
+            if isinstance(transform, ArithmeticTransform):
+                target = next(f for f in schema.fields if f.id == decision.candidate_target)
+                if (
+                    rule.metric != target.semantic_metric
+                    or rule.currency != target.currency
+                    or rule.unit != target.unit
+                ):
+                    raise DomainError(
+                        "ARITHMETIC_SEMANTICS_REQUIRED",
+                        "Phép tính cần metric, đơn vị và tiền tệ đã duyệt.",
+                    )
+            if isinstance(transform, EnumTransform) and rule.fields != [decision.source_field]:
+                raise DomainError(
+                    "TRANSFORM_RULE_FIELDS", "Quy tắc danh mục không thuộc cột nguồn."
+                )
             if isinstance(transform, EnumTransform) and not rule.enum_values:
                 raise DomainError("ENUM_RULE_EMPTY", "Bảng chuyển đổi danh mục chưa có giá trị.")
         if transform.op == "aggregate_by":
             field = next(f for f in schema.fields if f.id == decision.candidate_target)
             rule = rules[transform.rule_id]
+            if rule.fields != [decision.source_field]:
+                raise DomainError("TRANSFORM_RULE_FIELDS", "Quy tắc nhóm không thuộc cột nguồn.")
             if (
                 transform.metric != field.semantic_metric
                 or rule.metric != field.semantic_metric

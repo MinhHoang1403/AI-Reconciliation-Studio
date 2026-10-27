@@ -39,8 +39,10 @@ def profile_table(
             candidates.append("numeric_candidate")
         if nonempty and all(re.fullmatch(r"\d{4}-\d{2}-\d{2}.*", v) for v in nonempty):
             candidates.append("date_candidate")
-        identifier = any(v.startswith("0") and len(v) > 1 for v in nonempty) or any(
-            token in normalized_name(col.name) for token in ("id", "ma ", "reference", "code")
+        identifier = any(re.fullmatch(r"0\d+", v) for v in nonempty) or bool(
+            re.search(
+                r"(?:^|[^a-z0-9])(?:id|ma|reference|code)(?:$|[^a-z0-9])", normalized_name(col.name)
+            )
         )
         if identifier:
             candidates.append("identifier")

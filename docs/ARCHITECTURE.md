@@ -1,0 +1,64 @@
+# Kiến trúc Data Foundation
+
+Phạm vi hiện tại là Giai đoạn 1 trong [kế hoạch](PROJECT_PLAN.md). Không có matching engine, kết luận tài chính hoặc Assistant chat.
+
+## Thành phần đang chạy
+
+```mermaid
+flowchart LR
+  Browser --> Nginx
+  Nginx -->|/api cùng origin| FastAPI
+  FastAPI --> PostgreSQL
+  FastAPI --> Raw[Raw bất biến]
+  Worker --> PostgreSQL
+  Worker --> Parquet[Parsed / Canonical / Errors]
+  Worker --> Gateway[AI Gateway]
+  Gateway --> Qwen
+```
+
+Một Compose project `ai-reconciliation-studio`, gồm `frontend`, `backend`, `worker`, `postgres`. Backend/worker dùng chung image và code. PostgreSQL giữ quan hệ, metadata, session, policy, jobs, attempts, approvals và audit. Volume `artifacts` giữ raw và Parquet. Không dùng database riêng cho từng upload; không dựng Redis, broker, model server hoặc container test.
+
+## Ranh giới module
+
+| Module | Trách nhiệm |
+|---|---|
+| `contracts` | Pydantic domain objects và REST response schemas |
+| `parsing` | F01–F04: inspection, route, đọc và kiểm tra cấu trúc |
+| `profiling` | F05–F06: thống kê xác định, chữ ký và shortlist |
+| `ai_gateway`, `document_parser` | Provider adapters, policy và kiểm tra output |
+| `schema_mapping` | F08/F10: constraints, kiểu và quy tắc được duyệt |
+| `normalization` | F11–F12: DSL, Decimal, lỗi, lineage và chất lượng |
+| `repository`, `database` | Scoped records, idempotency và quan hệ PostgreSQL |
+| `access` | Session, membership, CSRF/Host và xác minh triển khai local |
+| `api` | REST, authorization và DTO; không gửi storage path ra frontend |
+| `worker` | Claim, lease, attempts, retry và xuất bản nguyên tử |
+
+## Publication và khôi phục
+
+Upload đọc theo block, kiểm tra hash và ghi raw bằng exclusive create. Job parse tạo Parquet mới trước; refs và metadata chỉ được công bố trong transaction khi claim token và lease còn hợp lệ. Normalization cũng ghi artifact canonical/errors trước rồi kiểm tra lại active mapping, giữ khóa bảng và công bố cùng transaction.
+
+Các tệp chưa được tham chiếu sau crash/rollback có thể tồn tại; không có tác vụ xóa tự động. Chúng không xuất hiện qua API. Không sửa artifact cũ. Unique constraints và advisory lock ngăn enqueue/upload trùng; `FOR UPDATE SKIP LOCKED` tránh claim trùng. Lease mặc định 300 giây, tối đa ba job attempts; mỗi lời gọi Qwen tối đa hai HTTP attempts bên trong một job. Qwen lỗi giữ job `BLOCKED`, không tự chuyển cloud hoặc tự lặp provider liên tục.
+
+Worker chạy một job tại một thời điểm, Polars giới hạn hai threads, memory limits: backend 384 MiB, worker 512 MiB, PostgreSQL 256 MiB, Nginx 128 MiB. Đây là cấu hình hạn chế tài nguyên được kiểm tra trên máy 16 GB RAM; không phải benchmark sức tải. Vượt giới hạn trả lỗi/cần review, không cắt mất dòng.
+
+## Truy cập local
+
+Host chỉ publish `127.0.0.1:18180`; backend/PostgreSQL không có host port. `tools/verify-local.ps1` lấy Docker inspection thực trên host và gửi metadata không chứa env vào backend qua `docker compose exec`. Backend kiểm tra đủ bốn service, đúng project và mọi published port là loopback trước khi tạo proof trong tmpfs. Không mount Docker socket.
+
+Proof gắn với nonce của lần backend khởi động và ID frontend. Mỗi lần xác thực demo kiểm tra thêm identity frontend qua `/health` nội bộ. Recreate backend hoặc frontend làm proof cũ mất hiệu lực. Xác minh cấu hình bị từ chối cũng xóa proof cũ. Chạy `tools/start.ps1` hoặc `tools/verify-local.ps1` sau restart/recreate trước khi mở lại Dashboard.
+
+Session ngẫu nhiên được lưu dưới dạng HMAC-SHA256 trong DB, cookie HttpOnly/SameSite Strict/TTL 8 giờ. Không có token trong URL hay bundle. Mọi API dữ liệu kiểm tra membership workspace; viewer không được ghi/approve. Write cần Origin nằm trong allowlist, Host được kiểm tra và forwarded/public proxy headers bị từ chối. Ngoài demo, có fallback Bearer token dành cho operator, cấu hình ở backend; không có auto-session ngoài local. Không hỗ trợ publish Internet hoặc proxy công cộng trong phạm vi đã kiểm tra.
+
+## Phương pháp và giới hạn
+
+| Phương pháp | Input → output | Điều kiện, giới hạn và kiểm tra |
+|---|---|---|
+| Candidate schema matching [D] | tên/kiểu/mẫu → tối đa 5 target hợp lệ mỗi cột | Alias có kiểm soát; O(cột nguồn × cột đích); không phải confidence xác suất. Không auto-approve; Total mơ hồ phải review. T08/T10/T37 |
+| Header detection [D] | tối đa 30 dòng đầu → vị trí header và warning | Dòng đầu có ít nhất hai nhãn khác nhau; workbook/phần ghi chú phức tạp cần người dùng chọn header. Không tự chia nhiều vùng bảng trong cùng sheet. T04/T06 |
+| Profiling [D] | parsed strings → count/type candidates/sample | O(dòng × cột); null, empty và distinct tách riêng. Min/max hiện là lexical, không đại diện thống kê tiền. Mẫu tối đa 5/cột, AI nhận tối đa 3 mẫu đã đổi thành dạng ký tự. T07 |
+| Decimal normalization | chuỗi + locale đã duyệt → Decimal/null/error | Không float, không exponent, không làm tròn; Decimal tối đa 38 digits/18 fractional digits. T15/T16 và property tests |
+| Approved aggregation [D] | keys/metric/currency/unit/grain + rule → nhóm có đủ thành viên nguồn | Không nhóm null/invalid/mixed values. Không giữ một dòng đại diện thay toàn bộ lineage. Kiểm tra tổng số/uniqueness source members và signed sum bằng fixture tính tay |
+
+Taxonomy mapping tham chiếu [Rahm–Bernstein](https://www.microsoft.com/en-us/research/publication/on-matching-schemas-automatically/); không nhận thuật toán alias của dự án là mô hình đã được hiệu chỉnh. Parser đối chiếu [Polars Excel](https://docs.pola.rs/user-guide/io/excel/), phép tính đối chiếu [Python Decimal](https://docs.python.org/3/library/decimal.html), queue đối chiếu [PostgreSQL SKIP LOCKED](https://www.postgresql.org/docs/current/sql-select.html), inspection theo [OWASP File Upload](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html). Các nguồn này được mở kiểm tra ngày 28/10/2026; không tạo ra tuyên bố accuracy/benchmark.
+
+DuckDB/RapidFuzz và ECharts sẽ chỉ được thêm khi có truy vấn matching hoặc biểu đồ nghiệp vụ thực của giai đoạn được giao. Giai đoạn này truy vấn Parquet bằng Polars và dùng TanStack Table phân trang phía server.

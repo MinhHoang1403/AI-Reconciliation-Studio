@@ -194,6 +194,23 @@ def apply_transform_plan(
         for field in plan.schema.fields:
             if field.required and payload[field.id] is None:
                 invalid = True
+            if (
+                field.data_type == "decimal"
+                and field.currency
+                and payload.get("currency") not in (None, field.currency)
+            ):
+                invalid = True
+                flags.append(f"CURRENCY_MISMATCH:{field.id}")
+                errors.append(
+                    {
+                        "source_row_id": source_id,
+                        "source_row": row["_source_row"],
+                        "field": field.id,
+                        "raw_value": str(payload["currency"]),
+                        "code": "CURRENCY_MISMATCH",
+                        "value_state": "INVALID",
+                    }
+                )
         records.append(
             {
                 "canonical_record_id": str(uuid5(NAMESPACE_URL, f"{plan.mapping.id}:{source_id}")),

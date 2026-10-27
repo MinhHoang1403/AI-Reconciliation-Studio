@@ -1,0 +1,80 @@
+name: ai-reconciliation-studio
+services:
+  postgres:
+    image: postgres:18.3-alpine
+    environment:
+      POSTGRES_USER: studio
+      POSTGRES_DB: studio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U studio -d studio']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+    shm_size: 128m
+    restart: unless-stopped
+  backend:
+    image: ai-reconciliation-studio-backend:local
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://studio:${POSTGRES_PASSWORD}@postgres/studio
+      STORAGE_ROOT: /var/lib/studio
+      ALLOWED_ORIGINS: http://127.0.0.1:18180,http://localhost:18180
+    volumes:
+      - artifacts:/var/lib/studio
+    tmpfs:
+      - /run/studio:uid=10001,gid=10001,mode=0700
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 30
+    mem_limit: 384m
+    restart: unless-stopped
+  worker:
+    image: ai-reconciliation-studio-backend:local
+    command: [python, -m, studio.worker]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://studio:${POSTGRES_PASSWORD}@postgres/studio
+      STORAGE_ROOT: /var/lib/studio
+    volumes:
+      - artifacts:/var/lib/studio
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import time,pathlib; p=pathlib.Path('/tmp/studio-worker-heartbeat'); assert time.time()-p.stat().st_mtime < 120"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    mem_limit: 512m
+    restart: unless-stopped
+  frontend:
+    build:
+      context: frontend
+    image: ai-reconciliation-studio-frontend:local
+    ports:
+      - '127.0.0.1:18180:8080'
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 128m
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  artifacts:

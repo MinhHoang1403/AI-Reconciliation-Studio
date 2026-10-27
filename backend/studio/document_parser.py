@@ -51,6 +51,8 @@ def parse_document(
         raise DomainError("CLOUD_PARSING_DISABLED", "Parser cloud chưa được cấp phép.")
     if not config.llama_cloud_api_key.get_secret_value():
         raise DomainError("LLAMAPARSE_KEY_MISSING", "Chưa cấu hình khóa LlamaParse.")
+    if config.cloud_parser_request_budget <= 0:
+        raise DomainError("PARSER_BUDGET_EXHAUSTED", "Ngân sách parser toàn hệ thống bằng 0.")
     if not reserve_request():
         raise DomainError("PARSER_BUDGET_EXHAUSTED", "Đã hết ngân sách parser cloud.")
     headers = {"Authorization": "Bearer " + config.llama_cloud_api_key.get_secret_value()}

@@ -87,7 +87,7 @@ def inspect_upload(
     stream.seek(0)
     prefix = stream.read(8192)
     stream.seek(0)
-    if ext == ".csv" and (b"\x00" in prefix or prefix.startswith((b"PK", b"%PDF"))):
+    if ext == ".csv" and (b"\x00" in prefix or prefix.startswith((b"PK\x03\x04", b"%PDF-"))):
         raise DomainError("FILE_SIGNATURE_MISMATCH", "Nội dung không phải CSV dạng văn bản.")
     if ext == ".pdf" and not prefix.startswith(b"%PDF-"):
         raise DomainError("FILE_SIGNATURE_MISMATCH", "Nội dung không phải PDF hợp lệ.")
@@ -113,7 +113,10 @@ def inspect_upload(
                     ):
                         raise ValueError("unsafe package")
                     if member.filename.endswith((".xml", ".rels")):
-                        ElementTree.fromstring(archive.read(member))
+                        # Validate XML without retaining the expanded tree in the API.
+                        with archive.open(member) as xml_stream:
+                            for _, element in ElementTree.iterparse(xml_stream, events=("end",)):
+                                element.clear()
                 if archive.testzip() is not None:
                     raise ValueError("CRC mismatch")
         except Exception as exc:
@@ -221,7 +224,12 @@ def _csv(path: Path, parse_config: ParseConfig, config: Settings) -> list[Parsed
 def _xlsx(path: Path, parse_config: ParseConfig, config: Settings) -> list[ParsedFrame]:
     try:
         reader = fastexcel.read_excel(path)
-        workbook = openpyxl.load_workbook(path, read_only=False, data_only=False, keep_links=False)
+        # Raw storage uses opaque IDs without user-controlled suffixes. Inspection
+        # already verified the package; a stream avoids openpyxl's extension check.
+        with path.open("rb") as source:
+            workbook = openpyxl.load_workbook(
+                source, read_only=False, data_only=False, keep_links=False
+            )
         results = []
         with zipfile.ZipFile(path) as archive:
             book = ElementTree.fromstring(archive.read("xl/workbook.xml"))

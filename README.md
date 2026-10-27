@@ -1,64 +1,86 @@
 # AI Reconciliation Studio
 
-Ứng dụng hỗ trợ đối soát dữ liệu từ nhiều nguồn bằng AI: đề xuất ý nghĩa trường dữ liệu, chuẩn bị quy tắc so sánh và giải thích sai lệch có bằng chứng. Backend chịu trách nhiệm tính toán xác định và kiểm chứng kết quả; người dùng duyệt các quyết định cần thiết.
+Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, đề xuất ánh xạ bằng Qwen, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
 
-**Trạng thái hiện tại:** repository đã có kế hoạch và quy tắc phát triển; chưa triển khai ứng dụng, chưa có kết quả kiểm thử chức năng hoặc benchmark. Giai đoạn 1 chỉ bắt đầu khi có nhiệm vụ triển khai riêng.
+**Trạng thái:** luồng dữ liệu và giao diện đang được kiểm chứng ở Giai đoạn 1. Qwen live **BLOCKED** do endpoint từ chối IP; mapping thủ công vẫn hoạt động. Gemini/LlamaParse chỉ có adapter contract, cloud tắt. Xem [bằng chứng nghiệm thu](docs/IMPLEMENTATION_STATUS.md); chưa chuyển Giai đoạn 2.
 
-## Mục tiêu và tính năng dự kiến
+## Mở ứng dụng trong workspace hiện tại
 
-- Tiếp nhận CSV/XLSX; xử lý PDF/DOCX qua adapter có chính sách và kiểm tra chất lượng.
-- Phân tích đặc điểm dữ liệu, nhận diện ý nghĩa mỗi dòng, đề xuất ánh xạ trường và chuẩn hóa theo quyết định đã duyệt.
-- Lập kế hoạch đối soát; liên kết bản ghi theo khóa hoặc nhóm, so sánh tiền bằng `Decimal`, kiểm chứng độc lập và bảo toàn nguồn gốc.
-- Dashboard sáng, xanh dương; danh sách ngoại lệ, bằng chứng về dòng nguồn và xuất CSV/XLSX từ cùng bộ số liệu đã xác minh.
-- Trợ lý AI theo ngữ cảnh, trả lời từ dữ liệu đã xác minh; tái sử dụng mapping và quy tắc còn hiệu lực trong đúng phạm vi.
+Ứng dụng tại [http://127.0.0.1:18180](http://127.0.0.1:18180). Không nhập token trên giao diện.
 
-Demo dự kiến gồm nguồn nội bộ, Shopee Orders và TikTok Shop Orders, cùng bộ dữ liệu ngành khác để kiểm tra tính tổng quát. Sản phẩm hỗ trợ đối soát, không tự đưa ra kết luận kiểm toán độc lập.
+Từ PowerShell tại repository root:
 
-## Công nghệ và kiến trúc dự kiến
-
-| Thành phần | Lựa chọn trong kế hoạch |
-|---|---|
-| Giao diện | React, TypeScript, Vite, Tailwind CSS; một bộ component; TanStack Table, Apache ECharts |
-| Backend | Python, FastAPI, Pydantic |
-| Metadata, quyền và jobs | PostgreSQL, SQLAlchemy, Alembic; worker Python dùng chung code/backend image |
-| Dữ liệu và đối soát | Parquet, Polars, fastexcel/openpyxl, DuckDB, RapidFuzz tạo ứng viên; `Decimal/NUMERIC` cho tiền |
-| AI | Qwen công ty là provider chính; Gemini Flash-Lite và LlamaParse chỉ khi policy/ngân sách cho phép |
-| Triển khai và kiểm thử | Nginx, một Docker Compose project; pytest, Hypothesis, Playwright, Ruff/mypy/ESLint |
-
-Giao diện gọi Backend qua Nginx với `/api` cùng origin. Backend quản lý quyền, hợp đồng dữ liệu và trạng thái trong PostgreSQL; worker xử lý các artifact bất biến trên persistent storage. Một AI Gateway nhận yêu cầu có cấu trúc; mọi đề xuất phải qua kiểm tra nghiệp vụ. Không host lại Qwen trong Docker dự án.
-
-Mặc định chỉ dùng AI nội bộ (`LOCAL_ONLY`), ngân sách request cloud bằng 0. Phiên bản thư viện và contract provider sẽ được kiểm tra, pin khi triển khai; bảng trên là thiết kế, chưa phải các tích hợp đã chạy.
-
-## Ba giai đoạn triển khai
-
-1. **Nền tảng dữ liệu + AI Smart Setup + UI cơ sở:** upload, parse, profiling, đề xuất/duyệt mapping, chuẩn hóa, lưu trữ và demo local an toàn.
-2. **AI Planning + Matching/Verification + Results:** hợp đồng đối soát được duyệt, engine liên kết/so sánh, kiểm chứng độc lập, KPI, ngoại lệ, bằng chứng và exports.
-3. **Contextual Assistant + tự động hóa + release:** tools chỉ đọc dữ liệu đã xác minh, hội thoại, khôi phục jobs, benchmark, bảo mật và nghiệm thu toàn tuyến.
-
-Mỗi giai đoạn phải vượt qua các điều kiện nghiệm thu trong [kế hoạch chính thức](docs/PROJECT_PLAN.md) trước khi bàn giao sang giai đoạn tiếp theo.
-
-## Cấu trúc repository hiện tại
-
-```text
-.
-├── .gitignore
-├── AGENTS.md
-├── README.md
-├── Rules.md
-└── docs/
-    └── PROJECT_PLAN.md
+```powershell
+./tools/start.ps1
 ```
 
-- [AGENTS.md](AGENTS.md): hướng dẫn Codex đọc và áp dụng quy tắc trước mỗi nhiệm vụ.
-- [Rules.md](Rules.md): quy tắc kỹ thuật, dữ liệu, AI, bảo mật, Git/Docker và kiểm chứng.
-- [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md): yêu cầu sản phẩm, kiến trúc, hợp đồng, thuật toán và nghiệm thu.
+Script tạo `.env` với credentials local ngẫu nhiên nếu chưa có, build/up đúng một Compose project, đợi healthchecks rồi xác minh published ports thực tế. Không ghi đè `.env` hiện có. Nếu Docker đã build và chỉ cần mở lại:
 
-## Phát triển và cấu hình
+```powershell
+./tools/start.ps1 -SkipBuild
+```
 
-Trước mỗi nhiệm vụ, đọc `AGENTS.md`, toàn bộ `Rules.md` và kế hoạch; kiểm tra Git status/branch/diff/remote. Thay đổi nhỏ có thể trên `main`; việc lớn/rủi ro dùng feature branch trong cùng repository. Kiểm tra diff, tests liên quan, secrets và nội dung trước commit/push; không force-push hoặc tạo worktree/bản sao không cần thiết.
+Máy đã kiểm tra: Windows, Ryzen 5 7535HS (6 cores/12 threads), khoảng 16 GB RAM; Docker Desktop/Linux Engine 29.7.2, Compose 5.5.0. Chỉ cần Docker để chạy ứng dụng; Node/Python local dùng cho phát triển và tests. Cổng `18180` phải còn trống. Backend/worker/PostgreSQL không publish host ports.
 
-Hiện chưa có dependency manifests, cấu hình Compose hoặc lệnh chạy ứng dụng. Khi triển khai Giai đoạn 1, cần chốt hợp đồng cấu hình, dependency lockfiles, ports không xung đột, migrations và tests; sau đó bổ sung lệnh cài đặt/chạy/kiểm thử đã được thực thi thành công vào README. Chưa tạo `.env.example` vì tên và schema cấu hình ứng dụng chưa được chốt; file này sẽ chỉ chứa ví dụ không có credentials.
+## Cấu hình
 
-Không lưu `.env`, keys/tokens, dữ liệu doanh nghiệp, uploads, database backups hoặc Docker volume data vào Git. Runtime dùng các đường dẫn đã loại trừ trong `.gitignore`; fixtures được commit phải là dữ liệu tổng hợp đã kiểm tra. `.gitignore` không thay thế việc rà soát nội dung tài liệu và files trước push lên repository Public.
+[.env.example](.env.example) chứa placeholders, không chứa secret. `.env` không vào Git/image. Khi cài từ repository mới, đặt `QWEN_BASE_URL` trong `.env` theo [thông tin provider](docs/AI_INTEGRATION.md), model `knowledge`, không thêm API key Qwen. Sau khi đổi cấu hình, chạy lại `tools/start.ps1`.
 
-Repository chính thức: [MinhHoang1403/AI-Reconciliation-Studio](https://github.com/MinhHoang1403/AI-Reconciliation-Studio).
+Mặc định `LOCAL_DEMO_ACCESS=true`, Gemini/LlamaParse keys rỗng, cloud permissions false và request budgets bằng 0. Quyền workspace cũng mặc định `LOCAL_ONLY`; biến môi trường không tự cấp quyền cloud. Không tự chuyển provider khi Qwen lỗi.
+
+`docker compose up -d --build --wait` khởi động đủ bốn service. Sau lệnh này, chạy `./tools/verify-local.ps1` để kích hoạt auto-session local. Nếu chưa xác minh, `/api/session` trả 403; không tắt auth để vượt qua. Proof mất hiệu lực khi restart/recreate backend hoặc frontend. Chỉ hỗ trợ loopback demo; không publish LAN/Internet hoặc public reverse proxy.
+
+## Cách sử dụng
+
+1. Tạo dự án, nhập tên và phạm vi nghiệp vụ để kiểm soát tái sử dụng mapping.
+2. Chọn **Tải dữ liệu**, thêm nhiều CSV/XLSX. Encoding/delimiter/header nằm trong tùy chọn nâng cao; UTF-8/BOM là mặc định.
+3. Mở nguồn và chọn sheet. **Khám phá dữ liệu** có phân trang/tìm kiếm phía server, thống kê và nguồn gốc.
+4. Mở **AI Smart Setup**. Khi Qwen chưa được truy cập, UI báo bị chặn và cho phép dùng shortlist/thủ công. Không hiển thị thành công AI giả.
+5. Xác nhận loại dữ liệu, ý nghĩa mỗi dòng và từng trường cần dùng. Có thể giữ cột chuỗi tùy chỉnh. Với tiền, xác nhận locale, chỉ tiêu, gross/net hoặc định nghĩa riêng, currency và đơn vị; với ngày, chọn format/timezone rõ ràng. Cảnh báo công thức/vùng bảng cần được kiểm tra.
+6. Bấm **Xác nhận ánh xạ**, rồi **Chuẩn hóa dữ liệu**. Khi job hoàn tất, bấm **Cập nhật kết quả** và **Xem kết quả**.
+7. Dùng lớp **Cảnh báo / lỗi** để kiểm tra invalid/null và **Xem nguồn** để mở dòng gốc. Dữ liệu lỗi không bị thay bằng zero hoặc bỏ đi. Sửa mapping tạo revision mới, canonical cũ được đánh dấu đã cũ; raw/parsed được bảo toàn.
+8. Mở lại trình duyệt, chọn dự án cũ để tiếp tục. Tệp cùng nội dung/config trong cùng dự án được reuse; mẫu đã duyệt chỉ được gợi ý trong scope tương thích.
+
+PDF/DOCX hiện báo policy/adapter-only; chưa có cloud parsing end-to-end được nghiệm thu. Các mục Đối soát, Ngoại lệ, Báo cáo và Trợ lý AI chưa kích hoạt. Không có KPI tài chính giả.
+
+## Vận hành và bảo toàn dữ liệu
+
+```powershell
+docker compose ps
+docker compose logs --tail=100 backend worker
+docker compose restart
+./tools/verify-local.ps1
+docker compose stop
+```
+
+Named volumes `ai-reconciliation-studio_postgres_data` và `ai-reconciliation-studio_artifacts` giữ metadata/raw/Parquet. Không chạy `down -v`, xóa volumes hoặc global prune. GitHub lưu source, không thay backup dữ liệu. Công cụ `./tools/check-persistence.ps1` kiểm tra restart và force-recreate trong project hiện tại, so metadata và checksum trước/sau, không xóa volumes.
+
+## Kiểm thử và phát triển
+
+```powershell
+uv sync --frozen
+uv run pytest -q -m 'not integration'
+uv run ruff check backend tests tools
+uv run mypy backend/studio
+./tools/test-postgres.ps1
+npm --prefix frontend ci
+npm --prefix frontend run check
+npm --prefix frontend run lint
+npm --prefix frontend run build
+npm --prefix frontend exec -- playwright install chromium
+npm --prefix frontend run test:e2e
+uv run python tools/check_repository.py
+```
+
+PostgreSQL tests chạy trong schema UUID `test_*` của server hiện tại rồi dọn đúng schema tổng hợp đó; không dùng bảng dữ liệu ứng dụng hoặc Compose test project. Chi tiết, catalogue T01–T16, benchmark và trạng thái live/mock nằm trong [hướng dẫn kiểm thử](docs/TESTING_GUIDE.md).
+
+Dependencies khóa bằng `uv.lock`, `requirements.txt` sinh từ lock và `frontend/package-lock.json`. Python 3.12.14; React 19.3.1, Vite 8.3.5, TypeScript 6.0.3, TanStack Table 8.21.3, Tailwind 4.3.3, Radix Dialog 1.3.1. TanStack dùng API stable nhánh 8 đã kiểm tra tương thích với React được chọn. Docker images pin tags trong Dockerfiles/Compose; backend và worker dùng cùng image.
+
+## Tài liệu và phạm vi tiếp theo
+
+- [Kiến trúc](docs/ARCHITECTURE.md), [hợp đồng dữ liệu/API](docs/DATA_CONTRACTS.md).
+- [Tích hợp AI và gate Qwen live](docs/AI_INTEGRATION.md).
+- [Kiểm thử](docs/TESTING_GUIDE.md), [trạng thái nghiệm thu](docs/IMPLEMENTATION_STATUS.md).
+- [Kế hoạch ba giai đoạn](docs/PROJECT_PLAN.md), [Rules](Rules.md), [hướng dẫn Codex](AGENTS.md).
+
+Giai đoạn 2 sẽ consume trực tiếp CanonicalDataset/MappingRevision/SchemaDefinition/EvidenceRef sau khi gates Giai đoạn 1 đạt. Chưa triển khai matching/verification tài chính hoặc Assistant. Repository chính thức: [MinhHoang1403/AI-Reconciliation-Studio](https://github.com/MinhHoang1403/AI-Reconciliation-Studio).
