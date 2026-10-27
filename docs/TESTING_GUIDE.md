@@ -71,7 +71,7 @@ Responsive: 1440×900, 1920×1080, 1366×768, 768×1024 và 390×844; chờ nộ
 ./tools/check-persistence.ps1
 ```
 
-Đợi hết jobs đang chạy. Công cụ snapshot metadata/approvals/canonical refs và kiểm tra SHA256 từng artifact, restart rồi force-recreate đủ bốn service và recreate riêng frontend trong project hiện tại, xác nhận auto-session bị chặn trước re-verification và so lại dữ liệu. Không xóa volumes hoặc raw. Snapshot kiểm tra nằm trong volume, không vào Git. Bộ backend đầy đủ trong container đã đạt 84 PASS (76 offline + 8 PostgreSQL integration).
+Đợi hết jobs đang chạy. Công cụ snapshot metadata/approvals/canonical refs và kiểm tra SHA256 từng artifact, restart rồi force-recreate đủ bốn service và recreate riêng frontend trong project hiện tại, xác nhận auto-session bị chặn trước re-verification và so lại dữ liệu. Không xóa volumes hoặc raw. Snapshot kiểm tra nằm trong volume, không vào Git. Bộ backend đầy đủ trong container đã đạt 84 PASS (76 offline + 8 PostgreSQL integration). Snapshot cuối sau E2E có 8 datasets, 8 canonical và 32 artifact refs; tất cả giữ nguyên sau restart.
 
 ## Worker bị dừng đột ngột
 

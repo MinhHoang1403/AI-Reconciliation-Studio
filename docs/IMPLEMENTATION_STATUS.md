@@ -49,7 +49,7 @@ Pydantic/OpenAPI xuất `CanonicalDataset`, `DatasetProfile`, `SchemaDefinition`
 | Playwright production UI | **8 PASS**, 0 FAIL; first-time/returning/invalid/provider error/security và 5 kích thước màn hình |
 | Stale-preview regression | PASS; trì hoãn response tìm kiếm, UI không trình bày dữ liệu query cũ dưới query mới |
 | Live worker failure/recovery | PASS; SIGKILL trong normalization 75.000 dòng tổng hợp, 2 attempts, đúng 1 canonical, đủ dòng và raw/parsed giữ nguyên |
-| Restart / force-recreate / recreate riêng frontend | PASS; metadata, jobs/attempts, approvals và SHA256 mọi artifact trong snapshot giữ nguyên |
+| Restart / force-recreate / recreate riêng frontend | PASS; metadata, jobs/attempts, approvals và SHA256 mọi artifact giữ nguyên. Snapshot cuối gồm 8 datasets, 8 canonical, 24 jobs/25 attempts và 32 artifact refs |
 | Local access | PASS; HttpOnly/SameSite session, CSRF/Host/workspace/role checks; proof mất hiệu lực trước re-verification |
 | Source secrets / Markdown / diff | PASS tại các lần rà source; kiểm tra lại trước mỗi push |
 | Qwen mapping live | BLOCKED, không có PASS giả |
@@ -60,7 +60,7 @@ Fault test chỉ dừng worker của project này, khi không có job khác đan
 
 Benchmark hẹp trên Windows/Ryzen 5 7535HS/16 GB, hai Polars threads, ba lượt/cỡ: 1k/10k/50k CSV hai cột; ở 50k, parse p50 57,87 ms, profile 65,14 ms, normalize+write 1.228,25 ms, peak process 172,71 MiB. Không gọi AI. Đây không phải cam kết latency/throughput hoặc benchmark dữ liệu đại diện; p95/scope đầy đủ trong hướng dẫn kiểm thử.
 
-Screenshots chỉ chứa dữ liệu tổng hợp, lưu tại `runtime/screenshots` và bị Git ignore. Đã xem Dashboard/Mapping, desktop/tablet/mobile; chưa tuyên bố audit toàn bộ WCAG 2.2 AA.
+Screenshots chỉ chứa dữ liệu tổng hợp, lưu tại `runtime/screenshots` và bị Git ignore. Đã xem Dashboard/Mapping, desktop/tablet/mobile và kiểm tra lại trình duyệt sau restart. Màu null text và keyboard focus đã được kiểm tra trên DOM thực; chưa tuyên bố audit toàn bộ WCAG 2.2 AA.
 
 ## E. Docker và lưu trữ
 
@@ -75,14 +75,14 @@ Project duy nhất: `ai-reconciliation-studio`.
 
 `docker image ls` báo SIZE khoảng **553 MB backend/worker**, **90,5 MB frontend**, **409 MB PostgreSQL**; đây là số đo theo cột SIZE của Docker, không cộng backend/worker thành hai image riêng. PostgreSQL/artifact volumes được giữ nguyên. Kiểm tra sau fault test thấy artifacts khoảng 7,6 MiB, PostgreSQL khoảng 65,8 MiB và ổ C còn khoảng 129 GiB; số này thay đổi khi thêm dữ liệu.
 
-Named volumes: `ai-reconciliation-studio_postgres_data`, `ai-reconciliation-studio_artifacts`. Không dùng global prune hoặc xóa volumes. Không có dangling image cũ có label project được xác minh để dọn; không xóa cache/images không rõ sở hữu. Tooling `/tmp` phục vụ tests được loại bỏ khi recreate container; runtime evidence được giữ ngoài Git.
+Named volumes: `ai-reconciliation-studio_postgres_data`, `ai-reconciliation-studio_artifacts`. Không dùng global prune hoặc xóa volumes. Không có dangling image cũ có label project được xác minh để dọn; không xóa cache/images không rõ sở hữu. Tooling `/tmp` phục vụ tests được loại bỏ khi recreate container; runtime evidence được giữ ngoài Git. Hai nhãn `rollback` được giữ, trỏ đúng cùng image đã kiểm tra với `local`, không tạo thêm bản sao layer.
 
 ## F. Git/GitHub
 
 - Remote chính thức: `https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git`.
 - Nhánh triển khai: `codex/data-foundation`; không có repo/worktree phụ.
 - Commit nền tảng đã push: `be3071e3e71fa1362a7615e59595a4f96180c800` — `feat: establish typed data contracts and immutable parsing pipeline`.
-- Nhóm runtime/UI/acceptance được commit/push sau rà diff/tests/secrets; hash và đối chiếu remote được chốt trong cập nhật bàn giao tiếp theo.
+- Commit runtime/UI/acceptance đã push: `32741ae0f441ea9c012d65cdf2a8e3829b7cb80b` — `feat: deliver scoped data workspace and durable processing workflow`. Local/remote của nhánh đã được đối chiếu cùng hash sau push. Bản cập nhật báo cáo chỉ bổ sung bằng chứng bàn giao, không đổi code runtime.
 - `main` được giữ nguyên vì gate Qwen live chưa đạt; không force-push/reset phá hủy.
 - `.vscode/` xuất hiện ngoài phạm vi triển khai, được giữ nguyên và không stage/commit. `.env`, uploads, Parquet, volumes, screenshots và runtime reports không vào Git.
 
