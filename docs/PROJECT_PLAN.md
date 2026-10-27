@@ -108,7 +108,7 @@ Người dùng có một vài nguồn CSV/XLSX/PDF/DOCX khác tên cột, cấu 
 | Tabular data | Parquet + Polars | Lưu artifact versioned, vectorized processing |
 | Matching query | DuckDB over Parquet + RapidFuzz (ứng viên) | JOIN, aggregation, giới hạn RAM/cost [S11] |
 | Monetary | `Decimal` hoặc SQL `DECIMAL/NUMERIC` | Không sử dụng binary floating point [S12] |
-| AI primary | Endpoint Qwen công ty `https://ai-api.inetcloud.vn/knowledge/v1`, model ID `knowledge`, **không yêu cầu API key** | Classification, schema/mapping, planning, explanation; kiểm tra API thật trước khi dùng |
+| AI primary | Endpoint Qwen công ty `https://ai.inetcloud.vn/memochat/v1`, model ID `knowledge`, **không yêu cầu API key** | Classification, schema/mapping, planning, explanation; kiểm tra API thật trước khi dùng |
 | AI secondary | `gemini-3.5-flash-lite` | Chỉ được phép cloud khi người dùng/policy/budget cho phép; Structured JSON validation [S13] |
 | Front proxy | Nginx | SPA + `/api` same origin; không lộ AI keys |
 | Containers | Docker Compose | FE + BE + Worker + PostgreSQL + persistent data, không host lại Qwen |
@@ -526,7 +526,7 @@ def call_provider(task: AITaskRequest, context: StructuredContext) -> RawProvide
 def validate_ai_output(raw: RawProviderResponse, task: AITaskRequest) -> ValidatedProposal: ...
 ```
 
-**Router logic** [D]: cached approved answer/template → deterministic code if possible → Qwen local → optional Gemini if permitted, within budget, and measured to be useful → review. Qwen base URL `https://ai-api.inetcloud.vn/knowledge/v1`, model ID `knowledge`, no Authorization header when no key. Confirm `/models` and inference contract; **HTTP 200 `/models` không chứng minh generation hoạt động**. Đừng tự đổi ID thành `qwen3.5:27b`.
+**Router logic** [D]: cached approved answer/template → deterministic code if possible → Qwen local → optional Gemini if permitted, within budget, and measured to be useful → review. Qwen base URL `https://ai.inetcloud.vn/memochat/v1`, model ID `knowledge`, no Authorization header when no key. Confirm `/models` and inference contract; **HTTP 200 `/models` không chứng minh generation hoạt động**. Đừng tự đổi ID thành `qwen3.5:27b`.
 
 Gemini model `gemini-3.5-flash-lite`, policy `LOCAL_ONLY` mặc định, `external_request_budget=0` mặc định; cloud test chỉ khi chủ dự án cấp phép. Với payload Structured Outputs bị API từ chối trên dự án cũ, dùng **JSON prompt + strict Pydantic/semantic checks** làm đường hỗ trợ, không cố retry vô hạn hoặc coi JSON là đúng nghiệp vụ. LlamaParse là dịch vụ riêng, budget/allowance riêng. Ghi tokens/credits khi provider cho biết; không bịa unit costs.
 
