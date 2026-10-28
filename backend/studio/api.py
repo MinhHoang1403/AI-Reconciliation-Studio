@@ -106,6 +106,10 @@ def current_actor(request: Request, db: DB) -> Actor:
 
 CurrentActor = Annotated[Actor, Depends(current_actor)]
 
+from studio.reconciliation_api import build_router  # noqa: E402
+
+app.include_router(build_router(database, current_actor))
+
 
 @app.exception_handler(DomainError)
 async def domain_error(request: Request, exc: DomainError) -> JSONResponse:

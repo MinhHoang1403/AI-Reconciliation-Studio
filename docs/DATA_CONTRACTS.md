@@ -67,3 +67,35 @@ Allowlist có `cast_string_preserve`, `trim_if_approved`, `parse_decimal`, `pars
 Giao diện cung cấp giữ chuỗi/trim được duyệt, Decimal locale và date format/timezone. Enum, coalesce, arithmetic và aggregation có API contract với `ApprovedTransformRule`; cần rule ID, nguồn và bằng chứng phù hợp, quyền editor. UI chưa có trình soạn các rule nâng cao này. Không tự tạo công thức phí hoặc FX.
 
 Null/empty khi parse Decimal tạo null, giữ raw và `value_state=NULL`; chuỗi sai tạo null kèm lỗi `INVALID`. Zero hợp lệ là Decimal zero. Không ghi lỗi thành 0, không bỏ dòng. Required null hoặc conversion error làm PARTIAL. Error artifact là Parquet riêng có source row/field/raw/code/value state.
+
+## Reconciliation contracts và APIs
+
+Pydantic contracts ở `contracts/reconciliation.py`: ReconciliationPlan/Contract/Run, MatchGroup/Member/ComparisonResult, ExceptionCase, MetricSnapshot và VerifiedRun. Plan/AI JSON không cấp quyền chạy. Approve tạo contract bất biến có actor/time/revision; sửa kế hoạch tạo proposal/approval mới, không ghi đè lịch sử. SourceSelection có canonical ID, role, date/time basis, explicit filters, coverage/completeness/snapshot/due date. Metric có fields/semantic ID/basis/currency/unit/SOURCE_SIGNED, tolerance và rounding. Không chạy Python/SQL tùy ý.
+
+| Route | Contract/gate |
+|---|---|
+| GET /api/projects/{id}/canonical-catalogue | Scoped canonical/schema/profile/mapping/identifier refs; stale không được chạy |
+| GET /api/projects/{id}/domain-schema-templates | Order/OrderLine/FinancialEvent đề xuất; Settlement/Payout chỉ khi có nguồn entity thật; không approval |
+| POST /api/reconciliation-plans/validate | Metadata/type/semantics/readiness và key uniqueness; duplicates cần review |
+| POST /api/reconciliation-plans | Manual typed proposal, Idempotency-Key; không execute |
+| POST /api/reconciliation-plans/ai | Queue planner, cloud policy/key/reservation/task cap; không tự approve |
+| GET /api/reconciliation-plans/{id} | Typed proposal, source và approved contract ID nếu có |
+| POST /api/reconciliation-contracts/{plan_id}/approve | Editor, validate lại scope/revisions và audit; tạo immutable contract |
+| GET /api/projects/{id}/reconciliation-templates | Approved rules trong project |
+| POST /api/reconciliation-contracts/{id}/reuse | Rebind canonical/period/coverage mới, kiểm schema/transform semantics/effective dates; tạo proposal cần duyệt lại |
+| POST /api/reconciliation-runs | Chỉ approved contract; logical fingerprint sources/rule/engine và queue idempotency |
+| GET /api/runs?project_id=... | Pagination, period_start/period_end/source_id server filters |
+| GET /api/runs/{id} | Status, source refs/checks và RunArtifactRef; không raw storage path |
+| GET /api/runs/{id}/metrics | Chỉ VERIFIED/PARTIAL_VERIFIED, đúng một immutable snapshot |
+| GET /api/runs/{id}/matches | Server pagination/search/linkage/comparison filters; match groups typed |
+| GET /api/runs/{id}/groups/{group_id}/evidence | Group phải thuộc đúng run; scoped source records và full member provenance; preview mỗi source tối đa 100 records |
+| GET /api/runs/{id}/exceptions | Search, state/type filters, type/state sort, pagination; current_open_count riêng |
+| PATCH /api/exceptions/{id}/review | Editor, lý do bắt buộc khi resolve/dismiss, audit actor/time; không đổi monetary result |
+| POST /api/runs/{id}/exports?format=csv hoặc xlsx | Verified only; queue và cached immutable export theo run/revision |
+| GET /api/exports/{id}, /download | Workspace scope, checksum, same-origin auth; không token/path trong URL |
+
+RunArtifactRef độc lập DatasetVersion vì run có hai nguồn; source CanonicalDataset refs được giữ đầy đủ. Không lạm dụng ArtifactRef một-source cho match results. Failure không có MetricSnapshot. PARTIAL_VERIFIED không được trình bày như đầy đủ khi có invalid/pending/not-comparable.
+
+CU là left canonical record ở 1:1/1:N hoặc left canonical group ở N:1. Eligible có scope/keys/own Decimal/currency hợp lệ; invalid/out-of-scope/pending/thiếu own money báo excluded riêng. Ambiguous còn trong mẫu số review. Full match đòi LINKED + EQUAL/WITHIN_TOLERANCE; zero denominator N/A. Automation là phân loại xác định đã verified không cần row-level human decision, không phải tỷ lệ tiền đã đúng. Monetary sums chỉ comparable metrics/currency/unit riêng, không cộng đa tiền tệ. `delta=L-R`, abs variance = abs(delta), tolerance theo PROJECT_PLAN; rounding chỉ khi approved.
+
+CSV/XLSX chứa Summary/Metrics/Matches/Exceptions/Data quality/Evidence/Sources/Rules. Snapshot JSON lưu nguyên DTO để đối chiếu API. Text `=,+,-,@` có guard, IDs giữ chuỗi/zero-prefix, Decimal âm vẫn numeric. OOXML numeric lexemes giữ Decimal chính xác, nhưng Excel arithmetic có giới hạn 15 significant digits; snapshot strings/CSV phục vụ exact interchange. Report không tự tính lại KPI. Exception state được chụp khi export lần đầu, các review sau không sửa file export đã công bố.

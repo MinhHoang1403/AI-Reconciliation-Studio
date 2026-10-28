@@ -54,3 +54,11 @@ Sau thử đã đóng `ALLOW_CLOUD_PARSING` và quyền workspace; giữ nguyên
 ## Sau khi mở quyền Qwen
 
 Chạy kiểm tra giới hạn bằng dữ liệu tổng hợp. `tools/probe-qwen.py` kiểm tra cả `/models` và mapping inference, ghi kết quả rút gọn không chứa endpoint response/credentials. Khi provider contract xác nhận cần thay adapter, giữ output schema và semantic validators. Sau đó replay tests offline, PostgreSQL và E2E; cập nhật [trạng thái nghiệm thu](IMPLEMENTATION_STATUS.md). Việc dùng Gemini hiện tại là chỉ định explicit của chủ dự án, không phải bằng chứng Qwen đã PASS.
+
+## Gemini Reconciliation Planner
+
+Task `propose_reconciliation_contract`, prompt `reconciliation-planning-1`, PlanProposal JSON schema riêng, dùng transport request_typed trên GeminiProvider hiện có. Source catalogue có canonical/schema/approved mapping refs, roles, bounded profile và masked samples; không gửi full table/per-row hoặc raw file. Validator kiểm các IDs/field/evidence/scope/grain/metric/unit/currency/basis/effective dates/coverage. AI không được đổi source slots/coverage/timezone đã khai báo hoặc tự trả APPROVED. UNKNOWN/NEEDS_REVIEW là hợp lệ, không phải kết quả thực thi.
+
+Đã thử **PASS LIVE** bằng cặp vận đơn/giao nhận tổng hợp: status PROPOSED có plan, không thiếu yêu cầu, job SUCCEEDED và chưa có approval. Dùng thêm đúng **1 HTTP attempt** sau mốc Giai đoạn 1: durable usage **7/10, còn 3**. Trần task toàn hệ thống cho nhiệm vụ này vẫn tối đa 2 attempts, retry cũng reserve; không reset/tăng global/workspace budgets. Reclaimed AI job có delivery chưa rõ không tự gửi lại. Provider failure không gọi Qwen. Mock tests kiểm valid/invented fields/self-approval/JSON retry/cloud OFF; PG tests giữ concurrent budget protections. UI vẫn tạo/review rule thủ công khi cloud không khả dụng.
+
+LlamaParse vẫn tạo job OFF, usage lịch sử 2 documents/2 pages/6 credits; không gọi lại trong Giai đoạn 2. Qwen vẫn BLOCKED_EXTERNAL_DEPENDENCY HTTP 403. Gemini mapping prompt/revision không đổi; mọi regression/E2E thông thường chạy MANUAL/mock, không tiêu quota.

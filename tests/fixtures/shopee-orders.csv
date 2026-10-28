@@ -1,0 +1,7 @@
+platform,shop_id,order_id,event_date,gross_amount,currency,description
+Shopee,SHOP-A,0001,2026-10-01,100.00,VND,Paid
+Shopee,SHOP-A,0002,2026-10-02,190.00,VND,Paid
+Shopee,SHOP-A,0003,2026-10-03,-10.00,VND,Refund
+Shopee,SHOP-A,0006,2026-10-05,7.00,VND,Right only
+Shopee,SHOP-A,0007,2026-10-06,20.00,VND,Duplicate one
+Shopee,SHOP-A,0007,2026-10-06,20.00,VND,Duplicate two

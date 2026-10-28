@@ -225,6 +225,21 @@ class GeminiProvider:
         policy: WorkspacePolicy,
         reserve_request: Callable[[], bool],
     ) -> SchemaProposal:
+        return self.request_typed(
+            build_prompt(profile, schema, "propose_mapping"),
+            policy,
+            reserve_request,
+            lambda content: validate_ai_output(content, profile, schema),
+        )
+
+    def request_typed[T](
+        self,
+        prompt: list[dict[str, str]],
+        policy: WorkspacePolicy,
+        reserve_request: Callable[[], bool],
+        validator: Callable[[str], T],
+    ) -> T:
+        """Shared bounded transport for registered typed tasks; each attempt reserves first."""
         if (
             route_ai_task(policy, request_gemini=True) != "GEMINI"
             or not self.config.allow_external_ai
@@ -234,7 +249,6 @@ class GeminiProvider:
             raise DomainError("GEMINI_KEY_MISSING", "Chưa cấu hình khóa Gemini.")
         if self.config.external_ai_request_budget <= 0:
             raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Ngân sách AI cloud toàn hệ thống bằng 0.")
-        prompt = build_prompt(profile, schema, "propose_mapping")
         for attempt in range(2):
             if not reserve_request():
                 raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Đã hết ngân sách request AI cloud.")
@@ -267,7 +281,7 @@ class GeminiProvider:
                         raise ValueError("content")
                 except (KeyError, IndexError, ValueError, TypeError) as exc:
                     raise DomainError("AI_INVALID_JSON", "Phản hồi Gemini sai hợp đồng.") from exc
-                return validate_ai_output(content, profile, schema)
+                return validator(content)
             except httpx.TransportError as exc:
                 if attempt:
                     raise DomainError("GEMINI_UNAVAILABLE", "Gemini không phản hồi.") from exc

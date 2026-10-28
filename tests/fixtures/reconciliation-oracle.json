@@ -1,0 +1,33 @@
+{
+  "basis": "Manually labelled synthetic source values; no marketplace fee formula",
+  "shopee": {
+    "left_rows": 11,
+    "eligible_left": 5,
+    "linked": ["0001", "0002", "0003"],
+    "equal": ["0001", "0003"],
+    "amount_mismatch": {"0002": "10.00"},
+    "missing_left": ["0004"],
+    "missing_right": ["0006"],
+    "ambiguous_left": ["0007"],
+    "invalid_left": ["0099"],
+    "out_of_scope_left": 5,
+    "signed_variance": "10.00",
+    "absolute_variance": "10.00"
+  },
+  "tiktok": {
+    "equal": ["0001", "0005"],
+    "right_group_members": {"0005": 2},
+    "not_comparable": ["0008"],
+    "missing_left": ["0009"],
+    "signed_variance": "0.00",
+    "absolute_variance": "0.00"
+  },
+  "delivery": {
+    "equal": ["000701"],
+    "amount_mismatch": {"000702": "2.75"},
+    "missing_left": ["000703"],
+    "missing_right": ["000704"],
+    "signed_variance": "2.75",
+    "absolute_variance": "2.75"
+  }
+}
