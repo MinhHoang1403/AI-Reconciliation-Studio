@@ -6,7 +6,7 @@ import {TooltipComponent, LegendComponent, AriaComponent} from "echarts/componen
 import {SVGRenderer} from "echarts/renderers";
 import {api} from "./api";
 import {Badge, Modal, Notice, Spinner} from "./components";
-import {label, type Catalogue, type Case, type Group, type Metric, type Pair, type Plan, type Proposal, type Run, type Slot} from "./reconciliationTypes";
+import {label, type Catalogue, type Case, type EvidenceRef, type Group, type Metric, type Pair, type Plan, type Proposal, type Readiness, type Run, type Slot, type SourceEvidence} from "./reconciliationTypes";
 import type {Job} from "./types";
 
 echarts.use([PieChart, TooltipComponent, LegendComponent, AriaComponent, SVGRenderer]);
@@ -46,10 +46,12 @@ export function ReconciliationStudio({projectId,mode}:{projectId:string;mode:Mod
   const [error,setError]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
   const [offset,setOffset]=useState(0),[search,setSearch]=useState(""),[filter,setFilter]=useState("");
   const [issueFilter,setIssueFilter]=useState(""),[caseSort,setCaseSort]=useState("type");
-  const [evidence,setEvidence]=useState<null|{group:Group;sources:{canonical:{id:string};records:{id:string;payload:Record<string,unknown>;provenance:{sheet:string;row:number;source_table_id:string}[]}[];member_count:number;evidence_complete:boolean}[];rule:{plan:Plan}}>(null);
+  const [evidence,setEvidence]=useState<SourceEvidence|null>(null);
+  const [sourceDetail,setSourceDetail]=useState<{field:string;filename:string;canonical:unknown;cells:{ref:EvidenceRef;name:string;value:unknown}[];limited:boolean}|null>(null);
   const [currentCase,setCurrentCase]=useState<Case|null>(null),[note,setNote]=useState(""),[state,setState]=useState("IN_REVIEW");
   const [draft,setDraft]=useState<Plan|null>(null),[proposal,setProposal]=useState<Proposal|null>(null);
-  const [readiness,setReadiness]=useState<unknown>(null),[download,setDownload]=useState("");
+  const [readiness,setReadiness]=useState<Readiness|null>(null),[download,setDownload]=useState("");
+  const [scopeConfirmed,setScopeConfirmed]=useState(false),[exportNotice,setExportNotice]=useState("");
   const [templates,setTemplates]=useState<{id:string;plan:Plan}[]>([]);
   const [runOffset,setRunOffset]=useState(0),[runTotal,setRunTotal]=useState(0);
   const [fromPeriod,setFromPeriod]=useState(""),[toPeriod,setToPeriod]=useState(""),[sourceFilter,setSourceFilter]=useState("");
@@ -70,7 +72,7 @@ export function ReconciliationStudio({projectId,mode}:{projectId:string;mode:Mod
     if(!runId){setRun(null);return;}
     let active=true;
     localStorage.setItem(`studio.run.${projectId}`,runId);
-    setRun(null);setEvidence(null);setDownload("");
+    setRun(null);setEvidence(null);setDownload("");setExportNotice("");
     void api<Run>(`/runs/${runId}`).then(r=>{if(active)setRun(r);}).catch(e=>{if(active)setError(e.message);});
     return()=>{active=false;};
   },[runId,projectId,runs]);
@@ -89,7 +91,7 @@ export function ReconciliationStudio({projectId,mode}:{projectId:string;mode:Mod
   const makeDraft=(leftId:string,rightId:string)=>{
     const left=sources.find(c=>c.canonical.id===leftId),right=sources.find(c=>c.canonical.id===rightId);
     if(!left||!right||leftId===rightId)return;
-    const start=draft?.period_start||"2026-10-01",end=draft?.period_end||"2026-11-01";
+    const start=draft?.period_start||"",end=draft?.period_end||"";
     const slot=(cat:Catalogue,role:string):Slot=>({canonical_id:cat.canonical.id,role,
       date_field:cat.schema_definition.fields.find(f=>f.data_type==="date")?.id||"",time_basis:"event_date",
       currency_field:cat.schema_definition.fields.some(f=>f.id==="currency")?"currency":null,filters:{},
@@ -101,11 +103,11 @@ export function ReconciliationStudio({projectId,mode}:{projectId:string;mode:Mod
       unit:money?.unit||"",amount_basis:money?.amount_basis||"",sign_convention:"SOURCE_SIGNED",absolute_tolerance:"0",relative_tolerance:null,rounding_scale:null,rounding_mode:"HALF_EVEN"};
     setDraft({name:"Đối soát nguồn đã chuẩn hóa",entity_kind:left.schema_definition.entity_kind,left:slot(left,"reference"),right:slot(right,"counterpart"),
       join_keys:pairs.length?pairs:[{left:"",right:""}],comparison_metrics:[metric],attributes:[],comparison_grain:left.schema_definition.grain,
-      cardinality:"ONE_TO_ONE",aggregation:"NONE",period_start:start,period_end:end,timezone:"UTC",effective_from:start,effective_to:null,
+      cardinality:"ONE_TO_ONE",aggregation:"NONE",period_start:start,period_end:end,timezone:draft?.timezone||"",effective_from:start,effective_to:null,
       allow_partial:false,duplicate_policy:"REVIEW",fuzzy_fields:[],fuzzy_block_keys:[],fuzzy_min_score:85,fuzzy_top_k:3,evidence_ids:[leftId,rightId]});
-    setProposal(null);setReadiness(null);
+    setProposal(null);setReadiness(null);setScopeConfirmed(false);
   };
-  const change=(update:Partial<Plan>)=>{if(draft)setDraft({...draft,...update});setProposal(null);setReadiness(null);};
+  const change=(update:Partial<Plan>)=>{if(draft)setDraft({...draft,...update});setProposal(null);setReadiness(null);setScopeConfirmed(false);};
   const changeSlot=(side:"left"|"right",update:Partial<Slot>)=>draft&&change({[side]:{...draft[side],...update}});
   const changeMetric=(update:Partial<Metric>)=>draft&&change({comparison_metrics:[{...draft.comparison_metrics[0],...update}]});
   const fieldSelect=(side:"left"|"right",value:string,onChange:(value:string)=>void,type?:string)=><select value={value} onChange={e=>onChange(e.target.value)}>
@@ -118,22 +120,31 @@ export function ReconciliationStudio({projectId,mode}:{projectId:string;mode:Mod
     <button type="button" className="text-button" onClick={()=>change({[key]:[...draft[key],{left:"",right:""} as Pair]})}>+ Thêm cặp trường</button></fieldset>;
   const openEvidence=(groupId:string,caseRow?:Case)=>action(async()=>{
     const data=await api<NonNullable<typeof evidence>>(`/runs/${runId}/groups/${groupId}/evidence`);
-    if(!alive.current)return;setEvidence(data);setCurrentCase(caseRow||null);setNote(caseRow?.notes||"");setState(caseRow?.workflow_state||"IN_REVIEW");
+    if(!alive.current)return;setEvidence(data);setSourceDetail(null);setCurrentCase(caseRow||null);setNote(caseRow?.notes||"");setState(caseRow?.workflow_state||"IN_REVIEW");
+  });
+  const openSource=(field:string,filename:string,canonical:unknown,refs:EvidenceRef[])=>action(async()=>{
+    const cells=await Promise.all(refs.slice(0,20).map(async ref=>{
+      const data=await api<{column:{name:string};items:Record<string,unknown>[]}>(`/evidence/${encodeURIComponent(ref.id)}?row=${ref.row}`);
+      return {ref,name:data.column.name,value:data.items[0]?.[ref.column]};
+    }));
+    if(alive.current)setSourceDetail({field,filename,canonical,cells,limited:refs.length>20});
   });
   const exportFile=(format:string)=>action(async()=>{
     const created=await api<{job_id:string;export_id:string}>(`/runs/${runId}/exports?format=${format}`,{method:"POST"});
-    await wait(created.job_id);const info=await api<{download_url:string}>(`/exports/${created.export_id}`);
-    if(alive.current)setDownload(info.download_url);
+    await wait(created.job_id);const info=await api<{download_url:string;review_state_as_of:string|null;notice_vi:string}>(`/exports/${created.export_id}`);
+    if(alive.current){setDownload(info.download_url);setExportNotice(`${info.notice_vi} Thời điểm tạo: ${info.review_state_as_of||"không được ghi ở định dạng cũ"}.`);}
   });
   if(!projectId)return null;
   const snapshot=run?.metric_snapshot;
+  const scopeReady=!!draft&&!!draft.period_start&&!!draft.period_end&&!!draft.timezone&&!!draft.effective_from&&
+    [draft.left,draft.right].every(s=>!!s.coverage_start&&!!s.coverage_end);
   if(mode==="home"&&!snapshot)return error?<Notice tone="error">{error}</Notice>:null;
   return <section className="reconciliation-studio">
     <div className="section-heading"><div><span className="eyebrow">KẾT QUẢ CÓ BẰNG CHỨNG</span><h2>{mode==="reconcile"?"Thiết lập đối soát":mode==="exceptions"?"Ngoại lệ cần xem xét":"Kết quả đối soát"}</h2></div>
       <button className="button secondary" disabled={busy} onClick={()=>void action(refresh)}><RefreshCw size={16}/>Cập nhật đối soát</button></div>
     {error&&<Notice tone="error">{error}</Notice>}{message&&<Notice tone="success">{message}</Notice>}{busy&&<Spinner/>}
     {mode==="reconcile"&&<div className="card rule-builder">
-      <h3>Chọn hai nguồn canonical</h3><p className="muted">Nguồn phải đã được xác nhận ánh xạ. Bạn duyệt quy tắc trước khi hệ thống chạy.</p>
+      <h3>1. Chọn nguồn → 2. AI chuẩn bị → 3. Duyệt → 4. Chạy và xem ngoại lệ</h3><p className="muted">Chọn hai nguồn đã chuẩn hóa. AI có thể tìm cặp khóa khác tên; bạn xác nhận phạm vi và quy tắc trước khi chạy.</p>
       {sources.length<2?<Notice>Cần ít nhất hai nguồn đã chuẩn hóa. Mở Dữ liệu để hoàn tất mapping và normalization.</Notice>:<>
         <div className="rule-grid">{(["left","right"] as const).map((side,i)=><label key={side}>{i===0?"Nguồn tham chiếu":"Nguồn đối ứng"}
           <select aria-label={i===0?"Nguồn tham chiếu":"Nguồn đối ứng"} value={draft?.[side].canonical_id||""} onChange={e=>{
@@ -145,13 +156,21 @@ export function ReconciliationStudio({projectId,mode}:{projectId:string;mode:Mod
           }}>
           <option value="">Chọn nguồn</option>{sources.map(c=><option key={c.canonical.id} value={c.canonical.id}>{c.name} · {c.schema_definition.grain} · {c.canonical.row_count} dòng</option>)}</select></label>)}</div>
         {draft&&<>
+          <button className={`button ${proposal?"secondary":"primary"}`} disabled={busy} onClick={()=>void action(async()=>{
+            const request=scopeConfirmed?{left:draft.left,right:draft.right,period_start:draft.period_start,period_end:draft.period_end,timezone:draft.timezone,effective_from:draft.effective_from,effective_to:draft.effective_to,allow_partial:draft.allow_partial}:{left:{canonical_id:draft.left.canonical_id},right:{canonical_id:draft.right.canonical_id}};
+            const job=await api<{job_id:string}>("/reconciliation-plans/ai",send({project_id:projectId,request}));
+            const done=await wait(job.job_id);const p=await api<Proposal>(`/reconciliation-plans/${done.result?.plan_id}`);
+            if(alive.current){setProposal(p);if(p.proposal.plan)setDraft(p.proposal.plan);else if(p.proposal.suggestions){const s=p.proposal.suggestions;setDraft({...draft,left:{...draft.left,role:s.left_role},right:{...draft.right,role:s.right_role},join_keys:s.join_keys.length?s.join_keys:draft.join_keys,comparison_metrics:s.comparison_metrics.length?s.comparison_metrics:draft.comparison_metrics,cardinality:s.cardinality||draft.cardinality,comparison_grain:s.comparison_grain||draft.comparison_grain,aggregation:s.aggregation||draft.aggregation,evidence_ids:s.evidence_ids});}setMessage("AI đã chuẩn bị gợi ý. Hãy kiểm tra các điểm cần xác nhận; chưa có quyền thực thi.");}
+          })}><Sparkles size={16}/>AI đề xuất kế hoạch (có dùng quota)</button>
+          <p className="muted">Chưa cần nhập khóa chính xác để hỏi AI. Thiếu kỳ, múi giờ hoặc coverage sẽ cần bạn xác nhận. Nếu hết quota, mở phần chỉnh thủ công bên dưới.</p>
           <div className="rule-grid"><label>Tên quy tắc<input value={draft.name} onChange={e=>change({name:e.target.value})}/></label>
             <label>Quan hệ<select value={draft.cardinality} onChange={e=>change({cardinality:e.target.value,aggregation:e.target.value==="ONE_TO_ONE"?"NONE":"SUM_SIGNED"})}><option value="ONE_TO_ONE">Một — Một</option><option value="ONE_TO_MANY">Một — Nhiều (cộng signed)</option><option value="MANY_TO_ONE">Nhiều — Một (cộng signed)</option></select></label>
-            <label>Từ ngày<input type="date" value={draft.period_start} onChange={e=>change({period_start:e.target.value})}/></label>
+            <label>Từ ngày<input type="date" value={draft.period_start} onChange={e=>change({period_start:e.target.value,effective_from:draft.effective_from||e.target.value})}/></label>
             <label>Đến ngày (không gồm)<input type="date" value={draft.period_end} onChange={e=>change({period_end:e.target.value})}/></label>
-            <label>Timezone<input value={draft.timezone} onChange={e=>change({timezone:e.target.value})}/></label>
+            <label>Timezone<input placeholder="Ví dụ Asia/Ho_Chi_Minh — cần xác nhận" value={draft.timezone} onChange={e=>change({timezone:e.target.value})}/></label>
             <label>Đơn vị đối soát (grain)<input value={draft.comparison_grain} onChange={e=>change({comparison_grain:e.target.value})}/></label>
           </div>
+          <details><summary>Chỉnh khóa và chỉ tiêu thủ công</summary>
           {pairBuilder("Khóa liên kết đã xác nhận","join_keys")}
           <fieldset className="rule-fieldset"><legend>Chỉ tiêu tiền</legend><div className="rule-grid">
             <label>Trường tiền trái{fieldSelect("left",draft.comparison_metrics[0].left,v=>changeMetric({left:v}),"decimal")}</label>
@@ -163,6 +182,7 @@ export function ReconciliationStudio({projectId,mode}:{projectId:string;mode:Mod
             <label>Sai số tuyệt đối<input inputMode="decimal" value={draft.comparison_metrics[0].absolute_tolerance} onChange={e=>changeMetric({absolute_tolerance:e.target.value})}/></label>
             <label>Sai số tương đối (0.01 = 1%)<input inputMode="decimal" value={draft.comparison_metrics[0].relative_tolerance||""} onChange={e=>changeMetric({relative_tolerance:e.target.value||null})}/></label>
           </div><p className="muted">Giữ dấu số tiền từ nguồn đã chuẩn hóa. Không tự áp phí, FX hoặc đổi gross/net. Cần xác nhận điều này khi duyệt.</p></fieldset>
+          </details>
           <div className="rule-grid">{(["left","right"] as const).map(side=><fieldset className="rule-fieldset" key={side}><legend>Coverage {side==="left"?"nguồn trái":"nguồn phải"}</legend>
             <label>Trường ngày{fieldSelect(side,draft[side].date_field,v=>changeSlot(side,{date_field:v}),"date")}</label>
             <label>Cơ sở thời gian<input value={draft[side].time_basis} onChange={e=>changeSlot(side,{time_basis:e.target.value})}/></label>
@@ -181,12 +201,14 @@ export function ReconciliationStudio({projectId,mode}:{projectId:string;mode:Mod
               <label>Quy tắc làm tròn<select value={draft.comparison_metrics[0].rounding_mode} onChange={e=>changeMetric({rounding_mode:e.target.value})}><option value="HALF_EVEN">Half even</option><option value="HALF_UP">Half up</option></select></label></div>
           </details>
           <label className="check-label"><input type="checkbox" checked={draft.allow_partial} onChange={e=>change({allow_partial:e.target.checked})}/>Cho phép kết quả một phần; nguồn thiếu kỳ sẽ ở trạng thái đang chờ</label>
-          <div className="rule-actions"><button className="button secondary" disabled={busy} onClick={()=>void action(async()=>{setReadiness(await api("/reconciliation-plans/validate",send({project_id:projectId,plan:draft})));setMessage("Rule hợp lệ về cấu trúc/ngữ nghĩa; vẫn cần bạn phê duyệt.");})}>Kiểm tra điều kiện</button>
-            <button className="button secondary" disabled={busy} onClick={()=>void action(async()=>{const job=await api<{job_id:string}>("/reconciliation-plans/ai",send({project_id:projectId,plan:draft}));const done=await wait(job.job_id);const p=await api<Proposal>(`/reconciliation-plans/${done.result?.plan_id}`);if(alive.current){setProposal(p);if(p.proposal.plan)setDraft(p.proposal.plan);}})}><Sparkles size={16}/>AI đề xuất kế hoạch (có dùng quota)</button>
-            <button className="button primary" disabled={busy} onClick={()=>void action(async()=>{setProposal(await api<Proposal>("/reconciliation-plans",send({project_id:projectId,plan:draft})));setMessage("Đã lưu bản đề xuất. Kiểm tra nội dung trước khi xác nhận.");})}>Lưu đề xuất thủ công</button></div>
-          {!!readiness&&<Notice>Đã kiểm tra schema, scope, grain, metric, thời gian và khóa. Trùng khóa được giữ để review.</Notice>}
+          <label className="check-label"><input type="checkbox" disabled={!scopeReady} checked={scopeConfirmed} onChange={e=>setScopeConfirmed(e.target.checked)}/>Tôi xác nhận kỳ, múi giờ và phạm vi nguồn</label>
+          {!scopeReady&&<Notice tone="warning">Nhập kỳ, múi giờ và khoảng dữ liệu thực tế của cả hai nguồn trước khi duyệt. Hệ thống không tự chọn tháng hoặc UTC.</Notice>}
+          <div className="rule-actions"><button className="button secondary" disabled={busy||!scopeConfirmed} onClick={()=>void action(async()=>{setReadiness(await api<Readiness>("/reconciliation-plans/validate",send({project_id:projectId,plan:draft})));setMessage("Rule hợp lệ về cấu trúc/ngữ nghĩa; vẫn cần bạn phê duyệt.");})}>Kiểm tra điều kiện</button>
+            <button className="button secondary" disabled={busy||!scopeConfirmed} onClick={()=>void action(async()=>{setProposal(await api<Proposal>("/reconciliation-plans",send({project_id:projectId,plan:draft})));setMessage("Đã lưu bản đề xuất. Kiểm tra nội dung trước khi xác nhận.");})}>Lưu đề xuất thủ công</button></div>
+          {readiness&&<Notice><p>Đã kiểm tra schema, scope, grain, metric, thời gian và khóa. Trùng khóa được giữ để review.</p>{readiness.sources.map(s=><p key={s.side}>{s.side==="left"?"Nguồn trái":"Nguồn phải"}: {s.in_scope_records} trong kỳ/phạm vi, {s.out_of_scope_records} ngoài phạm vi, {s.invalid_records} lỗi; {s.duplicate_key_rows} dòng trùng khóa trong phạm vi. {s.coverage_complete?"Coverage đầy đủ":"Coverage chưa đầy đủ: kết quả có thể đang chờ"}.</p>)}</Notice>}
           {proposal&&<div className="rule-approval"><h3>Review trước khi chạy</h3><p>{proposal.origin} · {proposal.proposal.status} · {draft.join_keys.map(p=>`${p.left} ↔ ${p.right}`).join(", ")}</p><p>{proposal.proposal.reasoning}</p>{proposal.proposal.missing_requirements.map((m,i)=><p key={i}>{m}</p>)}
-            {!proposal.contract_id?<button className="button primary" disabled={busy||proposal.proposal.status!=="PROPOSED"} onClick={()=>void action(async()=>{const rule=await api<{id:string}>(`/reconciliation-contracts/${proposal.id}/approve`,{method:"POST"});setProposal({...proposal,contract_id:rule.id});setMessage("Đã duyệt scope, grain, coverage và dấu số tiền theo nguồn. Có thể chạy đối soát.");})}><CheckCheck size={16}/>Xác nhận quy tắc và dấu số tiền</button>:
+            <p>Quan hệ: {draft.cardinality==="ONE_TO_ONE"?"Một — Một":draft.cardinality==="ONE_TO_MANY"?"Một — Nhiều":"Nhiều — Một"}; chỉ tiêu: {draft.comparison_metrics.map(m=>`${m.metric_id} (${m.currency}, ${m.amount_basis})`).join(", ")}; kỳ {draft.period_start||"chưa xác nhận"} đến {draft.period_end||"chưa xác nhận"}, {draft.timezone||"chưa xác nhận múi giờ"}.</p>
+            {!proposal.contract_id?<button className="button primary" disabled={busy||!scopeConfirmed||proposal.proposal.status!=="PROPOSED"||!proposal.proposal.plan||proposal.proposal.missing_requirements.length>0} onClick={()=>void action(async()=>{const rule=await api<{id:string}>(`/reconciliation-contracts/${proposal.id}/approve`,{method:"POST"});setProposal({...proposal,contract_id:rule.id});setMessage("Đã duyệt scope, grain, coverage và dấu số tiền theo nguồn. Có thể chạy đối soát.");})}><CheckCheck size={16}/>Xác nhận quy tắc và dấu số tiền</button>:
               <button className="button primary" disabled={busy} onClick={()=>void action(async()=>{const accepted=await api<{job_id:string;run_id:string}>("/reconciliation-runs",send({contract_id:proposal.contract_id}));await wait(accepted.job_id);await refresh();if(alive.current)setRunId(accepted.run_id);})}><GitCompareArrows size={16}/>Chạy đối soát đã duyệt</button>}
           </div>}
         </>}
@@ -208,7 +230,7 @@ export function ReconciliationStudio({projectId,mode}:{projectId:string;mode:Mod
           ["Tỷ lệ khớp",snapshot.full_match_rate.percent===null?"N/A":`${snapshot.full_match_rate.percent}%`,`${snapshot.full_match_rate.numerator}/${snapshot.full_match_rate.denominator} đơn vị đủ điều kiện`],
           ["Cần kiểm tra",openCount===null?"Đang tải…":String(openCount),"case đang mở hiện tại"],
           ["Giá trị lệch tuyệt đối",snapshot.monetary[0]?.absolute_variance??"N/A",`${snapshot.monetary[0]?.currency||""} · ${snapshot.monetary[0]?.metric_id||""}`],
-          ["Mức tự động hóa",snapshot.automation_coverage.percent===null?"N/A":`${snapshot.automation_coverage.percent}%`,`${snapshot.automation_coverage.numerator}/${snapshot.automation_coverage.denominator} đơn vị đủ điều kiện`]
+          ["Tự động phân loại",snapshot.automation_coverage.percent===null?"N/A":`${snapshot.automation_coverage.percent}%`,`${snapshot.automation_coverage.numerator}/${snapshot.automation_coverage.denominator} đơn vị đủ điều kiện; gồm thiếu đối ứng/lệch đã xác minh, không phải ngoại lệ đã xử lý`]
         ].map(([name,value,detail])=><article className="card" key={name}><span>{name}</span><strong>{value}</strong><small>{detail}</small></article>)}</div>
         <div className="result-panels"><div className="card"><h3>Trạng thái liên kết</h3><p className="muted">Đếm nhóm kết quả, gồm cả ngoài phạm vi. Mẫu số KPI được công bố riêng.</p><StatusChart counts={snapshot.linkage_counts}/></div>
           <div className="card"><h3>Phạm vi và mẫu số</h3><p>{snapshot.period_start} đến trước {snapshot.period_end} · {snapshot.timezone}</p><p>{snapshot.comparison_unit==="Left canonical reference group"?"Một nhóm tham chiếu ở nguồn trái":"Một bản ghi canonical tham chiếu ở nguồn trái"}</p><p className="muted">Đơn vị trong scope có khóa và số tiền/currency hợp lệ. Loại lỗi, ngoài kỳ, đang chờ và thiếu tiền nguồn trái khỏi mẫu số. Đơn vị mơ hồ vẫn được tính để review. Tự động hóa là phân loại đã kiểm chứng, không cần quyết định thủ công trên từng đơn vị.</p><p>Đủ điều kiện: {snapshot.eligible_units}. Case tại thời điểm chạy: {snapshot.unresolved_cases_at_run}.</p>
@@ -218,6 +240,7 @@ export function ReconciliationStudio({projectId,mode}:{projectId:string;mode:Mod
           <div className="result-filters"><label>Tìm kiếm<input value={search} onChange={e=>{setSearch(e.target.value);setOffset(0);}}/></label><label>Trạng thái<select value={filter} onChange={e=>{setFilter(e.target.value);setOffset(0);}}><option value="">Tất cả</option>{(mode==="exceptions"?["OPEN","IN_REVIEW","RESOLVED","DISMISSED_WITH_REASON"]:["LINKED","UNMATCHED","AMBIGUOUS","INVALID","OUT_OF_SCOPE","PENDING"]).map(s=><option key={s} value={s}>{label(s)}</option>)}</select></label>
           {mode==="exceptions"&&<><label>Loại ảnh hưởng<select value={issueFilter} onChange={e=>{setIssueFilter(e.target.value);setOffset(0);}}><option value="">Tất cả loại</option>{["AMOUNT_MISMATCH","ATTRIBUTE_MISMATCH","INVALID_DECIMAL","DUPLICATE_KEY","MISSING_COUNTERPART","UNCERTAIN_MATCH","INSUFFICIENT_COVERAGE","NOT_YET_SETTLED","RULE_UNVERIFIED"].map(s=><option key={s} value={s}>{label(s)}</option>)}</select></label><label>Sắp xếp<select value={caseSort} onChange={e=>setCaseSort(e.target.value)}><option value="type">Loại ngoại lệ</option><option value="state">Trạng thái xử lý</option></select></label></>}
           </div>
+          {exportNotice&&<Notice>{exportNotice}</Notice>}
           {detailLoading&&<Spinner/>}<div className="table-scroll"><table className="result-table"><thead><tr>{(mode==="exceptions"?["Loại ngoại lệ","Trạng thái xử lý","Ghi chú","Bằng chứng"]:["Khóa","Liên kết","So sánh","Chênh lệch","Bằng chứng"]).map(c=><th key={c}>{c}</th>)}</tr></thead><tbody>
             {mode==="exceptions"?cases.map(c=><tr key={c.id}><td>{label(c.type)}</td><td>{label(c.workflow_state)}</td><td>{c.notes||"Chưa có ghi chú"}</td><td><button className="text-button" onClick={()=>void openEvidence(c.match_group_id,c)}>Xem ngoại lệ</button></td></tr>):groups.map(g=><tr key={g.id}><td>{g.key.join(" / ")}</td><td>{label(g.linkage_state)}</td><td>{label(g.comparison_state)}</td><td>{g.comparisons.map(c=><div key={c.metric_id}>{c.delta??"N/A"} {c.currency}</div>)}</td><td><button className="text-button" onClick={()=>void openEvidence(g.id)}>Xem bằng chứng</button></td></tr>)}
           </tbody></table></div>
@@ -228,7 +251,8 @@ export function ReconciliationStudio({projectId,mode}:{projectId:string;mode:Mod
     <Modal title={currentCase?"Xem xét ngoại lệ":"Bằng chứng đối soát"} open={!!evidence} onOpenChange={open=>!open&&setEvidence(null)} wide>
       {evidence&&<><p>{evidence.group.key.join(" / ")} · {label(evidence.group.linkage_state)} · {label(evidence.group.comparison_state)}</p>
         {evidence.group.comparisons.map(c=><Notice key={c.metric_id}>{c.metric_id}: {c.left_amount??"N/A"} − {c.right_amount??"N/A"} = {c.delta??"N/A"} {c.currency}</Notice>)}
-        <div className="evidence-sides">{evidence.sources.map((source,i)=><section key={source.canonical.id}><h3>Nguồn {i===0?"trái":"phải"}</h3><p>{source.member_count} thành viên nguồn</p>{source.records.map(r=><article className="evidence-record" key={r.id}><dl>{Object.entries(r.payload).map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v===null?"NULL":String(v)}</dd></div>)}</dl>{r.provenance.map((p,j)=><p key={j}>{p.sheet}, dòng {p.row} · <button className="text-button" onClick={()=>void action(async()=>{const data=await api(`/evidence/${p.source_table_id}:c1?row=${p.row}`);setMessage(JSON.stringify(data));})}>Mở dòng nguồn</button></p>)}</article>)}{!source.evidence_complete&&<Notice tone="warning">Đang hiển thị 100 thành viên đầu. Báo cáo chứa đầy đủ lineage.</Notice>}</section>)}</div>
+        <div className="evidence-sides">{evidence.sources.map((source,i)=><section key={source.canonical.id}><h3>Nguồn {i===0?"trái":"phải"} · {source.filename}</h3><p>{source.member_count} thành viên nguồn</p>{source.records.map(r=><article className="evidence-record" key={r.id}><dl>{Object.entries(r.payload).map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v===null?"NULL":String(v)} {r.field_evidence[k]?.length>0&&<button className="text-button" disabled={busy} onClick={()=>void openSource(k,source.filename,v,r.field_evidence[k])}>Xem nguồn {k}</button>}</dd></div>)}</dl>{r.provenance.map((p,j)=><p key={j}>{p.sheet}, dòng {p.row}</p>)}{!r.field_evidence_complete&&<Notice>Hiển thị bằng chứng trường cho 100 dòng gốc đầu; file báo cáo giữ lineage đầy đủ.</Notice>}</article>)}{!source.evidence_complete&&<Notice tone="warning">Đang hiển thị 100 thành viên đầu. Báo cáo chứa đầy đủ lineage.</Notice>}</section>)}</div>
+        {sourceDetail&&<section aria-label="Chi tiết giá trị nguồn" className="card"><h3>{sourceDetail.filename} · {sourceDetail.field}</h3><p>Giá trị chuẩn hóa dùng so sánh: {sourceDetail.canonical===null?"NULL":String(sourceDetail.canonical)}. Dòng gốc bên dưới được đọc từ artifact nguồn; phép biến đổi theo mapping đã duyệt.</p><div className="table-scroll"><table><thead><tr><th>Sheet</th><th>Dòng</th><th>Cột nguồn</th><th>Giá trị gốc</th></tr></thead><tbody>{sourceDetail.cells.map((c,i)=><tr key={i}><td>{c.ref.sheet}</td><td>{c.ref.row}</td><td>{c.name} ({c.ref.column})</td><td>{c.value===null?"NULL":String(c.value??"Không tìm thấy dòng")}</td></tr>)}</tbody></table></div>{sourceDetail.limited&&<Notice>Hiển thị 20 ô gốc đầu; xem file báo cáo để có đầy đủ lineage.</Notice>}</section>}
         <details><summary>Quy tắc áp dụng</summary><p>{evidence.rule.plan.name} · {evidence.rule.plan.cardinality} · {evidence.rule.plan.aggregation}</p><p>{evidence.rule.plan.effective_from} đến {evidence.rule.plan.effective_to||"không giới hạn"}</p></details>
         {evidence.group.candidates.length>0&&<Notice tone="warning">Ứng viên fuzzy chỉ để review, score là độ tương tự, không phải xác suất. Không tự ghép hoặc sửa tiền.</Notice>}
         {currentCase&&<div className="rule-approval"><label>Trạng thái xử lý<select value={state} onChange={e=>setState(e.target.value)}>{["OPEN","IN_REVIEW","RESOLVED","DISMISSED_WITH_REASON"].map(s=><option key={s} value={s}>{label(s)}</option>)}</select></label><label>Lý do / ghi chú<textarea value={note} onChange={e=>setNote(e.target.value)}/></label><button className="button primary" disabled={busy} onClick={()=>void action(async()=>{await api(`/exceptions/${currentCase.id}/review`,{method:"PATCH",body:JSON.stringify({workflow_state:state,notes:note})});setEvidence(null);await refresh();setMessage("Đã lưu review. Comparison và snapshot của lần chạy được giữ nguyên.");})}>Lưu xem xét</button></div>}

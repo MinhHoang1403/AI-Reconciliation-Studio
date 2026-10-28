@@ -166,3 +166,18 @@ Playwright adds manual rule builder → validate → save → approve → run �
 Benchmark measures simple exact match on **total input records across both sources**: 1k (500/source), 10k (5k/source), 50k (25k/source), three new Windows processes/size. Matching p50/p95 ms: 31,57/37,58; 268,01/433,78; 1723,77/1792,43. Verification p50/p95: 17,06/19,02; 230,28/257,09; 1315,23/1521,31. Peak process MiB: 38,68 / 89,10 / 317,06. 500/5k/25k exact groups, zero fuzzy/review/cloud. Ryzen 5 7535HS/16 GB, no GPU. Excludes API/network/load/write/export/render and snapshot's additional verification pass; p95 is inclusive interpolation over 3 observations. Not a calibrated accuracy/throughput claim or 50k rows per source.
 
 Actual final PASS/FAIL/SKIP and persistent object counts are recorded in [implementation status](IMPLEMENTATION_STATUS.md); do not add historical/live/mock replays into one inflated test count.
+
+## Kiểm toán bổ sung Giai đoạn 2 — 28/10/2026
+
+Giữ nguyên oracle và matcher/verifier. Thêm regression vào các suite có sẵn:
+
+- Planner: request không join keys, schema khác field IDs, typed suggestions khi thiếu coverage; giả field/evidence/basis/cardinality hoặc đổi facts đã xác nhận bị từ chối. Context sai refs/workspace/stale bị chặn trước reservation. PostgreSQL quota hết dùng MockTransport, xác nhận 0 provider calls và manual proposal vẫn hoạt động; không thêm reservation trong ứng dụng thật.
+- Readiness: cùng ID hai tháng không trùng trong kỳ; duplicate thật trong kỳ, filter carrier/platform, missing date/invalid key và incomplete coverage. Đối chiếu cùng định nghĩa partition của engine, không sửa verifier.
+- Evidence: workbook tổng hợp nhiều sheet, ID ở c1/tiền ở c3/zero-prefix; 1:N nhiều source members mở đúng ô của từng dòng. Viewer đọc được, không review; group project khác bị từ chối. Playwright bấm trường tiền thật và kiểm raw value/cột thực tế c4 của CSV demo, không hardcode c1.
+- KPI: giữ numerator/denominator cũ; oracle 5 eligible CU, 2 full match, 4 automatically classified, 1 review. RESOLVED không đổi comparison/snapshot.
+- Export CSV/XLSX: export trước review → RESOLVED → export lại cùng revision phải cùng export ID/bytes. Summary/API timestamp và FIRST_GENERATION scope khớp; financial snapshot vẫn nguyên. Report-1 lịch sử giữ nguyên.
+- UI: period/timezone ban đầu trống, cần scope confirmation; Planner có thể hỏi trước keys, hiển thị review-only suggestions/lý do và chặn approve; provider budget error vẫn mở chỉnh thủ công. Planner E2E mới intercept endpoints hoàn toàn, **PASS MOCK**, không gọi Gemini.
+
+Lệnh chuẩn ở trên chạy cùng Docker project. Sau recreate phải chạy `tools/verify-local.ps1`; nếu proof bị mất trong phiên gián đoạn, UI bị chặn LOCAL_DEMO_NOT_VERIFIED là fail-closed đúng thiết kế, cần xác minh deployment rồi chạy lại E2E. Không bỏ kiểm tra auth hoặc tăng timeout để che lỗi.
+
+So sánh baseline 121 backend/14 E2E với kết quả thật ở mục K của báo cáo; không cộng các lần replay hoặc PASS LIVE lịch sử vào số cases hiện tại. Prompt planner sửa đổi chưa test live theo chỉ định 0 cloud requests.
