@@ -4,7 +4,7 @@ Ngày kiểm tra: **28/10/2026**. Phạm vi: Data Foundation + AI Smart Setup + 
 
 **GIAI ĐOẠN 1 ĐẠT NGHIỆM THU — QWEN LIVE ĐƯỢC HOÃN THEO CHỈ ĐỊNH**
 
-Kết luận theo chỉ dẫn thu hẹp phạm vi mới nhất ngày 28/10/2026: chỉ nghiệm thu Data Foundation + AI Smart Setup. Gemini mặc định hiện tại, Qwen live được hoãn chính thức do IP allowlist. Các gate dữ liệu, bằng chứng Gemini mapping live, LlamaParse PDF/DOCX live, regression, bảo mật, worker recovery và persistence đã đạt trong phạm vi dưới đây. Không đổi lịch sử Qwen thành PASS hoặc mở rộng ngoại lệ sang gate khác. **Dừng sau báo cáo; không bắt đầu Giai đoạn 2 và không merge main trong lượt này.**
+Kết luận lịch sử theo chỉ dẫn thu hẹp phạm vi ngày 28/10/2026: chỉ nghiệm thu Data Foundation + AI Smart Setup. Gemini mặc định hiện tại, Qwen live được hoãn chính thức do IP allowlist. Các gate dữ liệu, bằng chứng Gemini mapping live, LlamaParse PDF/DOCX live, regression, bảo mật, worker recovery và persistence đã đạt trong phạm vi dưới đây. Không đổi lịch sử Qwen thành PASS hoặc mở rộng ngoại lệ sang gate khác. **Quyết định lúc đó: dừng sau báo cáo; không bắt đầu Giai đoạn 2 và không merge main trong lượt đó.** Ủy quyền tiếp theo được ghi tại mục I.
 
 Sau khi nhận chỉ dẫn mới, đã gỡ đúng các thay đổi Giai đoạn 2 chưa commit: contract reconciliation, sáu fixtures/oracle và dependency DuckDB/RapidFuzz/ECharts; dependency/lockfiles trở lại nền Giai đoạn 1. Không có engine/planner/matcher, migration hoặc tính năng Giai đoạn 2 được commit hay triển khai. `.vscode/` của người dùng giữ nguyên.
 
@@ -81,9 +81,9 @@ Sau lần recreate cuối, RAM tại thời điểm đo: backend 91,23/384 MiB, 
 
 ## F. Git/GitHub
 
-Repository ch?nh th?c https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git. N?n t?ng/Gemini tr??c ? commit 286c0802a2807bb11e53a89cff882217215b90fc. Source nghi?m thu **2e73cad7b7dc1fed5211e699b45b84d0ccbf5ea4** ? feat: accept bounded document parsing and Gemini data foundation ? ?? push codex/data-foundation, fast-forward v?o main v? ???c ??i chi?u c?ng hash t?i th?i ?i?m ??. Main sau ?? c? commit b?o c?o **061c5558eda4228b430ea4d7ec8558731bf0616f**.
+Repository chính thức https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git. Nền tảng/Gemini trước ở commit 286c0802a2807bb11e53a89cff882217215b90fc. Source nghiệm thu ở **2e73cad7b7dc1fed5211e699b45b84d0ccbf5ea4**, đã push `codex/data-foundation`. **Trước khi nhận chỉ dẫn thu hẹp**, commit này đã được fast-forward vào main, rồi main có commit báo cáo **061c5558eda4228b430ea4d7ec8558731bf0616f**. Đây là lịch sử đã xảy ra, không phải thao tác merge của lượt Final Acceptance mới; không reset/force-push để thay lịch sử.
 
-L?ch s? Final Acceptance thu h?p: commit b?o c?o **4bde2111e03cf438124a73fe0abe66bc4a46fcd5** tr?n codex/data-foundation; kh?ng merge main trong nhi?m v? ??. Nh?nh local codex/reconciliation xu?t ph?t 061c555 kh?ng c? commit ri?ng, ch?a push v? kh?ng d?ng ti?p. Kh?ng reset/force-push ho?c ghi ?? nh?nh n?y.
+Lịch sử Final Acceptance thu hẹp: commit báo cáo 4bde2111e03cf438124a73fe0abe66bc4a46fcd5 trên codex/data-foundation, không merge main trong nhiệm vụ đó. Nhánh local `codex/reconciliation` đã tạo trước chỉ dẫn mới không có commit riêng, không push và không dùng tiếp; giữ nguyên để tránh thao tác Git ngoài yêu cầu.
 
 .vscode/ có sẵn ngoài phạm vi, giữ nguyên và không stage. .env, keys, uploads, Parquet, document fixtures, screenshots, runtime reports và volumes không vào Git. Rules.md/AGENTS.md giữ nguyên; quyết định provider/ngoại lệ ghi trong kế hoạch, không thay nghiệp vụ.
 
@@ -111,13 +111,15 @@ Mở [ứng dụng local](http://127.0.0.1:18180). Tạo/chọn project → uplo
 
 Khởi động ./tools/start.ps1 -SkipBuild; build mới dùng ./tools/start.ps1, không nhập token. Không xóa volumes. Gemini còn 4 requests trong trần 10; LlamaParse tạo job OFF.
 
-C?c gate Giai ?o?n 1 ?? ?i?u ch?nh ??t, ?? ?i?u ki?n b?n giao n?n t?ng l?m ??u v?o k? thu?t cho Giai ?o?n 2. **Quy?t ??nh l?ch s? ? l?n Final Acceptance thu h?p: d?ng, kh?ng merge main, ch? prompt Giai ?o?n 2 ri?ng.** Quy?t ??nh n?y ?? ???c tu?n th? v? ???c gi? l?m l?ch s?; kh?ng t? cho ph?p chuy?n giai ?o?n.
-
-## I. Nhi?m v? h?p nh?t ???c giao ti?p theo
-
-Ch? d? ?n ?? g?i prompt ri?ng cho ph?p h?p nh?t Giai ?o?n 1 v?o main, ki?m th? tr??c push, t?o annotated tag data-foundation-accepted-20261028 r?i tri?n khai Giai ?o?n 2 tr?n codex/reconciliation-engine. Vi?c h?p nh?t gi? c? hai parent 061c555 v? 4bde211; hai conflict trong m?c F/H ch? l? l?ch s? Git v? quy?n chuy?n ti?p. ??i chi?u t?ng ?o?n, gi? b?ng ch?ng provider/quota/tests/known limits c?a b?o c?o m?i c?ng l?ch s? t?ch h?p source c?a main; kh?ng ??i code ?ng d?ng ho?c nghi?p v?. C?c m?c A?H l? snapshot nghi?m thu tr??c nhi?m v? n?y. K?t qu? ch?y l?i sau h?p nh?t s? ghi b?n d??i tr??c commit/push/tag. Giai ?o?n 2 kh?ng ???c merge main v? kh?ng b?t ??u Giai ?o?n 3.
+Các gate Giai đoạn 1 đã điều chỉnh đạt, đủ điều kiện bàn giao nền tảng làm đầu vào kỹ thuật cho Giai đoạn 2. **Quyết định lịch sử ở lần Final Acceptance thu hẹp: dừng, không merge main, chờ prompt Giai đoạn 2 riêng.** Quyết định đã được tuân thủ; không tự thay kế hoạch ba giai đoạn.
 
 
-K?t qu? sau h?p nh?t: offline 79 PASS/12 deselected (4,33 gi?y), b? ??y ?? PostgreSQL 91 PASS/0 FAIL/SKIP (15,26 gi?y), Ruff/mypy 18 files PASS, TypeScript/ESLint/build PASS, Playwright MANUAL 9 PASS/0 FAIL/SKIP (19,4 gi?y). T01?T16, AI policy/contract, mapping/normalization/provenance v? access-control n?m trong c?c suite n?y; kh?ng g?i cloud. Gemini gi? 6/10, c?n 4, ??ng model m?c ??nh; Qwen kh?ng probe, parser creation OFF.
+## I. Hợp nhất theo ủy quyền mới
 
-Snapshot 66 artifacts c?a l?n nghi?m thu tr??c ???c ki?m tra nguy?n v?n tr??c E2E. E2E t?o th?m b?n refs t?ng h?p, snapshot m?i 70 artifacts, 20 datasets, 15 canonical, 48 jobs/52 attempts v? 50 audits; 15 traces kh?ng t?ng. Restart, force-recreate ?? b?n service v? frontend-only recreate ??u PASS metadata/checksum, demo proof fail-closed tr??c x?c minh l?i. Compose gi? project/volumes v? loopback c?, 4/4 healthy. Secret/history/Markdown path scan v? diff check PASS; .vscode/ gi? nguy?n ngo?i stage. Kh?ng thay ??i source Backend/Frontend/Compose trong merge. M?c Git s? l? merge commit hai parent ?? ki?m th?, g?n annotated tag data-foundation-accepted-20261028; hash x?c minh trong Git/tag v? b?o c?o b?n giao. C?ng A ??t v? k? thu?t; push/tag ph?i th?nh c?ng tr??c t?o branch ti?p theo.
+Chủ dự án đã gửi prompt riêng cho phép hợp nhất Giai đoạn 1 vào main, kiểm thử trước push, tạo annotated tag data-foundation-accepted-20261028 rồi triển khai Giai đoạn 2 trên codex/reconciliation-engine. Merge giữ cả hai parent 061c555 và 4bde211; hai conflict ở mục F/H chỉ là lịch sử Git và quyền chuyển tiếp. Đối chiếu từng đoạn, giữ bằng chứng provider/quota/tests/known limits của báo cáo mới cùng lịch sử tích hợp source của main; không đổi code ứng dụng hoặc nghiệp vụ. Các mục A–H là snapshot nghiệm thu trước nhiệm vụ này. Giai đoạn 2 không được merge main và không bắt đầu Giai đoạn 3.
+
+Kết quả sau hợp nhất: offline 79 PASS/12 deselected (4,33 giây), bộ đầy đủ PostgreSQL 91 PASS/0 FAIL/SKIP (15,26 giây), Ruff/mypy 18 files PASS, TypeScript/ESLint/build PASS, Playwright MANUAL 9 PASS/0 FAIL/SKIP (19,4 giây). T01–T16, AI policy/contract, mapping/normalization/provenance và access-control nằm trong các suite này; không gọi cloud. Gemini giữ 6/10, còn 4, đúng model mặc định; Qwen không probe, parser creation OFF.
+
+Snapshot 66 artifacts của lần nghiệm thu trước được kiểm tra nguyên vẹn trước E2E. E2E tạo thêm bốn refs tổng hợp, snapshot mới 70 artifacts, 20 datasets, 15 canonical, 48 jobs/52 attempts và 50 audits; 15 traces không tăng. Restart, force-recreate đủ bốn service và frontend-only recreate đều PASS metadata/checksum; demo proof fail-closed trước xác minh lại. Compose giữ project/volumes và loopback cũ, 4/4 healthy. Secret/history/Markdown path scan và diff check PASS; .vscode/ giữ nguyên ngoài stage. Không thay đổi source Backend/Frontend/Compose trong merge.
+
+Merge commit **78e68c08e60c7af2359e46def43196cf5b1a6dc1** đã push main; annotated tag **data-foundation-accepted-20261028** trỏ đúng commit này và đã push, không di chuyển tag. Cổng A đạt trước khi tạo/push codex/reconciliation-engine từ mốc này. Sau đó phát hiện một số đoạn tài liệu bổ sung qua PowerShell mất dấu tiếng Việt; sửa bằng bản vá UTF-8 và commit tiến tiếp, không viết lại lịch sử. Mã ứng dụng và kết quả kiểm thử ở tag không đổi.
