@@ -11,6 +11,7 @@ from pydantic import SecretStr
 from reconciliation_cases import catalogue, plan, records
 from studio.ai_gateway import GeminiProvider
 from studio.contracts import WorkspacePolicy
+from studio.contracts.reconciliation import PlanningRequest
 from studio.errors import DomainError
 from studio.reconciliation_engine import match_records
 from studio.reconciliation_exports import NS, write_csv, write_xlsx
@@ -31,6 +32,10 @@ def test_T34_zero_denominator_and_snapshot_oracle():
     assert snapshot.full_match_rate.numerator == 2 and snapshot.full_match_rate.percent == "40.00"
     assert snapshot.monetary[0].absolute_variance == Decimal("10.00")
     assert snapshot.review_rate.numerator == 1
+    # Classification includes verified missing counterparts; successful reconciliation does not.
+    assert snapshot.automation_coverage.numerator == 4
+    assert snapshot.automation_coverage.denominator == 5
+    assert snapshot.full_match_rate.numerator == 2
 
 
 def test_export_injection_numeric_negatives_precision_and_prefix(tmp_path):
@@ -119,4 +124,180 @@ def test_planner_typed_contract_bounded_attempts_and_policy(config, kind):
             propose_plan(provider, cats, p, policy, reserve, "demo", "project")
         expected = 0 if kind == "off" else 1 if kind == "invented" else 2
         assert len(requests) == len(reserved) == expected
+    provider.close()
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "different-ids",
+        "invented",
+        "changed-scope",
+        "missing",
+        "budget",
+        "suggestions",
+        "suggested-fake-field",
+        "fake-evidence",
+        "unconfirmed-scope",
+        "suggested-bad-money",
+        "suggested-cardinality",
+        "changed-period",
+    ],
+)
+def test_planner_partial_request_proposes_keys_without_execution(config, kind):
+    p = plan()
+    cats = [
+        catalogue("internal", records("internal-sales.csv")),
+        catalogue("shopee", records("shopee-orders.csv")),
+    ]
+    # Same meaning, different canonical IDs; no join keys exist in the input contract.
+    for field in cats[1].schema_definition.fields:
+        if field.id == "order_id":
+            field.id, field.name = "external_reference", "Marketplace reference"
+    p.join_keys = [
+        pair.model_copy(update={"right": "external_reference"})
+        if pair.right == "order_id"
+        else pair
+        for pair in p.join_keys
+    ]
+    draft = PlanningRequest.from_plan(p)
+    if kind in {
+        "missing",
+        "suggestions",
+        "suggested-fake-field",
+        "fake-evidence",
+        "unconfirmed-scope",
+    }:
+        draft = PlanningRequest(left={"canonical_id": "internal"}, right={"canonical_id": "shopee"})
+    config.allow_external_ai = True
+    config.external_ai_request_budget = 10
+    config.gemini_api_key = SecretStr("synthetic-not-a-real-key")
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=10
+    )
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        body = dict(status="PROPOSED", plan=p.model_dump(mode="json"))
+        if kind == "invented":
+            body["plan"]["join_keys"][0]["right"] = "imaginary"
+        if kind == "changed-scope":
+            body["plan"]["left"]["filters"] = {}
+        if kind == "changed-period":
+            body["plan"]["period_end"] = "2026-10-30"
+        if kind == "missing":
+            body = dict(
+                status="NEEDS_REVIEW",
+                plan=None,
+                missing_requirements=["Confirm reporting period"],
+                reasoning="Missing coverage",
+            )
+        if kind in {
+            "suggestions",
+            "suggested-fake-field",
+            "fake-evidence",
+            "suggested-bad-money",
+            "suggested-cardinality",
+        }:
+            suggestion = dict(
+                left_role="reference",
+                right_role="counterpart",
+                **{
+                    k: v
+                    for k, v in p.model_dump(mode="json").items()
+                    if k
+                    in {
+                        "join_keys",
+                        "comparison_metrics",
+                        "comparison_grain",
+                        "cardinality",
+                        "aggregation",
+                        "evidence_ids",
+                    }
+                },
+            )
+            if kind == "suggested-fake-field":
+                suggestion["join_keys"][0]["left"] = "invented"
+            if kind == "fake-evidence":
+                suggestion["evidence_ids"] = ["invented-evidence"]
+            if kind == "suggested-bad-money":
+                suggestion["comparison_metrics"][0]["amount_basis"] = "net"
+            if kind == "suggested-cardinality":
+                suggestion["cardinality"] = "MANY_TO_MANY"
+            body = dict(
+                status="NEEDS_REVIEW",
+                plan=None,
+                suggestions=suggestion,
+                missing_requirements=["Confirm reporting period"],
+            )
+        return httpx.Response(
+            200, json={"candidates": [{"content": {"parts": [{"text": json.dumps(body)}]}}]}
+        )
+
+    provider = GeminiProvider(config, httpx.Client(transport=httpx.MockTransport(handle)))
+    if kind in {
+        "invented",
+        "changed-scope",
+        "budget",
+        "suggested-fake-field",
+        "fake-evidence",
+        "suggested-bad-money",
+        "suggested-cardinality",
+        "changed-period",
+    }:
+        with pytest.raises(DomainError):
+            propose_plan(provider, cats, draft, policy, lambda: kind != "budget", "demo", "project")
+    else:
+        result = propose_plan(provider, cats, draft, policy, lambda: True, "demo", "project")
+        if kind == "missing":
+            assert result.status == "NEEDS_REVIEW" and result.plan is None
+        elif kind in {"suggestions", "unconfirmed-scope"}:
+            assert result.status == "NEEDS_REVIEW" and result.plan is None
+            assert result.suggestions.join_keys == p.join_keys
+            assert result.missing_requirements
+        else:
+            assert result.status == "PROPOSED" and result.plan.join_keys == p.join_keys
+    assert len(requests) == (0 if kind == "budget" else 2 if kind == "suggested-cardinality" else 1)
+    provider.close()
+
+
+@pytest.mark.parametrize("kind", ["stale", "workspace", "profile", "artifact"])
+def test_planner_context_gate_rejects_bad_refs_before_cloud(config, kind):
+    from studio.contracts import DatasetProfile
+
+    cats = [
+        catalogue("internal", records("internal-sales.csv")),
+        catalogue("shopee", records("shopee-orders.csv")),
+    ]
+    if kind == "stale":
+        cats[0].canonical.stale = True
+    elif kind == "workspace":
+        cats[0].schema_definition.workspace_id = "foreign"
+    elif kind == "profile":
+        cats[0].profile = DatasetProfile(
+            source_table_id="foreign",
+            workspace_id="demo",
+            artifact_id="parsed",
+            row_count=0,
+            columns=[],
+            key_candidates=[],
+        )
+    else:
+        cats[0].canonical.artifact.workspace_id = "foreign"
+    calls = []
+    provider = GeminiProvider(
+        config, httpx.Client(transport=httpx.MockTransport(lambda request: calls.append(request)))
+    )
+    with pytest.raises(DomainError):
+        propose_plan(
+            provider,
+            cats,
+            PlanningRequest(left={"canonical_id": "internal"}, right={"canonical_id": "shopee"}),
+            WorkspacePolicy(),
+            lambda: pytest.fail("Must validate context before reservation"),
+            "demo",
+            "project",
+        )
+    assert calls == []
     provider.close()

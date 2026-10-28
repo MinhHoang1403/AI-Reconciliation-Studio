@@ -52,6 +52,47 @@ class SourceSelection(Contract):
     settlement_due_at: datetime | None = None
 
 
+class PlanningSource(Contract):
+    """Only explicitly supplied facts bind the planner; absent facts remain unknown."""
+
+    canonical_id: str
+    role: str | None = Field(default=None, min_length=1, max_length=100)
+    date_field: str | None = None
+    time_basis: str | None = Field(default=None, min_length=1, max_length=100)
+    currency_field: str | None = None
+    filters: dict[str, str] | None = Field(default=None, max_length=8)
+    coverage_start: date | None = None
+    coverage_end: date | None = None
+    completeness: Literal["CONFIRMED", "INCOMPLETE", "UNKNOWN"] | None = None
+    snapshot_at: datetime | None = None
+    settlement_due_at: datetime | None = None
+
+
+class PlanningRequest(Contract):
+    """Proposal input, deliberately separate from an executable reconciliation plan."""
+
+    left: PlanningSource
+    right: PlanningSource
+    intent: str = Field(default="", max_length=2000)
+    period_start: date | None = None
+    period_end: date | None = None
+    timezone: str | None = None
+    effective_from: date | None = None
+    effective_to: date | None = None
+    allow_partial: bool | None = None
+
+    @classmethod
+    def from_plan(cls, plan: "ReconciliationPlan") -> "PlanningRequest":
+        """Read legacy complete drafts/jobs without changing their confirmed scope."""
+        return cls.model_validate(
+            {
+                key: value
+                for key, value in plan.model_dump(mode="json").items()
+                if key in cls.model_fields
+            }
+        )
+
+
 class FieldPair(Contract):
     left: str
     right: str
@@ -112,9 +153,23 @@ class ReconciliationPlan(Contract):
         return self
 
 
+class PlanningSuggestions(Contract):
+    """Validated candidates remain useful before period/coverage confirmation; never executable."""
+
+    left_role: str = Field(min_length=1, max_length=100)
+    right_role: str = Field(min_length=1, max_length=100)
+    join_keys: list[FieldPair] = Field(default_factory=list, max_length=8)
+    comparison_metrics: list[ComparisonMetric] = Field(default_factory=list, max_length=5)
+    comparison_grain: str | None = Field(default=None, max_length=200)
+    cardinality: Literal["ONE_TO_ONE", "ONE_TO_MANY", "MANY_TO_ONE"] | None = None
+    aggregation: Literal["NONE", "SUM_SIGNED"] | None = None
+    evidence_ids: list[str] = Field(min_length=1, max_length=30)
+
+
 class PlanProposal(Contract):
     status: Literal["PROPOSED", "UNKNOWN", "NEEDS_REVIEW"]
     plan: ReconciliationPlan | None = None
+    suggestions: PlanningSuggestions | None = None
     missing_requirements: list[str] = Field(default_factory=list, max_length=30)
     reasoning: str = Field(default="", max_length=2000)
 

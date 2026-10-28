@@ -14,12 +14,13 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from studio.access import Actor, require_editor
-from studio.contracts import Contract
+from studio.contracts import Contract, EvidenceRef, MappingRevision, ParsedTableArtifact
 from studio.contracts.api import JobAccepted
 from studio.contracts.reconciliation import (
     ExceptionCase,
     MatchGroup,
     MetricSnapshot,
+    PlanningRequest,
     PlanProposal,
     ReconciliationContract,
     ReconciliationPlan,
@@ -28,18 +29,24 @@ from studio.contracts.reconciliation import (
 )
 from studio.database import (
     AuditRow,
+    DatasetRow,
     ExceptionRow,
     ExportRow,
+    JobRow,
+    MappingRow,
     PlanRow,
     ProjectRow,
     ReconciliationContractRow,
     RunRow,
+    TableRow,
+    VersionRow,
     identifier,
     now,
 )
 from studio.errors import DomainError
 from studio.reconciliation_contracts import validate_reconciliation_contract
-from studio.reconciliation_engine import ENGINE_REVISION
+from studio.reconciliation_engine import ENGINE_REVISION, coverage_complete, record_partition
+from studio.reconciliation_planner import validate_planning_request
 from studio.reconciliation_repository import (
     catalogue_for_project,
     load_canonical_records,
@@ -48,13 +55,20 @@ from studio.reconciliation_repository import (
     selected_catalogue,
     template_signatures,
 )
-from studio.repository import enqueue_job, get_scoped
+from studio.repository import enqueue_job, get_scoped, mapping_contract
 from studio.storage import checksum, storage_path
+
+REPORT_REVISION = "report-2"
 
 
 class PlanInput(Contract):
     project_id: str
     plan: ReconciliationPlan
+
+
+class AIPlanInput(Contract):
+    project_id: str
+    request: PlanningRequest
 
 
 class RunInput(Contract):
@@ -186,8 +200,9 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         proposal = PlanProposal(status="PROPOSED", plan=body.plan)
         row = db.get(PlanRow, row_id)
         if row is not None:
-            if row.project_id != body.project_id or row.proposal != proposal.model_dump(
-                mode="json"
+            if (
+                row.project_id != body.project_id
+                or PlanProposal.model_validate(row.proposal) != proposal
             ):
                 raise DomainError(
                     "IDEMPOTENCY_CONFLICT", "Mã thao tác đã dùng cho nội dung khác.", 409
@@ -221,7 +236,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             keys = [
                 tuple(r.payload.get(getattr(p, side)) for p in body.plan.join_keys)
                 for r in rows
-                if not r.invalid and all(r.payload.get(k) == v for k, v in slot.filters.items())
+                if record_partition(r, body.plan, side) == "IN_SCOPE"
             ]
             readiness.append(
                 dict(
@@ -229,7 +244,15 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                     rows=len(rows),
                     key_groups=len(set(keys)),
                     duplicate_key_rows=len(keys) - len(set(keys)),
-                    invalid_records=sum(r.invalid for r in rows),
+                    invalid_records=sum(
+                        record_partition(r, body.plan, side) == "INVALID" for r in rows
+                    ),
+                    out_of_scope_records=sum(
+                        record_partition(r, body.plan, side) == "OUT_OF_SCOPE" for r in rows
+                    ),
+                    in_scope_records=len(keys),
+                    duplicate_population="IN_SCOPE",
+                    coverage_complete=coverage_complete(body.plan, slot),
                 )
             )
         return {
@@ -240,20 +263,23 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         }
 
     @router.post("/reconciliation-plans/ai", response_model=JobAccepted, status_code=202)
-    def ai_plan(body: PlanInput, db: DB, actor: User, key: Key) -> dict[str, str]:
+    def ai_plan(body: AIPlanInput | PlanInput, db: DB, actor: User, key: Key) -> dict[str, str]:
         require_editor(actor, db, body.project_id)
         get_scoped(db, ProjectRow, body.project_id, actor)
-        cats = selected_catalogue(
-            db, actor, body.project_id, [body.plan.left.canonical_id, body.plan.right.canonical_id]
+        request = (
+            body.request if isinstance(body, AIPlanInput) else PlanningRequest.from_plan(body.plan)
         )
-        validate_reconciliation_contract(body.plan, cats, actor.workspace_id, body.project_id)
+        cats = selected_catalogue(
+            db, actor, body.project_id, [request.left.canonical_id, request.right.canonical_id]
+        )
+        validate_planning_request(request, cats, actor.workspace_id, body.project_id)
         job = enqueue_job(
             db,
             actor.workspace_id,
             body.project_id,
             "reconciliation_plan",
             "plan:" + key,
-            dict(draft=body.plan.model_dump(mode="json"), actor_id=actor.id),
+            dict(request=request.model_dump(mode="json", exclude_unset=True), actor_id=actor.id),
         )
         db.commit()
         return {"job_id": job.id, "status": job.status}
@@ -275,7 +301,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         if existing:
             return ReconciliationContract.model_validate(existing.definition)
         proposal = PlanProposal.model_validate(row.proposal)
-        if proposal.plan is None or proposal.status != "PROPOSED":
+        if proposal.plan is None or proposal.status != "PROPOSED" or proposal.missing_requirements:
             raise DomainError("PLAN_NEEDS_REVIEW", "Kế hoạch chưa đủ bằng chứng để duyệt.", 422)
         cats = selected_catalogue(
             db,
@@ -523,10 +549,58 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             members = [m.record_id for m in group.members if m.canonical_id == cat.id]
             # Group membership can be large; paginate evidence within each source.
             records = load_canonical_records(db, actor, cat, members[:100]) if members else []
+            table = get_scoped(db, TableRow, cat.source_table_id, actor)
+            parsed = ParsedTableArtifact.model_validate(table.parsed_contract)
+            mapping: MappingRevision = mapping_contract(
+                get_scoped(db, MappingRow, cat.mapping_revision_id, actor)
+            )
+            if mapping.source_table_id != table.id:
+                raise DomainError("EVIDENCE_SCOPE_INVALID", "Mapping không thuộc nguồn.", 422)
+            columns = {c.id for c in parsed.columns}
+            lineage: dict[str, list[str]] = {}
+            for decision in mapping.decisions:
+                if decision.candidate_target is None:
+                    continue
+                transform = decision.transformation_candidate
+                inputs = (
+                    transform.fields
+                    if transform.op in {"add_fields", "subtract_fields", "coalesce_with_rule"}
+                    else [decision.source_field]
+                )
+                lineage[decision.candidate_target] = [c for c in inputs if c in columns]
+            record_views = []
+            for record in records:
+                field_refs: dict[str, list[EvidenceRef]] = {}
+                for field, inputs in lineage.items():
+                    field_refs[field] = [
+                        EvidenceRef(
+                            id=f"{p.source_table_id}:{column}",
+                            workspace_id=actor.workspace_id,
+                            file_id=p.file_id,
+                            source_table_id=p.source_table_id,
+                            sheet=p.sheet,
+                            row=p.row,
+                            column=column,
+                        )
+                        for p in record.provenance[:100]
+                        for column in inputs
+                        if p.source_table_id == table.id
+                    ]
+                record_views.append(
+                    record.model_dump(mode="json")
+                    | dict(
+                        field_evidence=field_refs,
+                        field_evidence_complete=len(record.provenance) <= 100,
+                    )
+                )
+            version = db.get(VersionRow, table.dataset_version_id)
+            assert version is not None
+            dataset = get_scoped(db, DatasetRow, version.dataset_id, actor)
             sources.append(
                 dict(
                     canonical=cat,
-                    records=records,
+                    filename=dataset.name,
+                    records=record_views,
                     member_count=len(members),
                     evidence_complete=len(members) <= 100,
                 )
@@ -619,7 +693,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             select(ExportRow).where(
                 ExportRow.run_id == run_id,
                 ExportRow.format == format,
-                ExportRow.revision == "report-1",
+                ExportRow.revision == REPORT_REVISION,
             )
         )
         if artifact is None:
@@ -629,7 +703,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                 project_id=row.project_id,
                 run_id=run_id,
                 format=format,
-                revision="report-1",
+                revision=REPORT_REVISION,
             )
             db.add(artifact)
             db.flush()
@@ -647,12 +721,23 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     @router.get("/exports/{export_id}")
     def export_info(export_id: str, db: DB, actor: User) -> dict[str, Any]:
         row = get_scoped(db, ExportRow, export_id, actor)
+        job = db.scalar(
+            select(JobRow).where(
+                JobRow.workspace_id == actor.workspace_id,
+                JobRow.idempotency_key == "export:" + row.id,
+            )
+        )
         return dict(
             id=row.id,
             run_id=row.run_id,
             status=row.status,
             format=row.format,
             sha256=row.sha256,
+            revision=row.revision,
+            review_state_scope="FIRST_GENERATION",
+            review_state_as_of=(job.result or {}).get("review_state_as_of") if job else None,
+            notice_vi="File bất biến từ lần tạo đầu cho định dạng/revision này; "
+            "review sau đó không cập nhật file. KPI luôn từ snapshot của run.",
             download_url=f"/api/exports/{row.id}/download" if row.status == "SUCCEEDED" else None,
         )
 

@@ -10,6 +10,7 @@ import csv
 import json
 import re
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,14 @@ from sqlalchemy import select
 from studio.access import Actor
 from studio.config import settings
 from studio.contracts.reconciliation import MetricSnapshot, ReconciliationContract
-from studio.database import ExceptionRow, ExportRow, ReconciliationContractRow, RunRow, identifier
+from studio.database import (
+    ExceptionRow,
+    ExportRow,
+    ReconciliationContractRow,
+    RunRow,
+    identifier,
+    now,
+)
 from studio.errors import DomainError
 from studio.reconciliation_api import case_view, require_verified
 from studio.reconciliation_repository import all_match_groups, load_canonical_records
@@ -37,7 +45,11 @@ def safe_text(value: str) -> str:
     return "'" + value if stripped.startswith(("=", "+", "-", "@")) else value
 
 
-def report_sections(db: Any, run: RunRow) -> dict[str, list[list[Any]]]:
+def report_sections(
+    db: Any,
+    run: RunRow,
+    captured_at: datetime | None = None,
+) -> dict[str, list[list[Any]]]:
     from studio.contracts import CanonicalDataset
 
     require_verified(run)
@@ -49,6 +61,19 @@ def report_sections(db: Any, run: RunRow) -> dict[str, list[list[Any]]]:
         "Summary": [
             ["Field", "Value"],
             ["Run ID", run.id],
+            ["Report generated at", (captured_at or now()).isoformat()],
+            [
+                "Review state scope",
+                "FIRST_GENERATION: states/notes at initial export generation; "
+                "this file is cached unchanged after later review. CSV and XLSX may be generated "
+                "at different times. Financial metrics always use the frozen run snapshot.",
+            ],
+            [
+                "Automation coverage definition",
+                "Verified automatic classification, including "
+                "confirmed missing counterparts and mismatches; not successful reconciliation "
+                "or resolved exception coverage. Reuses separately approved policy.",
+            ],
             ["Verification", run.status],
             ["Comparison unit", snapshot.comparison_unit],
             ["Eligible definition", snapshot.eligible_definition],
@@ -292,6 +317,8 @@ def write_xlsx(path: Path, sections: dict[str, list[list[Any]]]) -> None:
 
 def execute_export(job_id: str, token: str, factory: Any, fence: Any, finish: Any) -> None:
     with factory() as db:
+        # One consistent review-state view; no historical file or financial snapshot is rewritten.
+        db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
         job = fence(db, job_id, token)
         artifact = db.get(ExportRow, job.payload["export_id"])
         assert artifact is not None
@@ -302,7 +329,8 @@ def execute_export(job_id: str, token: str, factory: Any, fence: Any, finish: An
         run = db.get(RunRow, artifact.run_id)
         assert run is not None
         require_verified(run)
-        sections = report_sections(db, run)
+        captured_at = now()
+        sections = report_sections(db, run, captured_at)
         artifact_id, format = artifact.id, artifact.format
         key = f"{run.workspace_id}/exports/{artifact_id}/{identifier()}/report.{format}"
         db.rollback()
@@ -320,5 +348,5 @@ def execute_export(job_id: str, token: str, factory: Any, fence: Any, finish: An
         artifact = db.get(ExportRow, artifact_id)
         assert artifact is not None
         artifact.status, artifact.storage_key, artifact.sha256 = "SUCCEEDED", key, digest
-        finish(db, job, {"export_id": artifact_id})
+        finish(db, job, {"export_id": artifact_id, "review_state_as_of": captured_at.isoformat()})
         db.commit()

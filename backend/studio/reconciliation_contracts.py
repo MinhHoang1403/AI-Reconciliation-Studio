@@ -6,7 +6,7 @@ execution; duplicate keys remain review cases, never permission to choose a matc
 
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from studio.contracts.reconciliation import ReconciliationPlan, SourceCatalogue
+from studio.contracts.reconciliation import PlanningSuggestions, ReconciliationPlan, SourceCatalogue
 from studio.errors import DomainError
 
 
@@ -217,3 +217,70 @@ def validate_reconciliation_contract(
         "Evidence không nằm trong nguồn được phép.",
     )
     return plan
+
+
+def validate_planning_suggestions(
+    suggestion: PlanningSuggestions,
+    catalogue: list[SourceCatalogue],
+) -> None:
+    """Check candidates against the same field/metric rules, without inventing a period.
+
+    Missing scope prevents a complete plan, but does not justify invented field IDs,
+    money semantics, evidence, or an unsupported grouping proposal.
+    """
+    left, right = catalogue
+    maps = [{f.id: f for f in c.schema_definition.fields} for c in catalogue]
+    for pair in suggestion.join_keys:
+        _require(
+            pair.left in maps[0] and pair.right in maps[1],
+            "FIELD_NOT_FOUND",
+            "Khóa gợi ý không tồn tại.",
+        )
+        _require(
+            maps[0][pair.left].data_type == maps[1][pair.right].data_type
+            and maps[0][pair.left].data_type in {"string", "enum"},
+            "JOIN_KEY_TYPE_INVALID",
+            "Khóa gợi ý cần chuỗi tương thích.",
+        )
+    for metric in suggestion.comparison_metrics:
+        for fields, key in ((maps[0], metric.left), (maps[1], metric.right)):
+            field = fields.get(key)
+            _require(field is not None, "METRIC_FIELD_NOT_FOUND", "Trường tiền không tồn tại.")
+            assert field is not None
+            _require(
+                field.data_type == "decimal"
+                and known(field.semantic_metric)
+                and field.semantic_metric == metric.metric_id
+                and known(field.amount_basis)
+                and field.amount_basis == metric.amount_basis
+                and known(field.unit)
+                and field.unit == metric.unit
+                and field.currency == metric.currency,
+                "RULE_UNVERIFIED",
+                "Ý nghĩa tiền/currency/basis không tương thích.",
+            )
+    evidence = {
+        v
+        for c in catalogue
+        for v in (c.canonical.id, c.canonical.artifact.id, c.canonical.schema_id)
+    }
+    _require(set(suggestion.evidence_ids) <= evidence, "INVALID_EVIDENCE", "Evidence giả.")
+    if suggestion.cardinality is not None:
+        if suggestion.cardinality == "ONE_TO_ONE":
+            _require(
+                suggestion.aggregation == "NONE"
+                and left.canonical.grain == right.canonical.grain == suggestion.comparison_grain,
+                "CARDINALITY_GRAIN_INVALID",
+                "Grain/aggregation 1:1 không hợp lệ.",
+            )
+        else:
+            anchor, detail = (
+                (left, right) if suggestion.cardinality == "ONE_TO_MANY" else (right, left)
+            )
+            _require(
+                suggestion.aggregation == "SUM_SIGNED"
+                and anchor.canonical.grain == suggestion.comparison_grain
+                and detail.canonical.grain != suggestion.comparison_grain,
+                "AGGREGATION_UNAPPROVED",
+                "Grain nhóm không hợp lệ.",
+            )

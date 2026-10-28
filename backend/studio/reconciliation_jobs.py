@@ -181,9 +181,15 @@ def execute_reconciliation(
 
 
 def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish: Finish) -> None:
+    from studio.contracts.reconciliation import PlanningRequest
+
     with factory() as db:
         job = fence(db, job_id, token)
-        draft = ReconciliationPlan.model_validate(job.payload["draft"])
+        draft = (
+            PlanningRequest.model_validate(job.payload["request"])
+            if "request" in job.payload
+            else PlanningRequest.from_plan(ReconciliationPlan.model_validate(job.payload["draft"]))
+        )
         actor = Actor("worker", job.workspace_id, "editor")
         cats = selected_catalogue(
             db, actor, job.project_id, [draft.left.canonical_id, draft.right.canonical_id]

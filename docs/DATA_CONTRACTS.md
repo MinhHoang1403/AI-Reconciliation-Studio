@@ -76,9 +76,9 @@ Pydantic contracts ở `contracts/reconciliation.py`: ReconciliationPlan/Contrac
 |---|---|
 | GET /api/projects/{id}/canonical-catalogue | Scoped canonical/schema/profile/mapping/identifier refs; stale không được chạy |
 | GET /api/projects/{id}/domain-schema-templates | Order/OrderLine/FinancialEvent đề xuất; Settlement/Payout chỉ khi có nguồn entity thật; không approval |
-| POST /api/reconciliation-plans/validate | Metadata/type/semantics/readiness và key uniqueness; duplicates cần review |
+| POST /api/reconciliation-plans/validate | Metadata/type/semantics/readiness; key uniqueness chỉ trên IN_SCOPE sau cùng partition của engine; trả riêng invalid/out-of-scope/in-scope và coverage_complete |
 | POST /api/reconciliation-plans | Manual typed proposal, Idempotency-Key; không execute |
-| POST /api/reconciliation-plans/ai | Queue planner, cloud policy/key/reservation/task cap; không tự approve |
+| POST /api/reconciliation-plans/ai | `{project_id, request: PlanningRequest}` với hai canonical IDs, facts đã xác nhận và intent; không bắt nhập keys/metrics. Giữ input `{project_id, plan}` cũ. Queue/policy/key/reservation/task cap; không tự approve |
 | GET /api/reconciliation-plans/{id} | Typed proposal, source và approved contract ID nếu có |
 | POST /api/reconciliation-contracts/{plan_id}/approve | Editor, validate lại scope/revisions và audit; tạo immutable contract |
 | GET /api/projects/{id}/reconciliation-templates | Approved rules trong project |
@@ -88,14 +88,22 @@ Pydantic contracts ở `contracts/reconciliation.py`: ReconciliationPlan/Contrac
 | GET /api/runs/{id} | Status, source refs/checks và RunArtifactRef; không raw storage path |
 | GET /api/runs/{id}/metrics | Chỉ VERIFIED/PARTIAL_VERIFIED, đúng một immutable snapshot |
 | GET /api/runs/{id}/matches | Server pagination/search/linkage/comparison filters; match groups typed |
-| GET /api/runs/{id}/groups/{group_id}/evidence | Group phải thuộc đúng run; scoped source records và full member provenance; preview mỗi source tối đa 100 records |
+| GET /api/runs/{id}/groups/{group_id}/evidence | Group thuộc đúng run; scoped source records/provenance, filename; `field_evidence` là EvidenceRef theo đúng MappingRevision của canonical lịch sử. Preview mỗi source 100 records, field refs 100 source rows/record |
 | GET /api/runs/{id}/exceptions | Search, state/type filters, type/state sort, pagination; current_open_count riêng |
 | PATCH /api/exceptions/{id}/review | Editor, lý do bắt buộc khi resolve/dismiss, audit actor/time; không đổi monetary result |
 | POST /api/runs/{id}/exports?format=csv hoặc xlsx | Verified only; queue và cached immutable export theo run/revision |
-| GET /api/exports/{id}, /download | Workspace scope, checksum, same-origin auth; không token/path trong URL |
+| GET /api/exports/{id}, /download | Workspace scope, checksum, same-origin auth; metadata revision/review_state_scope/review_state_as_of; không token/path trong URL |
 
 RunArtifactRef độc lập DatasetVersion vì run có hai nguồn; source CanonicalDataset refs được giữ đầy đủ. Không lạm dụng ArtifactRef một-source cho match results. Failure không có MetricSnapshot. PARTIAL_VERIFIED không được trình bày như đầy đủ khi có invalid/pending/not-comparable.
 
 CU là left canonical record ở 1:1/1:N hoặc left canonical group ở N:1. Eligible có scope/keys/own Decimal/currency hợp lệ; invalid/out-of-scope/pending/thiếu own money báo excluded riêng. Ambiguous còn trong mẫu số review. Full match đòi LINKED + EQUAL/WITHIN_TOLERANCE; zero denominator N/A. Automation là phân loại xác định đã verified không cần row-level human decision, không phải tỷ lệ tiền đã đúng. Monetary sums chỉ comparable metrics/currency/unit riêng, không cộng đa tiền tệ. `delta=L-R`, abs variance = abs(delta), tolerance theo PROJECT_PLAN; rounding chỉ khi approved.
 
 CSV/XLSX chứa Summary/Metrics/Matches/Exceptions/Data quality/Evidence/Sources/Rules. Snapshot JSON lưu nguyên DTO để đối chiếu API. Text `=,+,-,@` có guard, IDs giữ chuỗi/zero-prefix, Decimal âm vẫn numeric. OOXML numeric lexemes giữ Decimal chính xác, nhưng Excel arithmetic có giới hạn 15 significant digits; snapshot strings/CSV phục vụ exact interchange. Report không tự tính lại KPI. Exception state được chụp khi export lần đầu, các review sau không sửa file export đã công bố.
+
+Kiểm toán bổ sung 28/10/2026: `PlanningRequest`/`PlanningSource` tách khỏi ReconciliationPlan hoàn chỉnh. Trước AI chỉ kiểm quyền, canonical/schema/profile/mapping/artifact refs và những facts được gửi; key/grain/cardinality/metric không phải tiền điều kiện của request đề xuất. Sau AI, complete plan vẫn phải qua validator đầy đủ, giữ mọi facts được xác nhận. Khi thiếu thời gian/coverage, trả UNKNOWN/NEEDS_REVIEW với `PlanningSuggestions` (roles, field pairs, metrics, grain/cardinality/aggregation, evidence), không cấp quyền chạy. Suggestions cũng kiểm IDs/types/metric/basis/currency/grain/evidence; plan giả field hoặc thay scope bị từ chối. Proposal còn missing_requirements không được approve. Job/draft cũ vẫn đọc được; không đổi matcher, verifier hoặc engine revision.
+
+Automation coverage giữ nguyên `metric-snapshot-1` và công thức PROJECT_PLAN §20. UI gọi **Tự động phân loại**: gồm cả kết luận xác định thiếu đối ứng/lệch đã verified, không diễn đạt như tỷ lệ khớp thành công hoặc case đã giải quyết. Không tính lại/ghi đè snapshots cũ.
+
+Report mới dùng **report-2**, giữ nguyên report-1 và bytes/checksum đã công bố. `Summary` ghi Report generated at, Review state scope FIRST_GENERATION và giải thích automation. Worker đọc trạng thái review nhất quán trong một PostgreSQL REPEATABLE READ snapshot. API trả `review_state_as_of` từ job result; request lại cùng run/format/report revision reuse file cũ. CSV và XLSX được tạo vào hai thời điểm khác nhau có thể chứa trạng thái review khác nhau; KPI vẫn từ cùng MetricSnapshot. Report-1 cũ chưa lưu thời điểm review, trả null kèm thông báo UI; không tự suy ra timestamp hoặc sửa file lịch sử.
+
+UI đọc tối đa 20 ô nguồn mỗi lần mở chi tiết và báo khi giới hạn; tên cột/giá trị/file/sheet/row hiển thị dạng bảng, không JSON. Transform nhiều inputs hiển thị các ô input, aggregate giữ các source members. Không sửa raw/canonical để khớp hiển thị.
