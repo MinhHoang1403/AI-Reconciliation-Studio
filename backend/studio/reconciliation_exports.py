@@ -8,6 +8,7 @@ Excel itself has a 15-digit arithmetic limit, disclosed in the Summary sheet.
 
 import csv
 import json
+import re
 import xml.etree.ElementTree as ET
 from decimal import Decimal
 from pathlib import Path
@@ -32,7 +33,7 @@ NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 
 def safe_text(value: str) -> str:
     """CSV text interpretation guard, without coercing legitimate numeric negatives."""
-    stripped = value.lstrip(" \t\r\n\ufeff")
+    stripped = re.sub(r"^[\s\x00-\x1f\ufeff]*", "", value)
     return "'" + value if stripped.startswith(("=", "+", "-", "@")) else value
 
 
@@ -245,6 +246,14 @@ def write_xlsx(path: Path, sections: dict[str, list[list[Any]]]) -> None:
         sheet = workbook.create_sheet(name)
         exact[f"xl/worksheets/sheet{i}.xml"] = numeric = {}
         for values in rows:
+            if any(
+                isinstance(v, str)
+                and (len(v) > 32767 or re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", v))
+                for v in values
+            ):
+                raise DomainError(
+                    "EXPORT_CELL_LIMIT", "Text vượt giới hạn ô XLSX; không cắt hoặc sửa dữ liệu."
+                )
             sheet.append(values)
             for cell, value in zip(sheet[sheet.max_row], values, strict=False):
                 if isinstance(value, str):

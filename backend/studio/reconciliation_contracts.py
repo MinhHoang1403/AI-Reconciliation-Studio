@@ -144,10 +144,13 @@ def validate_reconciliation_contract(
         )
     else:
         anchor = left if plan.cardinality == "ONE_TO_MANY" else right
+        detail = right if plan.cardinality == "ONE_TO_MANY" else left
         _require(
-            plan.aggregation == "SUM_SIGNED" and anchor.canonical.grain == plan.comparison_grain,
+            plan.aggregation == "SUM_SIGNED"
+            and anchor.canonical.grain == plan.comparison_grain
+            and detail.canonical.grain != plan.comparison_grain,
             "AGGREGATION_UNAPPROVED",
-            "Nhóm cần SUM_SIGNED và grain tham chiếu đã xác nhận.",
+            "Nhóm cần SUM_SIGNED, grain tham chiếu và grain chi tiết khác nhau đã xác nhận.",
         )
     maps = [{f.id: f for f in c.schema_definition.fields} for c in selected]
     pairs = [*plan.join_keys, *plan.attributes, *plan.fuzzy_fields, *plan.fuzzy_block_keys]

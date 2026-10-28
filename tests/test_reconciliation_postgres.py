@@ -177,6 +177,18 @@ def test_T20_T34_T35_rule_approval_snapshot_exports_and_workflow(pg):  # noqa: F
     run = client.get(f"/api/runs/{rid}").json()
     assert run["status"] == "VERIFIED", run
     snapshot = client.get(f"/api/runs/{rid}/metrics").json()
+    assert (
+        client.get(
+            "/api/runs", params={"project_id": pid, "source_id": p.left.canonical_id}
+        ).json()["total"]
+        == 1
+    )
+    assert (
+        client.get("/api/runs", params={"project_id": pid, "period_start": "2026-11-01"}).json()[
+            "total"
+        ]
+        == 0
+    )
     assert snapshot["monetary"][0]["absolute_variance"] == "2.75"
     assert snapshot["full_match_rate"] == dict(numerator=1, denominator=3, percent="33.33")
     duplicate = client.post(

@@ -2,7 +2,7 @@
 
 Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, AI đề xuất ánh xạ, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
 
-**Trạng thái:** Giai đoạn 1 đã nghiệm thu; chủ dự án đã giao prompt riêng để hợp nhất và triển khai Giai đoạn 2 trên feature branch sau cổng kiểm thử. Gemini là AI mặc định hiện tại, có policy và hạn mức bền vững; mapping luôn cần người dùng duyệt. Qwen được hoãn chính thức vì IP allowlist. Hai tài liệu LlamaParse tổng hợp đã parse/validate live, quyền thử tạo job đã đóng lại. Xem [bằng chứng nghiệm thu](docs/IMPLEMENTATION_STATUS.md).
+**Trạng thái:** Giai đoạn 1 đã hợp nhất và gắn tag `data-foundation-accepted-20261028`. Giai đoạn 2 có rule builder/AI Planner, matching/verification, kết quả, ngoại lệ và CSV/XLSX trên `codex/reconciliation-engine`; chưa merge vào main. Gemini mặc định, mapping/rule luôn cần duyệt. Qwen live hoãn vì IP allowlist; LlamaParse tạo job OFF. Xem [bằng chứng và giới hạn](docs/IMPLEMENTATION_STATUS.md).
 
 ## Mở ứng dụng trong workspace hiện tại
 
@@ -44,7 +44,26 @@ Workspace local chọn `MAPPING_AI_PROVIDER=GEMINI`, `ALLOW_EXTERNAL_AI=true`, `
 7. Dùng lớp **Cảnh báo / lỗi** để kiểm tra invalid/null và **Xem nguồn** để mở dòng gốc. Dữ liệu lỗi không bị thay bằng zero hoặc bỏ đi. Sửa mapping tạo revision mới, canonical cũ được đánh dấu đã cũ; raw/parsed được bảo toàn.
 8. Mở lại trình duyệt, chọn dự án cũ để tiếp tục. Tệp cùng nội dung/config trong cùng dự án được reuse; mẫu đã duyệt chỉ được gợi ý trong scope tương thích.
 
-PDF/DOCX mới cần allowance riêng được duyệt trước khi upload. Kết quả đã lưu có preview theo file/trang/bảng và luôn “chưa được xác minh”; không tự chuyển thành canonical hoặc suy ra kết luận tiền. Đọc lại kết quả không gọi provider. Các mục Đối soát, Ngoại lệ, Báo cáo và Trợ lý AI chỉ mở theo giai đoạn đã nghiệm thu; không có KPI tài chính giả.
+PDF/DOCX mới cần allowance riêng được duyệt trước khi upload. Kết quả đã lưu có preview theo file/trang/bảng và luôn “chưa được xác minh”; không tự chuyển thành canonical hoặc suy ra kết luận tiền. Đọc lại kết quả không gọi provider. Trợ lý AI chat chưa triển khai.
+
+## Đối soát và báo cáo
+
+1. Sau khi có hai canonical trong cùng project, mở **Đối soát**, chọn nguồn tham chiếu/đối ứng.
+2. Xác nhận khóa, quan hệ một-một/một-nhiều/nhiều-một, grain, metric/currency/basis, dấu tiền theo nguồn, kỳ `[start,end)`, timezone và coverage. Internal ecommerce lọc đúng platform/shop cho từng pair, không JOIN ba nguồn.
+3. Dùng **Kiểm tra điều kiện**, rồi lưu đề xuất thủ công hoặc yêu cầu Gemini đề xuất. AI dùng quota hiện có; manual không gọi cloud. Gemini Planner đã dùng thêm 1 attempt, tổng 7/10 còn 3; không reset/tăng. Không gọi Qwen hoặc mở parser khi lỗi AI.
+4. Review đề xuất, **Xác nhận quy tắc và dấu số tiền**, rồi **Chạy đối soát đã duyệt**. Duplicate/fuzzy mơ hồ giữ review, không tự chọn; null/invalid không thành zero. Coverage thiếu phải cho phép partial rõ ràng.
+5. **Báo cáo/Tổng quan** hiển thị snapshot đã verified, denominator/CU/period và từng metric/currency riêng. Không có verified result thì empty/loading state, không KPI giả. Lọc lịch sử theo kỳ/nguồn, chọn đúng run ID.
+6. **Ngoại lệ** có tìm kiếm, lọc loại/trạng thái, sort, bằng chứng hai bên và dòng nguồn. Resolve/dismiss cần ghi chú; review không sửa comparison, variance hoặc snapshot của run.
+7. **Xuất CSV/XLSX** → **Tải báo cáo**. Hai định dạng dùng cùng snapshot; text chống formula injection, Decimal âm giữ numeric, IDs giữ zero-prefix. Excel arithmetic vẫn có giới hạn 15 significant digits; exact values có trong OOXML numeric lexemes/snapshot strings và CSV.
+8. Mẫu đã duyệt có thể rebind nguồn/kỳ mới, kiểm schema/mapping/effective date và trở thành proposal phải duyệt lại. Nguồn stale không được chạy; lịch sử run cũ vẫn bất biến.
+
+Chạy bộ demo có oracle trên dữ liệu tổng hợp, không gọi AI:
+
+```powershell
+uv run python tools/check-reconciliation.py
+```
+
+Công cụ tạo/reuse đúng một project demo, năm nguồn CSV và ba pair runs, kiểm oracle, lưu báo cáo tại runtime bị ignore. Gemini planner live đã thử và được cache; không chạy lại cloud chỉ để replay. `--planner-live` là lựa chọn explicit có quota guard/task cap, không phải regression mặc định.
 
 ## Vận hành và bảo toàn dữ liệu
 
@@ -89,4 +108,4 @@ Dependencies khóa bằng `uv.lock`, `requirements.txt` sinh từ lock và `fron
 - [Kiểm thử](docs/TESTING_GUIDE.md), [trạng thái nghiệm thu](docs/IMPLEMENTATION_STATUS.md).
 - [Kế hoạch ba giai đoạn](docs/PROJECT_PLAN.md), [Rules](Rules.md), [hướng dẫn Codex](AGENTS.md).
 
-Giai đoạn 2 sẽ consume trực tiếp CanonicalDataset/MappingRevision/SchemaDefinition/EvidenceRef sau khi gates Giai đoạn 1 đạt. Chưa triển khai matching/verification tài chính hoặc Assistant. Repository chính thức: [MinhHoang1403/AI-Reconciliation-Studio](https://github.com/MinhHoang1403/AI-Reconciliation-Studio).
+Giai đoạn 2 dùng trực tiếp CanonicalDataset/MappingRevision/SchemaDefinition/EvidenceRef, queue, session và App Shell hiện có. Không triển khai Assistant Giai đoạn 3; dừng sau bàn giao feature branch để chủ dự án xem kết quả. Repository chính thức: [MinhHoang1403/AI-Reconciliation-Studio](https://github.com/MinhHoang1403/AI-Reconciliation-Studio).

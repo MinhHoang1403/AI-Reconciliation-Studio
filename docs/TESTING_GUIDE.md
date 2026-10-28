@@ -128,3 +128,41 @@ Lỗi thật được giữ regression: upstream job ID là opaque `pjb-*`, khô
 PDF fixture đã render/kiểm tra hình ảnh. Renderer DOCX bundled trên Windows thiếu LibreOffice, nên không tuyên bố visual QA Word local; nội dung và số trang đã kiểm tra bằng kết quả provider có page cap và oracle, cùng UI cached. Hai fixtures là dữ liệu kiểm thử, không phải tuyên bố OCR tài chính đại diện hoặc artifact đã READY. UI không thực thi provider HTML và không tự normalize document.
 
 Repository checker rà known local credentials trong source candidates/Git history, các pattern secret phổ biến, runtime/binary candidates và đường dẫn Markdown. Kết hợp rà nội dung/diff trước public push; đây không phải bảo đảm đã audit mọi kiểu secret hoặc toàn bộ bảo mật hệ thống.
+
+## Reconciliation acceptance
+
+Các mốc số liệu ở phần trên là lịch sử Giai đoạn 1. Suite hiện thêm contracts/golden/property/reporting và PostgreSQL tests. `tools/test-postgres.ps1` làm mới đúng `/tmp/studio-tests` trước copy để không tạo `tests/tests` rồi chạy nhầm bản cũ; chỉ xóa cây source test tạm cố định trong backend, không chạm volume/storage. Bản pytest/hypothesis tạm dùng chung container, không tạo server/Compose test khác.
+
+```powershell
+uv run pytest -q -m 'not integration'
+./tools/test-postgres.ps1 -All
+uv run ruff check backend tests tools
+uv run mypy backend/studio
+npm --prefix frontend run check
+npm --prefix frontend run lint
+npm --prefix frontend run build
+$env:STUDIO_EXPECT_AI_PROVIDER='MANUAL'
+uv run python tools/check-reconciliation.py
+npm --prefix frontend run test:e2e
+./tools/check-persistence.ps1
+uv run python tools/benchmark-reconciliation.py
+uv run python tools/check_repository.py
+```
+
+| Golden catalogue | Evidence |
+|---|---|
+| T17–T20 | Invented source/field/evidence/AI APPROVED rejected; gross/net/stale/wrong scope/expired dates/cardinality blocked; incomplete coverage explicit partial; unapproved ID cannot execute |
+| T21–T24 | Manual oracle Internal/Shopee partition 11 = 1 invalid + 5 outside + 5 inside; zero-prefix/composite linkage; duplicate reviews; same ID amount diff LINKED/AMOUNT_MISMATCH |
+| T25–T26 | TikTok 1:N 20+30=50 with both members; inverse N:1; mixed currency NOT_COMPARABLE, no delta; signed refund retained |
+| T27–T28 | Near rigid IDs not auto-fuzzy; approved text blocking, bounded score/top-k, all ties/competing edges review-only; four synthetic admissible labelled pairs retained (not a representative blocking recall benchmark) |
+| T29–T30 | Exact/within/beyond boundary; null versus real zero; no null/invalid coercion; explicit date cutoff/coverage/due date |
+| T31–T33 | Corrupt amount or reused membership fails independent verifier; fault after draft write leaves no official metrics; retry publishes one logical run; failed verification has no metrics/exports |
+| T34–T35 | Zero denominator N/A; manual count/Decimal oracle; immutable snapshot identical API/CSV/XLSX; UI uses DTO; review leaves original snapshot equal; formula injection, numeric negatives, exact XML values, IDs checked by opening outputs |
+
+PostgreSQL migration test first creates approved canonical with historical migration, then upgrades head and compares artifact DTO/preview/counts; stale source/viewer/cross-project evidence/foreign group rejected. Template reuse returns PROPOSED with no contract ID and requires fresh approval. Existing Giai đoạn 1 tests remain in the same suite.
+
+Playwright adds manual rule builder → validate → save → approve → run → verified dashboard → exception evidence/review → XLSX download → reload/run selection, plus result layouts 390/768/1366/1920; combined with prior 1440 and Giai đoạn 1 flow. Screenshots wait for real detail rows, not loading placeholders. It never presses paid planner. Backend/API demo covers upload/manual mapping/normalization for all five labelled source files.
+
+Benchmark measures simple exact match on **total input records across both sources**: 1k (500/source), 10k (5k/source), 50k (25k/source), three new Windows processes/size. Matching p50/p95 ms: 31,57/37,58; 268,01/433,78; 1723,77/1792,43. Verification p50/p95: 17,06/19,02; 230,28/257,09; 1315,23/1521,31. Peak process MiB: 38,68 / 89,10 / 317,06. 500/5k/25k exact groups, zero fuzzy/review/cloud. Ryzen 5 7535HS/16 GB, no GPU. Excludes API/network/load/write/export/render and snapshot's additional verification pass; p95 is inclusive interpolation over 3 observations. Not a calibrated accuracy/throughput claim or 50k rows per source.
+
+Actual final PASS/FAIL/SKIP and persistent object counts are recorded in [implementation status](IMPLEMENTATION_STATUS.md); do not add historical/live/mock replays into one inflated test count.

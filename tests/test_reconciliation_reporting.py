@@ -59,6 +59,14 @@ def test_export_injection_numeric_negatives_precision_and_prefix(tmp_path):
     assert all(r[2].startswith("'") for r in rows if r[1] == "Untrusted")
 
 
+def test_xlsx_rejects_unrepresentable_text_without_silent_truncation(tmp_path):
+    for value in ("x" * 32768, "untrusted\x00value"):
+        with pytest.raises(DomainError, match="EXPORT_CELL_LIMIT"):
+            write_xlsx(
+                tmp_path / "unpublished.xlsx", {"Summary": [["Field", "Value"], ["Text", value]]}
+            )
+
+
 @pytest.mark.parametrize("kind", ["valid", "invented", "approved", "invalid-json", "off"])
 def test_planner_typed_contract_bounded_attempts_and_policy(config, kind):
     p = plan()

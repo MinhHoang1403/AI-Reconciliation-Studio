@@ -61,6 +61,7 @@ def test_rule_precision_period_currency_and_rigid_fuzzy_constraints():
         {"timezone": "invented"},
         {"effective_from": "2026-10-02"},
         {"aggregation": "SUM_SIGNED"},
+        {"cardinality": "ONE_TO_MANY", "aggregation": "SUM_SIGNED"},
         {"fuzzy_fields": [dict(left="order_id", right="order_id")]},
     ):
         bad = type(p).model_validate(p.model_dump() | update)

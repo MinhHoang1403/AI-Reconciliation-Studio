@@ -188,12 +188,19 @@ export const statusText: Record<string, string> = {
   BLOCKED: "Bị chặn",
   SUCCEEDED: "Hoàn tất",
   CANCELLED: "Đã hủy",
+  VERIFIED: "Đã xác minh",
+  PARTIAL_VERIFIED: "Đã xác minh một phần",
+  VERIFICATION_FAILED: "Kiểm chứng thất bại",
+  DRAFT: "Chờ chạy",
 };
 export const jobKind: Record<string, string> = {
   document_parse: "Đọc tài liệu có allowance",
   parse: "Đọc và phân tích",
   mapping: "AI đề xuất ánh xạ",
   normalize: "Chuẩn hóa dữ liệu",
+  reconciliation_plan: "AI đề xuất quy tắc đối soát",
+  reconcile: "Đối soát và kiểm chứng",
+  export: "Xuất báo cáo",
 };
 export const errorText: Record<string, string> = {
   PARSER_BUDGET_EXHAUSTED: "Hết allowance LlamaParse. Không tạo thêm job tính phí.",

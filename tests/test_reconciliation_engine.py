@@ -125,6 +125,44 @@ def test_other_domain_oracle_and_zero_prefix():
     assert all(c.passed for c in verify_result(p, left, right, result))
 
 
+def test_relative_tolerance_rounding_and_timezone_manual_oracles():
+    from datetime import datetime
+
+    left, right = records("internal-sales.csv")[:1], records("shopee-orders.csv")[:1]
+    p = plan()
+    p.comparison_metrics[0].relative_tolerance = Decimal("0.01")
+    right[0].payload["gross_amount"] = Decimal("99")
+    result = match_records(p, left, right)
+    assert result.groups[0].comparison_state == "WITHIN_TOLERANCE"
+    assert result.groups[0].comparisons[0].tolerance == Decimal("1")
+    assert all(c.passed for c in verify_result(p, left, right, result))
+    p.comparison_metrics[0].relative_tolerance = None
+    p.comparison_metrics[0].rounding_scale = 2
+    left[0].payload["gross_amount"], right[0].payload["gross_amount"] = (
+        Decimal("1.005"),
+        Decimal("1.00"),
+    )
+    for mode, state, expected in (
+        ("HALF_EVEN", "EQUAL", "0.00"),
+        ("HALF_UP", "AMOUNT_MISMATCH", "0.01"),
+    ):
+        p.comparison_metrics[0].rounding_mode = mode
+        result = match_records(p, left, right)
+        assert result.groups[0].comparison_state == state
+        assert result.groups[0].comparisons[0].delta == Decimal(expected)
+        assert all(c.passed for c in verify_result(p, left, right, result))
+    p.timezone = "Asia/Ho_Chi_Minh"
+    for stamp, expected in (
+        ("2026-10-30T16:59:59+00:00", "LINKED"),
+        ("2026-10-30T17:00:00+00:00", "OUT_OF_SCOPE"),
+    ):
+        for row in left + right:
+            row.payload["event_date"] = datetime.fromisoformat(stamp)
+        result = match_records(p, left, right)
+        assert all(g.linkage_state == expected for g in result.groups)
+        assert all(c.passed for c in verify_result(p, left, right, result))
+
+
 @settings(max_examples=25, deadline=None)
 @given(st.permutations(range(11)), st.permutations(range(6)))
 def test_property_permutations_membership_and_determinism(left_order, right_order):
