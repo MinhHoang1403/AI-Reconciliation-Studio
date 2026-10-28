@@ -1,9 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 
 test.describe.configure({ mode: "serial" });
 const projectName = `Dữ liệu tổng hợp · ${Date.now()}`;
 const expectGemini = process.env.STUDIO_EXPECT_AI_PROVIDER === "GEMINI";
+const expectManual = (process.env.STUDIO_EXPECT_AI_PROVIDER || "MANUAL") === "MANUAL";
 let projectId = "";
 let datasetId = "";
 let tableId = "";
@@ -22,7 +23,7 @@ test("A/C/D: create project, upload, review mapping with explicit provider, norm
   page.on("pageerror", (err) => errors.push(err.message));
   await openApp(page);
   const configured = await page.request.get("/api/settings");
-  expect((await configured.json()).mapping_ai_provider).toBe(expectGemini ? "GEMINI" : "QWEN");
+  expect((await configured.json()).mapping_ai_provider).toBe(expectGemini || expectManual ? "GEMINI" : "QWEN");
   await page.getByRole("button", { name: "+ Tạo dự án", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Tên dự án", { exact: true }).fill(projectName);
@@ -40,6 +41,10 @@ test("A/C/D: create project, upload, review mapping with explicit provider, norm
       "Order ID,Gross amount\n000123,1234.50\n000124,invalid\n000125,\n000126,0\n",
     ),
   });
+  if (expectManual) {
+    await dialog.locator("summary", {hasText: "Tùy chọn đọc nâng cao"}).click();
+    await dialog.getByLabel("Dùng AI đề xuất ánh xạ trong hạn mức").uncheck();
+  }
   await dialog.getByRole("button", { name: "Tải 1 tệp" }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByRole("tab", { name: "AI Smart Setup" })).toBeVisible();
@@ -175,7 +180,10 @@ test("A/C/D: create project, upload, review mapping with explicit provider, norm
     page.getByRole("dialog").getByRole("cell", { name: "000124", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Đóng", exact: true }).click();
-  await expect
+  if (expectManual) {
+    const response = await page.request.get(`/api/jobs?project_id=${projectId}`);
+    expect((await response.json()).items.some((job: {kind: string}) => job.kind === "mapping")).toBe(false);
+  } else await expect
     .poll(async () => {
       const r = await page.request.get(`/api/jobs?project_id=${projectId}`);
       const j = (await r.json()).items.find(
@@ -184,7 +192,7 @@ test("A/C/D: create project, upload, review mapping with explicit provider, norm
       return j?.status;
     })
     .toBe(expectGemini ? "SUCCEEDED" : "BLOCKED");
-  if (!expectGemini) await expect(page.getByText(/Qwen từ chối IP truy cập/)).toBeVisible();
+  if (!expectGemini && !expectManual) await expect(page.getByText(/Qwen từ chối IP truy cập/)).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -289,3 +297,24 @@ for (const size of [
     await expect(page.getByRole("dialog")).not.toBeVisible();
   });
 }
+
+test("cached document evidence remains readable after parser allowance is closed", async ({page}) => {
+  let state: {project_id: string} | undefined;
+  try {
+    state = JSON.parse(await readFile("../runtime/document-acceptance/acceptance.json", "utf8"));
+  } catch {
+    test.skip(true, "Run the separately authorized two-document acceptance before this cached-only check");
+    return;
+  }
+  await openApp(page);
+  await page.locator("#project-select").selectOption(state!.project_id);
+  for (const [extension, id, amount] of [["pdf", "000123", "1234.50"], ["docx", "000701", "1.234,50"]]) {
+    await page.getByRole("button", {name: new RegExp(`synthetic-transactions\\.${extension}`)}).click();
+    await expect(page.getByText("Bản trích xuất chưa được xác minh.", {exact:false})).toBeVisible();
+    await expect(page.getByRole("cell", {name:id,exact:true})).toBeVisible();
+    await expect(page.getByRole("cell", {name:amount,exact:true})).toBeVisible();
+    await expect(page.getByRole("button", {name:"Chuẩn hóa dữ liệu",exact:true})).toHaveCount(0);
+  }
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

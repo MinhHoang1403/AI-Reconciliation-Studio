@@ -40,6 +40,7 @@ import {
   statusText,
   type Canonical,
   type Dataset,
+  type DocumentArtifact,
   type Job,
   type Mapping,
   type Preview,
@@ -68,6 +69,10 @@ export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [datasetId, setDatasetId] = useState("");
   const [tables, setTables] = useState<Table[]>([]);
+  const [documentState, setDocumentState] = useState<{
+    datasetId: string;
+    items: DocumentArtifact[];
+  }>({datasetId: "", items: []});
   const [tableId, setTableId] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [mappings, setMappings] = useState<Mapping[]>([]);
@@ -91,6 +96,7 @@ export function App() {
   const [encoding, setEncoding] = useState("utf-8-sig");
   const [delimiter, setDelimiter] = useState("");
   const [headerRow, setHeaderRow] = useState("");
+  const [requestAiMapping, setRequestAiMapping] = useState(true);
   const [sidebar, setSidebar] = useState(false);
   const [evidenceId, setEvidenceId] = useState("");
   const [evidenceRow, setEvidenceRow] = useState<number | undefined>();
@@ -223,6 +229,14 @@ export function App() {
   useEffect(() => {
     void loadTables().catch((err) => setError(err.message));
   }, [loadTables, selectedDataset?.status]);
+  useEffect(() => {
+    if (!datasetId || !/\.(pdf|docx)$/i.test(selectedDataset?.name || "")) return;
+    let current = true;
+    void api<DocumentArtifact[]>(`/datasets/${datasetId}/documents`)
+      .then((items) => { if (current) setDocumentState({datasetId, items}); })
+      .catch((err) => { if (current) setError(err.message); });
+    return () => { current = false; };
+  }, [datasetId, selectedDataset?.name, selectedDataset?.status]);
 
   const loadDetails = useCallback(async () => {
     if (!tableId || !datasetId) return;
@@ -347,6 +361,7 @@ export function App() {
   async function upload() {
     const form = new FormData();
     form.append("project_id", projectId);
+    form.append("request_ai_mapping", String(requestAiMapping));
     files.forEach((f) => form.append("files", f));
     form.append(
       "parse_options",
@@ -884,8 +899,8 @@ export function App() {
                   <Database size={36} />
                   <h2>Mọi nguồn dữ liệu, trong một nơi</h2>
                   <p>
-                    Chọn Tải dữ liệu để thêm CSV hoặc XLSX. PDF/DOCX chỉ có
-                    adapter hợp đồng; cloud mặc định tắt.
+                    Chọn Tải dữ liệu để thêm CSV hoặc XLSX. PDF/DOCX cần quyền
+                    và allowance riêng; bản trích xuất luôn cần kiểm tra.
                   </p>
                 </section>
               ) : (
@@ -943,6 +958,17 @@ export function App() {
                       </div>
                       {tables.length === 0 ? (
                         <div className="empty-state">
+                          {/\.(pdf|docx)$/i.test(selectedDataset.name) ? (
+                            <div>
+                              <Notice tone="warning">
+                                Bản trích xuất chưa được xác minh. Không tự dùng số tiền trong tài liệu để đối soát.
+                              </Notice>
+                              {documentState.datasetId === datasetId && (
+                                <DocumentPreview documents={documentState.items} />
+                              )}
+                            </div>
+                          ) : (
+                          <>
                           {["UPLOADED", "PARSING"].includes(
                             selectedDataset.status,
                           ) ? (
@@ -952,6 +978,8 @@ export function App() {
                               Chưa có bảng được công bố. Kiểm tra trạng thái tác
                               vụ bên dưới.
                             </Notice>
+                          )}
+                          </>
                           )}
                         </div>
                       ) : (
@@ -1500,6 +1528,11 @@ export function App() {
           </div>
           <details>
             <summary>Tùy chọn đọc nâng cao</summary>
+            <label className="check-label">
+              <input type="checkbox" checked={requestAiMapping}
+                onChange={(event) => setRequestAiMapping(event.target.checked)} />
+              Dùng AI đề xuất ánh xạ trong hạn mức
+            </label>
             <div className="form-grid">
               <label>
                 Encoding CSV
@@ -1537,8 +1570,8 @@ export function App() {
             </div>
           </details>
           <Notice>
-            PDF/DOCX hiện chỉ có adapter kiểm thử hợp đồng; chưa bật xử lý
-            cloud.
+            PDF/DOCX chỉ được đọc khi có allowance riêng. Kết quả đã lưu được
+            tái sử dụng; bản trích xuất không tự trở thành dữ liệu chuẩn.
           </Notice>
           {error && <Notice tone="error">{error}</Notice>}
           <div className="modal-actions">
@@ -1635,6 +1668,39 @@ function Stat({
     </article>
   );
 }
+function DocumentPreview({ documents }: { documents: DocumentArtifact[] }) {
+  return documents.map((doc) => (
+    <article key={doc.artifact.id}>
+      <h3>{doc.source_file.filename}</h3>
+      {doc.extraction.pages.map((page) => {
+        const tables = page.items.filter((item) => item.type === "table" &&
+          Array.isArray(item.rows) && item.rows.every((row) => Array.isArray(row) &&
+            row.every((cell) => typeof cell === "string")));
+        return (
+          <section key={page.page_number}>
+            <h4>Trang {page.page_number}</h4>
+            {tables.map((table, index) => {
+              const rows = table.rows as string[][];
+              return <div className="table-scroll" key={index}>
+                <table className="document-table"><tbody>
+                  {rows.map((row, ri) => <tr key={ri}>
+                    {row.map((value, ci) => ri === 0
+                      ? <th key={ci}>{value}</th> : <td key={ci}>{value}</td>)}
+                  </tr>)}
+                </tbody></table>
+              </div>;
+            })}
+            <details>
+              <summary>Nội dung trích xuất nguyên gốc</summary>
+              <pre className="document-text">{page.markdown}</pre>
+            </details>
+          </section>
+        );
+      })}
+    </article>
+  ));
+}
+
 function DatasetList({
   items,
   onSelect,

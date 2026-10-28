@@ -63,6 +63,7 @@ from studio.database import (
     identifier,
     now,
 )
+from studio.document_parser import DOCUMENT_PARSER_REVISION, DocumentArtifact, DocumentExtraction
 from studio.errors import DomainError
 from studio.normalization import NORMALIZATION_REVISION
 from studio.parsing import PARSER_REVISION, ParseConfig, choose_parser, inspect_upload
@@ -355,6 +356,7 @@ def upload(
     project_id: Annotated[str, Form()],
     files: Annotated[list[UploadFile], File()],
     parse_options: Annotated[str, Form()] = "{}",
+    request_ai_mapping: Annotated[bool, Form()] = True,
 ) -> dict[str, Any]:
     require_editor(actor, db)
     get_scoped(db, ProjectRow, project_id, actor)
@@ -371,18 +373,16 @@ def upload(
         (file, inspect_upload(file.file, file.filename or "", file.content_type or "", settings))
         for file in files
     ]
-    for _, inspection in inspected:
-        route = choose_parser(inspection, policy)
-        if route != "tabular":
-            raise DomainError(
-                "DOCUMENT_ADAPTER_ONLY",
-                "PDF/DOCX hiện chỉ có adapter hợp đồng, chưa nghiệm thu cloud trực tiếp.",
-            )
-    signature = hashlib.sha256(
-        (PARSER_REVISION + parse_config.model_dump_json()).encode()
-    ).hexdigest()
     result = []
     for file, inspection in inspected:
+        document = inspection.extension in {".pdf", ".docx"}
+        parser_revision = DOCUMENT_PARSER_REVISION if document else PARSER_REVISION
+        signature = hashlib.sha256(
+            (
+                parser_revision
+                + ("cost_effective:max_pages=2" if document else parse_config.model_dump_json())
+            ).encode()
+        ).hexdigest()
         # Upload dedup and dataset creation serialize per project/source/config.
         lock = int.from_bytes(
             hashlib.sha256((project_id + inspection.sha256 + signature).encode()).digest()[:8],
@@ -400,6 +400,17 @@ def upload(
         if existing:
             result.append({**_dataset_dto(existing), "reused": True})
             continue
+        choose_parser(inspection, policy)
+        if document and inspection.sha256 not in policy.parser_allowed_sha256:
+            raise DomainError(
+                "PARSER_DOCUMENT_NOT_ALLOWED", "Tài liệu chưa nằm trong allowance được duyệt."
+            )
+        if document and (
+            not settings.allow_cloud_parsing
+            or settings.cloud_parser_request_budget <= 0
+            or settings.cloud_parser_credit_budget < 6
+        ):
+            raise DomainError("CLOUD_PARSING_DISABLED", "PDF/DOCX chưa có allowance tạo job mới.")
         dataset = DatasetRow(
             id=identifier(),
             workspace_id=actor.workspace_id,
@@ -416,7 +427,7 @@ def upload(
             id=identifier(),
             dataset_id=dataset.id,
             revision=1,
-            parser_revision=PARSER_REVISION,
+            parser_revision=parser_revision,
             parse_config=parse_config.model_dump(),
         )
         db.add(version)
@@ -447,9 +458,14 @@ def upload(
             db,
             actor.workspace_id,
             project_id,
-            "parse",
+            "document_parse" if document else "parse",
             f"parse:{version.id}:{signature}",
-            {"dataset_id": dataset.id, "version_id": version.id, "file_id": file_id},
+            {
+                "dataset_id": dataset.id,
+                "version_id": version.id,
+                "file_id": file_id,
+                "request_ai_mapping": request_ai_mapping,
+            },
         )
         db.add(
             AuditRow(
@@ -462,6 +478,35 @@ def upload(
         result.append({**_dataset_dto(dataset), "reused": False, "job_id": job.id})
     db.commit()
     return {"items": result}
+
+
+@app.get("/api/datasets/{dataset_id}/documents", response_model=list[DocumentArtifact])
+def documents(dataset_id: str, db: DB, actor: CurrentActor) -> list[DocumentArtifact]:
+    """Read scoped cached extraction only; never invokes the provider or promotes quality."""
+    get_scoped(db, DatasetRow, dataset_id, actor)
+    rows = db.scalars(
+        select(ArtifactRow)
+        .join(VersionRow, ArtifactRow.dataset_version_id == VersionRow.id)
+        .where(
+            VersionRow.dataset_id == dataset_id,
+            ArtifactRow.workspace_id == actor.workspace_id,
+            ArtifactRow.kind == "document",
+        )
+        .limit(20)
+    )
+    result = []
+    for row in rows:
+        path = storage_path(settings.storage_root, row.storage_key)
+        if checksum(path) != row.sha256:
+            raise DomainError("ARTIFACT_CHECKSUM_FAILED", "Artifact không khớp checksum.")
+        result.append(
+            DocumentArtifact(
+                artifact=artifact_ref(row),
+                source_file=row.metadata_json["source_file"],
+                extraction=DocumentExtraction.model_validate_json(path.read_text(encoding="utf-8")),
+            )
+        )
+    return result
 
 
 @app.get("/api/datasets/{dataset_id}")

@@ -262,7 +262,7 @@ def test_llamaparse_contract(kind, config, tmp_path):
     policy = WorkspacePolicy(allow_cloud_parsing=True, parser_request_budget=1)
     path = tmp_path / "synthetic.pdf"
     path.write_bytes(b"%PDF-1.7 synthetic adapter fixture")
-    job_id = str(uuid4())
+    job_id = "pjb-" + uuid4().hex
     calls = []
 
     def transport(request):
@@ -271,6 +271,8 @@ def test_llamaparse_contract(kind, config, tmp_path):
             return httpx.Response(500, json={})
         if request.method == "POST":
             assert request.url.path.endswith("/parse/upload")
+            assert b'"tier": "cost_effective"' in request.content
+            assert b'"page_ranges": {"max_pages": 2}' in request.content
             return httpx.Response(200, json={"id": job_id, "status": "PENDING"})
         status = "RUNNING" if kind == "timeout" else "FAILED" if kind == "failed" else "COMPLETED"
         return httpx.Response(
@@ -299,4 +301,46 @@ def test_llamaparse_contract(kind, config, tmp_path):
                 )
     assert len(calls) == (
         0 if kind == "missing_key" else 3 if kind == "timeout" else 1 if kind == "http" else 2
+    )
+
+
+def test_llamaparse_resume_never_submits_or_reserves_again(config, tmp_path):
+    from pydantic import SecretStr
+
+    config.allow_cloud_parsing = True
+    config.cloud_parser_request_budget = 0
+    config.llama_cloud_api_key = SecretStr("synthetic-test-key")
+    policy = WorkspacePolicy(allow_cloud_parsing=True, parser_request_budget=0)
+    job_id = "pjb-synthetic-accepted-job"
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        assert request.method == "GET" and request.url.path.endswith(job_id)
+        return httpx.Response(
+            200,
+            json={
+                "job": {"status": "COMPLETED"},
+                "markdown": {"pages": [{"page_number": 1, "markdown": "000123"}]},
+            },
+        )
+
+    def forbidden():
+        pytest.fail("Polling an accepted job must not reserve or submit another parse")
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        result = parse_document(
+            tmp_path / "not-opened.pdf", config, policy, client, forbidden, resume_job_id=job_id
+        )
+    assert len(calls) == 1 and result.verification_status == "UNVERIFIED_EXTRACTION"
+
+
+def test_default_gemini_never_bypasses_cloud_policy(config):
+    assert config.mapping_ai_provider == "GEMINI"
+    assert route_ai_task(WorkspacePolicy()) == "REVIEW"
+    assert (
+        route_ai_task(
+            WorkspacePolicy(mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=1)
+        )
+        == "GEMINI"
     )

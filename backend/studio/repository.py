@@ -82,6 +82,64 @@ def reserve_gemini_request(db: Session, workspace_id: str, job_id: str, config: 
     return True
 
 
+def reserve_document_request(
+    db: Session, workspace_id: str, file_id: str, config: Settings
+) -> bool:
+    """Reserve at most 2 documents / 4 pages / 12 estimated credits, below the 20-credit cap.
+
+    Each reservation consumes a 2-page upper bound, including uncertain delivery/failure.
+    The same raw file cannot be submitted again. Caller commits before POST.
+    """
+    from studio.document_parser import DOCUMENT_RESERVED_CREDITS
+
+    if not config.allow_cloud_parsing or not config.llama_cloud_api_key.get_secret_value():
+        return False
+    lock = int.from_bytes(
+        hashlib.sha256(b"studio:llamaparse-budget").digest()[:8], "big", signed=True
+    )
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock})
+    workspace = db.get(WorkspaceRow, workspace_id)
+    if workspace is None:
+        return False
+    policy = WorkspacePolicy.model_validate(workspace.policy)
+    if not policy.allow_cloud_parsing:
+        return False
+    reserved = select(AuditRow).where(AuditRow.action == "LLAMAPARSE_DOCUMENT_RESERVED")
+    if db.scalar(reserved.where(AuditRow.resource_id == file_id)):
+        return False
+    all_rows = list(db.scalars(reserved))
+    raw = db.get(ArtifactRow, file_id)
+    if raw is None or raw.workspace_id != workspace_id or raw.kind != "raw":
+        return False
+    if raw.sha256 not in policy.parser_allowed_sha256:
+        return False
+    extension = raw.metadata_json.get("extension")
+    if extension not in {".pdf", ".docx"}:
+        return False
+    for previous in all_rows:
+        prior_raw = db.get(ArtifactRow, previous.resource_id)
+        if prior_raw is None or prior_raw.metadata_json.get("extension") == extension:
+            return False  # this acceptance grants one PDF and one DOCX, never two of either
+    global_used = len(all_rows)
+    workspace_used = sum(r.workspace_id == workspace_id for r in all_rows)
+    if (
+        global_used >= min(2, config.cloud_parser_request_budget)
+        or workspace_used >= policy.parser_request_budget
+        or (global_used + 1) * DOCUMENT_RESERVED_CREDITS > config.cloud_parser_credit_budget
+    ):
+        return False
+    db.add(
+        AuditRow(
+            workspace_id=workspace_id,
+            actor_id="worker",
+            action="LLAMAPARSE_DOCUMENT_RESERVED",
+            resource_id=file_id,
+        )
+    )
+    db.flush()
+    return True
+
+
 def get_scoped[T: Base](db: Session, model: type[T], resource_id: str, actor: Actor) -> T:
     row = db.get(model, resource_id)
     if row is None or getattr(row, "workspace_id", None) != actor.workspace_id:

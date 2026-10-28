@@ -11,7 +11,7 @@ uv run ruff check backend tests tools
 uv run mypy backend/studio
 ```
 
-Ngày 28/10/2026: 77 tests offline PASS tại lần kiểm tra gần nhất; Ruff/mypy PASS. Có một cảnh báo deprecation từ Starlette về TestClient/httpx; không phải lỗi ứng dụng. Chưa chuyển test client transport trong đợt này vì contract tests hiện chạy đúng với lock đã chọn.
+Ngày 28/10/2026: **79 tests offline PASS**, 12 integration deselected; Ruff/mypy PASS. Có một cảnh báo deprecation từ Starlette về TestClient/httpx; không phải lỗi ứng dụng. Chưa chuyển test client transport trong đợt này vì contract tests hiện chạy đúng với lock đã chọn.
 
 | Catalogue | Bằng chứng thực thi |
 |---|---|
@@ -42,7 +42,7 @@ Operator tests bao phủ trim được duyệt, enum, coalesce phân biệt null
 ./tools/test-postgres.ps1 -All
 ```
 
-Script copy tests vào `/tmp` của backend hiện có, cài test tooling tạm tại `/tmp/studio-checks` và chạy pytest. Mỗi test tạo schema `test_<UUID>`, chạy migration snapshot, dùng riêng metadata và storage temp, rồi drop đúng schema này. Bộ đầy đủ sau chuyển Gemini: **87 PASS (77 offline + 10 PostgreSQL integration), 0 FAIL/SKIP**. Worker production không thể claim jobs trong schema test. Hai test mới xác minh worker Gemini/usage/budget exhausted và đồng thời nhiều reservation trên hai workspace không vượt trần; transport đều mock, không dùng quota thật.
+Script copy tests vào `/tmp` của backend hiện có, cài test tooling tạm tại `/tmp/studio-checks` và chạy pytest. Mỗi test tạo schema `test_<UUID>`, chạy migration snapshot, dùng riêng metadata và storage temp, rồi drop đúng schema này. Bộ đầy đủ hiện đạt **91 PASS (79 offline + 12 PostgreSQL integration), 0 FAIL/SKIP**. Worker production không thể claim jobs trong schema test. Kiểm tra Gemini concurrency/quota và document reservation/artifact/reuse sau thu hồi quyền; transport đều mock. Upload explicit manual không enqueue AI hoặc tiêu quota.
 
 Kiểm tra pipeline/ref/policy, migrations, same-key enqueue, scoped reuse/template proposal, viewer/CSRF/host/workspace isolation, `SKIP LOCKED`, expired lease fencing, attempts/recovery, parse failure và crash trước publish canonical. Snapshot DDL không phụ thuộc ORM của migration tương lai. Destructive downgrade bị chặn.
 
@@ -59,14 +59,14 @@ npm --prefix frontend exec -- playwright install chromium
 npm --prefix frontend run test:e2e
 ```
 
-Playwright chạy trên Nginx production tại `127.0.0.1:18180`, một Chromium worker. Tạo dự án/file tổng hợp có scope riêng mỗi lần để không nhầm cache với live AI. Mặc định test mong Qwen đang bị chặn. Khi kiểm tra Gemini live phải chỉ định explicit trước khi chạy:
+Playwright chạy trên Nginx production tại `127.0.0.1:18180`, một Chromium worker. Tạo dự án/file tổng hợp có scope riêng mỗi lần để không nhầm cache với live AI. Mặc định MANUAL bỏ chọn yêu cầu AI, không gọi Gemini/Qwen; có thể đặt `STUDIO_EXPECT_AI_PROVIDER=MANUAL` explicit. Khi kiểm tra Gemini live phải chỉ định explicit trước khi chạy:
 
 ```powershell
 $env:STUDIO_EXPECT_AI_PROVIDER='GEMINI'
 npm --prefix frontend run test:e2e
 ```
 
-Chế độ này có thể tiêu thụ tối đa hai HTTP attempts cho một bảng tổng hợp, vẫn chịu trần global/workspace; test kiểm tra provider trước khi upload để không gọi cloud nhầm chế độ. Chờ job Gemini SUCCEEDED, kiểm tra source GEMINI, reference mapping theo oracle độc lập và chưa AI tự duyệt rồi thực hiện luồng review/normalization. Lần cuối **8 PASS, 0 FAIL (19,8 giây)**. Regression xác minh refresh cùng revision giữ draft/grain/locale; test đợi refresh nhận proposal mới hoàn tất trước khi nhập. Không hạ validator để làm test PASS. Provider failure/cloud OFF tiếp tục được kiểm tra bằng mock.
+Chế độ này có thể tiêu thụ tối đa hai HTTP attempts cho một bảng tổng hợp, vẫn chịu trần global/workspace; test kiểm tra provider trước khi upload để không gọi cloud nhầm chế độ. Chờ job Gemini SUCCEEDED, kiểm tra source GEMINI, reference mapping theo oracle độc lập và chưa AI tự duyệt rồi thực hiện luồng review/normalization. Nghiệm thu lại: **9 PASS ở Gemini LIVE (20,3 giây)** và **9 PASS ở MANUAL (16,2 giây)**, không cộng thành 18 case khác nhau. Regression xác minh refresh cùng revision giữ draft/grain/locale. Case document đọc hai artifact cached khi quyền parser đã đóng, kiểm tra IDs/amounts, không có nút normalize và không overflow ở mobile. Không hạ validator để làm test PASS. Provider failure/cloud OFF tiếp tục được kiểm tra bằng mock.
 
 Kịch bản: tạo project → upload → xem `000123` → xác nhận metric/locale/currency → approve → normalize → canonical/errors → evidence. Người quay lại thấy mapping/artifacts. Session HttpOnly/SameSite, CSRF và Host spoof rejection, 0 external browser requests được kiểm tra. Regression trì hoãn request tìm kiếm xác nhận UI không trình bày preview cũ dưới query/phiên bản mới.
 
@@ -78,7 +78,7 @@ Responsive: 1440×900, 1920×1080, 1366×768, 768×1024 và 390×844; chờ nộ
 ./tools/check-persistence.ps1
 ```
 
-Đợi hết jobs đang chạy. Công cụ snapshot metadata/approvals/canonical refs và kiểm tra SHA256 từng artifact, restart rồi force-recreate đủ bốn service và recreate riêng frontend trong project hiện tại, xác nhận auto-session bị chặn trước re-verification và so lại dữ liệu. Bao gồm workspace policy và audit reservations của Gemini; quota không được reset. Không xóa volumes hoặc raw. Snapshot kiểm tra nằm trong volume, không vào Git. Bộ backend đầy đủ hiện đạt 87 PASS (77 offline + 10 PostgreSQL integration).
+Đợi hết jobs đang chạy. Công cụ snapshot metadata/approvals/canonical refs và kiểm tra SHA256 từng artifact, restart rồi force-recreate đủ bốn service và recreate riêng frontend trong project hiện tại, xác nhận auto-session bị chặn trước re-verification và so lại dữ liệu. Bao gồm workspace policy, reservations, document JSON và raw/Parquet; quota không reset. Không xóa volumes hoặc raw. Snapshot kiểm tra nằm trong volume, không vào Git. Snapshot nghiệm thu lại gồm 17 datasets, 12 canonical, 42 jobs/45 attempts và 58 artifact refs.
 
 ## Worker bị dừng đột ngột
 
@@ -107,11 +107,18 @@ p95 là nội suy inclusive trên ba quan sát, không phải cam kết tail lat
 ## Qwen live và kiểm tra source
 
 ```powershell
-uv run python tools/probe-qwen.py
 uv run python tools/check_repository.py
 git diff --check
 ```
 
-Probe chỉ gửi profile tổng hợp và kiểm tra mapping với oracle mã tham chiếu độc lập. Hiện HTTP 403 từ Qwen là **BLOCKED**, không phải PASS inference. Chủ dự án đã cấp quyền dùng Gemini tạm thời; LlamaParse vẫn chưa được gọi live. Live Gemini đầu tiên bị chặn vì model dùng tên thay ID nguồn, không tự retry semantic error. Prompt revision `schema-understanding-2` làm rõ ID; regression giữ nguyên việc từ chối tên cột. Lần mới đã qua validator và oracle reference_id; số reservation gồm cả attempts lỗi/chẩn đoán, không chỉ successful traces.
+Qwen được hoãn chính thức: `BLOCKED_EXTERNAL_DEPENDENCY — IP allowlist`, không probe lại trong nhiệm vụ này. Tool probe vẫn được giữ cho khi chủ dự án cấp quyền sau. Gemini mapping live và oracle đã PASS, prompt `schema-understanding-2` giữ nguyên. Sau nghiệm thu lại dùng 6/10 requests, còn 4; không reset/tăng để chạy tiếp.
+
+## LlamaParse live có allowance riêng
+
+Đã kiểm tra đúng một PDF và một DOCX tổng hợp, mỗi tài liệu 1 trang/3 credits, tổng 2 trang/6 credits. Raw ID/amount/date/blank cells khớp oracle literal trong `tools/check-document-acceptance.py`; HTML table và Markdown table chỉ là hai cách biểu diễn cells, không tự sửa số. Tier cost_effective, server cap 2 trang/job, two-SHA allowlist, durable reservations: tối đa 2 docs/4 trang/12 credits theo giá đã xác minh, không vượt 20 được cấp. Trước thử API account xác nhận credits đủ; không dùng POST để thăm dò.
+
+Lỗi thật được giữ regression: upstream job ID là opaque `pjb-*`, không bắt buộc UUID. PDF đã được nhận, được tìm lại receipt duy nhất rồi resume GET, không POST lại; attempt lỗi và reservation cũ vẫn còn. Sau thử đã thu hồi quyền tạo job toàn hệ thống/workspace, giữ key/history/artifacts. Chạy lại `uv run python tools/check-document-acceptance.py` hiện chỉ đọc cached refs; không tự mở allowance. Parser contracts có success/error/cloud OFF, page cap, resume không reserve/POST và prefixed ID.
+
+PDF fixture đã render/kiểm tra hình ảnh. Renderer DOCX bundled trên Windows thiếu LibreOffice, nên không tuyên bố visual QA Word local; nội dung và số trang đã kiểm tra bằng kết quả provider có page cap và oracle, cùng UI cached. Hai fixtures là dữ liệu kiểm thử, không phải tuyên bố OCR tài chính đại diện hoặc artifact đã READY. UI không thực thi provider HTML và không tự normalize document.
 
 Repository checker rà known local credentials trong source candidates/Git history, các pattern secret phổ biến, runtime/binary candidates và đường dẫn Markdown. Kết hợp rà nội dung/diff trước public push; đây không phải bảo đảm đã audit mọi kiểu secret hoặc toàn bộ bảo mật hệ thống.

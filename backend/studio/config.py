@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     qwen_base_url: str = ""
     qwen_model: str = "knowledge"
     qwen_enabled: bool = True
-    mapping_ai_provider: Literal["QWEN", "GEMINI"] = "QWEN"
+    mapping_ai_provider: Literal["QWEN", "GEMINI"] = "GEMINI"
     ai_timeout_seconds: float = Field(default=45, ge=1, le=120)
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.5-flash-lite"
@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     llama_cloud_api_key: SecretStr = SecretStr("")
     allow_cloud_parsing: bool = False
     cloud_parser_request_budget: int = Field(default=0, ge=0)
+    cloud_parser_credit_budget: int = Field(default=0, ge=0, le=20)
     worker_lease_seconds: int = Field(default=300, ge=120)
     worker_poll_seconds: float = 1
 

@@ -31,6 +31,7 @@ Giai đoạn sau phải dùng các refs và API này, không viết parser/mappi
 - `GET /api/schemas/{id}`, `/canonical-datasets/{id}`, `/mapping-proposals/{id}`.
 - `GET /api/jobs?project_id=...`, `/jobs/{id}`, `/evidence/{id}`.
 - `GET /api/session`, `/api/settings`, `/api/live`, `/api/ready`.
+- `GET /api/datasets/{id}/documents` trả `DocumentArtifact` scoped: artifact ref/checksum, `FileArtifact` nguồn và `DocumentExtraction` với pages/items/bbox/usage. Không tự tạo canonical từ extraction.
 
 Preview dùng `kind=raw|parsed|canonical|errors`, `offset`, `limit` tối đa 100 và `search` literal. Canonical/errors bắt buộc `canonical_id` cụ thể. `raw` là preview lexical values đọc từ raw artifact, không phải tải raw bytes ra browser. Tìm kiếm/phân trang thực hiện trên backend; tiền trả chuỗi Decimal chính xác.
 
@@ -56,6 +57,8 @@ Row identity tạo từ file/table/physical source row. CSV có quoted newline v
 `GET /api/settings` trả `mapping_ai_provider`, `gemini_model`, boolean `gemini_configured`, `gemini_requests_used` và `gemini_requests_remaining` trong scope workspace; không trả API key. Remaining là min của hạn mức global/workspace còn lại sau durable audit reservations, bằng 0 khi cloud không được phép. `JobView.result.source` phân biệt `GEMINI`, `QWEN`, `APPROVED_TEMPLATE`; success chỉ có nghĩa proposal qua validator, chưa được người dùng approve. Reservation đếm HTTP attempts kể cả lỗi; không phải chi phí tiền tệ hoặc số proposal thành công.
 
 Upload lại cùng project/hash/parser config tái sử dụng dataset và raw. Cùng bytes ở project khác không reuse file ref. Chữ ký mapping gồm tên/thứ tự cột, type candidates, identifier flags; lookup còn yêu cầu workspace và business scope. Template được đưa lại dưới dạng đề xuất cần review, không auto-approve số tiền hoặc dữ liệu mới.
+
+Upload nhận thêm form `request_ai_mapping` (mặc định true). False giữ nguyên parse/profile/manual proposal nhưng không enqueue AI; đây là lựa chọn workflow, không phải parse config để phá cache. Với PDF/DOCX, parser revision riêng `llamaparse-cost-effective-1`, page cap 2, artifact JSON bất biến có chất lượng `UNVERIFIED_EXTRACTION`. WorkspacePolicy bổ sung `parser_allowed_sha256` mặc định rỗng, tối đa hai hash. Dữ liệu policy cũ vẫn đọc được theo defaults; không đổi schema PostgreSQL vì policy đã là JSONB. Cache document được đọc/reuse sau khi quyền tạo job đã bị thu hồi.
 
 ## DSL
 

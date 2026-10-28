@@ -67,7 +67,7 @@ def main() -> None:
         raw = ("Order ID,Gross amount\n" + "".join(f"{i:08d},1.25\n" for i in range(rows))).encode()
         uploaded = client.post(
             "/api/datasets/uploads",
-            data={"project_id": project_id},
+            data={"project_id": project_id, "request_ai_mapping": "false"},
             files={"files": ("synthetic-recovery.csv", raw, "text/csv")},
         )
         uploaded.raise_for_status()

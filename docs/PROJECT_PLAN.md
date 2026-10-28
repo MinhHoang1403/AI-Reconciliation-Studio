@@ -108,8 +108,8 @@ Người dùng có một vài nguồn CSV/XLSX/PDF/DOCX khác tên cột, cấu 
 | Tabular data | Parquet + Polars | Lưu artifact versioned, vectorized processing |
 | Matching query | DuckDB over Parquet + RapidFuzz (ứng viên) | JOIN, aggregation, giới hạn RAM/cost [S11] |
 | Monetary | `Decimal` hoặc SQL `DECIMAL/NUMERIC` | Không sử dụng binary floating point [S12] |
-| AI primary | Endpoint Qwen công ty `https://ai.inetcloud.vn/memochat/v1`, model ID `knowledge`, **không yêu cầu API key** | Classification, schema/mapping, planning, explanation; kiểm tra API thật trước khi dùng |
-| AI secondary | `gemini-3.5-flash-lite` | Chỉ được phép cloud khi người dùng/policy/budget cho phép; Structured JSON validation [S13] |
+| AI mặc định hiện tại | `gemini-3.5-flash-lite` theo quyết định chủ dự án 28/10/2026 | Classification, schema/mapping, planning; vẫn cần key/policy/durable allowance, không tăng trần |
+| AI giữ lại, hoãn live | Endpoint Qwen công ty `https://ai.inetcloud.vn/memochat/v1`, model ID `knowledge`, **không yêu cầu API key** | `BLOCKED_EXTERNAL_DEPENDENCY — IP allowlist`; không probe lặp lại, giữ adapter để lựa chọn sau |
 | Front proxy | Nginx | SPA + `/api` same origin; không lộ AI keys |
 | Containers | Docker Compose | FE + BE + Worker + PostgreSQL + persistent data, không host lại Qwen |
 | Tests | pytest + Hypothesis + Playwright, Ruff/mypy/ESLint | Unit/property/integration/UX/E2E |
@@ -530,6 +530,8 @@ def validate_ai_output(raw: RawProviderResponse, task: AITaskRequest) -> Validat
 
 **Chỉ định tạm thời của chủ dự án ngày 28/10/2026:** dùng Gemini cho đề xuất ánh xạ trong lúc chờ mở allowlist Qwen. `MAPPING_AI_PROVIDER=GEMINI` chọn tuyến explicit; không tự fallback khi provider lỗi. Chỉ workspace được cấp quyền, key hợp lệ và ngân sách còn mới được gọi. Lần chuyển đổi local giới hạn tổng cộng 10 HTTP attempts, lưu reservation trong PostgreSQL trước mỗi attempt; restart không reset. LlamaParse vẫn OFF. Qwen live giữ trạng thái hoãn/BLOCKED; phải báo riêng bằng chứng Gemini live, không ghi thành Qwen PASS hoặc tự chuyển Giai đoạn 2.
 
+**Quyết định nghiệm thu tiếp theo của chủ dự án ngày 28/10/2026:** Gemini trở thành provider mặc định hiện tại cho các AI tasks trong phạm vi Giai đoạn 1/2; Qwen live được hoãn chính thức, không còn chặn chuyển giai đoạn khi các gate điều chỉnh đã đạt. Giữ lịch sử Qwen HTTP 403 và không probe lại. Trần Gemini 10 attempts, đã dùng phải đọc PostgreSQL, không reset/tăng. LlamaParse chỉ được thử đúng một PDF và một DOCX tổng hợp, tối đa 2 trang/tài liệu, 4 trang và 20 credits; tier cost_effective, kiểm tra credits trước, reservation trước POST, không gửi lại job chưa rõ đã nhận. Sau thử đóng quyền tạo job, giữ key/history/artifacts. Khi regression và mọi MUST gate đã điều chỉnh đạt mới kết luận `PHASE 1 ACCEPTED WITH DOCUMENTED QWEN EXCEPTION`, tích hợp main rồi bắt đầu Giai đoạn 2 theo chỉ định đã giao; không bắt đầu Giai đoạn 3. Quyết định này thay thứ tự provider/điều kiện Qwen gốc ở §§5/15/23/32/33, không thay semantic contracts, công thức hoặc quyền phê duyệt.
+
 Gemini model `gemini-3.5-flash-lite`, policy `LOCAL_ONLY` mặc định, `external_request_budget=0` mặc định; cloud test chỉ khi chủ dự án cấp phép. Với payload Structured Outputs bị API từ chối trên dự án cũ, dùng **JSON prompt + strict Pydantic/semantic checks** làm đường hỗ trợ, không cố retry vô hạn hoặc coi JSON là đúng nghiệp vụ. LlamaParse là dịch vụ riêng, budget/allowance riêng. Ghi tokens/credits khi provider cho biết; không bịa unit costs.
 
 ## 24. Prompt contracts
@@ -665,7 +667,7 @@ Giai đoạn 1 **phải xuất ra**: `CanonicalDataset`, `DatasetProfile`, `Sche
 ### Acceptance MUST
 
 - Upload CSV/XLSX có header lạ/zero-prefix/decimal invalid/duplicate candidates và test file security; raw bytes giữ nguyên.
-- Tối thiểu một mapping AI được xác minh live từ Qwen bằng dữ liệu tổng hợp; contract mock coverage cho provider errors.
+- Tiêu chí gốc: tối thiểu một mapping Qwen live bằng dữ liệu tổng hợp. Ngoại lệ chính thức 28/10/2026: Qwen `BLOCKED_EXTERNAL_DEPENDENCY — IP allowlist`, dùng Gemini mapping live thay thế; giữ contract mock coverage, không sửa lịch sử thành Qwen PASS.
 - Gemini/LlamaParse adapter có test; live statuses báo đúng, không dùng cloud khi policy tắt. Định nghĩa PDF/DOCX chỉ là **verified adapter contract** nếu chưa test live.
 - Raw → Parsed → Proposed Mapping → Approved Mapping → Canonical Preview toàn tuyến chạy, không cần chỉnh JSON bằng tay.
 - Local Dashboard trực tiếp mà auth ngoài local không bị bypass; frontend không chứa token/keys.

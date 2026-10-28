@@ -611,3 +611,151 @@ def test_gemini_budget_serializes_concurrent_reservations_across_workspaces(pg, 
     with factory() as db:
         assert gemini_request_counts(db, "demo") == (3, 1)
     assert not attempt("second")  # a fresh session never resets consumed budget
+
+
+def test_document_pipeline_reservation_artifact_scope_and_reuse_after_revocation(pg, monkeypatch):
+    import hashlib
+    import io
+    import zipfile
+
+    import httpx
+    from pydantic import SecretStr
+    from studio.contracts import WorkspacePolicy
+    from studio.database import AuditRow
+
+    client, factory, worker = pg
+    pdf = b"%PDF-1.7 synthetic fixture"
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        archive.writestr(
+            "word/document.xml", '<w:document xmlns:w="urn:synthetic"><w:p/></w:document>'
+        )
+    docx = stream.getvalue()
+    monkeypatch.setattr(settings, "allow_cloud_parsing", True)
+    monkeypatch.setattr(settings, "cloud_parser_request_budget", 2)
+    monkeypatch.setattr(settings, "cloud_parser_credit_budget", 20)
+    monkeypatch.setattr(settings, "llama_cloud_api_key", SecretStr("synthetic-test-key"))
+    with factory() as db:
+        db.get(WorkspaceRow, "demo").policy = WorkspacePolicy(
+            allow_cloud_parsing=True,
+            parser_request_budget=2,
+            parser_allowed_sha256=[hashlib.sha256(v).hexdigest() for v in [pdf, docx]],
+        ).model_dump()
+        db.commit()
+    original_client = httpx.Client
+    creates = []
+    remote_id = str(uuid4())
+
+    def respond(request):
+        if request.method == "POST":
+            creates.append(request)
+            assert b'"tier": "cost_effective"' in request.content
+            assert b'"max_pages": 2' in request.content
+            return httpx.Response(200, json={"id": remote_id, "status": "PENDING"})
+        if request.url.path == "/api/v2/organizations":
+            return httpx.Response(200, json={"items": [{"id": "synthetic-org"}]})
+        if request.url.path.endswith("/usage"):
+            return httpx.Response(
+                200,
+                json={
+                    "plan": {},
+                    "usage": {
+                        "active_free_credits_usage": [
+                            {"remaining_balance": 100, "expires_at": "2099-01-01T00:00:00Z"}
+                        ]
+                    },
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "job": {"status": "COMPLETED", "usage": {"credits": 3}},
+                "markdown": {
+                    "pages": [
+                        {
+                            "page_number": 1,
+                            "markdown": "| ID | Amount |\n| --- | --- |\n| 000123 | 12.50 |",
+                        }
+                    ]
+                },
+                "items": {"pages": [{"page_number": 1, "items": [{"type": "table", "rows": 2}]}]},
+            },
+        )
+
+    monkeypatch.setattr(
+        worker.httpx,
+        "Client",
+        lambda **kw: original_client(transport=httpx.MockTransport(respond), **kw),
+    )
+    pid = project(client)
+    ids = []
+    for extension, content, mime in [
+        ("pdf", pdf, "application/pdf"),
+        ("docx", docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ]:
+        response = client.post(
+            "/api/datasets/uploads",
+            data={"project_id": pid},
+            files={"files": (f"synthetic.{extension}", content, mime)},
+        )
+        assert response.status_code == 202, response.text
+        dataset_id = response.json()["items"][0]["id"]
+        ids.append(dataset_id)
+        drain(factory, worker)
+        documents = client.get(f"/api/datasets/{dataset_id}/documents").json()
+        assert len(documents) == 1, documents
+        artifact = documents[0]
+        assert artifact["artifact"]["quality"] == "UNVERIFIED_EXTRACTION"
+        assert artifact["extraction"]["verification_status"] == "UNVERIFIED_EXTRACTION"
+        assert artifact["source_file"]["sha256"] == hashlib.sha256(content).hexdigest()
+        assert artifact["extraction"]["pages"][0]["page_number"] == 1
+        assert not client.get(f"/api/datasets/{dataset_id}/artifacts").json()["canonical_datasets"]
+    assert len(creates) == 2
+    with factory() as db:
+        assert (
+            len(
+                list(
+                    db.scalars(
+                        select(AuditRow).where(AuditRow.action == "LLAMAPARSE_DOCUMENT_RESERVED")
+                    )
+                )
+            )
+            == 2
+        )
+        policy = db.get(WorkspaceRow, "demo").policy
+        db.get(WorkspaceRow, "demo").policy = {**policy, "allow_cloud_parsing": False}
+        db.commit()
+    monkeypatch.setattr(settings, "allow_cloud_parsing", False)
+    response = client.post(
+        "/api/datasets/uploads",
+        data={"project_id": pid},
+        files={"files": ("synthetic.pdf", pdf, "application/pdf")},
+    )
+    assert response.status_code == 202 and response.json()["items"][0]["reused"]
+    assert response.json()["items"][0]["id"] == ids[0]
+    assert client.get(f"/api/datasets/{ids[0]}/documents").status_code == 200
+    assert len(creates) == 2
+    response = client.post(
+        "/api/datasets/uploads",
+        data={"project_id": pid},
+        files={"files": ("synthetic-other.pdf", pdf + b"other", "application/pdf")},
+    )
+    assert response.status_code == 422
+
+
+def test_explicit_manual_upload_never_enqueues_ai_or_spends_quota(pg, monkeypatch):
+    client, factory, worker = pg
+    monkeypatch.setattr(settings, "mapping_ai_provider", "GEMINI")
+    pid = project(client)
+    response = client.post(
+        "/api/datasets/uploads",
+        data={"project_id": pid, "request_ai_mapping": "false"},
+        files={"files": ("manual.csv", b"ID,Value\n000123,12.50\n", "text/csv")},
+    )
+    assert response.status_code == 202
+    drain(factory, worker)
+    with factory() as db:
+        assert [j.kind for j in db.scalars(select(JobRow))] == ["parse"]
+    dataset_id = response.json()["items"][0]["id"]
+    table = client.get(f"/api/datasets/{dataset_id}/tables").json()["items"][0]
+    assert len(client.get(f"/api/tables/{table['id']}/mappings").json()["items"]) == 1

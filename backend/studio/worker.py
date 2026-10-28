@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+import httpx
 import polars as pl
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
@@ -17,6 +18,7 @@ from studio.contracts import (
     CanonicalDataset,
     DatasetProfile,
     EvidenceRef,
+    FileArtifact,
     MappingStatus,
     ParsedTableArtifact,
     SchemaDefinition,
@@ -39,6 +41,12 @@ from studio.database import (
     identifier,
     now,
 )
+from studio.document_parser import (
+    DOCUMENT_PARSER_REVISION,
+    DocumentArtifact,
+    parse_document,
+    verify_parser_account,
+)
 from studio.errors import DomainError
 from studio.normalization import NORMALIZATION_REVISION, apply_transform_plan
 from studio.parsing import FileInspection, ParseConfig, parse_to_artifacts, verify_parse
@@ -49,6 +57,7 @@ from studio.repository import (
     enqueue_job,
     mapping_contract,
     project_for_table,
+    reserve_document_request,
     reserve_gemini_request,
 )
 from studio.schema_mapping import compile_transform_plan, validate_mapping
@@ -202,14 +211,15 @@ def _parse(job_id: str, token: str) -> None:
             schema = default_schema(job.workspace_id, identifier())
             fallback = manual_proposal(profile, schema)
             create_mapping(db, table, fallback.model_dump(mode="json"), schema)
-            enqueue_job(
-                db,
-                job.workspace_id,
-                job.project_id,
-                "mapping",
-                f"mapping:auto:{table.id}:{PROMPT_REVISION}",
-                {"table_id": table.id},
-            )
+            if job.payload.get("request_ai_mapping", True):
+                enqueue_job(
+                    db,
+                    job.workspace_id,
+                    job.project_id,
+                    "mapping",
+                    f"mapping:auto:{table.id}:{PROMPT_REVISION}",
+                    {"table_id": table.id},
+                )
         dataset = db.get(DatasetRow, job.payload["dataset_id"])
         assert dataset is not None
         dataset.status = "NEEDS_MAPPING_REVIEW"
@@ -330,6 +340,122 @@ def _mapping(job_id: str, token: str) -> None:
             )
             db.commit()
         raise error
+
+
+def _document(job_id: str, token: str) -> None:
+    """Bounded document route: one durable create reservation, resumable GET, unverified artifact.
+
+    A crash after a reservation but before storing the remote ID blocks resubmission.
+    No conversion into canonical records or automatic approval occurs here.
+    """
+    with SessionFactory() as db:
+        job = db.get(JobRow, job_id)
+        assert job is not None
+        workspace = db.get(WorkspaceRow, job.workspace_id)
+        raw = db.get(ArtifactRow, job.payload["file_id"])
+        dataset = db.get(DatasetRow, job.payload["dataset_id"])
+        assert workspace is not None and raw is not None and dataset is not None
+        policy = WorkspacePolicy.model_validate(workspace.policy)
+        workspace_id, version_id = job.workspace_id, job.payload["version_id"]
+        raw_id, raw_key = raw.id, raw.storage_key
+        inspection = FileInspection.model_validate(raw.metadata_json)
+        source_file = FileArtifact(
+            id=raw.id,
+            workspace_id=workspace_id,
+            owner_id=dataset.owner_id,
+            sha256=raw.sha256,
+            filename=inspection.filename,
+            media_type=inspection.media_type,
+            size=inspection.size,
+        )
+        remote_id = (job.result or {}).get("provider_job_id")
+        if not settings.allow_cloud_parsing or not policy.allow_cloud_parsing:
+            raise DomainError("CLOUD_PARSING_DISABLED", "Parser cloud chưa được cấp phép.")
+        if not settings.llama_cloud_api_key.get_secret_value():
+            raise DomainError("LLAMAPARSE_KEY_MISSING", "Chưa cấu hình khóa LlamaParse.")
+        if not remote_id and (
+            settings.cloud_parser_request_budget <= 0
+            or policy.parser_request_budget <= 0
+            or settings.cloud_parser_credit_budget < 6
+        ):
+            raise DomainError("PARSER_BUDGET_EXHAUSTED", "Hết allowance parser cloud.")
+
+    def reserve() -> bool:
+        with SessionFactory() as db:
+            _fence(db, job_id, token)
+            allowed = reserve_document_request(db, workspace_id, raw_id, settings)
+            db.commit()
+            return allowed
+
+    def remember(provider_job_id: str) -> None:
+        with SessionFactory() as db:
+            job = _fence(db, job_id, token)
+            job.result = {"provider_job_id": provider_job_id}
+            db.commit()
+
+    started = time.monotonic()
+    with httpx.Client(timeout=settings.ai_timeout_seconds, follow_redirects=False) as client:
+        if not remote_id:
+            verify_parser_account(client, settings)
+        extraction = parse_document(
+            storage_path(settings.storage_root, raw_key),
+            settings,
+            policy,
+            client,
+            reserve,
+            max_polls=60,
+            resume_job_id=remote_id,
+            on_job_created=remember,
+            filename=inspection.filename,
+        )
+    artifact_id = identifier()
+    key = f"{workspace_id}/{version_id}/document/{artifact_id}.json"
+    path = storage_path(settings.storage_root, key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8") as stream:
+        stream.write(extraction.model_dump_json())
+    with SessionFactory() as db:
+        job = _fence(db, job_id, token)
+        row = ArtifactRow(
+            id=artifact_id,
+            workspace_id=workspace_id,
+            dataset_version_id=version_id,
+            kind="document",
+            sha256=checksum(path),
+            revision=DOCUMENT_PARSER_REVISION,
+            quality="UNVERIFIED_EXTRACTION",
+            storage_key=key,
+            metadata_json={"source_file": source_file.model_dump(mode="json")},
+        )
+        db.add(row)
+        db.flush()
+        DocumentArtifact(artifact=artifact_ref(row), source_file=source_file, extraction=extraction)
+        dataset = db.get(DatasetRow, job.payload["dataset_id"])
+        assert dataset is not None
+        dataset.status = "PARSED"
+        _finish(
+            db,
+            job,
+            {"document_artifact_id": artifact_id, "provider_job_id": extraction.provider_job_id},
+        )
+        db.add(
+            TraceRow(
+                workspace_id=workspace_id,
+                job_id=job_id,
+                provider="LLAMAPARSE",
+                task_id="parse_document",
+                prompt_revision="parse-cost-effective-1",
+                usage={
+                    "parser_credits": extraction.usage.get("credits"),
+                    "parse_jobs_created": int(remote_id is None),
+                    "pages_returned": len(extraction.pages),
+                    "tier": "cost_effective",
+                },
+                latency_ms=int((time.monotonic() - started) * 1000),
+                outcome="UNVERIFIED_EXTRACTION",
+            )
+        )
+        db.commit()
 
 
 def _normalize(job_id: str, token: str) -> None:
@@ -476,7 +602,12 @@ def process_job(job_id: str, token: str) -> None:
             job = db.get(JobRow, job_id)
             assert job is not None
             kind = job.kind
-        handlers = {"parse": _parse, "mapping": _mapping, "normalize": _normalize}
+        handlers = {
+            "parse": _parse,
+            "mapping": _mapping,
+            "normalize": _normalize,
+            "document_parse": _document,
+        }
         if kind not in handlers:
             raise DomainError("UNKNOWN_JOB_KIND", "Loại job chưa được hỗ trợ.")
         handlers[kind](job_id, token)
@@ -488,7 +619,9 @@ def process_job(job_id: str, token: str) -> None:
                 job = _fence(db, job_id, token)
             except DomainError:
                 return
-            blocked = code.startswith(("QWEN_", "GEMINI_", "AI_", "CLOUD_")) or code in {
+            blocked = code.startswith(
+                ("QWEN_", "GEMINI_", "AI_", "CLOUD_", "PARSER_", "LLAMAPARSE_")
+            ) or code in {
                 "INVALID_EVIDENCE",
                 "INVALID_SOURCE_FIELD",
                 "INVALID_TARGET_FIELD",

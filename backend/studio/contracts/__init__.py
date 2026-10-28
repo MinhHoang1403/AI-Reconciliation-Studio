@@ -49,6 +49,9 @@ class WorkspacePolicy(Contract):
     external_request_budget: int = Field(default=0, ge=0)
     allow_cloud_parsing: bool = False
     parser_request_budget: int = Field(default=0, ge=0)
+    parser_allowed_sha256: list[Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]] = Field(
+        default_factory=list, max_length=2
+    )
 
 
 class Workspace(Contract):

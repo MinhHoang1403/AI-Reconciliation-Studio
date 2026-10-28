@@ -21,7 +21,7 @@ Timeout mặc định 45 giây/request. Tối đa hai HTTP attempts cho JSON sai
 
 ## Routing và memory
 
-Thứ tự: approved compatible template → deterministic shortlist → provider được chọn → review. Mặc định `MAPPING_AI_PROVIDER=QWEN`. Chủ dự án ngày 28/10/2026 đã chỉ định tạm chọn `GEMINI` khi Qwen bị chặn; Qwen sẽ được mở sau. Gemini vẫn cần workspace policy, key và reserve budget thành công. Không có fallback cloud tự động khi provider lỗi.
+Thứ tự: approved compatible template → deterministic shortlist → provider được chọn → review. Mặc định `MAPPING_AI_PROVIDER=GEMINI` theo quyết định mới 28/10/2026. Qwen được hoãn chính thức ở trạng thái `BLOCKED_EXTERNAL_DEPENDENCY — IP allowlist`; giữ adapter/endpoint và không probe lại khi chưa được mở. Gemini vẫn cần workspace policy, key và reserve budget thành công. Không có fallback tự động khi provider lỗi.
 
 Template lookup dùng workspace, source schema signature và business scope. Chữ ký chứa cột/kiểu/identifier flags. Kết quả template được rebind evidence về bảng mới và trở thành proposal phải kiểm tra; không cache UNKNOWN/AMBIGUOUS như approved. Các thay đổi màu/filter/UI không gọi parse hoặc AI lại. Nhấn “Đề xuất lại” tạo job explicit với idempotency key.
 
@@ -41,9 +41,15 @@ Gateway ghi provider `GEMINI`, tokens từ `usageMetadata`, số HTTP calls và 
 
 Đối chiếu [REST API chính thức](https://developers.llamaindex.ai/llamaparse/parse/guides/api-reference/) ngày 28/10/2026. Adapter dùng `POST /api/v2/parse/upload` multipart `file` + `configuration`, đọc ID top-level khi tạo, poll `GET /api/v2/parse/{id}` với `job.status` nested và expand markdown/items/metadata/usage.
 
-Policy/allowance/key được kiểm tra trước khi mở file hoặc gửi HTTP. Upload một lần; tối đa 10 polls có timeout. Fail/cancel/response sai/không có trang/timeout đều có error code. Output giữ page numbers, markdown/items và usage nếu có, luôn `UNVERIFIED_EXTRACTION`.
+Policy/allowance/key được kiểm tra trước khi mở file hoặc gửi HTTP. Upload một lần; adapter mặc định 10 polls, worker giới hạn tối đa 60 polls có timeout. Polling GET không tạo reservation tài liệu mới. Fail/cancel/response sai/không có trang/timeout đều có error code. Output giữ page numbers, markdown/items/bbox và usage nếu có, luôn `UNVERIFIED_EXTRACTION`.
 
-**MOCK CONTRACT PASS / LIVE NOT VERIFIED.** Không gọi LlamaParse thật. PDF/DOCX chưa có end-to-end cloud pipeline trong UI; upload báo rõ policy/adapter-only. Không tự chuyển tài liệu OCR thành canonical giao dịch. `ALLOW_CLOUD_PARSING=false`, `CLOUD_PARSER_REQUEST_BUDGET=0`, key rỗng.
+**PASS LIVE / PARSE VALIDATION PASS / INTEGRATION PASS** trên đúng một PDF và một DOCX tổng hợp, mỗi file 1 trang/3 credits; tổng thực tế **2 trang/6 credits**. API tài khoản trước thử xác nhận 9.980 credits và không pay-as-you-go. Tier `cost_effective` có giá [3 credits/trang](https://developers.llamaindex.ai/llamaparse/general/pricing/); mỗi request đặt `page_ranges.max_pages=2`, không bật layout/form extras. Reservation giữ biên trên 2 trang/6 credits mỗi tài liệu: tối đa 2 docs/4 trang/12 credits, dưới trần 20 đã cho phép. Chỉ hai SHA256 của fixtures được cấp phép trong WorkspacePolicy, giới hạn một PDF/một DOCX, không tự tăng allowance.
+
+POST upload được giữ nguyên theo [REST API chính thức](https://developers.llamaindex.ai/llamaparse/parse/guides/api-reference/). Lỗi live đã xác định: upstream trả ID `pjb-*`, không phải UUID. Adapter đã sửa sang opaque ID có allowlist ký tự, giữ legacy UUID; regression bảo vệ cả POST và resume GET. PDF đã được provider nhận trước khi lỗi format ID được phát hiện; đối chiếu receipt duy nhất theo tên/tier/thời điểm, lấy lại đúng job qua GET và giữ attempt lỗi trong lịch sử. **Không POST lại PDF.** DOCX tạo đúng một job riêng. Không thay giá trị trích xuất để khớp oracle; HTML table và Markdown table được đọc như hai dạng biểu diễn của cùng cells.
+
+Luồng dùng storage/metadata/jobs hiện có: upload → immutable raw → account preflight → durable reservation → POST một lần → lưu job ID ngay → bounded polling → document artifact JSON scoped với file/hash/page/items/bbox/usage. Artifact và preview luôn `UNVERIFIED_EXTRACTION`, không tự sinh canonical. Cache/restart đọc local artifact, không tạo job khác. Job nhận rồi có ID được resume bằng GET; đã reserve mà mất receipt thì fail closed, không tự gửi lại. `GET /api/datasets/{id}/documents` có authorization và checksum; UI chỉ render text/cell strings, không inject provider HTML.
+
+Sau thử đã đóng `ALLOW_CLOUD_PARSING` và quyền workspace; giữ nguyên API key, request ceiling 2, credit ceiling 20, hai reservations và artifacts. Cài mới vẫn cloud OFF/budget 0/không key. `CLOUD_PARSER_CREDIT_BUDGET` là trần bổ sung, không phải usage đã tiêu. Fixture/runtime reports không vào Git.
 
 ## Sau khi mở quyền Qwen
 

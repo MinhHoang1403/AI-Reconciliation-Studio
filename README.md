@@ -2,7 +2,7 @@
 
 Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, AI đề xuất ánh xạ, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
 
-**Trạng thái:** chủ dự án đã chỉ định dùng Gemini tạm thời cho Smart Setup trong lúc chờ mở Qwen. LlamaParse vẫn tắt; mapping luôn cần người dùng duyệt. Qwen live còn **BLOCKED** do allowlist. Xem [bằng chứng nghiệm thu](docs/IMPLEMENTATION_STATUS.md); chưa chuyển Giai đoạn 2.
+**Trạng thái:** Gemini là AI mặc định hiện tại, có policy và hạn mức bền vững; mapping luôn cần người dùng duyệt. Qwen được hoãn chính thức vì IP allowlist. Hai tài liệu LlamaParse tổng hợp đã parse/validate live, quyền thử tạo job đã đóng lại. Xem [bằng chứng nghiệm thu](docs/IMPLEMENTATION_STATUS.md) và quyết định chuyển giai đoạn tại đó.
 
 ## Mở ứng dụng trong workspace hiện tại
 
@@ -28,7 +28,7 @@ Máy đã kiểm tra: Windows, Ryzen 5 7535HS (6 cores/12 threads), khoảng 16 
 
 Mặc định `LOCAL_DEMO_ACCESS=true`, Gemini/LlamaParse keys rỗng, cloud permissions false và request budgets bằng 0. Quyền workspace cũng mặc định `LOCAL_ONLY`; biến môi trường không tự cấp quyền cloud. Không tự chuyển provider khi Qwen lỗi.
 
-Workspace local hiện được chủ dự án cho phép chọn `MAPPING_AI_PROVIDER=GEMINI`, `ALLOW_EXTERNAL_AI=true`, `EXTERNAL_AI_REQUEST_BUDGET=10`, key chỉ trong `.env`; policy workspace `CLOUD_ALLOWED` và trần 10 request. Mỗi HTTP attempt (kể cả retry/lỗi) có reservation bền vững, trừ hạn mức toàn hệ thống lẫn workspace; Cài đặt hiển thị số đã dùng/còn lại. Không reset khi restart. Đổi lại `MAPPING_AI_PROVIDER=QWEN` rồi khởi động lại khi endpoint được mở; không cần upload lại raw. LlamaParse có quyền riêng và vẫn tắt.
+Workspace local chọn `MAPPING_AI_PROVIDER=GEMINI`, `ALLOW_EXTERNAL_AI=true`, `EXTERNAL_AI_REQUEST_BUDGET=10`, key chỉ trong `.env`; policy workspace `CLOUD_ALLOWED` và trần 10 request. Mỗi HTTP attempt (kể cả retry/lỗi) có reservation bền vững, trừ hạn mức toàn hệ thống lẫn workspace; Cài đặt hiển thị số đã dùng/còn lại. Không reset khi restart. Qwen giữ nguyên adapter/endpoint nhưng không probe lặp lại; chỉ lựa chọn khi chủ dự án mở quyền. LlamaParse có quyền, request/credit ceilings và SHA256 allowlist riêng; sau phép thử đã tắt quyền tạo job, không xóa keys/reservations/artifacts.
 
 `docker compose up -d --build --wait` khởi động đủ bốn service. Sau lệnh này, chạy `./tools/verify-local.ps1` để kích hoạt auto-session local. Nếu chưa xác minh, `/api/session` trả 403; không tắt auth để vượt qua. Proof mất hiệu lực khi restart/recreate backend hoặc frontend. Chỉ hỗ trợ loopback demo; không publish LAN/Internet hoặc public reverse proxy.
 
@@ -36,6 +36,7 @@ Workspace local hiện được chủ dự án cho phép chọn `MAPPING_AI_PROV
 
 1. Tạo dự án, nhập tên và phạm vi nghiệp vụ để kiểm soát tái sử dụng mapping.
 2. Chọn **Tải dữ liệu**, thêm nhiều CSV/XLSX. Encoding/delimiter/header nằm trong tùy chọn nâng cao; UTF-8/BOM là mặc định.
+   Có thể bỏ chọn “Dùng AI đề xuất ánh xạ trong hạn mức” để chỉ parse/profile và review thủ công, không enqueue AI hoặc tiêu quota. Quyết định này không thay đổi raw/parsed semantics; có thể yêu cầu đề xuất riêng về sau.
 3. Mở nguồn và chọn sheet. **Khám phá dữ liệu** có phân trang/tìm kiếm phía server, thống kê và nguồn gốc.
 4. Mở **AI Smart Setup**. Provider được chọn đề xuất ánh xạ; nếu bị chặn, thiếu key hoặc hết ngân sách, UI báo rõ và cho phép dùng shortlist/thủ công. Không hiển thị thành công AI giả.
 5. Xác nhận loại dữ liệu, ý nghĩa mỗi dòng và từng trường cần dùng. Có thể giữ cột chuỗi tùy chỉnh. Với tiền, xác nhận locale, chỉ tiêu, gross/net hoặc định nghĩa riêng, currency và đơn vị; với ngày, chọn format/timezone rõ ràng. Cảnh báo công thức/vùng bảng cần được kiểm tra.
@@ -43,7 +44,7 @@ Workspace local hiện được chủ dự án cho phép chọn `MAPPING_AI_PROV
 7. Dùng lớp **Cảnh báo / lỗi** để kiểm tra invalid/null và **Xem nguồn** để mở dòng gốc. Dữ liệu lỗi không bị thay bằng zero hoặc bỏ đi. Sửa mapping tạo revision mới, canonical cũ được đánh dấu đã cũ; raw/parsed được bảo toàn.
 8. Mở lại trình duyệt, chọn dự án cũ để tiếp tục. Tệp cùng nội dung/config trong cùng dự án được reuse; mẫu đã duyệt chỉ được gợi ý trong scope tương thích.
 
-PDF/DOCX hiện báo policy/adapter-only; chưa có cloud parsing end-to-end được nghiệm thu. Các mục Đối soát, Ngoại lệ, Báo cáo và Trợ lý AI chưa kích hoạt. Không có KPI tài chính giả.
+PDF/DOCX mới cần allowance riêng được duyệt trước khi upload. Kết quả đã lưu có preview theo file/trang/bảng và luôn “chưa được xác minh”; không tự chuyển thành canonical hoặc suy ra kết luận tiền. Đọc lại kết quả không gọi provider. Các mục Đối soát, Ngoại lệ, Báo cáo và Trợ lý AI chỉ mở theo giai đoạn đã nghiệm thu; không có KPI tài chính giả.
 
 ## Vận hành và bảo toàn dữ liệu
 
@@ -70,10 +71,12 @@ npm --prefix frontend run check
 npm --prefix frontend run lint
 npm --prefix frontend run build
 npm --prefix frontend exec -- playwright install chromium
-$env:STUDIO_EXPECT_AI_PROVIDER='GEMINI' # Chỉ khi chủ dự án đã bật Gemini; có gọi live tổng hợp
+$env:STUDIO_EXPECT_AI_PROVIDER='MANUAL' # Regression mặc định không tiêu quota AI
 npm --prefix frontend run test:e2e
 uv run python tools/check_repository.py
 ```
+
+Gemini E2E live chỉ khi explicit đặt `STUDIO_EXPECT_AI_PROVIDER=GEMINI`; có tiêu quota hiện hữu. LlamaParse không phải regression tự động: hai tài liệu thử đã lưu tại runtime và `tools/check-document-acceptance.py` đọc lại/reuse đúng refs. Không mở allowance hoặc tạo tài liệu/job khác chỉ để chạy lại tests.
 
 PostgreSQL tests chạy trong schema UUID `test_*` của server hiện tại rồi dọn đúng schema tổng hợp đó; không dùng bảng dữ liệu ứng dụng hoặc Compose test project. Chi tiết, catalogue T01–T16, benchmark và trạng thái live/mock nằm trong [hướng dẫn kiểm thử](docs/TESTING_GUIDE.md).
 

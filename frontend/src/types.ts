@@ -58,6 +58,16 @@ export interface Profile {
   columns: ColumnProfile[];
   key_candidates: string[][];
 }
+export interface DocumentArtifact {
+  artifact: { id: string; quality: string };
+  source_file: { id: string; filename: string; sha256: string };
+  extraction: {
+    verification_status: "UNVERIFIED_EXTRACTION";
+    pages: { page_number: number; markdown: string; items: Record<string, unknown>[] }[];
+    usage: { credits?: number | null };
+  };
+  warnings: string[];
+}
 export type DataType = "string" | "decimal" | "date" | "enum";
 export interface SchemaField {
   id: string;
@@ -180,11 +190,16 @@ export const statusText: Record<string, string> = {
   CANCELLED: "Đã hủy",
 };
 export const jobKind: Record<string, string> = {
+  document_parse: "Đọc tài liệu có allowance",
   parse: "Đọc và phân tích",
   mapping: "AI đề xuất ánh xạ",
   normalize: "Chuẩn hóa dữ liệu",
 };
 export const errorText: Record<string, string> = {
+  PARSER_BUDGET_EXHAUSTED: "Hết allowance LlamaParse. Không tạo thêm job tính phí.",
+  PARSER_CREDITS_NOT_VERIFIED: "Chưa xác minh được credits LlamaParse. Tệp gốc được giữ nguyên.",
+  CLOUD_PARSING_DISABLED: "Chưa có quyền tạo job LlamaParse. Kết quả đã lưu vẫn đọc được.",
+  LLAMAPARSE_POLL_TIMEOUT: "Tài liệu chưa hoàn tất trong thời gian chờ. Không gửi lại job tính phí.",
   GEMINI_KEY_MISSING: "Chưa cấu hình khóa Gemini. Có thể dùng ánh xạ thủ công.",
   GEMINI_HTTP_ERROR: "Gemini từ chối yêu cầu. Cần kiểm tra khóa, model hoặc quyền truy cập.",
   GEMINI_UNAVAILABLE: "Gemini chưa phản hồi. Có thể dùng ánh xạ thủ công.",

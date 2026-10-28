@@ -33,8 +33,8 @@ def route_ai_task(
     *,
     approved_cache: bool = False,
     deterministic: bool = False,
-    qwen_enabled: bool = True,
-    request_gemini: bool = False,
+    qwen_enabled: bool = False,
+    request_gemini: bool = True,
 ) -> Literal["CACHE", "DETERMINISTIC", "QWEN", "GEMINI", "REVIEW"]:
     """F26: no automatic cloud escalation; Gemini needs explicit task, policy and budget."""
     if approved_cache:
