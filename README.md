@@ -2,7 +2,7 @@
 
 Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, AI đề xuất ánh xạ, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
 
-**Trạng thái:** Gemini là AI mặc định hiện tại, có policy và hạn mức bền vững; mapping luôn cần người dùng duyệt. Qwen được hoãn chính thức vì IP allowlist. Hai tài liệu LlamaParse tổng hợp đã parse/validate live, quyền thử tạo job đã đóng lại. Xem [bằng chứng nghiệm thu](docs/IMPLEMENTATION_STATUS.md) và quyết định chuyển giai đoạn tại đó.
+**Trạng thái:** Chỉ nghiệm thu Giai đoạn 1, dừng và chờ prompt riêng trước Giai đoạn 2. Gemini là AI mặc định hiện tại, có policy và hạn mức bền vững; mapping luôn cần người dùng duyệt. Qwen được hoãn chính thức vì IP allowlist. Hai tài liệu LlamaParse tổng hợp đã parse/validate live, quyền thử tạo job đã đóng lại. Xem [bằng chứng nghiệm thu](docs/IMPLEMENTATION_STATUS.md).
 
 ## Mở ứng dụng trong workspace hiện tại
 

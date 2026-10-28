@@ -2,6 +2,8 @@
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
+Final Acceptance theo phạm vi mới ngày 28/10/2026 đã chạy lại: **91 backend PASS, 0 FAIL/SKIP** (79 offline + 12 PostgreSQL), Ruff/mypy và frontend TypeScript/lint/build PASS, **9 E2E MANUAL PASS, 0 FAIL/SKIP trong 19,6 giây**. T01–T16 và security nằm trong các suite này, không cộng thêm vào tổng. Baseline 87 backend/8 E2E tăng do bốn backend regression và một case document cached. Gemini live 9 E2E PASS là bằng chứng của lần chạy trước chỉ dẫn thu hẹp; không gọi lại cloud ở lượt này, quota vẫn 6/10. LlamaParse đọc lại hai kết quả live đã lưu, không tạo job mới. Chỉ nghiệm thu Giai đoạn 1, chờ prompt riêng trước Giai đoạn 2.
+
 ## Backend offline
 
 ```powershell
@@ -68,6 +70,8 @@ npm --prefix frontend run test:e2e
 
 Chế độ này có thể tiêu thụ tối đa hai HTTP attempts cho một bảng tổng hợp, vẫn chịu trần global/workspace; test kiểm tra provider trước khi upload để không gọi cloud nhầm chế độ. Chờ job Gemini SUCCEEDED, kiểm tra source GEMINI, reference mapping theo oracle độc lập và chưa AI tự duyệt rồi thực hiện luồng review/normalization. Nghiệm thu lại: **9 PASS ở Gemini LIVE (20,3 giây)** và **9 PASS ở MANUAL (16,2 giây)**, không cộng thành 18 case khác nhau. Regression xác minh refresh cùng revision giữ draft/grain/locale. Case document đọc hai artifact cached khi quyền parser đã đóng, kiểm tra IDs/amounts, không có nút normalize và không overflow ở mobile. Không hạ validator để làm test PASS. Provider failure/cloud OFF tiếp tục được kiểm tra bằng mock.
 
+Các thời gian 20,3/16,2 giây là lần chạy trước chỉ dẫn thu hẹp. Lần chạy lại cuối cùng chỉ MANUAL, 9 PASS/19,6 giây. Trước HTTP/E2E, dùng `./tools/verify-local.ps1` khi proof local không hợp lệ; 403 trước xác minh là fail-closed theo thiết kế, không tắt auth để chạy tests.
+
 Kịch bản: tạo project → upload → xem `000123` → xác nhận metric/locale/currency → approve → normalize → canonical/errors → evidence. Người quay lại thấy mapping/artifacts. Session HttpOnly/SameSite, CSRF và Host spoof rejection, 0 external browser requests được kiểm tra. Regression trì hoãn request tìm kiếm xác nhận UI không trình bày preview cũ dưới query/phiên bản mới.
 
 Responsive: 1440×900, 1920×1080, 1366×768, 768×1024 và 390×844; chờ nội dung thực trước khi kiểm tra overflow, chụp Dashboard/Mapping và mở/đóng upload modal bằng Escape. Screenshots chỉ có dữ liệu tổng hợp, lưu ở `runtime/screenshots` bị Git ignore. Kiểm tra tự động và xem ảnh chưa tương đương audit toàn bộ WCAG 2.2 AA.
@@ -79,6 +83,8 @@ Responsive: 1440×900, 1920×1080, 1366×768, 768×1024 và 390×844; chờ nộ
 ```
 
 Đợi hết jobs đang chạy. Công cụ snapshot metadata/approvals/canonical refs và kiểm tra SHA256 từng artifact, restart rồi force-recreate đủ bốn service và recreate riêng frontend trong project hiện tại, xác nhận auto-session bị chặn trước re-verification và so lại dữ liệu. Bao gồm workspace policy, reservations, document JSON và raw/Parquet; quota không reset. Không xóa volumes hoặc raw. Snapshot kiểm tra nằm trong volume, không vào Git. Snapshot nghiệm thu lại gồm 17 datasets, 12 canonical, 42 jobs/45 attempts và 58 artifact refs.
+
+Snapshot lần Final Acceptance cuối: 19 datasets/versions, 14 canonical, 46 jobs/50 attempts, 48 audits, 15 traces và 66 artifact refs. Metadata/checksums và quyền parser OFF giữ nguyên sau cả ba kiểu restart/recreate; chỉ dùng project Compose hiện có. Các số 17/12/42/45/58 phía trên là mốc trước khi tạo thêm fixtures E2E/recovery, không phải dữ liệu bị thay thế hoặc mất.
 
 ## Worker bị dừng đột ngột
 
