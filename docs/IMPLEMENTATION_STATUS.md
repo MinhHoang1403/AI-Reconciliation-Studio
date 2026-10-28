@@ -71,7 +71,7 @@ Giữ volumes ai-reconciliation-studio_postgres_data và ai-reconciliation-studi
 
 ## F. Git/GitHub
 
-Repository chính thức https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git. Nền tảng/Gemini trước ở commit 286c0802a2807bb11e53a89cff882217215b90fc. Đợt nghiệm thu tiếp tục codex/data-foundation, commit/push trước tích hợp main. Hash tích hợp và đối chiếu local/remote được bổ sung sau thao tác Git thực.
+Repository chính thức https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git. Nền tảng/Gemini trước ở commit 286c0802a2807bb11e53a89cff882217215b90fc. Commit nghiệm thu source **2e73cad7b7dc1fed5211e699b45b84d0ccbf5ea4** — feat: accept bounded document parsing and Gemini data foundation — đã push lên codex/data-foundation, fast-forward vào main và push origin/main. Local/remote main và feature đã được đối chiếu cùng hash. Bản bổ sung báo cáo chỉ ghi bằng chứng Git, không đổi runtime.
 
 .vscode/ có sẵn ngoài phạm vi, giữ nguyên và không stage. .env, keys, uploads, Parquet, document fixtures, screenshots, runtime reports và volumes không vào Git. Rules.md/AGENTS.md giữ nguyên; quyết định provider/ngoại lệ ghi trong kế hoạch, không thay nghiệp vụ.
 
@@ -98,4 +98,4 @@ Mở [ứng dụng local](http://127.0.0.1:18180). Tạo/chọn project → uplo
 
 Khởi động ./tools/start.ps1 -SkipBuild; build mới dùng ./tools/start.ps1, không nhập token. Không xóa volumes. Gemini còn 4 requests trong trần 10; LlamaParse tạo job OFF.
 
-Sau commit/push và tích hợp main được xác minh, được phép bắt đầu Giai đoạn 2 theo yêu cầu đã giao. Dùng canonical/contracts hiện có, không viết parser/mapping thứ hai; không tự bắt đầu Giai đoạn 3.
+Commit/push và tích hợp main đã được xác minh, đủ điều kiện bắt đầu Giai đoạn 2 theo yêu cầu đã giao. Dùng canonical/contracts hiện có, không viết parser/mapping thứ hai; không tự bắt đầu Giai đoạn 3.
