@@ -4,6 +4,8 @@ DDL is an explicit snapshot. No historical columns, canonical identifiers or
 artifact bytes change; downgrade refuses to remove persisted reconciliation data.
 """
 
+from typing import Any
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
@@ -14,7 +16,7 @@ branch_labels = None
 depends_on = None
 
 
-def scoped() -> list[sa.Column]:
+def scoped() -> list[sa.Column[Any]]:
     return [
         sa.Column("id", sa.String(64), primary_key=True),
         sa.Column("workspace_id", sa.String(64), sa.ForeignKey("workspaces.id"), nullable=False),
@@ -22,7 +24,7 @@ def scoped() -> list[sa.Column]:
     ]
 
 
-def timestamp() -> sa.Column:
+def timestamp() -> sa.Column[Any]:
     return sa.Column("created_at", sa.DateTime(timezone=True), nullable=False)
 
 
