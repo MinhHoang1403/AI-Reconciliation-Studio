@@ -528,6 +528,8 @@ def validate_ai_output(raw: RawProviderResponse, task: AITaskRequest) -> Validat
 
 **Router logic** [D]: cached approved answer/template → deterministic code if possible → Qwen local → optional Gemini if permitted, within budget, and measured to be useful → review. Qwen base URL `https://ai.inetcloud.vn/memochat/v1`, model ID `knowledge`, no Authorization header when no key. Confirm `/models` and inference contract; **HTTP 200 `/models` không chứng minh generation hoạt động**. Đừng tự đổi ID thành `qwen3.5:27b`.
 
+**Chỉ định tạm thời của chủ dự án ngày 28/10/2026:** dùng Gemini cho đề xuất ánh xạ trong lúc chờ mở allowlist Qwen. `MAPPING_AI_PROVIDER=GEMINI` chọn tuyến explicit; không tự fallback khi provider lỗi. Chỉ workspace được cấp quyền, key hợp lệ và ngân sách còn mới được gọi. Lần chuyển đổi local giới hạn tổng cộng 10 HTTP attempts, lưu reservation trong PostgreSQL trước mỗi attempt; restart không reset. LlamaParse vẫn OFF. Qwen live giữ trạng thái hoãn/BLOCKED; phải báo riêng bằng chứng Gemini live, không ghi thành Qwen PASS hoặc tự chuyển Giai đoạn 2.
+
 Gemini model `gemini-3.5-flash-lite`, policy `LOCAL_ONLY` mặc định, `external_request_budget=0` mặc định; cloud test chỉ khi chủ dự án cấp phép. Với payload Structured Outputs bị API từ chối trên dự án cũ, dùng **JSON prompt + strict Pydantic/semantic checks** làm đường hỗ trợ, không cố retry vô hạn hoặc coi JSON là đúng nghiệp vụ. LlamaParse là dịch vụ riêng, budget/allowance riêng. Ghi tokens/credits khi provider cho biết; không bịa unit costs.
 
 ## 24. Prompt contracts

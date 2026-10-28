@@ -8,6 +8,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   use: {
+    actionTimeout: 15000,
     baseURL: "http://127.0.0.1:18180",
     viewport: { width: 1440, height: 900 },
     screenshot: "only-on-failure",

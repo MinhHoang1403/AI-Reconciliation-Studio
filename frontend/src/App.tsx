@@ -173,6 +173,20 @@ export function App() {
     setSummary(s);
   }, [projectId, datasetOffset]);
   useEffect(() => {
+    if (!ready || page !== "settings") return;
+    let current = true;
+    void api<WorkspaceSettings>("/settings")
+      .then((value) => {
+        if (current) setWorkspace(value);
+      })
+      .catch((err) => {
+        if (current) setError(err.message);
+      });
+    return () => {
+      current = false;
+    };
+  }, [ready, page]);
+  useEffect(() => {
     localStorage.setItem("studio.project", projectId);
     setDatasetId("");
     setTableId("");
@@ -703,7 +717,9 @@ export function App() {
                     </h2>
                     <p>
                       Tải CSV hoặc Excel lên. Hệ thống đọc cấu trúc, phân tích
-                      chất lượng và dùng Qwen để đề xuất ánh xạ. Quyết định cuối
+                      chất lượng và dùng{" "}
+                      {workspace?.mapping_ai_provider === "GEMINI" ? "Gemini" : "Qwen"}{" "}
+                      để đề xuất ánh xạ. Quyết định cuối
                       cùng luôn thuộc về bạn.
                     </p>
                     <div className="welcome-points">
@@ -1268,7 +1284,8 @@ export function App() {
                   <dt>Gemini cloud</dt>
                   <dd>
                     {workspace.policy.allow_external_ai ? "Có quyền" : "Tắt"} ·{" "}
-                    {workspace.policy.external_request_budget} request
+                    {workspace.gemini_requests_remaining} request còn lại ·{" "}
+                    {workspace.gemini_requests_used} đã dùng
                   </dd>
                   <dt>Parser cloud</dt>
                   <dd>
@@ -1293,6 +1310,14 @@ export function App() {
                       ? `Đã cấu hình · ${workspace.qwen_model}`
                       : "Chưa cấu hình"}
                   </dd>
+                  <dt>Provider đề xuất ánh xạ</dt>
+                  <dd>
+                    {workspace.mapping_ai_provider === "GEMINI" ? "Gemini" : "Qwen"}
+                  </dd>
+                  <dt>Gemini</dt>
+                  <dd>
+                    {workspace.gemini_configured ? workspace.gemini_model : "Chưa cấu hình khóa"}
+                  </dd>
                   <dt>Mỗi tệp</dt>
                   <dd>{workspace.max_upload_bytes / 1048576} MB</dd>
                   <dt>Mỗi lần tải</dt>
@@ -1302,7 +1327,7 @@ export function App() {
                 </dl>
                 <Notice>
                   Khóa và địa chỉ provider chỉ được quản lý trên backend.
-                  Gemini/LlamaParse chưa xác minh live.
+                  Mỗi lần gọi Gemini tiêu thụ ngân sách, kể cả lỗi hoặc thử lại. Parser cloud có quyền riêng.
                 </Notice>
               </div>
             </section>

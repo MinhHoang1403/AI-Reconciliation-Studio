@@ -1,6 +1,7 @@
 """Central configuration; provider addresses and credentials never enter browser DTOs."""
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
     qwen_base_url: str = ""
     qwen_model: str = "knowledge"
     qwen_enabled: bool = True
+    mapping_ai_provider: Literal["QWEN", "GEMINI"] = "QWEN"
     ai_timeout_seconds: float = Field(default=45, ge=1, le=120)
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.5-flash-lite"

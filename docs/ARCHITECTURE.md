@@ -14,6 +14,7 @@ flowchart LR
   Worker --> Parquet[Parsed / Canonical / Errors]
   Worker --> Gateway[AI Gateway]
   Gateway --> Qwen
+  Gateway -. explicit policy + budget .-> Gemini
 ```
 
 Một Compose project `ai-reconciliation-studio`, gồm `frontend`, `backend`, `worker`, `postgres`. Backend/worker dùng chung image và code. PostgreSQL giữ quan hệ, metadata, session, policy, jobs, attempts, approvals và audit. Volume `artifacts` giữ raw và Parquet. Không dùng database riêng cho từng upload; không dựng Redis, broker, model server hoặc container test.
@@ -37,7 +38,7 @@ Một Compose project `ai-reconciliation-studio`, gồm `frontend`, `backend`, `
 
 Upload đọc theo block, kiểm tra hash và ghi raw bằng exclusive create. Job parse tạo Parquet mới trước; refs và metadata chỉ được công bố trong transaction khi claim token và lease còn hợp lệ. Normalization cũng ghi artifact canonical/errors trước rồi kiểm tra lại active mapping, giữ khóa bảng và công bố cùng transaction.
 
-Các tệp chưa được tham chiếu sau crash/rollback có thể tồn tại; không có tác vụ xóa tự động. Chúng không xuất hiện qua API. Không sửa artifact cũ. Unique constraints và advisory lock ngăn enqueue/upload trùng; `FOR UPDATE SKIP LOCKED` tránh claim trùng. Lease mặc định 300 giây, tối đa ba job attempts; mỗi lời gọi Qwen tối đa hai HTTP attempts bên trong một job. Qwen lỗi giữ job `BLOCKED`, không tự chuyển cloud hoặc tự lặp provider liên tục.
+Các tệp chưa được tham chiếu sau crash/rollback có thể tồn tại; không có tác vụ xóa tự động. Chúng không xuất hiện qua API. Không sửa artifact cũ. Unique constraints và advisory lock ngăn enqueue/upload trùng; `FOR UPDATE SKIP LOCKED` tránh claim trùng. Lease mặc định 300 giây, tối đa ba job attempts; mỗi lời gọi Qwen/Gemini tối đa hai HTTP attempts bên trong một job. Provider lỗi giữ job `BLOCKED`, không tự chuyển cloud hoặc tự lặp provider liên tục. Gemini chỉ chạy khi được chọn explicit và có quyền/key/budget; mỗi attempt có audit reservation commit trước HTTP dưới global advisory lock. Trần global/workspace không reset qua restart. Không cần migration mới vì dùng bảng audit hiện có.
 
 Worker chạy một job tại một thời điểm, Polars giới hạn hai threads, memory limits: backend 384 MiB, worker 512 MiB, PostgreSQL 256 MiB, Nginx 128 MiB. Đây là cấu hình hạn chế tài nguyên được kiểm tra trên máy 16 GB RAM; không phải benchmark sức tải. Vượt giới hạn trả lỗi/cần review, không cắt mất dòng.
 

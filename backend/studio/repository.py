@@ -4,13 +4,21 @@ import hashlib
 import json
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from studio.access import Actor
-from studio.contracts import ArtifactRef, DatasetProfile, MappingRevision, SchemaDefinition
+from studio.config import Settings
+from studio.contracts import (
+    ArtifactRef,
+    DatasetProfile,
+    MappingRevision,
+    SchemaDefinition,
+    WorkspacePolicy,
+)
 from studio.database import (
     ArtifactRow,
+    AuditRow,
     Base,
     DatasetRow,
     JobRow,
@@ -19,9 +27,59 @@ from studio.database import (
     SchemaRow,
     TableRow,
     VersionRow,
+    WorkspaceRow,
 )
 from studio.errors import DomainError
 from studio.profiling import default_schema, source_signature
+
+
+def gemini_request_counts(db: Session, workspace_id: str) -> tuple[int, int]:
+    """Count durable reservations, including failed calls/crashes; never refund unknown delivery."""
+    reserved = (
+        select(func.count())
+        .select_from(AuditRow)
+        .where(AuditRow.action == "GEMINI_REQUEST_RESERVED")
+    )
+    return (
+        db.scalar(reserved) or 0,
+        db.scalar(reserved.where(AuditRow.workspace_id == workspace_id)) or 0,
+    )
+
+
+def reserve_gemini_request(db: Session, workspace_id: str, job_id: str, config: Settings) -> bool:
+    """Reserve one HTTP attempt under a global PG lock; caller commits BEFORE sending.
+
+    Global/workspace budgets are lifetime ceilings on reservations, not reset on restart.
+    Retries each consume a slot. Missing credentials, policy OFF or exhausted budget deny.
+    """
+    if not config.allow_external_ai or not config.gemini_api_key.get_secret_value():
+        return False
+    lock = int.from_bytes(
+        hashlib.sha256(b"studio:gemini-request-budget").digest()[:8], "big", signed=True
+    )
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock})
+    workspace = db.get(WorkspaceRow, workspace_id)
+    if workspace is None:
+        return False
+    policy = WorkspacePolicy.model_validate(workspace.policy)
+    if policy.mode != "CLOUD_ALLOWED" or not policy.allow_external_ai:
+        return False
+    global_used, workspace_used = gemini_request_counts(db, workspace_id)
+    if (
+        global_used >= config.external_ai_request_budget
+        or workspace_used >= policy.external_request_budget
+    ):
+        return False
+    db.add(
+        AuditRow(
+            workspace_id=workspace_id,
+            actor_id="worker",
+            action="GEMINI_REQUEST_RESERVED",
+            resource_id=job_id,
+        )
+    )
+    db.flush()
+    return True
 
 
 def get_scoped[T: Base](db: Session, model: type[T], resource_id: str, actor: Actor) -> T:

@@ -53,6 +53,8 @@ Row identity tạo từ file/table/physical source row. CSV có quoted newline v
 5. Approval kiểm tra quyền, grain/entity, required fields, Decimal locale/metric/basis/currency/unit; tạo immutable revision. Mapping trước thành SUPERSEDED; canonical phụ thuộc thành stale; raw/parsed giữ nguyên.
 6. Normalize nhận approved active mapping. READY/PARTIAL/FAILED là chất lượng chuẩn hóa; **không** đồng nghĩa đủ điều kiện đối soát tài chính. Rule/coverage/cardinality/period là gate giai đoạn sau.
 
+`GET /api/settings` trả `mapping_ai_provider`, `gemini_model`, boolean `gemini_configured`, `gemini_requests_used` và `gemini_requests_remaining` trong scope workspace; không trả API key. Remaining là min của hạn mức global/workspace còn lại sau durable audit reservations, bằng 0 khi cloud không được phép. `JobView.result.source` phân biệt `GEMINI`, `QWEN`, `APPROVED_TEMPLATE`; success chỉ có nghĩa proposal qua validator, chưa được người dùng approve. Reservation đếm HTTP attempts kể cả lỗi; không phải chi phí tiền tệ hoặc số proposal thành công.
+
 Upload lại cùng project/hash/parser config tái sử dụng dataset và raw. Cùng bytes ở project khác không reuse file ref. Chữ ký mapping gồm tên/thứ tự cột, type candidates, identifier flags; lookup còn yêu cầu workspace và business scope. Template được đưa lại dưới dạng đề xuất cần review, không auto-approve số tiền hoặc dữ liệu mới.
 
 ## DSL

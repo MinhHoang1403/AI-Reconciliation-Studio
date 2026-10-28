@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 
 test.describe.configure({ mode: "serial" });
 const projectName = `Dữ liệu tổng hợp · ${Date.now()}`;
+const expectGemini = process.env.STUDIO_EXPECT_AI_PROVIDER === "GEMINI";
 let projectId = "";
 let datasetId = "";
 let tableId = "";
@@ -13,12 +14,15 @@ async function openApp(page: Page) {
   await expect(page.locator("#project-select")).toBeVisible();
 }
 
-test("A/C/D: create project, upload, review manually when Qwen is blocked, normalize invalid data", async ({
+test("A/C/D: create project, upload, review mapping with explicit provider, normalize invalid data", async ({
   page,
 }) => {
+  test.setTimeout(expectGemini ? 180000 : 60000);
   const errors: string[] = [];
   page.on("pageerror", (err) => errors.push(err.message));
   await openApp(page);
+  const configured = await page.request.get("/api/settings");
+  expect((await configured.json()).mapping_ai_provider).toBe(expectGemini ? "GEMINI" : "QWEN");
   await page.getByRole("button", { name: "+ Tạo dự án", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Tên dự án", { exact: true }).fill(projectName);
@@ -48,6 +52,23 @@ test("A/C/D: create project, upload, review manually when Qwen is blocked, norma
   datasetId = (await datasets.json()).items[0].id;
   const tables = await page.request.get(`/api/datasets/${datasetId}/tables`);
   tableId = (await tables.json()).items[0].id;
+  if (expectGemini) {
+    await expect.poll(async () => {
+      const response = await page.request.get(`/api/jobs?project_id=${projectId}`);
+      const job = (await response.json()).items.find((j: {kind: string}) => j.kind === "mapping");
+      return job?.status;
+    }, {timeout: 120000}).toBe("SUCCEEDED");
+    const response = await page.request.get(`/api/jobs?project_id=${projectId}`);
+    const job = (await response.json()).items.find((j: {kind: string}) => j.kind === "mapping");
+    expect(job.result.source).toBe("GEMINI");
+    const mappings = await page.request.get(`/api/tables/${tableId}/mappings`);
+    const proposal = (await mappings.json()).items[0];
+    expect(proposal.status).not.toBe("APPROVED");
+    expect(proposal.proposal.decisions.some((d: {source_field: string; candidate_target: string}) =>
+      d.source_field === "c1" && d.candidate_target === "reference_id")).toBeTruthy();
+    await page.getByRole("button", {name: "Cập nhật", exact: true}).click();
+    await expect(page.getByRole("button", {name: "Cập nhật", exact: true})).toBeEnabled();
+  }
   await page.getByRole("tab", { name: "AI Smart Setup" }).click();
   await expect(
     page.getByRole("heading", { name: "Hiểu dữ liệu, xác nhận ý nghĩa" }),
@@ -76,6 +97,11 @@ test("A/C/D: create project, upload, review manually when Qwen is blocked, norma
     .selectOption("gross");
   await page.getByLabel("Tiền tệ Gross amount", { exact: true }).fill("VND");
   await page.getByLabel("Đơn vị Gross amount", { exact: true }).fill("VND");
+  await page.getByRole("button", {name: "Cập nhật", exact: true}).click();
+  await expect(page.getByRole("button", {name: "Cập nhật", exact: true})).toBeEnabled();
+  await expect(page.getByLabel("Loại dữ liệu", {exact: true})).toHaveValue("order");
+  await expect(page.getByLabel("Locale Gross amount", {exact: true})).toHaveValue("en-US");
+  await expect(page.getByRole("button", {name: "Xác nhận ánh xạ", exact: true})).toBeEnabled();
   await page
     .getByRole("button", { name: "Xác nhận ánh xạ", exact: true })
     .click();
@@ -157,8 +183,8 @@ test("A/C/D: create project, upload, review manually when Qwen is blocked, norma
       );
       return j?.status;
     })
-    .toBe("BLOCKED");
-  await expect(page.getByText(/Qwen từ chối IP truy cập/)).toBeVisible();
+    .toBe(expectGemini ? "SUCCEEDED" : "BLOCKED");
+  if (!expectGemini) await expect(page.getByText(/Qwen từ chối IP truy cập/)).toBeVisible();
   expect(errors).toEqual([]);
 });
 

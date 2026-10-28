@@ -24,7 +24,7 @@ from studio.errors import DomainError
 from studio.profiling import find_mapping_candidates
 from studio.schema_mapping import validate_mapping
 
-PROMPT_REVISION = "schema-understanding-1"
+PROMPT_REVISION = "schema-understanding-2"
 TASK_IDS = {"classify_dataset", "infer_grain", "propose_mapping", "suggest_transformation"}
 
 
@@ -93,6 +93,9 @@ def build_prompt(
         "Never invent fields, evidence, currency, monetary semantics or approvals. No SQL/Python. "
         "Use UNKNOWN or AMBIGUOUS for missing evidence; Total never implies gross or net. "
         "Each mapping must cite that source column evidence id. "
+        "For each decision, source_field MUST be the exact columns[].id (for example c1), "
+        "NEVER the column name. candidate_target MUST be a target_schema.fields[].id or null. "
+        "Emit at most one decision per source id and never repeat a non-null target id. "
         "Never infer business grain from unique ids alone. "
         "Return JSON ONLY matching this JSON Schema: "
         + json.dumps(SchemaProposal.model_json_schema())
@@ -205,8 +208,15 @@ class QwenProvider:
 class GeminiProvider:
     """Opt-in adapter. Budget reservation must be transactional before constructing a live call."""
 
-    def __init__(self, config: Settings, client: httpx.Client):
-        self.config, self.client = config, client
+    def __init__(self, config: Settings, client: httpx.Client | None = None):
+        self.config = config
+        self.client = client or httpx.Client(
+            timeout=config.ai_timeout_seconds, follow_redirects=False
+        )
+        self.usage: dict[str, Any] = {"ai_calls": 0, "tokens": None, "cloud_requests": 0}
+
+    def close(self) -> None:
+        self.client.close()
 
     def propose(
         self,
@@ -228,6 +238,8 @@ class GeminiProvider:
         for attempt in range(2):
             if not reserve_request():
                 raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Đã hết ngân sách request AI cloud.")
+            self.usage["ai_calls"] += 1
+            self.usage["cloud_requests"] += 1
             try:
                 response = self.client.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/{self.config.gemini_model}:generateContent",
@@ -238,6 +250,7 @@ class GeminiProvider:
                         "generationConfig": {
                             "temperature": 0,
                             "responseMimeType": "application/json",
+                            "maxOutputTokens": 6000,
                         },
                     },
                     timeout=self.config.ai_timeout_seconds,
@@ -247,7 +260,11 @@ class GeminiProvider:
                 if not response.is_success:
                     raise DomainError("GEMINI_HTTP_ERROR", "Gemini trả lỗi HTTP.")
                 try:
-                    content = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    body = response.json()
+                    self.usage["tokens"] = body.get("usageMetadata")
+                    content = body["candidates"][0]["content"]["parts"][0]["text"]
+                    if not isinstance(content, str):
+                        raise ValueError("content")
                 except (KeyError, IndexError, ValueError, TypeError) as exc:
                     raise DomainError("AI_INVALID_JSON", "Phản hồi Gemini sai hợp đồng.") from exc
                 return validate_ai_output(content, profile, schema)

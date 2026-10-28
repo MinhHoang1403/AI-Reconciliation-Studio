@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Eye, Plus, Sparkles } from "lucide-react";
 import { api } from "./api";
 import { Badge, Notice, Spinner } from "./components";
@@ -86,8 +86,14 @@ export function MappingStudio({
   const [entity, setEntity] = useState("");
   const [grain, setGrain] = useState("");
   const [reviewed, setReviewed] = useState(false);
+  const initialized = useRef("");
   useEffect(() => {
     if (mapping) {
+      // Mapping revisions and parsed tables are immutable. A refreshed DTO for the
+      // same revision must not erase edits or source-review acknowledgement.
+      const identity = `${table.id}:${mapping.id}`;
+      if (initialized.current === identity) return;
+      initialized.current = identity;
       setDrafts(makeDraft(mapping, profile));
       setEntity(
         mapping.schema.entity_kind === "unknown"
@@ -97,7 +103,7 @@ export function MappingStudio({
       setGrain(mapping.schema.grain === "unknown" ? "" : mapping.schema.grain);
       setReviewed(false);
     }
-  }, [mapping?.id, profile]);
+  }, [mapping?.id, profile, table.id]);
 
   function change(source: string, patch: Partial<Draft>) {
     setDrafts((rows) =>

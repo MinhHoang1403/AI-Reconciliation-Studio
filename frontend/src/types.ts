@@ -138,6 +138,11 @@ export interface WorkspaceSettings {
   workspace_name: string;
   qwen_configured: boolean;
   qwen_model: string;
+  mapping_ai_provider: "QWEN" | "GEMINI";
+  gemini_model: string;
+  gemini_configured: boolean;
+  gemini_requests_used: number;
+  gemini_requests_remaining: number;
   max_upload_bytes: number;
   max_upload_files: number;
   max_rows: number;
@@ -180,6 +185,11 @@ export const jobKind: Record<string, string> = {
   normalize: "Chuẩn hóa dữ liệu",
 };
 export const errorText: Record<string, string> = {
+  GEMINI_KEY_MISSING: "Chưa cấu hình khóa Gemini. Có thể dùng ánh xạ thủ công.",
+  GEMINI_HTTP_ERROR: "Gemini từ chối yêu cầu. Cần kiểm tra khóa, model hoặc quyền truy cập.",
+  GEMINI_UNAVAILABLE: "Gemini chưa phản hồi. Có thể dùng ánh xạ thủ công.",
+  CLOUD_AI_DISABLED: "Workspace chưa được cấp quyền AI cloud.",
+  CLOUD_BUDGET_EXHAUSTED: "Đã hết ngân sách request Gemini. Có thể duyệt ánh xạ thủ công.",
   QWEN_ACCESS_DENIED:
     "Qwen từ chối IP truy cập. Bạn vẫn có thể xác nhận ánh xạ thủ công.",
   QWEN_UNAVAILABLE: "Qwen chưa phản hồi. Bạn vẫn có thể chỉnh ánh xạ thủ công.",

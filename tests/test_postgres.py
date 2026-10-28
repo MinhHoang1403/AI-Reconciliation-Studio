@@ -51,6 +51,7 @@ def pg(monkeypatch, tmp_path):
     monkeypatch.setattr(worker, "SessionFactory", factory)
     monkeypatch.setattr(settings, "storage_root", tmp_path / "storage")
     monkeypatch.setattr(settings, "qwen_enabled", False)
+    monkeypatch.setattr(settings, "mapping_ai_provider", "QWEN")
     monkeypatch.setattr(settings, "instance_path", tmp_path / "instance")
     monkeypatch.setattr(settings, "demo_proof_path", tmp_path / "proof")
     monkeypatch.setattr(settings, "local_demo_access", False)
@@ -483,3 +484,130 @@ def test_unexpected_errors_are_redacted_without_traceback(pg, monkeypatch, caplo
     assert response.status_code == 500 and response.json()["code"] == "INTERNAL_ERROR"
     assert "synthetic-sensitive-content" not in response.text
     assert "synthetic-sensitive-content" not in caplog.text
+
+
+def test_gemini_worker_uses_durable_budget_and_validated_proposal(pg, monkeypatch):
+    import json
+
+    import httpx
+    from pydantic import SecretStr
+    from studio.ai_gateway import GeminiProvider
+    from studio.contracts import WorkspacePolicy
+    from studio.database import AuditRow, MappingRow, TraceRow
+
+    client, factory, worker = pg
+    monkeypatch.setattr(settings, "mapping_ai_provider", "GEMINI")
+    monkeypatch.setattr(settings, "allow_external_ai", True)
+    monkeypatch.setattr(settings, "external_ai_request_budget", 1)
+    monkeypatch.setattr(settings, "gemini_api_key", SecretStr("synthetic-test-key"))
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        assert request.url.host == "generativelanguage.googleapis.com"
+        context = json.loads(json.loads(request.content)["contents"][0]["parts"][0]["text"])
+        evidence = context["context"]["untrusted_data"]["columns"][0]["evidence_ids"]
+        proposal = {
+            "entity_kind": "unknown",
+            "grain": "unknown",
+            "status": "PROPOSED",
+            "decisions": [
+                {
+                    "source_field": "c1",
+                    "candidate_target": "reference_id",
+                    "decision": "PROPOSED",
+                    "evidence_ids": evidence,
+                    "grain_assumption": "unknown",
+                    "transformation_candidate": {"op": "cast_string_preserve"},
+                }
+            ],
+        }
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [{"content": {"parts": [{"text": json.dumps(proposal)}]}}],
+                "usageMetadata": {"totalTokenCount": 17},
+            },
+        )
+
+    class MockGemini(GeminiProvider):
+        def __init__(self, config):
+            super().__init__(config, httpx.Client(transport=httpx.MockTransport(respond)))
+
+    monkeypatch.setattr(worker, "GeminiProvider", MockGemini)
+    with factory() as db:
+        ws = db.get(WorkspaceRow, "demo")
+        ws.policy = WorkspacePolicy(
+            mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=2
+        ).model_dump()
+        db.commit()
+    pid = project(client)
+    first = upload(client, pid)
+    drain(factory, worker)
+    with factory() as db:
+        job = db.scalar(select(JobRow).where(JobRow.kind == "mapping"))
+        assert job.status == "SUCCEEDED" and job.result["source"] == "GEMINI"
+        mapping = db.get(MappingRow, job.result["mapping_id"])
+        assert mapping.status == "PROPOSED" and mapping.decision is None
+        trace = db.scalar(select(TraceRow).where(TraceRow.job_id == job.id))
+        assert trace.provider == "GEMINI" and trace.usage["cloud_requests"] == 1
+        assert trace.usage["tokens"]["totalTokenCount"] == 17
+        assert (
+            len(
+                list(
+                    db.scalars(select(AuditRow).where(AuditRow.action == "GEMINI_REQUEST_RESERVED"))
+                )
+            )
+            == 1
+        )
+    second = upload(client, pid, b"Order ID,Gross amount\n000555,5.00\n")
+    assert second["id"] != first["id"]
+    drain(factory, worker)
+    with factory() as db:
+        jobs = list(db.scalars(select(JobRow).where(JobRow.kind == "mapping")))
+        assert any(j.status == "BLOCKED" and j.error_code == "CLOUD_BUDGET_EXHAUSTED" for j in jobs)
+    assert len(calls) == 1
+    config_dto = client.get("/api/settings").json()
+    assert config_dto["mapping_ai_provider"] == "GEMINI"
+    assert config_dto["gemini_requests_remaining"] == 0
+    assert "synthetic-test-key" not in str(config_dto)
+
+
+def test_gemini_budget_serializes_concurrent_reservations_across_workspaces(pg, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from pydantic import SecretStr
+    from studio.contracts import WorkspacePolicy
+    from studio.repository import gemini_request_counts, reserve_gemini_request
+
+    _, factory, _ = pg
+    monkeypatch.setattr(settings, "allow_external_ai", True)
+    monkeypatch.setattr(settings, "external_ai_request_budget", 3)
+    monkeypatch.setattr(settings, "gemini_api_key", SecretStr("synthetic-test-key"))
+    with factory() as db:
+        db.get(WorkspaceRow, "demo").policy = WorkspacePolicy(
+            mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=1
+        ).model_dump()
+        db.add(
+            WorkspaceRow(
+                id="second",
+                name="synthetic",
+                policy=WorkspacePolicy(
+                    mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=5
+                ).model_dump(),
+            )
+        )
+        db.commit()
+
+    def attempt(workspace):
+        with factory() as db:
+            allowed = reserve_gemini_request(db, workspace, "synthetic-job", settings)
+            db.commit()
+            return allowed
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(attempt, ["demo"] * 4 + ["second"] * 6))
+    assert sum(results) == 3 and sum(results[:4]) == 1
+    with factory() as db:
+        assert gemini_request_counts(db, "demo") == (3, 1)
+    assert not attempt("second")  # a fresh session never resets consumed budget

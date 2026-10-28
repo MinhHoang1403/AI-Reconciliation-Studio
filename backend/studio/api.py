@@ -70,6 +70,7 @@ from studio.repository import (
     artifact_ref,
     create_mapping,
     enqueue_job,
+    gemini_request_counts,
     get_scoped,
     mapping_contract,
     project_for_table,
@@ -283,12 +284,29 @@ def project_summary(project_id: str, db: DB, actor: CurrentActor) -> ProjectSumm
 def workspace_settings(db: DB, actor: CurrentActor) -> dict[str, Any]:
     workspace = db.get(WorkspaceRow, actor.workspace_id)
     assert workspace is not None
+    global_used, workspace_used = gemini_request_counts(db, workspace.id)
+    policy = WorkspacePolicy.model_validate(workspace.policy)
     return {
         "workspace_id": workspace.id,
         "workspace_name": workspace.name,
         "policy": workspace.policy,
         "qwen_configured": bool(settings.qwen_base_url and settings.qwen_enabled),
         "qwen_model": settings.qwen_model,
+        "mapping_ai_provider": settings.mapping_ai_provider,
+        "gemini_model": settings.gemini_model,
+        "gemini_configured": bool(settings.gemini_api_key.get_secret_value()),
+        "gemini_requests_used": workspace_used,
+        "gemini_requests_remaining": max(
+            0,
+            min(
+                settings.external_ai_request_budget - global_used,
+                policy.external_request_budget - workspace_used,
+            ),
+        )
+        if settings.allow_external_ai
+        and policy.allow_external_ai
+        and policy.mode == "CLOUD_ALLOWED"
+        else 0,
         "max_upload_bytes": settings.max_upload_bytes,
         "max_upload_files": settings.max_upload_files,
         "max_rows": settings.max_rows,

@@ -11,7 +11,7 @@ import polars as pl
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from studio.ai_gateway import PROMPT_REVISION, QwenProvider, manual_proposal
+from studio.ai_gateway import PROMPT_REVISION, GeminiProvider, QwenProvider, manual_proposal
 from studio.config import settings
 from studio.contracts import (
     CanonicalDataset,
@@ -21,6 +21,7 @@ from studio.contracts import (
     ParsedTableArtifact,
     SchemaDefinition,
     SchemaProposal,
+    WorkspacePolicy,
 )
 from studio.database import (
     ArtifactRow,
@@ -34,6 +35,7 @@ from studio.database import (
     TableRow,
     TraceRow,
     VersionRow,
+    WorkspaceRow,
     identifier,
     now,
 )
@@ -47,6 +49,7 @@ from studio.repository import (
     enqueue_job,
     mapping_contract,
     project_for_table,
+    reserve_gemini_request,
 )
 from studio.schema_mapping import compile_transform_plan, validate_mapping
 from studio.storage import checksum, storage_path, write_parquet
@@ -215,7 +218,8 @@ def _parse(job_id: str, token: str) -> None:
 
 
 def _mapping(job_id: str, token: str) -> None:
-    provider = QwenProvider(settings)
+    provider_name = settings.mapping_ai_provider
+    provider = GeminiProvider(settings) if provider_name == "GEMINI" else QwenProvider(settings)
     started = time.monotonic()
     error: DomainError | None = None
     cached = False
@@ -226,6 +230,10 @@ def _mapping(job_id: str, token: str) -> None:
             table = db.get(TableRow, job.payload["table_id"])
             assert table is not None
             profile = DatasetProfile.model_validate(table.profile)
+            workspace = db.get(WorkspaceRow, job.workspace_id)
+            assert workspace is not None
+            policy = WorkspacePolicy.model_validate(workspace.policy)
+            workspace_id = job.workspace_id
             schema = default_schema(job.workspace_id, identifier())
             # Strict source signature + workspace + business scope; reuse still requires review.
             template = db.scalar(
@@ -259,7 +267,20 @@ def _mapping(job_id: str, token: str) -> None:
                 cached = True
             else:
                 db.rollback()  # do not hold a PostgreSQL transaction while waiting for AI
-                proposal = provider.propose(profile, schema)
+                if isinstance(provider, GeminiProvider):
+
+                    def reserve() -> bool:
+                        with SessionFactory() as budget_db:
+                            _fence(budget_db, job_id, token)
+                            allowed = reserve_gemini_request(
+                                budget_db, workspace_id, job_id, settings
+                            )
+                            budget_db.commit()  # durable even if HTTP fails or worker crashes
+                            return allowed
+
+                    proposal = provider.propose(profile, schema, policy, reserve)
+                else:
+                    proposal = provider.propose(profile, schema)
             db.rollback()
             job = _fence(db, job_id, token)
             table = db.get(TableRow, job.payload["table_id"])
@@ -272,14 +293,14 @@ def _mapping(job_id: str, token: str) -> None:
                 {
                     "mapping_id": mapping.id,
                     "cache_hit": cached,
-                    "source": "APPROVED_TEMPLATE" if cached else "QWEN",
+                    "source": "APPROVED_TEMPLATE" if cached else provider_name,
                 },
             )
             db.add(
                 TraceRow(
                     workspace_id=job.workspace_id,
                     job_id=job.id,
-                    provider="CACHE" if cached else "QWEN",
+                    provider="CACHE" if cached else provider_name,
                     task_id="propose_mapping",
                     prompt_revision=PROMPT_REVISION,
                     usage=provider.usage,
@@ -299,7 +320,7 @@ def _mapping(job_id: str, token: str) -> None:
                 TraceRow(
                     workspace_id=job.workspace_id,
                     job_id=job.id,
-                    provider="QWEN",
+                    provider=provider_name,
                     task_id="propose_mapping",
                     prompt_revision=PROMPT_REVISION,
                     usage=provider.usage,
@@ -467,7 +488,7 @@ def process_job(job_id: str, token: str) -> None:
                 job = _fence(db, job_id, token)
             except DomainError:
                 return
-            blocked = code.startswith(("QWEN_", "AI_", "CLOUD_")) or code in {
+            blocked = code.startswith(("QWEN_", "GEMINI_", "AI_", "CLOUD_")) or code in {
                 "INVALID_EVIDENCE",
                 "INVALID_SOURCE_FIELD",
                 "INVALID_TARGET_FIELD",

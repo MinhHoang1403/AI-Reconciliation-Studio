@@ -113,6 +113,42 @@ def test_AI_cannot_self_approve(profile, schema, mapping):
         validate_ai_output(proposal.model_dump_json(), profile, schema)
 
 
+def test_gemini_source_names_never_repaired_into_ids(config, profile, schema):
+    from pydantic import SecretStr
+
+    config.allow_external_ai = True
+    config.external_ai_request_budget = 2
+    config.gemini_api_key = SecretStr("synthetic-test-key")
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        prompt = json.loads(request.content)["systemInstruction"]["parts"][0]["text"]
+        assert "source_field MUST be the exact columns[].id" in prompt
+        body = unknown_proposal()
+        body["decisions"] = [
+            {
+                "source_field": "Mã đơn",
+                "candidate_target": "reference_id",
+                "decision": "PROPOSED",
+                "evidence_ids": ["table:c1"],
+                "grain_assumption": "unknown",
+                "transformation_candidate": {"op": "cast_string_preserve"},
+            }
+        ]
+        return httpx.Response(
+            200, json={"candidates": [{"content": {"parts": [{"text": json.dumps(body)}]}}]}
+        )
+
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=2
+    )
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        with pytest.raises(DomainError, match="INVALID_SOURCE_FIELD"):
+            GeminiProvider(config, client).propose(profile, schema, policy, lambda: True)
+    assert len(calls) == 1  # semantic failure is not retried, guessed or silently repaired
+
+
 def test_T11_unknown_transform_rejected(profile, schema):
     proposal = unknown_proposal()
     proposal["decisions"] = [

@@ -11,7 +11,7 @@ uv run ruff check backend tests tools
 uv run mypy backend/studio
 ```
 
-Ngày 28/10/2026: 76 tests offline PASS tại lần kiểm tra gần nhất; Ruff/mypy PASS. Có một cảnh báo deprecation từ Starlette về TestClient/httpx; không phải lỗi ứng dụng. Chưa chuyển test client transport trong đợt này vì contract tests hiện chạy đúng với lock đã chọn.
+Ngày 28/10/2026: 77 tests offline PASS tại lần kiểm tra gần nhất; Ruff/mypy PASS. Có một cảnh báo deprecation từ Starlette về TestClient/httpx; không phải lỗi ứng dụng. Chưa chuyển test client transport trong đợt này vì contract tests hiện chạy đúng với lock đã chọn.
 
 | Catalogue | Bằng chứng thực thi |
 |---|---|
@@ -42,7 +42,7 @@ Operator tests bao phủ trim được duyệt, enum, coalesce phân biệt null
 ./tools/test-postgres.ps1 -All
 ```
 
-Script copy tests vào `/tmp` của backend hiện có, cài test tooling tạm tại `/tmp/studio-checks` và chạy pytest. Mỗi test tạo schema `test_<UUID>`, chạy migration snapshot, dùng riêng metadata và storage temp, rồi drop đúng schema này. Lần chạy cuối: 8 PASS, 76 deselected, 0 FAIL. Worker production không thể claim jobs trong schema test.
+Script copy tests vào `/tmp` của backend hiện có, cài test tooling tạm tại `/tmp/studio-checks` và chạy pytest. Mỗi test tạo schema `test_<UUID>`, chạy migration snapshot, dùng riêng metadata và storage temp, rồi drop đúng schema này. Bộ đầy đủ sau chuyển Gemini: **87 PASS (77 offline + 10 PostgreSQL integration), 0 FAIL/SKIP**. Worker production không thể claim jobs trong schema test. Hai test mới xác minh worker Gemini/usage/budget exhausted và đồng thời nhiều reservation trên hai workspace không vượt trần; transport đều mock, không dùng quota thật.
 
 Kiểm tra pipeline/ref/policy, migrations, same-key enqueue, scoped reuse/template proposal, viewer/CSRF/host/workspace isolation, `SKIP LOCKED`, expired lease fencing, attempts/recovery, parse failure và crash trước publish canonical. Snapshot DDL không phụ thuộc ORM của migration tương lai. Destructive downgrade bị chặn.
 
@@ -59,7 +59,14 @@ npm --prefix frontend exec -- playwright install chromium
 npm --prefix frontend run test:e2e
 ```
 
-Playwright chạy trên Nginx production tại `127.0.0.1:18180`, một Chromium worker. Tạo dự án/file tổng hợp có scope riêng mỗi lần để không nhầm cache với live AI. E2E hiện kiểm tra Qwen bị chặn theo trạng thái endpoint của phiên nghiệm thu; sau khi allowlist được mở, cần dùng provider failure contract test để giữ oracle lỗi, đồng thời thêm bằng chứng live thành công. Không hạ validator để làm test PASS.
+Playwright chạy trên Nginx production tại `127.0.0.1:18180`, một Chromium worker. Tạo dự án/file tổng hợp có scope riêng mỗi lần để không nhầm cache với live AI. Mặc định test mong Qwen đang bị chặn. Khi kiểm tra Gemini live phải chỉ định explicit trước khi chạy:
+
+```powershell
+$env:STUDIO_EXPECT_AI_PROVIDER='GEMINI'
+npm --prefix frontend run test:e2e
+```
+
+Chế độ này có thể tiêu thụ tối đa hai HTTP attempts cho một bảng tổng hợp, vẫn chịu trần global/workspace; test kiểm tra provider trước khi upload để không gọi cloud nhầm chế độ. Chờ job Gemini SUCCEEDED, kiểm tra source GEMINI, reference mapping theo oracle độc lập và chưa AI tự duyệt rồi thực hiện luồng review/normalization. Lần cuối **8 PASS, 0 FAIL (19,8 giây)**. Regression xác minh refresh cùng revision giữ draft/grain/locale; test đợi refresh nhận proposal mới hoàn tất trước khi nhập. Không hạ validator để làm test PASS. Provider failure/cloud OFF tiếp tục được kiểm tra bằng mock.
 
 Kịch bản: tạo project → upload → xem `000123` → xác nhận metric/locale/currency → approve → normalize → canonical/errors → evidence. Người quay lại thấy mapping/artifacts. Session HttpOnly/SameSite, CSRF và Host spoof rejection, 0 external browser requests được kiểm tra. Regression trì hoãn request tìm kiếm xác nhận UI không trình bày preview cũ dưới query/phiên bản mới.
 
@@ -71,7 +78,7 @@ Responsive: 1440×900, 1920×1080, 1366×768, 768×1024 và 390×844; chờ nộ
 ./tools/check-persistence.ps1
 ```
 
-Đợi hết jobs đang chạy. Công cụ snapshot metadata/approvals/canonical refs và kiểm tra SHA256 từng artifact, restart rồi force-recreate đủ bốn service và recreate riêng frontend trong project hiện tại, xác nhận auto-session bị chặn trước re-verification và so lại dữ liệu. Không xóa volumes hoặc raw. Snapshot kiểm tra nằm trong volume, không vào Git. Bộ backend đầy đủ trong container đã đạt 84 PASS (76 offline + 8 PostgreSQL integration). Snapshot cuối sau E2E có 8 datasets, 8 canonical và 32 artifact refs; tất cả giữ nguyên sau restart.
+Đợi hết jobs đang chạy. Công cụ snapshot metadata/approvals/canonical refs và kiểm tra SHA256 từng artifact, restart rồi force-recreate đủ bốn service và recreate riêng frontend trong project hiện tại, xác nhận auto-session bị chặn trước re-verification và so lại dữ liệu. Bao gồm workspace policy và audit reservations của Gemini; quota không được reset. Không xóa volumes hoặc raw. Snapshot kiểm tra nằm trong volume, không vào Git. Bộ backend đầy đủ hiện đạt 87 PASS (77 offline + 10 PostgreSQL integration).
 
 ## Worker bị dừng đột ngột
 
@@ -105,6 +112,6 @@ uv run python tools/check_repository.py
 git diff --check
 ```
 
-Probe chỉ gửi profile tổng hợp và kiểm tra mapping với oracle mã tham chiếu độc lập. Hiện HTTP 403 từ endpoint là **BLOCKED**, không phải PASS inference. Gemini/LlamaParse chưa được phép gọi live.
+Probe chỉ gửi profile tổng hợp và kiểm tra mapping với oracle mã tham chiếu độc lập. Hiện HTTP 403 từ Qwen là **BLOCKED**, không phải PASS inference. Chủ dự án đã cấp quyền dùng Gemini tạm thời; LlamaParse vẫn chưa được gọi live. Live Gemini đầu tiên bị chặn vì model dùng tên thay ID nguồn, không tự retry semantic error. Prompt revision `schema-understanding-2` làm rõ ID; regression giữ nguyên việc từ chối tên cột. Lần mới đã qua validator và oracle reference_id; số reservation gồm cả attempts lỗi/chẩn đoán, không chỉ successful traces.
 
 Repository checker rà known local credentials trong source candidates/Git history, các pattern secret phổ biến, runtime/binary candidates và đường dẫn Markdown. Kết hợp rà nội dung/diff trước public push; đây không phải bảo đảm đã audit mọi kiểu secret hoặc toàn bộ bảo mật hệ thống.
