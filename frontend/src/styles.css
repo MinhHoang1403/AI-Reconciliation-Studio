@@ -420,6 +420,10 @@ main {
 .project-option small { margin-top: 3px; font-size: 10px; color: #64748b; }
 .project-option.highlighted { background: #eff6ff; outline: 2px solid #2563eb; outline-offset: -2px; }
 .project-option[aria-selected="true"] strong { color: #1d4ed8; }
+.stat-card small { display: block; color: #475569; line-height: 1.6; margin-top: 8px; }
+.preparation-guide { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0; }
+.preparation-guide > div:first-child { flex: 1 1 260px; }
+.preparation-guide p { color: #475569; line-height: 1.7; margin: 7px 0 0; }
 .project-bar > label {
   display: flex;
   gap: 7px;

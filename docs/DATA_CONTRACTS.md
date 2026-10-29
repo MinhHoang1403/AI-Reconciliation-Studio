@@ -38,6 +38,8 @@ Preview dùng `kind=raw|parsed|canonical|errors`, `offset`, `limit` tối đa 10
 
 Dashboard đếm từ `/projects/{id}/summary`, không tự tính KPI hoặc suy đoán kết luận nghiệp vụ. Dataset list có phân trang 25 nguồn/trang. Metadata lists nhỏ như projects/mappings có giới hạn API theo phạm vi hiện tại.
 
+Quality hardening bổ sung additive `partial_canonical_count`, `stale_canonical_count`, `failed_canonical_count` (đếm artifact; stale tách riêng khỏi chất lượng hiện hành), `preparation_action` và `latest_verified_run_id` vào summary; fields cũ giữ nguyên. Mapping review = bảng không active mapping, job active chỉ QUEUED/RUNNING/RETRYABLE_FAILURE. Action chỉ điều hướng/refresh, không cấp quyền mutate: WAIT → failed dataset → REVIEW_MAPPING → NORMALIZE khi không current canonical → REVIEW_DATA cho PARTIAL/FAILED → RECONCILE khi có ít nhất hai READY → UPLOAD. Cùng ưu tiên chọn theo dataset created_at/id và table id; trả một target có dataset/table/canonical IDs scoped kể cả ngoài trang datasets hiện tại. READY không chứng minh hai nguồn tương thích metric/grain; approval/readiness/verification gates không đổi. Latest verified run chỉ gồm VERIFIED/PARTIAL_VERIFIED đúng project, dùng cho link lịch sử.
+
 ## Canonical record
 
 Core có `canonical_record_id`, `dataset_version_id`, `source_table_id`, `source_row_id`, `workspace_id`, `entity_kind`, `business_key_components`, `source_provenance`, `mapping_revision`, `normalization_revision`, `quality_flags`, `invalid`, `record_payload`.

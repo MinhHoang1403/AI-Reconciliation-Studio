@@ -75,6 +75,7 @@ from studio.repository import (
     gemini_request_counts,
     get_scoped,
     mapping_contract,
+    preparation_overview,
     project_for_table,
 )
 from studio.schema_mapping import compile_transform_plan, validate_mapping
@@ -307,6 +308,7 @@ def project_summary(project_id: str, db: DB, actor: CurrentActor) -> ProjectSumm
         mapping_review_count=review_count,
         ready_canonical_count=canonical_count,
         active_job_count=job_count,
+        **preparation_overview(db, project_id, job_count),
     )
 
 

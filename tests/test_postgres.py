@@ -426,7 +426,11 @@ def test_normalize_crash_before_publish_is_atomic_and_retry_safe(pg, monkeypatch
 def test_zero_decimal_and_backend_summary(pg):
     client, factory, worker = pg
     pid = project(client)
+    initial = client.get(f"/api/projects/{pid}/summary").json()
+    assert initial["dataset_count"] == 0 and initial["preparation_action"]["kind"] == "UPLOAD"
     item = upload(client, pid, b"Order ID,Gross amount\n000123,0.00\n000124,12.50\n")
+    waiting = client.get(f"/api/projects/{pid}/summary").json()
+    assert waiting["active_job_count"] == 1 and waiting["preparation_action"]["kind"] == "WAIT"
     drain(factory, worker)
     table = client.get(f"/api/datasets/{item['id']}/tables").json()["items"][0]
     summary = client.get(f"/api/projects/{pid}/summary").json()
@@ -435,7 +439,15 @@ def test_zero_decimal_and_backend_summary(pg):
         1,
         1,
     )
+    assert summary["preparation_action"]["kind"] == "REVIEW_MAPPING"
+    assert summary["preparation_action"]["table_id"] == table["id"]
     approved, _ = approve(client, table["id"])
+    assert client.get(f"/api/projects/{pid}/summary").json()["preparation_action"] == {
+        "kind": "NORMALIZE",
+        "dataset_id": item["id"],
+        "table_id": table["id"],
+        "canonical_id": None,
+    }
     response = client.post(
         f"/api/datasets/{item['id']}/normalize",
         json={"mapping_id": approved["id"]},
@@ -445,6 +457,9 @@ def test_zero_decimal_and_backend_summary(pg):
     drain(factory, worker)
     summary = client.get(f"/api/projects/{pid}/summary").json()
     assert summary["mapping_review_count"] == 0 and summary["ready_canonical_count"] == 1
+    assert summary["active_job_count"] == 0
+    assert summary["partial_canonical_count"] == summary["stale_canonical_count"] == 0
+    assert summary["preparation_action"]["kind"] == "UPLOAD"  # need a second source
     job = client.get(f"/api/jobs/{response.json()['job_id']}").json()
     assert job["status"] == "SUCCEEDED"
     canonical_id = job["result"]["canonical_id"]
@@ -453,6 +468,62 @@ def test_zero_decimal_and_backend_summary(pg):
     ).json()
     assert rows["total"] == 1
     assert rows["items"][0]["record_payload"]["gross_amount"] == "0.00"
+
+
+def test_preparation_summary_partial_stale_failed_and_paginated_sources(pg):
+    """Counters use all scoped data; navigation never relabels PARTIAL as mapping failure."""
+    client, factory, worker = pg
+    pid = project(client)
+    item = upload(client, pid)
+    drain(factory, worker)
+    table = client.get(f"/api/datasets/{item['id']}/tables").json()["items"][0]
+    approved, _ = approve(client, table["id"])
+    job = client.post(
+        f"/api/datasets/{item['id']}/normalize",
+        json={"mapping_id": approved["id"]},
+        headers={"Idempotency-Key": "partial-summary"},
+    )
+    assert job.status_code == 202
+    drain(factory, worker)
+    summary = client.get(f"/api/projects/{pid}/summary").json()
+    assert summary["mapping_review_count"] == summary["ready_canonical_count"] == 0
+    assert summary["partial_canonical_count"] == 1 and summary["active_job_count"] == 0
+    target = summary["preparation_action"]
+    assert target["kind"] == "REVIEW_DATA" and target["dataset_id"] == item["id"]
+    canonical = client.get(f"/api/datasets/{item['id']}/artifacts").json()["canonical_datasets"][0]
+    assert target["canonical_id"] == canonical["id"]
+    with factory() as db:
+        row = db.get(CanonicalRow, canonical["id"])
+        row.contract = {**row.contract, "quality_status": "FAILED"}
+        db.commit()
+    failed = client.get(f"/api/projects/{pid}/summary").json()
+    assert failed["failed_canonical_count"] == 1 and failed["partial_canonical_count"] == 0
+    assert failed["preparation_action"]["kind"] == "REVIEW_DATA"
+    # New approval marks the old canonical stale, without deleting its quality history.
+    approve(client, table["id"])
+    stale = client.get(f"/api/projects/{pid}/summary").json()
+    assert stale["stale_canonical_count"] == 1 and stale["failed_canonical_count"] == 0
+    assert stale["preparation_action"]["kind"] == "NORMALIZE"
+    with factory() as db:
+        for index in range(79):
+            db.add(
+                DatasetRow(
+                    workspace_id="demo",
+                    project_id=pid,
+                    owner_id="test-owner",
+                    name=f"Synthetic {index}",
+                    sha256=f"{index:064x}",
+                    parse_signature="summary-fixture",
+                    status="UPLOADED",
+                )
+            )
+        db.commit()
+    page = client.get(f"/api/datasets?project_id={pid}&limit=25").json()
+    assert len(page["items"]) == 25 and page["total"] == 80
+    assert client.get(f"/api/projects/{pid}/summary").json()["dataset_count"] == 80
+    assert (
+        client.get(f"/api/projects/{project(client, 'Empty')}/summary").json()["dataset_count"] == 0
+    )
 
 
 def test_multi_upload_csv_xlsx_and_extraction_approval_gate(pg):

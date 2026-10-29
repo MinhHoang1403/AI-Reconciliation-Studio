@@ -16,14 +16,17 @@ from studio.contracts import (
     SchemaDefinition,
     WorkspacePolicy,
 )
+from studio.contracts.api import PreparationAction
 from studio.database import (
     ArtifactRow,
     AuditRow,
     Base,
+    CanonicalRow,
     DatasetRow,
     JobRow,
     MappingRow,
     ProjectRow,
+    RunRow,
     SchemaRow,
     TableRow,
     VersionRow,
@@ -31,6 +34,103 @@ from studio.database import (
 )
 from studio.errors import DomainError
 from studio.profiling import default_schema, source_signature
+
+
+def preparation_overview(db: Session, project_id: str, active_jobs: int) -> dict[str, Any]:
+    """Read-only navigation hints after project authorization, never execution authority.
+
+    All queries are project bounded; target selection is stable by dataset date/ID and
+    table ID. Counts describe artifacts (including stale history), not financial readiness.
+    Only one target per priority is returned, even when it is outside the dataset page.
+    """
+    tables = (
+        select(TableRow, DatasetRow)
+        .join(VersionRow, TableRow.dataset_version_id == VersionRow.id)
+        .join(DatasetRow, VersionRow.dataset_id == DatasetRow.id)
+        .where(DatasetRow.project_id == project_id)
+    )
+    table_ids = tables.with_only_columns(TableRow.id)
+    canonical = select(CanonicalRow).where(CanonicalRow.source_table_id.in_(table_ids))
+    quality_status = CanonicalRow.contract["quality_status"].astext
+    counts: dict[str, int] = dict(
+        db.execute(
+            select(quality_status, func.count())
+            .where(CanonicalRow.source_table_id.in_(table_ids), CanonicalRow.stale.is_(False))
+            .group_by(quality_status)
+        ).all()
+    )
+    stale = (
+        db.scalar(
+            select(func.count()).select_from(
+                canonical.where(CanonicalRow.stale.is_(True)).subquery()
+            )
+        )
+        or 0
+    )
+    current = canonical.where(CanonicalRow.stale.is_(False)).with_only_columns(
+        CanonicalRow.source_table_id
+    )
+    order = (DatasetRow.created_at, DatasetRow.id, TableRow.id)
+    action = PreparationAction(kind="UPLOAD")
+    if active_jobs:
+        action = PreparationAction(kind="WAIT")
+    else:
+        failed_dataset = db.scalar(
+            select(DatasetRow)
+            .where(DatasetRow.project_id == project_id, DatasetRow.status == "FAILED")
+            .order_by(DatasetRow.created_at, DatasetRow.id)
+            .limit(1)
+        )
+        review = db.execute(
+            tables.where(TableRow.active_mapping_id.is_(None)).order_by(*order).limit(1)
+        ).first()
+        normalize = db.execute(
+            tables.where(TableRow.active_mapping_id.is_not(None), TableRow.id.not_in(current))
+            .order_by(*order)
+            .limit(1)
+        ).first()
+        quality = db.execute(
+            tables.add_columns(CanonicalRow.id)
+            .join(CanonicalRow, CanonicalRow.source_table_id == TableRow.id)
+            .where(
+                CanonicalRow.stale.is_(False),
+                CanonicalRow.contract["quality_status"].astext.in_(["PARTIAL", "FAILED"]),
+            )
+            .order_by(*order, CanonicalRow.id)
+            .limit(1)
+        ).first()
+        if failed_dataset:
+            action = PreparationAction(kind="REVIEW_DATA", dataset_id=failed_dataset.id)
+        elif review:
+            action = PreparationAction(
+                kind="REVIEW_MAPPING", dataset_id=review[1].id, table_id=review[0].id
+            )
+        elif normalize:
+            action = PreparationAction(
+                kind="NORMALIZE", dataset_id=normalize[1].id, table_id=normalize[0].id
+            )
+        elif quality:
+            action = PreparationAction(
+                kind="REVIEW_DATA",
+                dataset_id=quality[1].id,
+                table_id=quality[0].id,
+                canonical_id=quality[2],
+            )
+        elif (counts.get("READY") or 0) >= 2:
+            action = PreparationAction(kind="RECONCILE")
+    latest_run = db.scalar(
+        select(RunRow.id)
+        .where(RunRow.project_id == project_id, RunRow.status.in_(["VERIFIED", "PARTIAL_VERIFIED"]))
+        .order_by(RunRow.created_at.desc(), RunRow.id)
+        .limit(1)
+    )
+    return dict(
+        partial_canonical_count=counts.get("PARTIAL", 0),
+        failed_canonical_count=counts.get("FAILED", 0),
+        stale_canonical_count=stale,
+        preparation_action=action,
+        latest_verified_run_id=latest_run,
+    )
 
 
 def gemini_request_counts(db: Session, workspace_id: str) -> tuple[int, int]:

@@ -5,9 +5,16 @@ import {
   useReactTable,
   type ColumnDef,
 } from "@tanstack/react-table";
-import { CheckCircle2, Info, LoaderCircle, X } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronRight,
+  FileSpreadsheet,
+  Info,
+  LoaderCircle,
+  X,
+} from "lucide-react";
 import type { ReactNode, RefObject } from "react";
-import { statusText } from "./types";
+import { statusText, type Dataset } from "./types";
 
 export function Badge({ status }: { status: string }) {
   return (
@@ -63,7 +70,7 @@ export function Modal({
         <Dialog.Content
           className={`modal ${wide ? "modal-wide" : ""}`}
           aria-describedby={undefined}
-          onCloseAutoFocus={event => {
+          onCloseAutoFocus={(event) => {
             if (returnFocus?.current) {
               event.preventDefault();
               returnFocus.current.focus();
@@ -134,4 +141,36 @@ export function formatValue(value: unknown): string {
   if (value === null || value === undefined) return "∅";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+export function DatasetList({
+  items,
+  onSelect,
+  selected,
+}: {
+  items: Dataset[];
+  onSelect: (dataset: Dataset) => void;
+  selected?: string;
+}) {
+  return (
+    <div className="dataset-list">
+      {items.map((d) => (
+        <button
+          className={`dataset-item ${selected === d.id ? "dataset-selected" : ""}`}
+          key={d.id}
+          onClick={() => onSelect(d)}
+        >
+          <span className="file-type">
+            <FileSpreadsheet size={22} />
+          </span>
+          <span className="dataset-name">
+            <strong>{d.name}</strong>
+            <small>{new Date(d.created_at).toLocaleString("vi-VN")}</small>
+          </span>
+          <Badge status={d.status} />
+          <ChevronRight size={18} />
+        </button>
+      ))}
+    </div>
+  );
 }

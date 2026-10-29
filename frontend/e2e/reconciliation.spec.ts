@@ -105,7 +105,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
 test("Planner UI accepts sources with no common key and presents review-only suggestions (MOCK)",async({page})=>{
   const s=await state();let proposalRequests=0;
   const left=s.sources["shipments.csv"].canonical_id,right=s.sources["delivery-confirmations.csv"].canonical_id;
-  await page.route("**/api/projects/*/canonical-catalogue",async route=>{
+  await page.route(`**/api/projects/${s.project_id}/canonical-catalogue`,async route=>{
     const response=await route.fetch();const data=await response.json();
     const source=data.items.find((c:{canonical:{id:string}})=>c.canonical.id===right);
     source.schema_definition.fields.forEach((f:{id:string;name:string})=>{if(f.id==="tracking_id"){f.id="external_tracking";f.name="External tracking";}});
