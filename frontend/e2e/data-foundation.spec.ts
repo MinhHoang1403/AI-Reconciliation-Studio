@@ -352,6 +352,13 @@ for (const size of [
     await expect(
       page.getByRole("heading", { name: "Nền tảng dữ liệu của bạn" }),
     ).toBeVisible();
+    // Shell heading renders before summary/recent sources. Inspect loaded data,
+    // not a transient loading frame, at every viewport.
+    await expect(
+      page.getByRole("button", {
+        name: new RegExp(datasetName.replaceAll(".", "\\.")),
+      }),
+    ).toBeVisible();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,

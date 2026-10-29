@@ -1,8 +1,8 @@
 # Trạng thái triển khai và nghiệm thu
 
-**Hiện tại:** nghiệm thu chất lượng frontend/UX ngày **30/10/2026** ở mục M. Giai đoạn 1–2 giữ phạm vi MVP đã công bố; kết quả mới **145 backend / 34 E2E PASS**. Các mục A–L giữ nguyên lịch sử; không dùng quota/counts hoặc lệnh dừng của nhiệm vụ cũ thay cho bằng chứng và ủy quyền mới.
+**Hiện tại:** Final UX hardening ngày **30/10/2026** ở mục N. Giai đoạn 1–2 giữ phạm vi MVP đã công bố; kết quả mới **149 backend / 41 E2E PASS**. Các mục A–M giữ nguyên lịch sử; không dùng quota/counts hoặc lệnh dừng của nhiệm vụ cũ thay cho bằng chứng và ủy quyền mới.
 
-Quality Hardening + UX Refinement theo prompt riêng của chủ dự án nằm trên `codex/interface-quality`, từ main `0b9421e`. Chỉ hoàn thiện Giai đoạn 1–2; chờ chủ dự án review branch, không tự merge main hoặc bắt đầu cloud/Argon/Giai đoạn 3. Bằng chứng và giới hạn ghi tại mục M; số liệu mục L là baseline lịch sử.
+Quality Hardening + UX Refinement theo prompt riêng của chủ dự án nằm trên `codex/interface-quality`, từ main `0b9421e`. Chỉ hoàn thiện Giai đoạn 1–2; chờ chủ dự án review branch, không tự merge main hoặc bắt đầu cloud/Argon/Giai đoạn 3. Bằng chứng mới và giới hạn ghi tại mục N; số liệu mục L–M là baseline lịch sử.
 
 ## Final Acceptance — Giai đoạn 1 (lịch sử)
 
@@ -593,3 +593,74 @@ Bằng chứng (không dùng tên làm bằng chứng duy nhất):
 Case mới tái hiện metadata classification không cập nhật khi selector unmount lúc PATCH đang chạy: FAIL trước sửa; parent nhận confirmed DTO có guard currentID, component chỉ set local state khi còn mounted, sau sửa targeted1PASS/4,3s và full41PASS. Không retry write hoặc hủy job backend. Bộ full có cả luồng thật upload→mappingapprove→normalize→manualruleapprove→verifiedrun→evidence/review→CSV/XLSX→reopen, provider MANUAL; Planner và interface contract fixtures là MOCK, không liveAI. Một read-back chạy khi T35 còn ghi downloads/manifest đã thấy hash khác; đợi toàn suite hoàn tất rồi đọc lại đúng cặp files/manifest, không sửa checksum/oracle hoặc bytes backend để hợp thức hóa.
 
 Giữ keyword/source/module contracts, dependencies/locks/Compose/migrations/engine/verifier/formulas. Năm widths390/768/1366/1440/1920, keyboard/focus/ARIA/drawer/dialog bounds/contrast samples tiếp tục PASS. Báo cáo deploy/persistence/Git cuối được bổ sung sau khi commit source sạch; chưa coi healthcheck thay cho revision/hash verification.
+
+### B. Các sửa đổi và bằng chứng
+
+| Vấn đề | Nguyên nhân | Sửa đổi | Bằng chứng |
+|---|---|---|---|
+| Danh sách project lẫn dữ liệu thử | Chưa có metadata mục đích | Audit classification explicit; toggle TEST mặc định OFF; owner đổi/khôi phục có ID và audit | 120 project PG filter/count/paging, UNKNOWN visible, Unicode/scopes; browser toggle/current TEST/restore/draft |
+| Recent Data lấy nguồn trang hai | Chia sẻ mảng25items của Data Explorer | Bounded GET riêng5nguồn mới nhất, tie-order ổn định | Regression30nguồn FAIL trước sửa;5/30/80PASS, page2/refresh/new source/error/delay/switch |
+| Nhãn thao tác khó phân biệt | Nút hoạt động xử lý chỉ ghi “Cập nhật” | “Cập nhật trạng thái xử lý”; normalize/AI/approve/run giữ hành động riêng | Foundation thật và test polling/manualGET; không tạo job/AI khi refresh |
+| Review dễ bị hiểu là sửa tiền | Phải giải thích ngay nơi đổi trạng thái | Thêm câu review không đổi comparison/tiền | T35 RESOLVED giữ immutable Snapshot, CSV/XLSX/oracle |
+| Phân loại đang lưu khi rời selector | Component không nhận kết quả sau unmount | Parent nhận confirmed DTO với guard ID; không set local state khi unmounted | Targeted FAIL→PASS và full41PASS; không mất draft/chuyển ngầm |
+| Bằng chứng ảnh Dashboard chụp loading | Chỉ đợi shell heading, chưa đợi dataset | Đợi nút nguồn thật trước overflow/screenshot | Kiểm lại nhóm foundation9 trên image8789940; ảnh đọc nội dung sau tải |
+
+Files theo trách nhiệm: backend `access.py`, `api.py`, `contracts/__init__.py`, `repository.py`; frontend `App.tsx`, `ProjectSelector.tsx`, `DataOverview.tsx`, `ReconciliationEvidence.tsx`, `styles.css`, `types.ts`; regression trong3E2E/helper và `test_postgres.py`;3tools tạofixture thêm TEST explicit; README/ARCHITECTURE/DATA_CONTRACTS/TESTING_GUIDE/báo cáo. Không thêm framework, dependency, service, migration hoặc module chức năng mới.
+
+### C. Quality và số đo thực tế
+
+| Nhóm | Kết quả |
+|---|---|
+| Backend đầy đủ trên PostgreSQL hiện có | **149 PASS,0 FAIL/SKIP,38,26s**;120offline+29PG; baseline145+4 |
+| Offline Windows | **120 PASS**,29integration deselected,5,21s |
+| Ruff / mypy | PASS; `ruff check backend tests tools`, `mypy backend/studio`28sourcefiles; không đổi migrations |
+| TypeScript / ESLint / production build | PASS; bundle main382,50kB, lazy reconciliation/chart491,74kB; không nâng threshold/đổi locks |
+| Full Playwright MANUAL | **41 PASS,0 FAIL/SKIP,~1,4phút**;9foundation+25interface+7reconciliation, baseline34+7 |
+| Mock/live phân biệt | Browser classification/recent cases và Planner dùng synthetic MOCK; foundation/T35 chạy thật API/worker local;0liveprovider |
+| Security | Owner-only classification, viewer/editordenial, foreign404, expected-state409 và concurrent-write guard; session/CSRF/Host/workspace/file/export/cloud OFF/lease/recovery cũ giữ PASS |
+| Independent read-back | Sau toàn suite: CSV/XLSX UI checksum, Snapshot JSON/as-of/zero-prefix và oracle Shopee/TikTok/giao nhận PASS; không FE tính lại KPI |
+| Responsive/accessibility |5widths, keyboard/Enter/Escape/focus-return, drawer trap, labels/status/alert, dialog bounds và4mẫu contrast;0uncaught errors trong từngcase. Không audit WCAG toàn diện/screen reader thực |
+
+Recent browser fixtures đếm **2request limit5**: vàoDashboard lầnđầu + quay lại từData; refresh sau thêm nguồn thành **3**, tất cảoffset0. Không tải toàn bộ80nguồn, không request recent khi ở trangData/settings, idle polling vẫn dừng. Đo riêng API production local bằng5GET/route, HTTPclientkeepalive: defaultfiltered p50/p95 **68,49/88,52ms** (0visible), includeTEST+searchMANUAL **64,70/73,50ms** (1match), recentlimit5 **45,60/64,70ms** (project lúcđó4nguồn). p95 nội suy inclusive chỉ5samples, không benchmark sức tải/1kprojects; có lưu raw timings local.
+
+### D. Dữ liệu, AI và vận hành
+
+Trước nhiệm vụ:28projects/36datasets/34tables,72schemas/mappings,31canonical;129jobs/133attempts/132audits/17traces;18plans/17contracts/17runs/55cases;134foundation+17match+30exportfiles. Phân loại chỉ append28audits, không đổi bất kỳ metadatahash lịch sử. Sau hai fullreplays:28projects/38datasets/36tables,76schemas/mappings,33canonical;139jobs/143attempts/170audits/17traces;20plans/19contracts/19runs/61cases;142foundation+19match+34exportfiles. Snapshot từngID/metadata/hash trước và sau replayđầu đều là subset nguyên vẹn của hiện trạng. Historical ProjectRow, mappings/revisions, Canonical, VerifiedRun/MetricSnapshot, reviews và exports giữ nguyên.
+
+Delta một fullreplay đo được: **0project**, +1dataset/version/table/canonical, +2schema/mapping, +5jobs/attempts/audits, +1plan/contract/run/matchfile, +3cases, +4foundationfiles và+2exportfiles,0traces. Đây là dữ liệu tổng hợp cần giữ để tái kiểm chứng, chưa có phân loại file “tạm có thể xóa” được chủ dự án duyệt. Không SQL DELETE hoặc cleanup job. Đề xuất sau này: chủ workspace xác định thời hạn giữ theo projectTEST/run, pins cho nghiệm thu, dry-run đầy đủ refs trước mọi xóa; không triển khai trong nhiệm vụ này.
+
+Gemini global/workspace trước và sau **7/10**, còn **3**, model `gemini-3.5-flash-lite` giữ nguyên; plannerattempt1, parserreservations2, traces17; parsercreationOFF cảenv/policy. **Cloud delta0**, không provider fallback, reset/tăngquota hoặc tìmkey ở dự án khác. Qwen403 giữ **BLOCKED/DEFERRED**; Planner revision mới LIVE **NOT VERIFIED**; PDF/DOCX chỉ đọc cached extraction, không live request mới; Argon/Giai đoạn3 không triển khai.
+
+Source ứng dụng đã push **87899400903875663258dda2e12b05b186eee97f**, build từ câytracked sạch với OCI source/revision. **34backendfiles ×2services** và **4HTTPservedfrontendfiles** khớp SHA256 source/build; không `.env` trongimage. Cặp rollback-e025094 giữ nguyên; PostgreSQL immutable ID không đổi. Không suy revision từ cachedCreated timestamp.
+
+| Service | Immutable image ID |
+|---|---|
+| Backend/worker |`sha256:c3c8183437647aa1cb7df6f3d2b31a23ff4ddd22f3eede8e7878d6f1c58995b2` |
+| Frontend |`sha256:cbba7e5bd7743f8dcb407df924b5bdf46fa5010e8ecdd959809ece0626091de8` |
+| PostgreSQL |`sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` |
+
+Trên source8789940, saufull41: **restart PASS, force-recreate4services PASS, frontend-onlyrecreate PASS**. Mỗi lượt localproof bị vôhiệu đúngthiếtkế, `/api/session`403 trướcverify, sauverify đọc/so metadata vàartifactbytes khớp hoàn toàn snapshot142foundation/19match/34exports. MộtComposeproject `ai-reconciliation-studio`,4/4healthy, chỉpublish127.0.0.1:18180; giữhai volumesPostgreSQL/artifacts. Không rebuildPostgreSQL, dọnimage/cache hoặc xóa tài nguyên khác. Đây là persistencecheck, khôngDRrestoredrill.
+
+Số đo Docker host cuối: 51 images/39,39GB; 31 containers/574,6MB; 36 volumes/5,667GB; build cache47,69GB. Đây là tổng host có tài nguyên khác, không quy toàn bộ cho ứng dụng và không tuyên bố đã giải phóng dung lượng. Không thực hiện cleanup images/cache/volumes trong nhiệm vụ này.
+
+Evidence local ignored: `runtime/project-visibility-before.json`, `project-visibility-inventory.json`, `project-visibility-after-classification.json`, `project-visibility-after-first-replay.json`, `project-visibility-after-tests.json`, `project-visibility-runtime.json`, `project-navigation-measurements.json`, screenshots/downloads. Không commit dữ liệu runtime.
+
+Sau khi xem ảnh, phát hiện test Dashboard chỉ đợi shell heading nên có ảnh còn loading. Chỉ sửa assertion chờ nút nguồn thật trước overflow/screenshot; không sửa ứng dụng. Chạy lại foundation **9 PASS,0 FAIL/SKIP,31,1s** trên image source8789940; đã xem ảnh Dashboard1440 có đủ counters, next action và đúng5nguồn mới nhất, cùng selector390. Catalogue vẫn **41 cases**, không cộng replay thành50. Snapshot cuối `project-visibility-after-visual.json`: **28projects/39datasets/37tables,78schemas/mappings,34canonical;141jobs/145attempts/172audits/17traces;20plans/19contracts/19runs/61cases;146foundation+19match+34exportfiles**. Phần tăng riêng foundation là1dataset/canonical,2jobs/attempts/audits,4foundationfiles; không có run/export/project mới. So từng ID/metadata/checksum của baseline và snapshot full41 với hiện trạng cuối đều PASS; quota và read-back/oracle tiếp tục không đổi.
+
+### E. GitHub và đối chiếu quy tắc
+
+Nhánh **codex/interface-quality**; commit source **87899400903875663258dda2e12b05b186eee97f** đã push đúng origin chính thức. Diff nhiệm vụ gồm 22 files, source/tests/docs đúng phạm vi. Commit cuối bổ sung báo cáo và assertion chờ nội dung trước khi chụp ảnh; application files so với 8789940 không đổi, runtime giữ revision ứng dụng này. SHA HEAD cuối được báo sau commit. Working tree và local/remote HEAD được kiểm chốt khi bàn giao.
+
+Main/origin main giữ **0b9421e1fbbc1e13537b5c5510b3769e387f91a5**; acceptance tags giữ targets **78e68c08e60c7af2359e46def43196cf5b1a6dc1** và **be6b8a067ca052ea989a029a15558b0fd5ee48ef**. Không merge, tạo tag, force-push, reset, worktree hoặc Compose khác. Diff nhiệm vụ của engine/verification/normalization/schema_mapping/reconciliation_contracts/migrations/locks/Compose/Rules/AGENTS/PROJECT_PLAN rỗng. Scan 111 source candidates, known secrets trong reachable history, local Markdown paths và whitespace PASS; inventory chỉ chứa thông tin tổng hợp đã xác minh, không credentials hoặc dữ liệu khách hàng.
+
+Đã đối chiếu Rules trong phạm vi: DTO bổ sung có kiểu, backend là nguồn sự thật, quyền owner độc lập với ẩn/hiện, audit chỉ thêm và lookup có scope; provenance và lịch sử tài chính bất biến giữ nguyên. Tái sử dụng component/audit, không thêm framework; UX Việt và CTA thật, không bỏ approval. Git/Docker/cloud/phạm vi theo chỉ định. Không tuyên bố tuân thủ hoàn hảo các tình huống chưa đo.
+
+### F. Known limitations và quyết định
+
+- Cả 28 project trong inventory đều đủ bằng chứng TEST; không tự tạo WORK để làm đẹp số liệu. Project lịch sử khác thiếu bằng chứng phải giữ UNKNOWN và đợi owner; không có bộ phân loại runtime theo tên.
+- Truy vấn phân loại đọc audit events bằng correlated subquery; đã đo 28 project, integration kiểm 120 project, chưa benchmark 1k/10k hoặc cạnh tranh nhiều owner. Chỉ xem xét index/migration khi số đo thực tế cho thấy cần thiết.
+- Retention chỉ được đo và đề xuất; artifacts/jobs tổng hợp vẫn tăng. Không xóa dữ liệu hoặc bằng chứng cũ; persistence/regression không thay kiểm tra khôi phục backup hoặc kiểm toán bảo mật production.
+- Accessibility mới kiểm interactions, viewport và contrast cụ thể; chưa chứng nhận toàn bộ WCAG 2.2 AA. App vẫn giữ orchestration/state cần thiết, không refactor máy móc theo số dòng.
+- Qwen live, Planner revision mới live, precision/recall đại diện và các giới hạn MVP lịch sử giữ nguyên. Không mở cloud, Argon, Assistant hoặc Giai đoạn 3.
+
+**ĐẠT Final UX hardening trong phạm vi được giao:** TEST ẩn mặc định và có thể mở lại; UNKNOWN không bị ẩn; lựa chọn/bản nháp không đổi ngầm; Recent Data đúng nguồn/project; **149 backend / 41 E2E PASS**, không cloud, lịch sử nguyên vẹn. Đủ để chủ dự án review branch, chưa là quyền merge hoặc release production. **DỪNG sau push báo cáo, chờ review; không merge main hoặc triển khai Giai đoạn 3.**
