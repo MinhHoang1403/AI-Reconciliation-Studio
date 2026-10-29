@@ -83,6 +83,10 @@ export function App() {
   const [summary, setSummary] = useState<ProjectSummary | null>(null);
   const [projectLoading, setProjectLoading] = useState(false);
   const [projectError, setProjectError] = useState("");
+  const [runNavigation, setRunNavigation] = useState<{
+    id: string;
+    request: number;
+  } | null>(null);
   const [selectedSource, setSelectedSource] = useState<Dataset | null>(null);
   const [pendingTarget, setPendingTarget] = useState<PreparationAction | null>(
     null,
@@ -106,6 +110,7 @@ export function App() {
   const [search, setSearch] = useState("");
   const [workspace, setWorkspace] = useState<WorkspaceSettings | null>(null);
   const [ready, setReady] = useState(false);
+  const [actorRole, setActorRole] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
@@ -127,6 +132,8 @@ export function App() {
   const scopeRef = useRef({ projectId, datasetId, tableId, datasetOffset });
   scopeRef.current = { projectId, datasetId, tableId, datasetOffset };
   const fileInput = useRef<HTMLInputElement>(null);
+  const modalFocus = useRef<HTMLElement | null>(null);
+  const navigation = useRef<HTMLElement | null>(null);
   const projectSequence = useRef(0);
   const refreshController = useRef<AbortController | null>(null);
   const selectedDataset =
@@ -137,6 +144,67 @@ export function App() {
   const table = tables.find((t) => t.id === tableId);
   const currentCanonical = canonicals.find((c) => c.id === canonicalId);
   const activeMapping = mappings.find((m) => m.id === table?.active_mapping_id);
+
+  useEffect(() => {
+    if (!sidebar) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const items = () =>
+      Array.from(
+        navigation.current?.querySelectorAll<HTMLElement>(
+          "a[href], button:not(:disabled)",
+        ) || [],
+      );
+    items()[0]?.focus();
+    function keydown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSidebar(false);
+      }
+      if (event.key === "Tab") {
+        const controls = items();
+        if (event.shiftKey && document.activeElement === controls[0]) {
+          event.preventDefault();
+          controls.at(-1)?.focus();
+        } else if (
+          !event.shiftKey &&
+          document.activeElement === controls.at(-1)
+        ) {
+          event.preventDefault();
+          controls[0]?.focus();
+        }
+      }
+    }
+    const viewport = window.matchMedia("(max-width: 900px)");
+    const resized = () => {
+      if (!viewport.matches) setSidebar(false);
+    };
+    document.addEventListener("keydown", keydown);
+    viewport.addEventListener("change", resized);
+    return () => {
+      document.removeEventListener("keydown", keydown);
+      viewport.removeEventListener("change", resized);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [sidebar]);
+
+  const canEdit = actorRole === "owner" || actorRole === "editor";
+
+  function openUpload() {
+    if (!canEdit) {
+      setError("Bạn chỉ có quyền xem. Cần quyền chỉnh sửa để tải dữ liệu.");
+      return;
+    }
+    modalFocus.current = document.activeElement as HTMLElement | null;
+    setUploadOpen(true);
+  }
+  function openNewProject() {
+    if (!canEdit) {
+      setError("Bạn chỉ có quyền xem. Cần quyền chỉnh sửa để tạo dự án.");
+      return;
+    }
+    modalFocus.current = document.activeElement as HTMLElement | null;
+    setProjectOpen(true);
+  }
 
   const run = useCallback(async (task: () => Promise<void>) => {
     setBusy(true);
@@ -157,7 +225,7 @@ export function App() {
     let mounted = true;
     void (async () => {
       try {
-        await api("/session");
+        const actor = await api<{ role: string }>("/session");
         const s = await api<WorkspaceSettings>("/settings");
         const savedId = localStorage.getItem("studio.project");
         let restored: Project | null = null;
@@ -182,6 +250,7 @@ export function App() {
         setProject(restored);
         setProjectId(restored?.id || "");
         setWorkspace(s);
+        setActorRole(actor.role);
         setReady(true);
       } catch (err) {
         if (mounted)
@@ -434,6 +503,7 @@ export function App() {
     refreshController.current?.abort();
     setProjectLoading(false);
     setProjectError("");
+    setRunNavigation(null);
     setSelectedSource(null);
     setPendingTarget(null);
     setProject(selected);
@@ -460,7 +530,7 @@ export function App() {
   }
   async function openPreparation(action: PreparationAction) {
     if (action.kind === "UPLOAD") {
-      setUploadOpen(true);
+      openUpload();
       return;
     }
     if (action.kind === "WAIT") {
@@ -649,7 +719,13 @@ export function App() {
           onClick={() => setSidebar(false)}
         />
       )}
-      <aside className={`sidebar ${sidebar ? "sidebar-open" : ""}`}>
+      <aside
+        ref={navigation}
+        className={`sidebar ${sidebar ? "sidebar-open" : ""}`}
+        role={sidebar ? "dialog" : undefined}
+        aria-modal={sidebar || undefined}
+        aria-label={sidebar ? "Điều hướng" : undefined}
+      >
         <a
           className="brand"
           href="#"
@@ -668,7 +744,7 @@ export function App() {
         <div className="workspace-switch">
           <span className="workspace-icon">LS</span>
           <div>
-            <strong>Local workspace</strong>
+            <strong>Không gian làm việc</strong>
             <small>Dữ liệu của bạn · lưu bền vững</small>
           </div>
           <ShieldCheck size={16} />
@@ -758,12 +834,20 @@ export function App() {
             <span>LC</span>
             <div>
               <strong>Người dùng local</strong>
-              <small>Workspace owner</small>
+              <small>
+                {(
+                  {
+                    owner: "Chủ không gian",
+                    editor: "Có quyền chỉnh sửa",
+                    viewer: "Chỉ xem",
+                  } as Record<string, string>
+                )[actorRole] || "Đang xác minh quyền"}
+              </small>
             </div>
           </div>
         </div>
       </aside>
-      <div className="main-shell">
+      <div className="main-shell" inert={sidebar || undefined}>
         <header className="topbar">
           <div className="breadcrumb">
             <button
@@ -773,7 +857,7 @@ export function App() {
             >
               <Menu size={22} />
             </button>
-            <span>Workspace</span>
+            <span>Không gian làm việc</span>
             <ChevronRight size={14} />
             <strong>
               {page === "home"
@@ -828,10 +912,8 @@ export function App() {
               {(page === "home" || page === "data") && (
                 <button
                   className={`button ${page === "data" && datasetId && tab !== "explore" ? "secondary" : "primary"}`}
-                  disabled={!ready || busy}
-                  onClick={() =>
-                    projectId ? setUploadOpen(true) : setProjectOpen(true)
-                  }
+                  disabled={!ready || busy || !canEdit}
+                  onClick={() => (projectId ? openUpload() : openNewProject())}
                 >
                   <Upload size={17} />
                   {projectId ? "Tải dữ liệu" : "Tạo dự án đầu tiên"}
@@ -843,6 +925,14 @@ export function App() {
             <Notice tone="error">
               <div className="notice-content">
                 {error}
+                {!ready && (
+                  <button
+                    className="text-button"
+                    onClick={() => window.location.reload()}
+                  >
+                    Kết nối lại
+                  </button>
+                )}
                 <button
                   className="icon-button"
                   aria-label="Ẩn thông báo lỗi"
@@ -873,7 +963,8 @@ export function App() {
               )}
               <button
                 className="text-button"
-                onClick={() => setProjectOpen(true)}
+                disabled={!canEdit}
+                onClick={() => openNewProject()}
               >
                 + Tạo dự án
               </button>
@@ -911,6 +1002,8 @@ export function App() {
                 <ReconciliationStudio
                   key={projectId}
                   projectId={projectId}
+                  canEdit={canEdit}
+                  requestedRun={runNavigation}
                   mode={page as "home" | "reconcile" | "exceptions" | "reports"}
                 />
               </Suspense>
@@ -928,6 +1021,11 @@ export function App() {
                     `studio.run.${projectId}`,
                     summary.latest_verified_run_id,
                   );
+                if (summary.latest_verified_run_id)
+                  setRunNavigation((old) => ({
+                    id: summary.latest_verified_run_id!,
+                    request: (old?.request || 0) + 1,
+                  }));
                 setPage(target);
               }}
               onData={() => setPage("data")}
@@ -1101,6 +1199,7 @@ export function App() {
                           <div className="tab-content">
                             {tab === "mapping" && table && profile && (
                               <MappingStudio
+                                readOnly={!canEdit}
                                 table={table}
                                 profile={profile}
                                 mappings={mappings}
@@ -1127,6 +1226,7 @@ export function App() {
                                     className="button primary"
                                     disabled={
                                       busy ||
+                                      !canEdit ||
                                       !activeMapping ||
                                       activeMapping.status !== "APPROVED"
                                     }
@@ -1480,7 +1580,12 @@ export function App() {
           </footer>
         </main>
       </div>
-      <Modal title="Tạo dự án" open={projectOpen} onOpenChange={setProjectOpen}>
+      <Modal
+        title="Tạo dự án"
+        open={projectOpen}
+        onOpenChange={setProjectOpen}
+        returnFocus={modalFocus}
+      >
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -1526,7 +1631,7 @@ export function App() {
             </button>
             <button
               className="button primary"
-              disabled={busy || !newName.trim() || !newScope.trim()}
+              disabled={busy || !canEdit || !newName.trim() || !newScope.trim()}
             >
               {busy ? <Spinner /> : "Tạo dự án"}
             </button>
@@ -1534,6 +1639,7 @@ export function App() {
         </form>
       </Modal>
       <Modal
+        returnFocus={modalFocus}
         title="Tải nguồn dữ liệu"
         open={uploadOpen}
         onOpenChange={setUploadOpen}
@@ -1657,7 +1763,7 @@ export function App() {
             </button>
             <button
               className="button primary"
-              disabled={busy || files.length === 0}
+              disabled={busy || !canEdit || files.length === 0}
             >
               {busy ? (
                 <Spinner />

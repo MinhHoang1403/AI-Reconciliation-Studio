@@ -35,6 +35,7 @@ Workspace local chọn `MAPPING_AI_PROVIDER=GEMINI`, `ALLOW_EXTERNAL_AI=true`, `
 ## Cách sử dụng
 
 1. Tạo dự án, nhập tên và phạm vi nghiệp vụ để kiểm soát tái sử dụng mapping.
+   Bộ chọn có tìm kiếm theo tên/phạm vi, phân trang và hỗ trợ bàn phím ↑/↓/Enter/Escape; reload giữ project đã chọn kể cả ngoài trang đầu. Project mất quyền/không tồn tại được báo rõ để chọn lại. Dashboard phân biệt số nguồn, bảng cần xác nhận ánh xạ, kết quả READY và PARTIAL/đã cũ/thất bại. **Bước tiếp theo** mở đúng bảng/tab cần xử lý, không tự chạy job hoặc duyệt quy tắc.
 2. Chọn **Tải dữ liệu**, thêm nhiều CSV/XLSX. Encoding/delimiter/header nằm trong tùy chọn nâng cao; UTF-8/BOM là mặc định.
    Có thể bỏ chọn “Dùng AI đề xuất ánh xạ trong hạn mức” để chỉ parse/profile và review thủ công, không enqueue AI hoặc tiêu quota. Quyết định này không thay đổi raw/parsed semantics; có thể yêu cầu đề xuất riêng về sau.
 3. Mở nguồn và chọn sheet. **Khám phá dữ liệu** có phân trang/tìm kiếm phía server, thống kê và nguồn gốc.

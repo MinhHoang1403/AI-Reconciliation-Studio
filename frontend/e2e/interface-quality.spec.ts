@@ -1,5 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 
+const uncaughtErrors = new WeakMap<Page, string[]>();
+test.beforeEach(({ page }) => {
+  const errors: string[] = [];
+  uncaughtErrors.set(page, errors);
+  page.on("pageerror", (error) => errors.push(error.message));
+});
+test.afterEach(({ page }) => {
+  expect(uncaughtErrors.get(page)).toEqual([]);
+});
+
 type Project = {
   id: string;
   name: string;
@@ -201,6 +211,193 @@ const emptySummary = {
   latest_verified_run_id: null,
 };
 
+test("project polling runs only while jobs are active and manual refresh remains available", async ({
+  page,
+}) => {
+  await fixture(page, projects(1));
+  let requests = 0;
+  let active = false;
+  await page.route("**/api/projects/*/summary", (route) => {
+    requests += 1;
+    return route.fulfill({
+      json: {
+        ...emptySummary,
+        dataset_count: 1,
+        active_job_count: active ? 1 : 0,
+        preparation_action: { kind: active ? "WAIT" : "UPLOAD" },
+      },
+    });
+  });
+  await page.clock.install();
+  await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: "Cập nhật dự án", exact: true }),
+  ).toBeEnabled();
+  const idle = requests;
+  await page.clock.fastForward(15000);
+  expect(requests).toBe(idle);
+  active = true;
+  await page
+    .getByRole("button", { name: "Cập nhật dự án", exact: true })
+    .click();
+  await expect(
+    page
+      .locator(".stat-card")
+      .filter({ hasText: "Tác vụ đang xử lý" })
+      .locator("strong"),
+  ).toHaveText("1");
+  const beforePoll = requests;
+  active = false;
+  await page.clock.fastForward(3100);
+  await expect.poll(() => requests).toBe(beforePoll + 1);
+  await expect(
+    page
+      .locator(".stat-card")
+      .filter({ hasText: "Tác vụ đang xử lý" })
+      .locator("strong"),
+  ).toHaveText("0");
+  const completed = requests;
+  await page.clock.fastForward(20000);
+  expect(requests).toBe(completed);
+});
+
+test("summary API error is visible with retry, not empty data or zero statistics", async ({
+  page,
+}) => {
+  await fixture(page, projects(1));
+  let fail = true;
+  await page.route("**/api/projects/*/summary", (route) =>
+    fail
+      ? route.fulfill({
+          status: 503,
+          json: { message_vi: "Dịch vụ tổng hợp tạm thời lỗi" },
+        })
+      : route.fulfill({ json: emptySummary }),
+  );
+  await page.goto("/");
+  await expect(page.getByRole("alert")).toContainText(
+    "Dịch vụ tổng hợp tạm thời lỗi",
+  );
+  await expect(page.locator(".stat-card")).toHaveCount(0);
+  await expect(
+    page.getByText("Chưa có nguồn dữ liệu", { exact: true }),
+  ).toHaveCount(0);
+  fail = false;
+  await page
+    .getByRole("button", { name: "Thử tải lại dự án", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Chưa có nguồn dữ liệu", exact: true }),
+  ).toBeVisible();
+});
+
+test("viewer role is truthful and write actions are disabled while navigation remains available", async ({
+  page,
+}) => {
+  await fixture(page, projects(1));
+  await page.route("**/api/session", (route) =>
+    route.fulfill({ json: { role: "viewer", workspace_id: "synthetic" } }),
+  );
+  await page.route("**/api/projects/*/canonical-catalogue", (route) =>
+    route.fulfill({
+      json: {
+        items: ["left", "right"].map((id) => ({
+          project_id: "project-000",
+          name: `Synthetic ${id}`,
+          canonical: {
+            id,
+            stale: false,
+            quality_status: "READY",
+            row_count: 1,
+          },
+          schema_definition: {
+            id: `schema-${id}`,
+            grain: "one synthetic record",
+            fields: [],
+            business_key_fields: [],
+          },
+        })),
+      },
+    }),
+  );
+  await page.goto("/");
+  await expect(page.getByText("Chỉ xem", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Tải dữ liệu", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "+ Tạo dự án", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Đối soát", exact: true }).click();
+  await expect(
+    page.getByLabel("Nguồn tham chiếu", { exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByLabel("Nguồn đối ứng", { exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Bạn có quyền xem dữ liệu" }),
+  ).toBeVisible();
+  await expect(page.locator("#project-select")).toBeEnabled();
+});
+
+for (const width of [390, 768, 1366, 1440, 1920]) {
+  test(`project dialog responsive and keyboard focus at ${width}`, async ({
+    page,
+  }) => {
+    await fixture(page, projects(120));
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    const trigger = page.locator("#project-select");
+    await trigger.focus();
+    await trigger.press("Enter");
+    const search = page.getByRole("combobox", {
+      name: "Tìm dự án",
+      exact: true,
+    });
+    await expect(search).toBeFocused();
+    await expect(page.getByRole("option")).toHaveCount(20);
+    await search.press("End");
+    await search.press("Enter");
+    await expect(trigger).toHaveAttribute("data-project-id", "project-019");
+    await expect(trigger).toBeFocused();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    if (width < 900) {
+      const menu = page.getByRole("button", {
+        name: "Mở điều hướng",
+        exact: true,
+      });
+      await menu.click();
+      const navigation = page.getByRole("dialog", {
+        name: "Điều hướng",
+        exact: true,
+      });
+      await expect(navigation.getByRole("link")).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(
+        navigation.getByRole("button", { name: "Cài đặt", exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeFocused();
+      await expect(navigation).toHaveCount(0);
+    }
+    const upload = page.getByRole("button", {
+      name: "Tải dữ liệu",
+      exact: true,
+    });
+    await upload.click();
+    await expect(
+      page.getByRole("dialog", { name: "Tải nguồn dữ liệu", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(upload).toBeFocused();
+  });
+}
+
 test("dashboard uses server totals, distinguishes PARTIAL and opens the exact off-page table errors", async ({
   page,
 }) => {
@@ -321,7 +518,7 @@ test("dashboard uses server totals, distinguishes PARTIAL and opens the exact of
   expect(errors).toEqual([]);
 });
 
-test("project switch discards delayed old summary/data/error and clears the previous run", async ({
+test("project switch discards delayed old summary/data/error", async ({
   page,
 }) => {
   const items = projects(2);

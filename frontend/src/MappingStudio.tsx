@@ -68,6 +68,7 @@ export function MappingStudio({
   profile,
   mappings,
   busy,
+  readOnly = false,
   run,
   onApproved,
   onEvidence,
@@ -76,6 +77,7 @@ export function MappingStudio({
   profile: Profile;
   mappings: Mapping[];
   busy: boolean;
+  readOnly?: boolean;
   run: (task: () => Promise<void>) => Promise<void>;
   onApproved: () => Promise<void>;
   onEvidence: (id: string) => void;
@@ -189,7 +191,7 @@ export function MappingStudio({
         </div>
         <button
           className="button secondary"
-          disabled={busy}
+          disabled={busy || readOnly}
           onClick={() =>
             void run(async () => {
               await api(`/tables/${table.id}/mapping-proposals`, {
@@ -493,6 +495,7 @@ export function MappingStudio({
             className="button secondary"
             disabled={
               busy ||
+              readOnly ||
               ["APPROVED", "SUPERSEDED", "REJECTED"].includes(mapping.status)
             }
             onClick={() =>
@@ -508,6 +511,7 @@ export function MappingStudio({
             className="button primary"
             disabled={
               busy ||
+              readOnly ||
               invalid ||
               ["SUPERSEDED", "REJECTED"].includes(mapping.status)
             }

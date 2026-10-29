@@ -2,6 +2,8 @@
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
+Quality hardening ngày 29–30/10/2026 trên `codex/interface-quality`: xem [mục M](IMPLEMENTATION_STATUS.md#m-hoàn-thiện-frontend-và-ux-giai-đoạn-12). Số liệu nghiệm thu bên dưới thuộc các mốc lịch sử; kết quả mới và regression bổ sung được báo riêng, không cộng replays thành cases mới.
+
 Bằng chứng Final Acceptance mới nhất ngày **29/10/2026** ở [mục L của báo cáo](IMPLEMENTATION_STATUS.md#l-final-acceptance-hợp-nhất-và-vận-hành--29102026): 120 offline/143 tổng backend và 15 E2E MANUAL PASS, không cloud. T35 hiện xuất cả CSV/XLSX qua UI, đợi đúng export URL của từng format, kiểm SHA256/timestamp và lưu downloads/snapshot dưới runtime để đọc lại. Không đổi oracle, timeout hoặc số cases. Những số 91/9 ở phần nền tảng bên dưới là lịch sử Giai đoạn 1.
 
 Đối chiếu runtime/source khi release: từ tracked application source sạch, đặt build-only `$env:BUILDX_GIT_LABELS='full'` rồi `docker compose build backend frontend`, kiểm OCI revision/source của images trước `up`, `tools/verify-local.ps1` và so source/served assets SHA256. Label base image Nginx không phải revision của ứng dụng; cached Created timestamp không chứng minh commit. Không cần thêm biến runtime, service hoặc thay Dockerfile.
@@ -65,7 +67,7 @@ npm --prefix frontend exec -- playwright install chromium
 npm --prefix frontend run test:e2e
 ```
 
-Playwright chạy trên Nginx production tại `127.0.0.1:18180`, một Chromium worker. Tạo dự án/file tổng hợp có scope riêng mỗi lần để không nhầm cache với live AI. Mặc định MANUAL bỏ chọn yêu cầu AI, không gọi Gemini/Qwen; có thể đặt `STUDIO_EXPECT_AI_PROVIDER=MANUAL` explicit. Khi kiểm tra Gemini live phải chỉ định explicit trước khi chạy:
+Playwright chạy trên Nginx production tại `127.0.0.1:18180`, một Chromium worker. Foundation reuse đúng một project có tên/scope E2E rõ ràng theo provider mode; nếu không có mới tạo qua UI, nhiều matches thì dừng. Mỗi run dùng CSV bytes/filename mới với UUID ở một ID tổng hợp không thuộc oracle tiền; giữ các mẫu zero-prefix/invalid/null/zero và đáp án cũ. Không approve lại table cũ, không invalidate artifact lịch sử. Không xóa project/dữ liệu cũ, không thêm delete API. Project count được kiểm trước/sau lần replay để chứng minh không tăng tiếp; artifacts/jobs tổng hợp vẫn tăng có chủ đích, cần chủ dự án quyết định retention về sau. UI contract tests search120projects/80datasets chỉ intercept GET và không tạo dữ liệu production. Mặc định MANUAL bỏ chọn yêu cầu AI, không gọi Gemini/Qwen; có thể đặt `STUDIO_EXPECT_AI_PROVIDER=MANUAL` explicit. Khi kiểm tra Gemini live phải chỉ định explicit trước khi chạy:
 
 ```powershell
 $env:STUDIO_EXPECT_AI_PROVIDER='GEMINI'
