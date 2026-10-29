@@ -49,7 +49,7 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
   // Reuse one explicitly owned test project; each run uses fresh bytes/table IDs.
   // Never approve/invalidate an older dataset or delete historical evidence.
   const matchesResponse = await page.request.get(
-    `/api/projects?search=${encodeURIComponent(projectName)}&limit=100`,
+    `/api/projects?include_test=true&search=${encodeURIComponent(projectName)}&limit=100`,
   );
   const matches = (await matchesResponse.json()).items.filter(
     (p: { name: string; business_scope: string }) =>
@@ -57,22 +57,21 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
   );
   expect(matches.length).toBeLessThanOrEqual(1);
   if (matches.length) {
+    expect(matches[0].classification).toBe("TEST");
     projectId = matches[0].id;
     await selectProject(page, projectId);
   } else {
-    await page
-      .getByRole("button", { name: "+ Tạo dự án", exact: true })
-      .click();
-    const create = page.getByRole("dialog");
-    await create.getByLabel("Tên dự án", { exact: true }).fill(projectName);
-    await create.getByLabel("Phạm vi nghiệp vụ").fill(projectScope);
-    await create
-      .getByRole("button", { name: "Tạo dự án", exact: true })
-      .click();
-    await expect(create).not.toBeVisible();
-    projectId = (await page
-      .locator("#project-select")
-      .getAttribute("data-project-id"))!;
+    const create = await page.request.post("/api/projects", {
+      headers: { Origin: "http://127.0.0.1:18180" },
+      data: {
+        name: projectName,
+        business_scope: projectScope,
+        classification: "TEST",
+      },
+    });
+    expect(create.status()).toBe(201);
+    projectId = (await create.json()).id;
+    await selectProject(page, projectId);
   }
   const dialog = page.getByRole("dialog");
   await page.getByRole("button", { name: "Tải dữ liệu", exact: true }).click();
@@ -132,9 +131,14 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
           d.source_field === "c1" && d.candidate_target === "reference_id",
       ),
     ).toBeTruthy();
-    await page.getByRole("button", { name: "Cập nhật", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Cập nhật trạng thái xử lý", exact: true })
+      .click();
     await expect(
-      page.getByRole("button", { name: "Cập nhật", exact: true }),
+      page.getByRole("button", {
+        name: "Cập nhật trạng thái xử lý",
+        exact: true,
+      }),
     ).toBeEnabled();
   }
   await page.getByRole("tab", { name: "AI Smart Setup" }).click();
@@ -165,9 +169,14 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
     .selectOption("gross");
   await page.getByLabel("Tiền tệ Gross amount", { exact: true }).fill("VND");
   await page.getByLabel("Đơn vị Gross amount", { exact: true }).fill("VND");
-  await page.getByRole("button", { name: "Cập nhật", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Cập nhật trạng thái xử lý", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Cập nhật", exact: true }),
+    page.getByRole("button", {
+      name: "Cập nhật trạng thái xử lý",
+      exact: true,
+    }),
   ).toBeEnabled();
   await expect(page.getByLabel("Loại dữ liệu", { exact: true })).toHaveValue(
     "order",

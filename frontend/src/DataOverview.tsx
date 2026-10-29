@@ -8,7 +8,7 @@ import {
   Sparkles,
   Upload,
 } from "lucide-react";
-import { DatasetList } from "./components";
+import { DatasetList, Notice, Spinner } from "./components";
 import type {
   Dataset,
   PreparationAction,
@@ -129,6 +129,9 @@ function Stat({
 export function DataOverview({
   summary,
   datasets,
+  recentLoading,
+  recentError,
+  onRecentRetry,
   workspace,
   busy,
   onAction,
@@ -138,6 +141,9 @@ export function DataOverview({
 }: {
   summary: ProjectSummary;
   datasets: Dataset[];
+  recentLoading: boolean;
+  recentError: string;
+  onRecentRetry: () => void;
   workspace: WorkspaceSettings | null;
   busy: boolean;
   onAction: (action: PreparationAction) => void;
@@ -298,19 +304,30 @@ export function DataOverview({
         <div className="panel-heading">
           <div>
             <h2>Dữ liệu gần đây</h2>
-            <p>Tiếp tục công việc từ nơi bạn đã dừng.</p>
+            <p>Năm nguồn tải lên mới nhất trong dự án.</p>
           </div>
           <button className="text-button" onClick={() => onData()}>
             Xem tất cả <ArrowRight size={15} />
           </button>
         </div>
-        {datasets.length ? (
+        {recentLoading ? (
+          <div role="status">
+            <Spinner /> Đang tải dữ liệu gần đây…
+          </div>
+        ) : recentError ? (
+          <Notice tone="error">
+            Không tải được dữ liệu gần đây. {recentError}{" "}
+            <button className="text-button" onClick={onRecentRetry}>
+              Tải lại dữ liệu gần đây
+            </button>
+          </Notice>
+        ) : datasets.length ? (
           <DatasetList items={datasets.slice(0, 5)} onSelect={chooseDataset} />
         ) : (
           <div className="empty-state">
             <FileSpreadsheet size={31} />
             <h3>Chưa có nguồn dữ liệu</h3>
-            <p>Tạo dự án và tải tệp đầu tiên để bắt đầu.</p>
+            <p>Tải tệp đầu tiên vào dự án để bắt đầu.</p>
             <span className="supported">
               CSV & XLSX · Tối đa{" "}
               {workspace ? workspace.max_upload_bytes / 1048576 : 20} MB/tệp

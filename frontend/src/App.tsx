@@ -78,6 +78,13 @@ export function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [projectId, setProjectId] = useState("");
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [recent, setRecent] = useState<{
+    projectId: string;
+    items: Dataset[];
+    loading: boolean;
+    error: string;
+  }>({ projectId: "", items: [], loading: true, error: "" });
+  const [recentRetry, setRecentRetry] = useState(0);
   const [datasetOffset, setDatasetOffset] = useState(0);
   const [datasetTotal, setDatasetTotal] = useState(0);
   const [summary, setSummary] = useState<ProjectSummary | null>(null);
@@ -232,8 +239,11 @@ export function App() {
         try {
           restored = savedId
             ? await api<Project>(`/projects/${encodeURIComponent(savedId)}`)
-            : (await api<{ items: Project[] }>("/projects?limit=1")).items[0] ||
-              null;
+            : (
+                await api<{ items: Project[] }>(
+                  "/projects?include_test=false&limit=1",
+                )
+              ).items[0] || null;
         } catch (err) {
           if (!mounted) return;
           if (
@@ -337,6 +347,43 @@ export function App() {
       refreshController.current?.abort();
     };
   }, [ready, refreshProject]);
+  useEffect(() => {
+    if (!ready || !projectId || !summary || page !== "home") return;
+    const controller = new AbortController();
+    setRecent({ projectId, items: [], loading: true, error: "" });
+    void api<{ items: Dataset[] }>(
+      `/datasets?project_id=${projectId}&offset=0&limit=5`,
+      { signal: controller.signal },
+    )
+      .then((result) => {
+        if (
+          !controller.signal.aborted &&
+          scopeRef.current.projectId === projectId
+        )
+          setRecent({
+            projectId,
+            items: result.items,
+            loading: false,
+            error: "",
+          });
+      })
+      .catch((err) => {
+        if (
+          !controller.signal.aborted &&
+          scopeRef.current.projectId === projectId
+        )
+          setRecent({
+            projectId,
+            items: [],
+            loading: false,
+            error:
+              err instanceof Error
+                ? err.message
+                : "Không tải được dữ liệu gần đây.",
+          });
+      });
+    return () => controller.abort();
+  }, [ready, projectId, page, summary, recentRetry]);
   useEffect(() => {
     if (
       !ready ||
@@ -509,6 +556,7 @@ export function App() {
     setProject(selected);
     setProjectId(selected.id);
     setDatasets([]);
+    setRecent({ projectId: selected.id, items: [], loading: true, error: "" });
     setDatasetTotal(0);
     setDatasetOffset(0);
     setJobs([]);
@@ -570,7 +618,11 @@ export function App() {
   async function createProject() {
     const p = await api<Project>("/projects", {
       method: "POST",
-      body: JSON.stringify({ name: newName, business_scope: newScope }),
+      body: JSON.stringify({
+        name: newName,
+        business_scope: newScope,
+        classification: "WORK",
+      }),
     });
     chooseProject(p);
     setProjectOpen(false);
@@ -951,6 +1003,12 @@ export function App() {
                 project={project}
                 onSelect={chooseProject}
                 disabled={busy}
+                canClassify={actorRole === "owner"}
+                onClassificationChange={(value) =>
+                  setProject((current) =>
+                    current?.id === value.id ? value : current,
+                  )
+                }
               />
               {projectId && (
                 <button
@@ -1011,7 +1069,10 @@ export function App() {
           {ready && page === "home" && projectId && summary && (
             <DataOverview
               summary={summary}
-              datasets={datasets}
+              datasets={recent.projectId === projectId ? recent.items : []}
+              recentLoading={recent.projectId !== projectId || recent.loading}
+              recentError={recent.projectId === projectId ? recent.error : ""}
+              onRecentRetry={() => setRecentRetry((value) => value + 1)}
               workspace={workspace}
               busy={busy}
               onAction={(action) => void run(() => openPreparation(action))}
@@ -1542,7 +1603,7 @@ export function App() {
                   disabled={busy}
                   onClick={() => void run(changed)}
                 >
-                  Cập nhật
+                  Cập nhật trạng thái xử lý
                 </button>
               </div>
               {jobs.slice(0, 6).map((j) => (

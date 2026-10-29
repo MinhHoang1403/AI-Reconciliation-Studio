@@ -524,3 +524,72 @@ Clean Code/trách nhiệm: tách3ranh giới có lợi ích và typed props, kh�
 - Qwen live hoãn; Planner revision mới live chưa xác minh; Argon không tích hợp. Mapping/linkage precision/recall đại diện và các giới hạn MVP lịch sử giữ nguyên, không nâng thành PASS bằng UI tests.
 
 **ĐẠT nhiệm vụ hoàn thiện frontend/UX trong phạm vi được giao:** bộ chốt145backend/34E2E không FAIL/SKIP, dữ liệu lịch sử giữ nguyên, không cloud. Đủ để chủ dự án review `codex/interface-quality`; không tự coi đây là quyền merge hoặc production release. **DỪNG sau push báo cáo; chờ lệnh riêng, không merge main, không bắt đầu Giai đoạn3 hoặc Argon.**
+
+## N. Final UX hardening — phân loại project và dữ liệu gần đây
+
+Ủy quyền mới ngày30/10/2026 tiếp tục trên `codex/interface-quality`, baseline8a20c4e/145backend/34E2E; mục M giữ lịch sử. Mục tiêu: phân loại TEST có bằng chứng và ẩn mặc định, quản lý/khôi phục bởi owner, sửa Recent Data, rà UX có giới hạn. Giữ engine/verifier/Decimal/MetricSnapshot/raw/history; không cloud/main merge/Giai đoạn3.
+
+### Thiết kế và kiểm chứng theo nhóm
+
+ProjectRow chưa có classification. Tái sử dụng audit hiện có để lưu nhóm explicit WORK/TEST/UNKNOWN, không migration/bảng/cột mới; legacy không event là UNKNOWN. POST người dùng WORK mặc định; fixtures TEST explicit. PATCH chỉ owner, khóa project và so expected_classification,409 chống stale overwrite; no-op không thêm audit. GET cũ không include_test giữ tương thích; UI gửifalse từ đầu, lọc server trước count/offset/limit, GET theoID không phụ thuộc filter. Selector duy nhất có toggle “Hiển thị dự án kiểm thử” mặc địnhOFF, badge TEST và details quản lý current project có tên/scope/full ID trước xác nhận. Ẩn TEST không đổi project/draft/quyền, restore savedTEST vẫn được; success/error riêng, không retry mutation.
+
+Regression trước sửa backend:2case mới FAIL do thiếuclassification vàtotal120 thay80;25PG cũ PASS. Sau sửa27PG PASS/120offline deselected (32,11s); thêm concurrency test hai owner cùng expectedWORK: một200/một409, toàn28PG PASS (30,29s). Một lần browser23case: option queries cũ đếm lẫn3nativeoptions trong phần phân loại; đã scope listbox thật, không hidden control. Fixture rule-draft mới ban đầu chưa có2nguồn nên không có form; bổ sung catalogue tổng hợp có typed shape. Label nhóm dự án được gắn aria-label rõ; targeted classification1PASS và cả24browser contracts PASS (26,1s). Đây chưa thay full regression cuối.
+
+Recent Data đã tái hiện FAIL:30nguồn, trangDữ liệu thứhai→Tổng quan mấtLatest000. Sửa bằng GETdatasets offset0/limit5 riêng, created_atDESC/idASC stable; không endpoint mới hoặc tải toàn bộ. Loading/error/retry/empty riêng, abort vàproject guard. Browser5/30/80nguồn đều PASS, đúng5mới nhất saupage2; refresh sau nguồn mới cập nhật đúng. Case delayed/error/switch xác nhận responseprojectA không lộởB, lỗi không giả empty.
+
+UX audit mười khu vực hiện có: Tổng quan (recent độc lập, nguồn mới nhất/loading/error), Dữ liệu (nút “Cập nhật trạng thái xử lý” rõGET so với normalize tạojob), Smart Setup (giữ đề xuất/approval/field evidence), Chuẩn hóa (READY/PARTIAL/stale/errors gate cũ), Đối soát (giữ nguồn→scope→approval→run), Ngoại lệ (thêm giải thích trạng thái review không đổi tiền/comparison), Báo cáo (giữ run/kỳ/verified snapshot/as-of/export), Cài đặt (quota/provider/roles thật), Chọn/Tạo dự án (classification gọn), dialogs/thông báo (focus/ARIA). Không redesign hoặc bỏ approval. Rà soát không phát hiện lỗi mới cần sửa matcher/verifier; những kết luận ngoài fixtures vẫn chưa được chứng minh.
+
+Inventory và số liệu bàn giao cuối được ghi sau full regression/persistence; không dùng baseline làm PASS mới.
+
+### A. Project inventory — bằng chứng trước thay đổi
+
+Đầu nhiệm vụ: **28 UNKNOWN** vì chưa có classification event; sau xác minh qua API: **28 TEST,0 WORK,0 UNKNOWN**, tổng28 giữ nguyên. Không gán WORK chỉ dựa vào tên. Tất cả thuộc workspace `demo`, dataset owner `demo-owner`; inventory local còn lưu created_at UTC, scopes, dataset IDs/hash, jobs/runs/audit refs. Không có project nào cần chủ dự án xác nhận ở tập28 này; project cũ khác không có bằng chứng vẫn mặc địnhUNKNOWN.
+
+| Project ID | Tên | Nguồn gốc đã xác minh | Nhóm đề xuất/đã áp dụng | Chắc chắn |
+|---|---|---|---|---|
+| `abe40c9c-d47b-4a2f-8f80-d34888df2d7c` | Dữ liệu tổng hợp · 1793127566266 | E1 | TEST | Cao |
+| `1adf15a2-f0cf-4a1a-b918-32be666d8928` | Dữ liệu tổng hợp · 1793127840245 | E1 | TEST | Cao |
+| `b13895e2-12fc-45ee-897e-7fa650909031` | Dữ liệu tổng hợp · 1793128199903 | E1 | TEST | Cao |
+| `c28360f8-78cc-4723-8f91-b089375e41cb` | Dữ liệu tổng hợp · 1793128391092 | E1 | TEST | Cao |
+| `1e0cd1d9-b763-4964-b7a1-4132bc61c5c7` | Dữ liệu tổng hợp · 1793129148032 | E1 | TEST | Cao |
+| `42773d37-9a65-421b-8fd3-866b3a3a1c06` | Dữ liệu tổng hợp · 1793129956994 | E1 | TEST | Cao |
+| `4997a82a-fc08-42fe-b97a-a0db1bd6c113` | Kiểm tra khôi phục worker | E2 | TEST | Cao |
+| `b77b6551-e1fa-40b2-97ef-0a688c015457` | Dữ liệu tổng hợp · 1793131631604 | E1 | TEST | Cao |
+| `5c955869-30b3-4db6-8dc1-f7660647a3d1` | Dữ liệu tổng hợp · 1793147126220 | E1 | TEST | Cao |
+| `fa7e7d2e-f821-46d7-920e-6b66c1c852be` | Dữ liệu tổng hợp · 1793147302189 | E1 | TEST | Cao |
+| `ec4b72ae-a585-491e-abe3-980aac0363ac` | Dữ liệu tổng hợp · 1793147602813 | E1 | TEST | Cao |
+| `1e84ddc0-e55e-4827-9407-d5dc17777de4` | Dữ liệu tổng hợp · 1793147655037 | E1 | TEST | Cao |
+| `5b655b89-8b0e-4e0d-98b9-e365530bedac` | Kiểm tra tài liệu tổng hợp | E3 | TEST | Cao |
+| `d125b6eb-0d25-48cc-a7f0-54beaa946fae` | Dữ liệu tổng hợp · 1793155126628 | E1 | TEST | Cao |
+| `c573e971-295d-47a7-a3a3-94c13b3e675f` | Kiểm tra khôi phục worker | E2 | TEST | Cao |
+| `8a3bc325-022c-4101-bd86-d8d57b2f48a7` | Dữ liệu tổng hợp · 1793155302402 | E1 | TEST | Cao |
+| `29b91f9d-aa22-4791-a44f-52c0c760af2b` | Dữ liệu tổng hợp · 1793157445350 | E1 | TEST | Cao |
+| `2358398f-c3d7-4b13-a971-5b40fcac7f2d` | Kiểm tra khôi phục worker | E2 | TEST | Cao |
+| `e1c05f6d-1553-46c6-b1a7-45a191706f27` | Dữ liệu tổng hợp · 1793159064934 | E1 | TEST | Cao |
+| `faa4f9b1-298a-4333-9b82-c7b939d84774` | Đối soát tổng hợp có oracle | E4 | TEST | Cao |
+| `17fba5e0-de6e-4ed2-9fc0-b97a52787807` | Dữ liệu tổng hợp · 1793161569604 | E1 | TEST | Cao |
+| `0a5de3e6-2781-4faf-b42b-24292c09184e` | Dữ liệu tổng hợp · 1793161842836 | E1 | TEST | Cao |
+| `afa10789-3729-49f5-8676-d5f28a244ad3` | Dữ liệu tổng hợp · 1793162175280 | E1 | TEST | Cao |
+| `9c9d30a7-fbd3-44df-89a9-bc17d602505c` | Dữ liệu tổng hợp · 1793175086889 | E1 | TEST | Cao |
+| `1b583f85-079f-4e63-bd81-2e3af5dca0c9` | Dữ liệu tổng hợp · 1793180785335 | E1 | TEST | Cao |
+| `dcf47c99-7c40-41fa-8515-75a09b6c7626` | Dữ liệu tổng hợp · 1793181069922 | E1 | TEST | Cao |
+| `30494cd1-f40e-4075-9408-4b9f87f28614` | Dữ liệu tổng hợp · 1793285254493 | E1 | TEST | Cao |
+| `87abdb34-f8e5-4b0a-bb81-8f1fb527391b` | Kiểm thử giao diện · MANUAL | E5 | TEST | Cao |
+
+Bằng chứng (không dùng tên làm bằng chứng duy nhất):
+
+- **E1 (22project):** raw `synthetic-orders.csv` có SHA256 đúng từng byte `6428223f30041b371725896b9d3b944e964e9783cfff18e55c8f842f0006c18d`, cùng fixture E2E trong lịch sử source32741ae/0b9421e; scopes kiểm thử, owner demo và parse/mapping/normalize jobs. Created_at cách timestamp harness0,79–7,88giây; hai scopes ban đầu không chứa timestamp vẫn có checksum/file/ownership/jobs xác nhận.
+- **E2 (3project):** exact75000-row synthetic-recovery.csv SHA256 `c2c28b5665c82b099155eeb20493abcf9e4aa47003ef5fedaa483e2b5ff57cb9`, scopeUUID đúng worker-recovery harness, ownership/job recovery; runtime/worker-recovery.json xác định một projectID cuối.
+- **E3:** projectID từ document-acceptance/acceptance.json, cả hai PDF/DOCX tổng hợp tại local có SHA256 khớp dataset refs; cached extraction/jobs giữ nguyên, không gọi parser lại.
+- **E4:** projectID/datasetIDs từ reconciliation-acceptance.json, năm raw fixture CSV khớp SHA256 bytesLF trong Git (checkout Windows cóCRLF); không sửa raw để đối chiếu. Verified runs/oracle và jobs nguồn giữ nguyên.
+- **E5:** project có scope ổn định E2E_MANUAL_INTEGRITY từ246fe45; cả4filenameUUID/CSVbytes dựng theo fixture hiện hành đều khớp SHA256 dataset, ownership/jobs và báo cáo M xác nhận4replays.
+
+Đã phân loại một lần bằng28PATCH explicitID qua session owner hiện có. So trước/sau: **chỉ append28 PROJECT_CLASSIFIED_TEST audit events**, project metadata gốc và mọi metadata/artifact hash khác bằng nhau. Không SQL UPDATE/DELETE; không background classifier hoặc tự phân loại project tương lai từ tên. Một lần gọi trước local proof hoàn tất trả403, chưa ghi metadata; chỉ thực hiện sau verify-local thành công. Người dùng có thể mở TEST, xem tên/phạm vi/ID rồi xác nhậnWORK/UNKNOWN qua UI; việc này không xóa hoặc đổi quyền.
+
+### Kết quả chốt source trước deploy có revision
+
+**149 backend PASS,0 FAIL/SKIP (38,26s)** =120offline+29PG; baseline145 tăng4cases (hai classification, một concurrent owners, một dataset tie-order/scope). Offline Windows **120 PASS/29deselected,5,21s**. **41 E2E PASS,0 FAIL/SKIP (~1,4phút)** =9foundation+25interface+7reconciliation; baseline34 tăng7cases. Ruff/mypy28/TypeScript/ESLint/build PASS. Không cộng full40 và targeted replays thành sốcases mới.
+
+Case mới tái hiện metadata classification không cập nhật khi selector unmount lúc PATCH đang chạy: FAIL trước sửa; parent nhận confirmed DTO có guard currentID, component chỉ set local state khi còn mounted, sau sửa targeted1PASS/4,3s và full41PASS. Không retry write hoặc hủy job backend. Bộ full có cả luồng thật upload→mappingapprove→normalize→manualruleapprove→verifiedrun→evidence/review→CSV/XLSX→reopen, provider MANUAL; Planner và interface contract fixtures là MOCK, không liveAI. Một read-back chạy khi T35 còn ghi downloads/manifest đã thấy hash khác; đợi toàn suite hoàn tất rồi đọc lại đúng cặp files/manifest, không sửa checksum/oracle hoặc bytes backend để hợp thức hóa.
+
+Giữ keyword/source/module contracts, dependencies/locks/Compose/migrations/engine/verifier/formulas. Năm widths390/768/1366/1440/1920, keyboard/focus/ARIA/drawer/dialog bounds/contrast samples tiếp tục PASS. Báo cáo deploy/persistence/Git cuối được bổ sung sau khi commit source sạch; chưa coi healthcheck thay cho revision/hash verification.

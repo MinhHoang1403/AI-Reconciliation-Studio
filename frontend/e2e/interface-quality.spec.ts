@@ -16,6 +16,7 @@ type Project = {
   name: string;
   business_scope: string;
   workspace_id: string;
+  classification?: "WORK" | "TEST" | "UNKNOWN";
 };
 const projects = (count: number): Project[] =>
   Array.from({ length: count }, (_, i) => ({
@@ -55,10 +56,13 @@ async function fixture(page: Page, items: Project[], saved?: string) {
       const search = (url.searchParams.get("search") || "").toLocaleLowerCase(
         "vi",
       );
-      const matches = items.filter((p) =>
-        `${p.name} ${p.business_scope}`
-          .toLocaleLowerCase("vi")
-          .includes(search),
+      const matches = items.filter(
+        (p) =>
+          (url.searchParams.get("include_test") !== "false" ||
+            p.classification !== "TEST") &&
+          `${p.name} ${p.business_scope}`
+            .toLocaleLowerCase("vi")
+            .includes(search),
       );
       const offset = Number(url.searchParams.get("offset") || 0);
       const limit = Number(url.searchParams.get("limit") || 50);
@@ -91,6 +95,403 @@ async function fixture(page: Page, items: Project[], saved?: string) {
   });
 }
 
+for (const count of [5, 30, 80]) {
+  test(`recent datasets stay newest after list pagination: ${count} sources`, async ({
+    page,
+  }) => {
+    await fixture(page, projects(1));
+    const sources = Array.from({ length: count }, (_, i) => ({
+      id: `recent-${i}`,
+      project_id: "project-000",
+      workspace_id: "synthetic",
+      name: `Latest-${String(i).padStart(3, "0")}.csv`,
+      status: "PARSED",
+      created_at: "2026-10-01T00:00:00Z",
+    }));
+    let recentRequests = 0;
+    await page.route("**/api/datasets?**", (route) => {
+      const url = new URL(route.request().url());
+      const offset = Number(url.searchParams.get("offset") || 0);
+      const limit = Number(url.searchParams.get("limit") || 25);
+      if (limit === 5) {
+        expect(offset).toBe(0);
+        recentRequests += 1;
+      }
+      return route.fulfill({
+        json: { items: sources.slice(offset, offset + limit), total: count },
+      });
+    });
+    await page.route("**/api/projects/project-000/summary", (route) =>
+      route.fulfill({
+        json: {
+          dataset_count: count,
+          table_count: count,
+          mapping_review_count: count,
+          ready_canonical_count: 0,
+          active_job_count: 0,
+        },
+      }),
+    );
+    await page.goto("/");
+    const recent = page.locator("section").filter({
+      has: page.getByRole("heading", {
+        name: "Dữ liệu gần đây",
+        exact: true,
+      }),
+    });
+    await expect(
+      recent.getByText("Latest-000.csv", { exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: new RegExp(`^Dữ liệu\\s*${count}$`) })
+      .click();
+    if (count > 25) {
+      await page
+        .getByRole("button", { name: "Trang nguồn sau", exact: true })
+        .click();
+      await expect(
+        page.getByText("Latest-025.csv", { exact: true }),
+      ).toBeVisible();
+    }
+    await page.getByRole("button", { name: "Tổng quan", exact: true }).click();
+    await expect(
+      recent.getByText("Latest-000.csv", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      recent.getByText("Latest-025.csv", { exact: true }),
+    ).toHaveCount(0);
+    await expect(recent.locator(".dataset-item")).toHaveCount(5);
+    expect(recentRequests).toBe(2);
+    sources.unshift({
+      ...sources[0],
+      id: "uploaded",
+      name: "Uploaded-now.csv",
+    });
+    await page
+      .getByRole("button", { name: "Cập nhật dự án", exact: true })
+      .click();
+    await expect(
+      recent.getByText("Uploaded-now.csv", { exact: true }),
+    ).toBeVisible();
+    expect(recentRequests).toBe(3);
+  });
+}
+
+test("test visibility and owner classification preserve the current project and rule draft", async ({
+  page,
+}) => {
+  const items = projects(3);
+  items[0].classification = "WORK";
+  items[1].classification = "UNKNOWN";
+  items[2].classification = "TEST";
+  await fixture(page, items, items[2].id);
+  await page.route("**/api/projects/*/canonical-catalogue", (route) =>
+    route.fulfill({
+      json: {
+        items: ["left", "right"].map((id) => ({
+          project_id: items[2].id,
+          name: `Synthetic ${id}`,
+          canonical: {
+            id,
+            stale: false,
+            quality_status: "READY",
+            row_count: 1,
+          },
+          schema_definition: {
+            id: `schema-${id}`,
+            grain: "one record",
+            fields: [],
+            business_key_fields: [],
+          },
+        })),
+      },
+    }),
+  );
+  let fail = false;
+  const changes: unknown[] = [];
+  await page.route("**/api/projects/*/classification", async (route) => {
+    expect(route.request().method()).toBe("PATCH");
+    const body = route.request().postDataJSON();
+    changes.push(body);
+    if (fail)
+      return route.fulfill({
+        status: 503,
+        json: {
+          code: "TEMPORARY",
+          message_vi: "Chưa lưu phân loại; thử lại sau.",
+        },
+      });
+    expect(body.expected_classification).toBe(items[2].classification);
+    items[2].classification = body.classification;
+    return route.fulfill({ json: items[2] });
+  });
+  await page.goto("/");
+  const trigger = page.locator("#project-select");
+  await expect(trigger).toHaveAttribute("data-project-id", items[2].id);
+  await expect(
+    page.getByRole("status").filter({ hasText: "kiểm thử đang ẩn" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Đối soát", exact: true }).click();
+  await page
+    .getByLabel("Nguồn tham chiếu", { exact: true })
+    .selectOption("left");
+  const period = page.getByLabel("Từ ngày", { exact: true });
+  await period.fill("2026-10-01");
+  await trigger.click();
+  await expect(
+    page
+      .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+      .getByRole("option"),
+  ).toHaveCount(2);
+  const toggle = page.getByRole("checkbox", {
+    name: "Hiển thị dự án kiểm thử",
+    exact: true,
+  });
+  await toggle.check();
+  await expect(
+    page
+      .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+      .getByRole("option"),
+  ).toHaveCount(3);
+  await expect(
+    page
+      .getByRole("option")
+      .filter({ hasText: "Mã project-" })
+      .filter({ hasText: "Kiểm thử" }),
+  ).toHaveCount(1);
+  await toggle.uncheck();
+  await expect(
+    page
+      .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+      .getByRole("option"),
+  ).toHaveCount(2);
+  await page.getByText("Phân loại dự án hiện tại", { exact: true }).click();
+  await expect(
+    page.getByText(`Mã dự án: ${items[2].id}`, { exact: true }),
+  ).toBeVisible();
+  const category = page.getByLabel("Nhóm dự án", { exact: true });
+  await category.selectOption("WORK");
+  await page
+    .getByRole("button", { name: "Xác nhận phân loại", exact: true })
+    .click();
+  await expect(
+    page.getByText(
+      "Đã lưu phân loại. Dữ liệu và lịch sử vẫn được giữ nguyên.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+      .getByRole("option"),
+  ).toHaveCount(3);
+  await category.selectOption("TEST");
+  await page
+    .getByRole("button", { name: "Xác nhận phân loại", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+      .getByRole("option"),
+  ).toHaveCount(2);
+  fail = true;
+  await category.selectOption("UNKNOWN");
+  await page
+    .getByRole("button", { name: "Xác nhận phân loại", exact: true })
+    .click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Chưa lưu phân loại" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toHaveAttribute("data-project-id", items[2].id);
+  await expect(period).toHaveValue("2026-10-01");
+  expect(changes).toHaveLength(3);
+  await page.reload();
+  await expect(trigger).toHaveAttribute("data-project-id", items[2].id);
+  await expect(
+    page.getByRole("status").filter({ hasText: "kiểm thử đang ẩn" }),
+  ).toBeVisible();
+});
+
+test("confirmed classification remains in app metadata when the picker unmounts during save", async ({
+  page,
+}) => {
+  const items = projects(1);
+  items[0].classification = "TEST";
+  await fixture(page, items, items[0].id);
+  let release: () => void = () => {};
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let started: () => void = () => {};
+  const requestStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  await page.route("**/api/projects/*/classification", async (route) => {
+    started();
+    await pending;
+    items[0].classification = "WORK";
+    return route.fulfill({ json: items[0] });
+  });
+  await page.goto("/");
+  await page.locator("#project-select").click();
+  await page.getByText("Phân loại dự án hiện tại", { exact: true }).click();
+  await page.getByLabel("Nhóm dự án", { exact: true }).selectOption("WORK");
+  await page
+    .getByRole("button", { name: "Xác nhận phân loại", exact: true })
+    .click();
+  await requestStarted;
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Cài đặt", exact: true }).click();
+  release();
+  await page.getByRole("button", { name: "Tổng quan", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "kiểm thử đang ẩn" }),
+  ).toHaveCount(0);
+  await expect(page.locator("#project-select")).toHaveAttribute(
+    "data-project-id",
+    items[0].id,
+  );
+  await page.locator("#project-select").click();
+  await page.getByText("Phân loại dự án hiện tại", { exact: true }).click();
+  await expect(page.getByLabel("Nhóm dự án", { exact: true })).toHaveValue(
+    "WORK",
+  );
+});
+
+test("viewer can reveal test projects but cannot classify; user creation explicitly uses WORK", async ({
+  page,
+}) => {
+  const items = projects(2);
+  items[0].classification = "TEST";
+  await fixture(page, items, items[0].id);
+  await page.route("**/api/session", (route) =>
+    route.fulfill({ json: { workspace_id: "synthetic", role: "viewer" } }),
+  );
+  await page.goto("/");
+  await page.locator("#project-select").click();
+  await page
+    .getByRole("checkbox", { name: "Hiển thị dự án kiểm thử", exact: true })
+    .check();
+  await expect(
+    page
+      .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+      .getByRole("option"),
+  ).toHaveCount(2);
+  await expect(
+    page.getByText("Phân loại dự án hiện tại", { exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.route("**/api/session", (route) =>
+    route.fulfill({ json: { workspace_id: "synthetic", role: "editor" } }),
+  );
+  await page.reload();
+  await page.getByRole("button", { name: "+ Tạo dự án", exact: true }).click();
+  await page.route("**/api/projects", (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const body = route.request().postDataJSON();
+    expect(body).toEqual({
+      name: "Dự án mới",
+      business_scope: "Phạm vi mới",
+      classification: "WORK",
+    });
+    const created = { ...items[1], ...body, id: "created-work" };
+    items.push(created);
+    return route.fulfill({ status: 201, json: created });
+  });
+  const modal = page.getByRole("dialog");
+  await modal.getByLabel("Tên dự án", { exact: true }).fill("Dự án mới");
+  await modal
+    .getByLabel("Phạm vi nghiệp vụ", { exact: true })
+    .fill("Phạm vi mới");
+  await modal.getByRole("button", { name: "Tạo dự án", exact: true }).click();
+  await expect(page.locator("#project-select")).toHaveAttribute(
+    "data-project-id",
+    "created-work",
+  );
+});
+
+test("recent data reports loading/error/empty and discards delayed results after switching project", async ({
+  page,
+}) => {
+  const items = projects(2);
+  await fixture(page, items);
+  let release: () => void = () => {};
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let delay = true;
+  let failed = false;
+  await page.route("**/api/datasets?**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("limit") !== "5")
+      return route.fulfill({ json: { items: [], total: 0 } });
+    if (url.searchParams.get("project_id") === items[0].id) {
+      await pending;
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              id: "old-source",
+              name: "Old-project.csv",
+              status: "PARSED",
+              created_at: "2026-10-01T00:00:00Z",
+            },
+          ],
+          total: 1,
+        },
+      });
+    }
+    if (delay) {
+      await pending;
+      delay = false;
+    }
+    if (!failed) {
+      failed = true;
+      return route.fulfill({
+        status: 503,
+        json: {
+          code: "RECENT_UNAVAILABLE",
+          message_vi: "Tạm thời không đọc được danh sách.",
+        },
+      });
+    }
+    return route.fulfill({ json: { items: [], total: 0 } });
+  });
+  await page.goto("/");
+  const recent = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Dữ liệu gần đây", exact: true }),
+  });
+  await expect(recent.getByRole("status")).toContainText("Đang tải");
+  await page.locator("#project-select").click();
+  await page
+    .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+    .getByRole("option")
+    .nth(1)
+    .click();
+  await expect(recent.getByRole("status")).toContainText("Đang tải");
+  release();
+  await expect(recent.getByRole("alert")).toContainText(
+    "Không tải được dữ liệu gần đây",
+  );
+  await expect(
+    recent.getByText("Old-project.csv", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    recent.getByRole("heading", { name: "Chưa có nguồn dữ liệu", exact: true }),
+  ).toHaveCount(0);
+  await recent
+    .getByRole("button", { name: "Tải lại dữ liệu gần đây", exact: true })
+    .click();
+  await expect(
+    recent.getByRole("heading", { name: "Chưa có nguồn dữ liệu", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("#project-select")).toHaveAttribute(
+    "data-project-id",
+    items[1].id,
+  );
+});
+
 for (const count of [1, 10, 50, 120]) {
   test(`project picker: ${count} projects, bounded pagination and keyboard selection`, async ({
     page,
@@ -105,17 +506,28 @@ for (const count of [1, 10, 50, 120]) {
       exact: true,
     });
     await expect(search).toBeFocused();
-    await expect(page.getByRole("option")).toHaveCount(Math.min(20, count));
+    await expect(
+      page
+        .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+        .getByRole("option"),
+    ).toHaveCount(Math.min(20, count));
     if (count > 20) {
       await page
         .getByRole("button", { name: "Trang dự án sau", exact: true })
         .click();
-      await expect(page.getByRole("option").first()).toContainText(
-        "miền Nam 020",
-      );
+      await expect(
+        page
+          .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+          .getByRole("option")
+          .first(),
+      ).toContainText("miền Nam 020");
     }
     await search.fill(items.at(-1)!.business_scope.toLocaleUpperCase("vi"));
-    await expect(page.getByRole("option")).toHaveCount(1);
+    await expect(
+      page
+        .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+        .getByRole("option"),
+    ).toHaveCount(1);
     await search.press("ArrowDown");
     await search.press("Enter");
     await expect(trigger).toHaveAttribute("data-project-id", items.at(-1)!.id);
@@ -190,7 +602,11 @@ test("project search discards delayed results and exposes loading and retry erro
   await expect(page.getByRole("listbox")).toHaveAttribute("aria-busy", "true");
   await oldRequest;
   await search.fill("miền Nam 119");
-  await expect(page.getByRole("option")).toContainText("119");
+  await expect(
+    page
+      .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+      .getByRole("option"),
+  ).toContainText("119");
   release();
   await expect(page.getByText("Old response")).toHaveCount(0);
   await search.fill("error");
@@ -357,7 +773,11 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
       exact: true,
     });
     await expect(search).toBeFocused();
-    await expect(page.getByRole("option")).toHaveCount(20);
+    await expect(
+      page
+        .getByRole("listbox", { name: "Danh sách dự án", exact: true })
+        .getByRole("option"),
+    ).toHaveCount(20);
     const dialog = page.getByRole("dialog", {
       name: "Chọn dự án",
       exact: true,

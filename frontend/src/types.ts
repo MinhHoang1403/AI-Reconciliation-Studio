@@ -9,11 +9,13 @@ export type Status =
   | "READY"
   | "PARTIAL"
   | "FAILED";
+export type ProjectClassification = "WORK" | "TEST" | "UNKNOWN";
 export interface Project {
   id: string;
   name: string;
   business_scope: string;
   workspace_id: string;
+  classification: ProjectClassification;
 }
 export interface ProjectSummary {
   dataset_count: number;

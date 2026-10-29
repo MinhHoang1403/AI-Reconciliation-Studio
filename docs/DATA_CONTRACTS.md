@@ -21,6 +21,10 @@ Giai đoạn sau phải dùng các refs và API này, không viết parser/mappi
 
 ## REST đang hỗ trợ
 
+Project purpose là metadata hiển thị `WORK/TEST/UNKNOWN`, mặc định UNKNOWN cho project lịch sử chưa có quyết định. Dùng audit append-only `PROJECT_CLASSIFIED_WORK/TEST/UNKNOWN` theo workspace/resource ID; sự kiện mới nhất theo created_at/id là phân loại hiện hành. Không cần migration/cột mới, không suy ra nhóm từ tên. `POST /api/projects` mặc định WORK, nhận classification explicit; tạo TEST/UNKNOWN cần owner. `PATCH /api/projects/{id}/classification` chỉ owner, bắt buộc classification và expected_classification; khóa project/so trạng thái cũ, conflict409, no-op không thêm audit. Không invalidate nguồn/mapping/run hoặc đổi quyền truy cập. `GET /api/projects?include_test=false` lọc TEST trước search/offset/limit và count; UNKNOWN/WORK vẫn hiện. API giữ include_test=true khi bỏ tham số để tương thích clients cũ; UI gửi false mặc định. GET theo ID tiếp tục đọc TEST theo quyền, độc lập bộ lọc.
+
+`GET /api/datasets` sắp xếp created_at DESC, id ASC ổn định. Dashboard dùng riêng offset0/limit5, độc lập offset25 của danh sách Dữ liệu; cùng scoped API, không endpoint hoặc business state mới. Loading/error riêng, abort khi đổi project/page; refresh/upload/job completion cập nhật summary rồi danh sách gần đây.
+
 - `GET/POST /api/projects`, `GET /api/projects/{id}/summary`.
 - `GET /api/projects?search=...&offset=0&limit=20` tìm literal theo tên/phạm vi, không phân biệt hoa/thường, giữ Unicode và workspace scope; max search200/limit100, thứ tự created_at DESC/id ổn định. `GET /api/projects/{id}` khôi phục saved project ngoài trang đầu; missing/khác workspace cùng404, không lộ metadata. Không tải toàn bộ danh sách vào frontend.
 - `GET /api/datasets?project_id=...&offset=0&limit=25`, `POST /api/datasets/uploads` (multipart nhiều tệp).

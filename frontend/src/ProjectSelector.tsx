@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import { Modal, Notice, Spinner } from "./components";
-import type { Project } from "./types";
+import type { Project, ProjectClassification } from "./types";
 
 const PAGE_SIZE = 20;
 
@@ -16,10 +16,14 @@ export function ProjectSelector({
   project,
   onSelect,
   disabled = false,
+  canClassify = false,
+  onClassificationChange,
 }: {
   project: Project | null;
   onSelect: (project: Project) => void;
   disabled?: boolean;
+  canClassify?: boolean;
+  onClassificationChange?: (project: Project) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -30,11 +34,28 @@ export function ProjectSelector({
   const [error, setError] = useState("");
   const [active, setActive] = useState(0);
   const [retry, setRetry] = useState(0);
+  const [includeTest, setIncludeTest] = useState(false);
+  const [classification, setClassification] = useState<ProjectClassification>(
+    project?.classification || "UNKNOWN",
+  );
+  const [saving, setSaving] = useState(false);
+  const [classificationError, setClassificationError] = useState("");
+  const [classificationSuccess, setClassificationSuccess] = useState("");
+  const projectRef = useRef(project);
+  const alive = useRef(true);
+  projectRef.current = project;
   const listId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const queryRef = useRef("");
   const sequence = useRef(0);
+
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -46,6 +67,7 @@ export function ProjectSelector({
           search: query,
           offset: String(offset),
           limit: String(PAGE_SIZE),
+          include_test: String(includeTest),
         });
         void api<{ items: Project[]; total: number }>(`/projects?${params}`, {
           signal: controller.signal,
@@ -75,7 +97,16 @@ export function ProjectSelector({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [open, query, offset, retry]);
+  }, [open, query, offset, retry, includeTest]);
+
+  useEffect(() => {
+    setClassification(project?.classification || "UNKNOWN");
+  }, [project?.classification]);
+  useEffect(() => {
+    setClassificationError("");
+    setClassificationSuccess("");
+    setClassification(projectRef.current?.classification || "UNKNOWN");
+  }, [project?.id]);
 
   useEffect(() => {
     document
@@ -92,6 +123,48 @@ export function ProjectSelector({
   function select(item: Project) {
     onSelect(item);
     setOpen(false);
+  }
+  async function saveClassification() {
+    if (!project || !canClassify || saving) return;
+    const id = project.id;
+    setSaving(true);
+    setClassificationError("");
+    setClassificationSuccess("");
+    try {
+      const updated = await api<Project>(`/projects/${id}/classification`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          classification,
+          expected_classification: project.classification || "UNKNOWN",
+        }),
+      });
+      // The parent guards its current ID. Retain a confirmed metadata change
+      // even if the selector was closed/unmounted while the write completed.
+      onClassificationChange?.(updated);
+      if (!alive.current || projectRef.current?.id !== id) return;
+      invalidate();
+      setOffset(0);
+      setRetry((n) => n + 1);
+      setClassificationSuccess(
+        "Đã lưu phân loại. Dữ liệu và lịch sử vẫn được giữ nguyên.",
+      );
+    } catch (err) {
+      if (!alive.current || projectRef.current?.id !== id) return;
+      const message =
+        err instanceof Error ? err.message : "Không lưu được phân loại.";
+      // Refresh metadata without switching project/resetting drafts or retrying writes.
+      try {
+        const current = await api<Project>(`/projects/${id}`);
+        if (alive.current && projectRef.current?.id === id)
+          onClassificationChange?.(current);
+      } catch {
+        /* Preserve the selection and original write error. */
+      }
+      if (alive.current && projectRef.current?.id === id)
+        setClassificationError(message);
+    } finally {
+      if (alive.current) setSaving(false);
+    }
   }
   return (
     <>
@@ -118,6 +191,23 @@ export function ProjectSelector({
         </span>
         <ChevronDown size={16} />
       </button>
+      {project?.classification === "TEST" && !includeTest && (
+        <div className="project-hidden-hint" role="status">
+          Dự án hiện tại là dự án kiểm thử đang ẩn khỏi danh sách. Dữ liệu vẫn
+          đang mở.
+          <button
+            className="text-button"
+            onClick={() => {
+              invalidate();
+              setIncludeTest(true);
+              setOffset(0);
+              setOpen(true);
+            }}
+          >
+            Hiển thị dự án kiểm thử
+          </button>
+        </div>
+      )}
       <Modal
         title="Chọn dự án"
         open={open}
@@ -173,6 +263,18 @@ export function ProjectSelector({
             }
           }}
         />
+        <label className="check-label project-test-filter">
+          <input
+            type="checkbox"
+            checked={includeTest}
+            onChange={(event) => {
+              invalidate();
+              setOffset(0);
+              setIncludeTest(event.target.checked);
+            }}
+          />
+          Hiển thị dự án kiểm thử
+        </label>
         {loading && (
           <div role="status">
             <Spinner />
@@ -216,6 +318,9 @@ export function ProjectSelector({
                 <strong>{item.name}</strong>
                 <span>{item.business_scope}</span>
                 <small>Mã {item.id.slice(0, 8)}</small>
+                {item.classification === "TEST" && (
+                  <span className="project-test-badge">Kiểm thử</span>
+                )}
               </div>
             ))}
         </div>
@@ -224,7 +329,7 @@ export function ProjectSelector({
             <p className="subtle" role="status">
               {items.length
                 ? `${offset + 1}–${offset + items.length} / ${total} dự án`
-                : "Không có dự án phù hợp. Thử tên hoặc phạm vi khác."}
+                : "Không có dự án phù hợp. Thử tên, phạm vi khác hoặc bật hiển thị dự án kiểm thử."}
             </p>
             <div className="pagination">
               <span>Dùng ↑ ↓ và Enter để chọn · Esc để đóng</span>
@@ -256,6 +361,50 @@ export function ProjectSelector({
               </div>
             </div>
           </>
+        )}
+        {project && canClassify && (
+          <details className="project-classification">
+            <summary>Phân loại dự án hiện tại</summary>
+            <p>
+              <strong>{project.name}</strong> · {project.business_scope}
+            </p>
+            <p className="subtle">Mã dự án: {project.id}</p>
+            <label>
+              Nhóm dự án
+              <select
+                aria-label="Nhóm dự án"
+                value={classification}
+                disabled={saving}
+                onChange={(event) =>
+                  setClassification(event.target.value as ProjectClassification)
+                }
+              >
+                <option value="WORK">Đang làm việc</option>
+                <option value="TEST">Kiểm thử</option>
+                <option value="UNKNOWN">Chưa phân loại</option>
+              </select>
+            </label>
+            <p className="subtle">
+              Xác nhận chỉ đổi nhóm hiển thị, không xóa dữ liệu hoặc đổi quyền
+              truy cập.
+            </p>
+            <button
+              className="button secondary"
+              disabled={
+                saving ||
+                classification === (project.classification || "UNKNOWN")
+              }
+              onClick={() => void saveClassification()}
+            >
+              {saving ? "Đang lưu…" : "Xác nhận phân loại"}
+            </button>
+          </details>
+        )}
+        {classificationError && (
+          <Notice tone="error">{classificationError}</Notice>
+        )}
+        {classificationSuccess && (
+          <Notice tone="success">{classificationSuccess}</Notice>
         )}
       </Modal>
     </>

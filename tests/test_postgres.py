@@ -97,6 +97,226 @@ def project(client, name="Synthetic project"):
     return response.json()["id"]
 
 
+def test_project_classification_owner_audit_conflict_and_scope(pg):
+    """Classification changes metadata only; owner, workspace and stale-write gates remain real."""
+    from studio.database import AuditRow, ProjectRow
+
+    client, factory, _ = pg
+    pid = project(client)
+    assert client.get(f"/api/projects/{pid}").json()["classification"] == "WORK"
+    created = client.post(
+        "/api/projects",
+        json={"name": "Fixture", "business_scope": "synthetic", "classification": "TEST"},
+    )
+    assert created.status_code == 201
+    assert created.json()["classification"] == "TEST"
+    path = f"/api/projects/{pid}/classification"
+    assert (
+        client.patch(
+            path, json={"classification": "TEST", "expected_classification": "WORK"}
+        ).status_code
+        == 200
+    )
+    assert client.get(f"/api/projects/{pid}").json()["classification"] == "TEST"
+    assert (
+        client.patch(
+            path, json={"classification": "UNKNOWN", "expected_classification": "WORK"}
+        ).status_code
+        == 409
+    )
+    for role in ("viewer", "editor"):
+        with factory() as db:
+            db.get(MembershipRow, ("demo", "test-owner")).role = role
+            db.commit()
+        assert (
+            client.patch(
+                path, json={"classification": "WORK", "expected_classification": "TEST"}
+            ).status_code
+            == 403
+        )
+    with factory() as db:
+        db.get(MembershipRow, ("demo", "test-owner")).role = "owner"
+        db.add(WorkspaceRow(id="classification-foreign", name="Other", policy={}))
+        db.flush()
+        db.add(
+            ProjectRow(
+                id="classification-foreign-project",
+                workspace_id="classification-foreign",
+                name="Private",
+                business_scope="private",
+            )
+        )
+        db.commit()
+    assert (
+        client.patch(
+            "/api/projects/classification-foreign-project/classification",
+            json={"classification": "TEST", "expected_classification": "UNKNOWN"},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.patch(
+            path, json={"classification": "WORK", "expected_classification": "TEST"}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.patch(
+            path, json={"classification": "UNKNOWN", "expected_classification": "WORK"}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.patch(
+            path, json={"classification": "OTHER", "expected_classification": "UNKNOWN"}
+        ).status_code
+        == 422
+    )
+    with factory() as db:
+        events = list(
+            db.scalars(
+                select(AuditRow)
+                .where(AuditRow.resource_id == pid, AuditRow.action.like("PROJECT_CLASSIFIED_%"))
+                .order_by(AuditRow.created_at, AuditRow.id)
+            )
+        )
+        assert [e.action for e in events] == [
+            "PROJECT_CLASSIFIED_WORK",
+            "PROJECT_CLASSIFIED_TEST",
+            "PROJECT_CLASSIFIED_WORK",
+            "PROJECT_CLASSIFIED_UNKNOWN",
+        ]
+        assert {e.actor_id for e in events} == {"test-owner"}
+
+
+def test_project_classification_filters_before_pagination_and_preserves_unknown(pg):
+    """Unknown legacy projects stay visible; totals/search/pages use the same scoped set."""
+    from studio.database import AuditRow, ProjectRow
+
+    client, factory, _ = pg
+    with factory() as db:
+        for index in range(120):
+            pid = f"classified-{index:03}"
+            db.add(
+                ProjectRow(
+                    id=pid,
+                    workspace_id="demo",
+                    name="Dự án trùng tên",
+                    business_scope=f"Kho miền Nam {index:03}",
+                )
+            )
+            if index % 3 != 2:
+                db.add(
+                    AuditRow(
+                        workspace_id="demo",
+                        actor_id="fixture",
+                        resource_id=pid,
+                        action="PROJECT_CLASSIFIED_" + ("TEST" if index % 3 == 0 else "WORK"),
+                    )
+                )
+        db.commit()
+    first = client.get("/api/projects?include_test=false&limit=20").json()
+    second = client.get("/api/projects?include_test=false&limit=20&offset=20").json()
+    assert first["total"] == second["total"] == 80
+    assert len(first["items"]) == len(second["items"]) == 20
+    assert all(p["classification"] != "TEST" for p in first["items"] + second["items"])
+    assert set(p["id"] for p in first["items"]).isdisjoint(p["id"] for p in second["items"])
+    assert client.get("/api/projects?include_test=true&limit=20").json()["total"] == 120
+    assert (
+        client.get("/api/projects?include_test=false&search=KHO%20MIỀN%20NAM%20000").json()["total"]
+        == 0
+    )
+    assert (
+        client.get("/api/projects?include_test=true&search=KHO%20MIỀN%20NAM%20000").json()["items"][
+            0
+        ]["classification"]
+        == "TEST"
+    )
+    assert client.get("/api/projects/classified-000").json()["classification"] == "TEST"
+    assert client.get("/api/projects/classified-002").json()["classification"] == "UNKNOWN"
+
+
+def test_project_classification_concurrent_owners_cannot_overwrite_same_expected_state(pg):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from studio.access import Actor
+    from studio.api import ProjectClassificationInput, classify_project
+    from studio.contracts import ProjectClassification
+    from studio.errors import DomainError
+
+    client, factory, _ = pg
+    pid = project(client)
+    barrier = Barrier(2)
+
+    def change(category):
+        with factory() as db:
+            barrier.wait(timeout=10)
+            try:
+                classify_project(
+                    pid,
+                    ProjectClassificationInput(
+                        classification=category,
+                        expected_classification=ProjectClassification.WORK,
+                    ),
+                    db,
+                    Actor("test-owner", "demo", "owner"),
+                )
+                return 200
+            except DomainError as exc:
+                return exc.status
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        assert sorted(
+            executor.map(change, [ProjectClassification.TEST, ProjectClassification.UNKNOWN])
+        ) == [200, 409]
+    assert client.get(f"/api/projects/{pid}").json()["classification"] in {"TEST", "UNKNOWN"}
+
+
+def test_recent_dataset_api_stable_tie_order_and_project_scope(pg):
+    """Equal upload times use ID as a tie-breaker, independent of list offsets."""
+    client, factory, _ = pg
+    pid = project(client)
+    other = project(client, "Other project")
+    timestamp = now()
+    with factory() as db:
+        for index in reversed(range(30)):
+            db.add(
+                DatasetRow(
+                    id=f"recent-{index:03}",
+                    workspace_id="demo",
+                    project_id=pid,
+                    owner_id="test-owner",
+                    name=f"Source {index}",
+                    sha256=f"{index:064x}",
+                    parse_signature="synthetic",
+                    status="UPLOADED",
+                    created_at=timestamp,
+                )
+            )
+        db.add(
+            DatasetRow(
+                id="foreign-recent",
+                workspace_id="demo",
+                project_id=other,
+                owner_id="test-owner",
+                name="Other",
+                sha256="f" * 64,
+                parse_signature="synthetic",
+                status="UPLOADED",
+                created_at=timestamp,
+            )
+        )
+        db.commit()
+    recent = client.get("/api/datasets", params={"project_id": pid, "offset": 0, "limit": 5}).json()
+    later = client.get(
+        "/api/datasets", params={"project_id": pid, "offset": 25, "limit": 25}
+    ).json()
+    assert recent["total"] == later["total"] == 30
+    assert [item["id"] for item in recent["items"]] == [f"recent-{i:03}" for i in range(5)]
+    assert [item["id"] for item in later["items"]] == [f"recent-{i:03}" for i in range(25, 30)]
+
+
 def test_project_search_pagination_restore_and_workspace_scope(pg):
     """A saved project outside page one remains addressable; search is literal/scoped."""
     from studio.database import ProjectRow

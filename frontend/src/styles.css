@@ -420,6 +420,11 @@ main {
 .project-option small { margin-top: 3px; font-size: 10px; color: #64748b; }
 .project-option.highlighted { background: #eff6ff; outline: 2px solid #2563eb; outline-offset: -2px; }
 .project-option.highlighted small { color: #475569; }
+.project-test-filter { margin-top: 12px; }
+.project-hidden-hint { max-width: 420px; font-size: 12px; color: #475569; }
+.project-classification { border-top: 1px solid #e2e8f0; margin-top: 12px; padding-top: 12px; }
+.project-classification p { margin: 8px 0; overflow-wrap: anywhere; }
+.project-test-badge { font-weight: 600; }
 .project-option[aria-selected="true"] strong { color: #1d4ed8; }
 .stat-card small { display: block; color: #475569; line-height: 1.6; margin-top: 8px; }
 .preparation-guide { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0; padding: 20px 18px; }

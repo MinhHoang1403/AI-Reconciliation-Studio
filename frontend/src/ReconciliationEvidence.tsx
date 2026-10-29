@@ -241,6 +241,10 @@ export function ReconciliationEvidence({
           )}
           {currentCase && (
             <div className="rule-approval">
+              <p className="muted">
+                Trạng thái xử lý chỉ ghi nhận việc xem xét; không đổi kết quả so
+                sánh hoặc số tiền của lần đối soát.
+              </p>
               <label>
                 Trạng thái xử lý
                 <select

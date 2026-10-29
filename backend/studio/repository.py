@@ -4,8 +4,9 @@ import hashlib
 import json
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import case, func, select, text
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from studio.access import Actor
 from studio.config import Settings
@@ -34,6 +35,36 @@ from studio.database import (
 )
 from studio.errors import DomainError
 from studio.profiling import default_schema, source_signature
+
+
+def project_classification_expression() -> ColumnElement[str]:
+    """Read explicit classification events only; legacy/no event means UNKNOWN.
+
+    Reuse the existing audit metadata for this small reversible preference. Never
+    infer a purpose from names, scopes, uploaded bytes or financial status. The
+    expression is usable in WHERE before pagination and respects workspace scope.
+    """
+    latest = (
+        select(
+            case(
+                (AuditRow.action == "PROJECT_CLASSIFIED_TEST", "TEST"),
+                (AuditRow.action == "PROJECT_CLASSIFIED_WORK", "WORK"),
+                else_="UNKNOWN",
+            )
+        )
+        .where(
+            AuditRow.workspace_id == ProjectRow.workspace_id,
+            AuditRow.resource_id == ProjectRow.id,
+            AuditRow.action.in_(
+                ["PROJECT_CLASSIFIED_TEST", "PROJECT_CLASSIFIED_WORK", "PROJECT_CLASSIFIED_UNKNOWN"]
+            ),
+        )
+        .order_by(AuditRow.created_at.desc(), AuditRow.id.desc())
+        .limit(1)
+        .correlate(ProjectRow)
+        .scalar_subquery()
+    )
+    return func.coalesce(latest, "UNKNOWN")
 
 
 def preparation_overview(db: Session, project_id: str, active_jobs: int) -> dict[str, Any]:

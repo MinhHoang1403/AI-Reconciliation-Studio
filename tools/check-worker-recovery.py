@@ -59,6 +59,7 @@ def main() -> None:
             json={
                 "name": "Kiểm tra khôi phục worker",
                 "business_scope": "synthetic-recovery-" + uuid4().hex,
+                "classification": "TEST",
             },
         )
         created.raise_for_status()

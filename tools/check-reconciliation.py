@@ -65,6 +65,7 @@ def main() -> None:
                 dict(
                     name="Đối soát tổng hợp có oracle",
                     business_scope="synthetic-reconciliation-acceptance",
+                    classification="TEST",
                 ),
             )["id"]
             save()
