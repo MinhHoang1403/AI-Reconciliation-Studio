@@ -287,10 +287,85 @@ Restart, force-recreate cả bốn services và frontend-only recreate đều **
 
 **GIAI ĐOẠN 2 ĐẠT NGHIỆM THU KỸ THUẬT TRONG PHẠM VI MVP ĐÃ CÔNG BỐ.**
 
-Ngoại lệ/giới hạn tiếp tục: Qwen LIVE BLOCKED do IP; Planner mới LIVE NOT VERIFIED; fuzzy chỉ review, precision/recall đại diện chưa đo; không FX/phí marketplace ngoài scope; chưa production security audit toàn diện/DR restore drill; không Assistant Giai đoạn 3. Không tuyên bố production-ready. Kết quả Git/tag/deploy/cleanup và nghiên cứu chỉ cập nhật sau khi thao tác thực tế hoàn tất.
+Ngoại lệ/giới hạn tiếp tục: Qwen LIVE BLOCKED do IP; Planner mới LIVE NOT VERIFIED; fuzzy chỉ review, precision/recall đại diện chưa đo; không FX/phí marketplace ngoài scope; chưa production security audit toàn diện/DR restore drill; không Assistant Giai đoạn 3. Không tuyên bố production-ready. Kết quả Git/tag/deploy/cleanup và nghiên cứu đã thực hiện được ghi bên dưới.
 
 ### Hợp nhất GitHub và cấu hình chia sẻ
 
 Commit bằng chứng/tests nghiệm thu **7dfcb83319ba6c07b5f78fe34105b95c5e577ead** đã push feature branch. Merge `--no-ff` **2a880cc7a7cd92faf32e9885b34cf5f93723ff53** có hai parents cf7cb1f và 7dfcb83, không conflict/squash/rebase. `git diff` giữa merge result và accepted feature tree rỗng. Trước push main chạy lại 120 offline PASS (8,03 giây), Ruff/mypy 31 files/TypeScript/ESLint/source scan PASS; không đếm replay thành tests mới. Main đã push/fetch và local/remote khớp; cả tag Giai đoạn 1 lẫn e025094 là ancestors.
 
 Inventory `.vscode/` đúng một file **settings.json** (không launch/tasks/extensions/private metadata). Đọc toàn bộ, parse JSON và secret scan: chỉ `python.terminal.useEnvFile: true`, không credentials/commands/env values/absolute paths; chuẩn hóa indentation hai spaces, giữ nguyên hành vi. Commit riêng **fcb54343c38bebb7f45e929bf289b6391d526319**, đã push main. Không tạo file config thừa hoặc ignore secrets bằng tên chung để che file chưa kiểm tra. Working tree sạch sau commit; mọi runtime evidence nằm ngoài Git.
+
+### Tags và branches sau hợp nhất
+
+| Mốc | SHA đã push/xác minh |
+|---|---|
+| Main merge | **2a880cc7a7cd92faf32e9885b34cf5f93723ff53** |
+| VS Code config | **fcb54343c38bebb7f45e929bf289b6391d526319** |
+| Main tại mốc nghiệm thu/deploy | **be6b8a067ca052ea989a029a15558b0fd5ee48ef** |
+| Annotated `data-foundation-accepted-20261028` | Target **78e68c08e60c7af2359e46def43196cf5b1a6dc1**, giữ nguyên |
+| Annotated `reconciliation-engine-accepted-20261029` | Target **be6b8a067ca052ea989a029a15558b0fd5ee48ef**, đã push; không di chuyển |
+
+Xác minh PR đang mở bằng GitHub CLI: **0**; không stash, chỉ một worktree tại repo chính, mọi tips được dọn là ancestors của main. Xóa remote/local `codex/reconciliation-engine` và `codex/data-foundation`, local `codex/reconciliation` bằng normal delete sau khi tag/main đã push. Không force-delete, không xóa history/tags hoặc branch có commits riêng. Local/remote chỉ còn main và origin/HEAD. Remote chính thức đã đối chiếu trước mỗi push.
+
+Commit nghiên cứu/bàn giao tiếp theo trên main chỉ thay Markdown theo ủy quyền bước 21; vì vậy final main HEAD sẽ tiến sau tag. SHA commit tài liệu cuối được báo cùng kết quả push, không tự ghi SHA của chính commit vào nội dung của nó. **Tag và runtime giữ mốc be6b8a0**; application/dependencies/Compose không đổi giữa mốc deploy và main sau nghiên cứu.
+
+### Deploy main và kiểm tra sau merge: PASS
+
+Build từ main sạch be6b8a0 bằng Compose hiện có và OCI Git labels; backend/worker dùng cùng image. Kiểm lại **34 source/build files mỗi backend/worker** và **4 production files qua HTTP**: SHA256 khớp source/build. Không có `.env` trong backend image. OCI revision của cả hai app images là be6b8a0, source label đúng repository này.
+
+| Image | Immutable ID | Hành động |
+|---|---|---|
+| Backend/worker current | `sha256:decbc4ccf59fb822c6d27397bfd52d9701351a234d7c46814a8e667d1cc75477` | KEEP; accepted main |
+| Frontend current | `sha256:1dedf4ed08e668a4cde9d56024f541c02d588ffc2e99fa87d47af2c4ee2ba5d1` | KEEP; accepted main |
+| Backend `rollback-e025094` | `sha256:c966a65d026417d8e2a7e7662f8ab888aca582fd1a59aa319a12f6abd396f553` | KEEP; bộ đã qua Gate1–3 |
+| Frontend `rollback-e025094` | `sha256:57a48c3e6ff1bedf63162b71e3a8d1292af421d177a4e7afa50dedfd31a54979` | KEEP; bộ đã qua Gate1–3 |
+| PostgreSQL current | `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` | KEEP; không thay image/volume |
+
+Trên image accepted main chạy lại toàn PostgreSQL suite: **143 PASS, 0 FAIL/SKIP, 44,42 giây**. Smoke T35 thật: **1 PASS, 15,9 giây**, cả CSV/XLSX; đây là replay một case trong baseline15, không phải tăng thành16 E2E. Một lần filter `^T35:` chọn0 tests vì full test title có prefix; sửa lệnh thành `T35:` và chạy thành công, không tính lần chọn0 là PASS. Đọc lại cả hai UI downloads và oracle ba cặp trên API production: PASS. Không phát hiện lỗi ứng dụng mới cần đổi code; chỉ tăng độ chặt assertions/export coverage và độ rõ bằng chứng triển khai, không đổi golden oracle.
+
+Sau smoke trên main: **118 foundation artifacts, 13 match artifacts, 22 export files**; 27 projects/32 datasets/versions, 30 tables, 64 schemas/mappings, 27 canonical; 109 jobs/113 attempts, 112 audits/17 traces; 14 plans/13 contracts/13 runs/43 cases/22 export metadata. Inventory lịch sử đầu nhiệm vụ vẫn là subset nguyên IDs/metadata/hash; snapshot mới giữ toàn bộ hiện trạng sau tests. Không có job đang chạy khi kiểm persistence/cleanup.
+
+### Docker cleanup: PASS
+
+Inventory có IDs/tags/creation times/project labels và references của cả running/stopped containers. Giữ current và gắn tên rõ cho cặp rollback e025094 đã kiểm chứng trước khi xóa legacy images. Chỉ bốn IDs dưới đây có project label `ai-reconciliation-studio`, tất cả tags thuộc project, không còn container tham chiếu, không nằm trong protected set:
+
+| Image cũ | Immutable ID | Hành động/lý do |
+|---|---|---|
+| Backend `accepted` cũ | `sha256:2025e07ea2514ce39e8bad04bb6bb32687085305fbe0c7f0fa92543c50a24a86` | DELETE; đã có current/rollback xác minh |
+| Frontend `accepted` cũ | `sha256:44de606ed1f2fb33c6dbba4c0efc189fc109c39fb9d97669a25678bd94ef1190` | DELETE; đã có current/rollback xác minh |
+| Backend `rollback` cũ | `sha256:ed4a4bbf3b9d9991bc58ccd9edae6c5f58b9403153475ed3bbe661dd8ad9d939` | DELETE; cặp rollback e025094 thay thế |
+| Frontend `rollback` cũ | `sha256:aa7c869df77a24c3f1e3fec33020e0f5b2e245587d846872dd9a03223abcc9aa` | DELETE; cặp rollback e025094 thay thế |
+
+Xóa từng ID bằng `docker image rm`, **không force/prune**. 47 image ngoài project/không xác định chủ sở hữu trong inventory trước dọn đều còn; không công bố tên/metadata dự án khác. Không xóa containers, volumes, model cache hoặc build cache. Việc xóa legacy image tag `accepted` không xóa Git tag Giai đoạn 1.
+
+| Số đo thực của Docker host | Trước → sau |
+|---|---|
+| Image count | **55 → 51** |
+| `docker system df` Images Size | **39,75 → 39,38 GB**, giảm khoảng 0,37 GB theo cách báo của Docker |
+| Build Cache Size | **48,18 → 48,18 GB**, giữ nguyên |
+| Containers / named+anonymous volumes tổng host | **31 → 31 / 36 → 36**, không xóa |
+
+Không cộng virtual sizes để tuyên bố dung lượng giải phóng; do layers/cache còn chia sẻ, **số physical filesystem blocks/VM disk đã thu hồi là NOT VERIFIED**. Không dọn cache toàn host để làm số liệu đẹp hơn. Hai volumes `ai-reconciliation-studio_postgres_data` và `ai-reconciliation-studio_artifacts` giữ nguyên. Sau dọn **4/4 healthy**, loopback18180/demo session/API/worker/Nginx/PostgreSQL hoạt động; snapshot metadata/artifact bytes khớp hoàn toàn, UI report read-back và ba oracle PASS. Gemini **7/10**, planner1/parser2 reservations giữ nguyên; cloud delta 0.
+
+Evidence local bị ignore: `runtime/release-source-manifest.json`, `runtime/release-gate1.json`, `runtime/release-main-runtime.json`, `runtime/release-docker-inventory.json`, `runtime/release-before-cleanup.json`, `runtime/release-cleanup-result.json`, UI downloads/manifest và screenshots. Bản baseline metadata/artifact hashes nằm ở artifact volume `verification/acceptance-20261029-before.json`, snapshot sau smoke ở `verification/persistence.json`. Đây là kiểm chứng persistence, **không thay backup/restore database**; không commit nội dung runtime hoặc inventory dự án khác.
+
+### AI và nghiên cứu Argon
+
+| Mục | Kết quả ngày 29/10/2026 |
+|---|---|
+| Gemini mặc định | `gemini-3.5-flash-lite`; mapping live lịch sử giữ nguyên; không inference mới |
+| Gemini budget | Trước/sau **7/10**, còn **3**; global/workspace ceilings10 không đổi |
+| Planner `reconciliation-planning-2` | **PASS MOCK/CONTRACT — LIVE NOT VERIFIED**; lịch sử1 attempt của revision trước không được gán cho prompt mới |
+| Qwen `knowledge` | **BLOCKED / LIVE DEFERRED** theo chỉ định, HTTP 403/IP; không probe |
+| LlamaParse | Creation **OFF** cả env/workspace; lịch sử 2 tài liệu/2 trang/**6 credits** và 2 reservations giữ nguyên; không request mới |
+| Argon | **RESEARCH COMPLETE**; model/account inference/quality/latency/cost **NOT VERIFIED**, implementation/live **DEFERRED** |
+
+[Nghiên cứu phân tuyến model](AI_MODEL_ROUTING_RESEARCH.md) gồm đủ 14 phần, tám nguồn Google bắt buộc và tài liệu bổ sung, kiểm tra ngày 29/10/2026. Đề xuất một Gateway, Flash-Lite cho schema/mapping/simple planning, Argon explicit opt-in cho suy luận phức tạp, backend giữ matching/verifier/KPI/approval. Hai lớp attempt/token-USD caps, một ledger nhỏ trong PostgreSQL hiện có; Argon disabled/request 0/USD 0. Phân biệt REST 32K/SDK 64K, thinking+answer budget, timeout/lease/recovery, retention, continuation và pricing revisions. Cần chủ dự án duyệt trước mọi implementation/live; không thêm dependency, biến env runtime, code provider hoặc migration trong nhiệm vụ nghiên cứu.
+
+Kiểm tra tài liệu trước commit: đủ 14 sections và 14 nguồn đã mở, UTF-8/Markdown references/local paths, hai JSON examples (gồm `PlanProposal` validation), phép tính chi phí Decimal và `git diff --check` PASS. Repository scan **106 source candidates**, kiểm known credentials trong source/reachable history và runtime/binary candidates PASS; đây không phải chứng nhận security audit đầy đủ. Commit nghiên cứu chỉ gồm bốn Markdown files: tài liệu nghiên cứu mới, báo cáo này, AI_INTEGRATION và README. Không chạy lại suite ứng dụng chỉ vì sửa tài liệu; sử dụng kết quả accepted-main 143/T35 và full 15 đã ghi, persistence/oracle/budgets vừa kiểm lại PASS.
+
+### Quyết định bàn giao và điểm dừng
+
+**PASS:** ba gates nghiệm thu kỹ thuật; 143 backend/15 E2E catalogue; CSV/XLSX UI và independent oracle; security regression/persistence; main merge/.vscode/tag/branch cleanup; accepted-main deploy; cleanup đúng 4 images; nghiên cứu tài liệu Argon. **FAIL:** không có test FAIL hoặc lỗi ứng dụng mới đã xác định còn tồn tại trong phạm vi này. **BLOCKED:** Qwen live. **NOT VERIFIED:** prompt Planner mới live, Argon live/account/benchmark, representative precision/recall, production security audit và DR restore. **DEFERRED:** tích hợp/live Argon, long decode, Giai đoạn 3.
+
+Mức sẵn sàng: source Giai đoạn 2 đã nghiệm thu trong phạm vi MVP công bố, main/tag/runtime có bằng chứng; đủ để chủ dự án xem xét prompt tiếp theo. Không tự coi các mục NOT VERIFIED là PASS hoặc tự cấp quyền triển khai. **DỪNG sau bàn giao; không bắt đầu Giai đoạn 3, không tích hợp Argon hoặc tăng/reset ngân sách.**

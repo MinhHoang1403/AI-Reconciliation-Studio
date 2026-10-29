@@ -1,5 +1,7 @@
 # AI Gateway và provider contracts
 
+Nghiên cứu ngày 29/10/2026: [phân tuyến Flash-Lite/Argon, contracts, ngân sách và giới hạn](AI_MODEL_ROUTING_RESEARCH.md). **Chỉ nghiên cứu**; Argon chưa tích hợp/chưa live, không có runtime env hoặc quota mới. Gemini mặc định và lịch sử request hiện tại được giữ nguyên.
+
 ## Qwen
 
 Thông tin được người dùng cập nhật cho dự án:

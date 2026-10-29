@@ -105,6 +105,7 @@ Dependencies khóa bằng `uv.lock`, `requirements.txt` sinh từ lock và `fron
 
 - [Kiến trúc](docs/ARCHITECTURE.md), [hợp đồng dữ liệu/API](docs/DATA_CONTRACTS.md).
 - [Tích hợp AI và gate Qwen live](docs/AI_INTEGRATION.md).
+- [Nghiên cứu phân tuyến Flash-Lite/Argon](docs/AI_MODEL_ROUTING_RESEARCH.md) — chưa tích hợp, chưa gọi Argon live.
 - [Kiểm thử](docs/TESTING_GUIDE.md), [trạng thái nghiệm thu](docs/IMPLEMENTATION_STATUS.md).
 - [Kế hoạch ba giai đoạn](docs/PROJECT_PLAN.md), [Rules](Rules.md), [hướng dẫn Codex](AGENTS.md).
 
