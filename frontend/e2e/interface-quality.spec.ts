@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
 
 const uncaughtErrors = new WeakMap<Page, string[]>();
 test.beforeEach(({ page }) => {
@@ -357,6 +358,77 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     });
     await expect(search).toBeFocused();
     await expect(page.getByRole("option")).toHaveCount(20);
+    const dialog = page.getByRole("dialog", {
+      name: "Chọn dự án",
+      exact: true,
+    });
+    const bounds = (await dialog.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(900);
+    const focusStyle = await search.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        style: style.outlineStyle,
+        width: parseFloat(style.outlineWidth),
+      };
+    });
+    expect(focusStyle.style).not.toBe("none");
+    expect(focusStyle.width).toBeGreaterThanOrEqual(2);
+    const contrast = await dialog.evaluate((element) => {
+      const luminance = (color: string) => {
+        const channels = color
+          .match(/[\d.]+/g)!
+          .slice(0, 3)
+          .map(Number)
+          .map((value) => {
+            const channel = value / 255;
+            return channel <= 0.04045
+              ? channel / 12.92
+              : ((channel + 0.055) / 1.055) ** 2.4;
+          });
+        return (
+          channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+        );
+      };
+      return [
+        ".project-option.highlighted strong",
+        ".project-option.highlighted span",
+        ".project-option.highlighted small",
+        "input",
+      ].map((selector) => {
+        const target = element.querySelector(selector)!;
+        let surface: Element | null = target;
+        while (
+          surface &&
+          getComputedStyle(surface).backgroundColor === "rgba(0, 0, 0, 0)"
+        )
+          surface = surface.parentElement;
+        const foreground = luminance(
+          getComputedStyle(
+            target,
+            selector === "input" ? "::placeholder" : null,
+          ).color,
+        );
+        const background = luminance(
+          getComputedStyle(surface!).backgroundColor,
+        );
+        return {
+          selector,
+          ratio:
+            (Math.max(foreground, background) + 0.05) /
+            (Math.min(foreground, background) + 0.05),
+        };
+      });
+    });
+    for (const sample of contrast)
+      expect(sample.ratio, sample.selector).toBeGreaterThanOrEqual(4.5);
+    await mkdir("../runtime/screenshots", { recursive: true });
+    await page.screenshot({
+      path: `../runtime/screenshots/project-selector-${width}.png`,
+      fullPage: true,
+    });
     await search.press("End");
     await search.press("Enter");
     await expect(trigger).toHaveAttribute("data-project-id", "project-019");
