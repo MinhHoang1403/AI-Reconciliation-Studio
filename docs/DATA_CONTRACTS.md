@@ -22,6 +22,7 @@ Giai đoạn sau phải dùng các refs và API này, không viết parser/mappi
 ## REST đang hỗ trợ
 
 - `GET/POST /api/projects`, `GET /api/projects/{id}/summary`.
+- `GET /api/projects?search=...&offset=0&limit=20` tìm literal theo tên/phạm vi, không phân biệt hoa/thường, giữ Unicode và workspace scope; max search200/limit100, thứ tự created_at DESC/id ổn định. `GET /api/projects/{id}` khôi phục saved project ngoài trang đầu; missing/khác workspace cùng404, không lộ metadata. Không tải toàn bộ danh sách vào frontend.
 - `GET /api/datasets?project_id=...&offset=0&limit=25`, `POST /api/datasets/uploads` (multipart nhiều tệp).
 - `GET /api/datasets/{id}`, `/tables`, `/artifacts`.
 - `GET /api/tables/{id}/profile`, `/mappings`, `/preview`.

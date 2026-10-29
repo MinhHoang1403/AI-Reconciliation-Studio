@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, Query, Request, Respon
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import Field
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
 from studio.access import Actor, authenticate, bootstrap_session, require_editor
@@ -29,6 +29,7 @@ from studio.contracts import (
     MappingRevision,
     MappingStatus,
     ParsedTableArtifact,
+    Project,
     SchemaDefinition,
     SchemaProposal,
     WorkspacePolicy,
@@ -187,11 +188,26 @@ class ProjectInput(Contract):
 
 @app.get("/api/projects", response_model=ProjectList)
 def projects(
-    db: DB, actor: CurrentActor, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100)
+    db: DB,
+    actor: CurrentActor,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    search: str = Query("", max_length=200),
 ) -> dict[str, Any]:
+    """Bounded, workspace-scoped literal search; stable tie ordering across pages."""
     query = select(ProjectRow).where(ProjectRow.workspace_id == actor.workspace_id)
+    if search.strip():
+        literal = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(
+            or_(
+                ProjectRow.name.ilike(f"%{literal}%", escape="\\"),
+                ProjectRow.business_scope.ilike(f"%{literal}%", escape="\\"),
+            )
+        )
     total = db.scalar(select(func.count()).select_from(query.subquery()))
-    items = db.scalars(query.order_by(ProjectRow.created_at.desc()).offset(offset).limit(limit))
+    items = db.scalars(
+        query.order_by(ProjectRow.created_at.desc(), ProjectRow.id).offset(offset).limit(limit)
+    )
     return {
         "items": [
             {
@@ -204,6 +220,15 @@ def projects(
         ],
         "total": total,
     }
+
+
+@app.get("/api/projects/{project_id}", response_model=Project)
+def project_detail(project_id: str, db: DB, actor: CurrentActor) -> Project:
+    """Restore a saved ID without scanning pages or changing workspace authorization."""
+    row = get_scoped(db, ProjectRow, project_id, actor)
+    return Project(
+        id=row.id, workspace_id=row.workspace_id, name=row.name, business_scope=row.business_scope
+    )
 
 
 @app.post("/api/projects", status_code=201)

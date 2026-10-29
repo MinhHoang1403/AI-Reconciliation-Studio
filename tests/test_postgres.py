@@ -97,6 +97,59 @@ def project(client, name="Synthetic project"):
     return response.json()["id"]
 
 
+def test_project_search_pagination_restore_and_workspace_scope(pg):
+    """A saved project outside page one remains addressable; search is literal/scoped."""
+    from studio.database import ProjectRow
+
+    client, factory, _ = pg
+    with factory() as db:
+        for index in range(120):
+            db.add(
+                ProjectRow(
+                    id=f"search-{index:03}",
+                    workspace_id="demo",
+                    name="Đối soát đơn hàng",
+                    business_scope=f"Kho miền Nam {index:03}",
+                )
+            )
+        db.add(WorkspaceRow(id="foreign-search", name="Other", policy={}))
+        db.flush()
+        db.add(
+            ProjectRow(
+                id="foreign-project",
+                workspace_id="foreign-search",
+                name="Đối soát đơn hàng",
+                business_scope="private",
+            )
+        )
+        db.add(
+            ProjectRow(
+                id="literal-project",
+                workspace_id="demo",
+                name="100%_literal",
+                business_scope="test",
+            )
+        )
+        db.commit()
+    first = client.get("/api/projects?limit=50").json()
+    second = client.get("/api/projects?limit=50&offset=50").json()
+    assert first["total"] == 121 and len(first["items"]) == len(second["items"]) == 50
+    assert not ({p["id"] for p in first["items"]} & {p["id"] for p in second["items"]})
+    saved = second["items"][0]
+    assert client.get(f"/api/projects/{saved['id']}").json() == saved
+    assert client.get("/api/projects/foreign-project").status_code == 404
+    assert client.get("/api/projects/missing").status_code == 404
+    scoped = client.get("/api/projects", params={"search": "MIỀN NAM 119"}).json()
+    assert [p["id"] for p in scoped["items"]] == ["search-119"]
+    assert client.get("/api/projects", params={"search": "ĐỐI SOÁT"}).json()["total"] == 120
+    assert client.get("/api/projects?search=private").json()["total"] == 0
+    assert client.get("/api/projects", params={"search": "%_"}).json()["total"] == 1
+    assert client.get("/api/projects?search=absent").json() == {"items": [], "total": 0}
+    assert client.get("/api/projects?limit=101").status_code == 422
+    assert client.get("/api/projects?offset=-1").status_code == 422
+    assert client.get("/api/projects", params={"search": "x" * 201}).status_code == 422
+
+
 def upload(
     client,
     project_id,

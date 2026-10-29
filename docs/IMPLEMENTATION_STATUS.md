@@ -2,6 +2,8 @@
 
 **Hiện tại:** Final Acceptance ngày 29/10/2026 ở mục L; Giai đoạn 2 đạt nghiệm thu kỹ thuật trong phạm vi MVP đã công bố. Các mục A–K giữ nguyên lịch sử; không dùng quota/counts hoặc lệnh dừng của nhiệm vụ cũ thay cho bằng chứng và ủy quyền mới.
 
+Nhiệm vụ tiếp theo: Quality Hardening + UX Refinement, theo prompt riêng của chủ dự án, trên `codex/interface-quality` từ main `0b9421e`. Chỉ hoàn thiện Giai đoạn 1–2, không merge main, không cloud/Argon/Giai đoạn 3. Bằng chứng thực hiện ghi tại mục M; số liệu mục L là baseline lịch sử.
+
 ## Final Acceptance — Giai đoạn 1 (lịch sử)
 
 Ngày kiểm tra: **28/10/2026**. Phạm vi: Data Foundation + AI Smart Setup + UI cơ sở.
@@ -369,3 +371,29 @@ Kiểm tra tài liệu trước commit: đủ 14 sections và 14 nguồn đã m�
 **PASS:** ba gates nghiệm thu kỹ thuật; 143 backend/15 E2E catalogue; CSV/XLSX UI và independent oracle; security regression/persistence; main merge/.vscode/tag/branch cleanup; accepted-main deploy; cleanup đúng 4 images; nghiên cứu tài liệu Argon. **FAIL:** không có test FAIL hoặc lỗi ứng dụng mới đã xác định còn tồn tại trong phạm vi này. **BLOCKED:** Qwen live. **NOT VERIFIED:** prompt Planner mới live, Argon live/account/benchmark, representative precision/recall, production security audit và DR restore. **DEFERRED:** tích hợp/live Argon, long decode, Giai đoạn 3.
 
 Mức sẵn sàng: source Giai đoạn 2 đã nghiệm thu trong phạm vi MVP công bố, main/tag/runtime có bằng chứng; đủ để chủ dự án xem xét prompt tiếp theo. Không tự coi các mục NOT VERIFIED là PASS hoặc tự cấp quyền triển khai. **DỪNG sau bàn giao; không bắt đầu Giai đoạn 3, không tích hợp Argon hoặc tăng/reset ngân sách.**
+
+## M. Hoàn thiện frontend và UX Giai đoạn 1–2
+
+Phạm vi được giao: project search/pagination/restore, thống kê/trạng thái/next action, tổ chức frontend có kiểm soát, ngôn ngữ/loading/error/keyboard/responsive, polling và dữ liệu test. Không đổi engine/verifier, tiền, approvals hoặc artifacts lịch sử. Nhánh từ main sạch `0b9421e`, hai acceptance tags giữ nguyên; một repo/Compose. Baseline thật: 27 projects, 32 datasets, 27 canonical, 118 foundation + 13 match + 22 export files; Gemini 7/10, planner1/parser2, parser creation OFF.
+
+### Bản đồ trách nhiệm trước sửa
+
+| Trách nhiệm | Quyết định | Lợi ích | Rủi ro và kiểm chứng |
+|---|---|---|---|
+| App Shell/sidebar | Giữ ở App; sửa count/footer/mobile focus cục bộ | Giữ điều hướng hiện có | Responsive/keyboard |
+| Project selector | Tách một component với typed props; API đọc phân trang/tìm kiếm | Một nơi quản lý search/loading/focus, không tải toàn bộ projects | Restore ngoài trang đầu, scope/race/auth |
+| Dashboard/next action | Tách phần hiển thị summary/action nếu có ranh giới rõ | Không lẫn counters với financial KPI | DTO backend, READY/PARTIAL/loading và đúng deep link |
+| Data workspace/explorer | Giữ state/API ở App, bổ sung scope guards và lỗi/chất lượng | Không nhân bản fetch/preview logic | Mapping drafts, canonical refs, pagination |
+| Upload/settings | Giữ implementation đang PASS | Không refactor ngoài thay đổi cần thiết | Regression pipeline/security |
+| Jobs | Poll theo active jobs, refresh thủ công khi idle | Giảm request lặp | Completion refresh, no overlap/unmount/stale response |
+| Reconciliation | Format; tách evidence nếu độc lập, giữ rule/result state và contracts | Dễ đọc và sửa cục bộ | T35, historical run/evidence/snapshot/export |
+
+Các phát hiện xác nhận từ source: project chỉ lấy trang50 rồi bỏ saved ID ngoài trang; sidebar dùng page length; Dashboard dùng fallback0 lúc loading, nhãn READY mơ hồ; polling toàn project mỗi3s cả khi idle; một số scope state chưa được xóa khi chuyển project. Đây là confirmed bugs/UX gaps, không phải bằng chứng matcher sai. Chi tiết kiểm thử/kết quả sẽ ghi sau thực thi.
+
+### Nhóm A — project selector
+
+Đã tái hiện regression trên image cũ: saved ID ngoài trang đầu không có single-project GET (404). Bổ sung GET scoped theo ID và search literal name/business_scope có giới hạn, Unicode/case-insensitive, escape `%/_`, stable pagination; không migration/quyền mới. UI tách ProjectSelector: 20 results/trang, debounce/AbortController/sequence guard, loading/error/retry/no-results, scope và ID ngắn cho tên trùng, combobox/listbox/Arrow/Enter/Escape, focus trở về nút mở. Saved ID được xác minh riêng; mất quyền/missing không tự chọn project khác. Chuyển project xóa canonical/evidence/source state, giữ key theo project cho reconciliation.
+
+PG regression sau sửa **1 PASS, 12 deselected** (3,76s), trước sửa FAIL đúng thiếu GET. TypeScript/ESLint/build/Ruff/mypy31 PASS. Sáu browser contract tests **6 PASS** (8,9s): 1/10/50/120 projects, paging, search có dấu/hoa thường, duplicate names/scopes, saved off-page/reload/missing, delayed search/error/loading. Lần đầu keyboard tests phát hiện focus không quay về trigger do Dialog không dùng Dialog.Trigger; sửa returnFocus optional trong Modal rồi cả6 PASS, không đổi expectations. Browser fixtures chỉ intercept API GET, không tạo production projects/dữ liệu/cloud. Các E2E cũ đã đổi sang tương tác bộ chọn thật, không hidden select.
+
+Reconciliation responsive trên saved demo thật: **4 PASS** (17,0s, 390/768/1366/1920), không tạo dữ liệu. Lần đầu helper đọc API trước session bootstrap bị401; sửa helper đợi visible picker (auth đã hoàn tất), không bỏ auth. Bốn màn hình sau đó PASS qua tìm kiếm/selection mới. Diff/known-secret-history/local Markdown links PASS, chưa coi các kiểm tra nhóm này thay cho full regression cuối nhiệm vụ.

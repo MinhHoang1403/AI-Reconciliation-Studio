@@ -6,7 +6,7 @@ import {
   type ColumnDef,
 } from "@tanstack/react-table";
 import { CheckCircle2, Info, LoaderCircle, X } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { statusText } from "./types";
 
 export function Badge({ status }: { status: string }) {
@@ -47,12 +47,14 @@ export function Modal({
   open,
   onOpenChange,
   wide = false,
+  returnFocus,
 }: {
   title: string;
   children: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   wide?: boolean;
+  returnFocus?: RefObject<HTMLElement | null>;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -61,6 +63,12 @@ export function Modal({
         <Dialog.Content
           className={`modal ${wide ? "modal-wide" : ""}`}
           aria-describedby={undefined}
+          onCloseAutoFocus={event => {
+            if (returnFocus?.current) {
+              event.preventDefault();
+              returnFocus.current.focus();
+            }
+          }}
         >
           <div className="modal-heading">
             <Dialog.Title>{title}</Dialog.Title>

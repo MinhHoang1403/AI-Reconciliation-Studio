@@ -22,7 +22,8 @@ import {
   X,
 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { api } from "./api";
+import { api, ApiError } from "./api";
+import { ProjectSelector } from "./ProjectSelector";
 import {
   Badge,
   DataTable,
@@ -59,10 +60,8 @@ type View = "parsed" | "raw" | "canonical" | "errors";
 export function App() {
   const [page, setPage] = useState<Page>("home");
   const [tab, setTab] = useState<Tab>("explore");
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState(
-    localStorage.getItem("studio.project") || "",
-  );
+  const [project, setProject] = useState<Project | null>(null);
+  const [projectId, setProjectId] = useState("");
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [datasetOffset, setDatasetOffset] = useState(0);
   const [datasetTotal, setDatasetTotal] = useState(0);
@@ -109,7 +108,6 @@ export function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const selectedDataset = datasets.find((d) => d.id === datasetId);
   const table = tables.find((t) => t.id === tableId);
-  const project = projects.find((p) => p.id === projectId);
   const currentCanonical = canonicals.find((c) => c.id === canonicalId);
   const activeMapping = mappings.find((m) => m.id === table?.active_mapping_id);
 
@@ -133,17 +131,25 @@ export function App() {
     void (async () => {
       try {
         await api("/session");
-        const [p, s] = await Promise.all([
-          api<{ items: Project[] }>("/projects"),
-          api<WorkspaceSettings>("/settings"),
-        ]);
+        const s = await api<WorkspaceSettings>("/settings");
+        const savedId = localStorage.getItem("studio.project");
+        let restored: Project | null = null;
+        try {
+          restored = savedId
+            ? await api<Project>(`/projects/${encodeURIComponent(savedId)}`)
+            : (await api<{ items: Project[] }>("/projects?limit=1")).items[0] || null;
+        } catch (err) {
+          if (!mounted) return;
+          if (err instanceof ApiError && ["RESOURCE_NOT_FOUND", "FORBIDDEN"].includes(err.code)) {
+            setError("Dự án đã lưu không còn tồn tại hoặc bạn không còn quyền truy cập. Hãy chọn dự án khác.");
+            localStorage.removeItem("studio.project");
+          } else throw err;
+        }
         if (!mounted) return;
-        setProjects(p.items);
+        setProject(restored);
+        setProjectId(restored?.id || "");
         setWorkspace(s);
         setReady(true);
-        setProjectId((old) =>
-          p.items.some((p) => p.id === old) ? old : p.items[0]?.id || "",
-        );
       } catch (err) {
         if (mounted)
           setError(
@@ -194,7 +200,7 @@ export function App() {
     };
   }, [ready, page]);
   useEffect(() => {
-    localStorage.setItem("studio.project", projectId);
+    if (ready && projectId) localStorage.setItem("studio.project", projectId);
     setDatasetId("");
     setTableId("");
     setTables([]);
@@ -202,7 +208,7 @@ export function App() {
     setMappings([]);
     setPreview(null);
     setDatasetOffset(0);
-  }, [projectId]);
+  }, [projectId, ready]);
   useEffect(() => {
     if (!ready) return;
     void refreshProject().catch((err) => setError(String(err.message)));
@@ -337,6 +343,31 @@ export function App() {
     setTab("explore");
     setSidebar(false);
   }
+  function chooseProject(selected: Project) {
+    if (selected.id === projectId) return;
+    scopeRef.current = { projectId: selected.id, datasetId: "", tableId: "", datasetOffset: 0 };
+    setProject(selected);
+    setProjectId(selected.id);
+    setDatasets([]);
+    setDatasetTotal(0);
+    setDatasetOffset(0);
+    setJobs([]);
+    setSummary(null);
+    setDatasetId("");
+    setTables([]);
+    setTableId("");
+    setProfile(null);
+    setMappings([]);
+    setCanonicals([]);
+    setCanonicalId("");
+    setPreview(null);
+    setDocumentState({ datasetId: "", items: [] });
+    setEvidenceId("");
+    setEvidence(null);
+    setError("");
+    setSuccess("");
+    setTab("explore");
+  }
   function showEvidence(id: string, row?: number) {
     setEvidenceRow(row);
     setEvidenceId(id);
@@ -349,11 +380,7 @@ export function App() {
       method: "POST",
       body: JSON.stringify({ name: newName, business_scope: newScope }),
     });
-    setProjects((old) => [p, ...old]);
-    setDatasets([]);
-    setJobs([]);
-    setSummary(null);
-    setProjectId(p.id);
+    chooseProject(p);
     setProjectOpen(false);
     setNewName("");
     setNewScope("");
@@ -673,36 +700,7 @@ export function App() {
           {!ready && !error && <Spinner />}
           {ready && page !== "settings" && (
             <div className="project-bar">
-              <label htmlFor="project-select">
-                <FolderOpen size={17} />
-                Dự án
-              </label>
-              <select
-                id="project-select"
-                value={projectId}
-                onChange={(e) => {
-                  setDatasets([]);
-                  setJobs([]);
-                  setSummary(null);
-                  setDatasetId("");
-                  setTables([]);
-                  setTableId("");
-                  setProfile(null);
-                  setMappings([]);
-                  setCanonicals([]);
-                  setPreview(null);
-                  setProjectId(e.target.value);
-                }}
-              >
-                <option value="" disabled>
-                  Chọn dự án
-                </option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              <ProjectSelector project={project} onSelect={chooseProject} disabled={busy} />
               <button
                 className="text-button"
                 onClick={() => setProjectOpen(true)}

@@ -1,3 +1,4 @@
+import { selectProject } from "./project-selection";
 import { test, expect, type Page } from "@playwright/test";
 import { mkdir, readFile } from "node:fs/promises";
 
@@ -32,7 +33,7 @@ test("A/C/D: create project, upload, review mapping with explicit provider, norm
     .fill(`${projectName} · kiểm tra đơn hàng`);
   await dialog.getByRole("button", { name: "Tạo dự án", exact: true }).click();
   await expect(dialog).not.toBeVisible();
-  projectId = await page.locator("#project-select").inputValue();
+  projectId = (await page.locator("#project-select").getAttribute("data-project-id"))!;
   await page.getByRole("button", { name: "Tải dữ liệu", exact: true }).click();
   await page.getByLabel("Chọn tệp dữ liệu").setInputFiles({
     name: "synthetic-orders.csv",
@@ -200,7 +201,7 @@ test("B: returning user retains project, approved mapping and canonical refs", a
   page,
 }) => {
   await openApp(page);
-  await page.locator("#project-select").selectOption(projectId);
+  await selectProject(page, projectId);
   await page.getByRole("button", { name: /synthetic-orders.csv/ }).click();
   await page.getByRole("tab", { name: "AI Smart Setup" }).click();
   await expect(
@@ -256,7 +257,7 @@ for (const size of [
   test(`visual and overflow ${size.width}x${size.height}`, async ({ page }) => {
     await page.setViewportSize(size);
     await openApp(page);
-    await page.locator("#project-select").selectOption(projectId);
+    await selectProject(page, projectId);
     await expect(
       page.getByRole("heading", { name: "Nền tảng dữ liệu của bạn" }),
     ).toBeVisible();
@@ -307,7 +308,7 @@ test("cached document evidence remains readable after parser allowance is closed
     return;
   }
   await openApp(page);
-  await page.locator("#project-select").selectOption(state!.project_id);
+  await selectProject(page, state!.project_id);
   for (const [extension, id, amount] of [["pdf", "000123", "1234.50"], ["docx", "000701", "1.234,50"]]) {
     await page.getByRole("button", {name: new RegExp(`synthetic-transactions\\.${extension}`)}).click();
     await expect(page.getByText("Bản trích xuất chưa được xác minh.", {exact:false})).toBeVisible();

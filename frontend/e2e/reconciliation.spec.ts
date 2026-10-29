@@ -1,3 +1,4 @@
+import { selectProject } from "./project-selection";
 import {test,expect} from "@playwright/test";
 import {readFile,mkdir,writeFile} from "node:fs/promises";
 import {createHash} from "node:crypto";
@@ -9,7 +10,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
   const s=await state();
   await page.goto("/");
   await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
-  await page.locator("#project-select").selectOption(s.project_id);
+  await selectProject(page, s.project_id);
   await page.getByRole("button",{name:"Đối soát",exact:true}).click();
   await page.getByLabel("Nguồn tham chiếu",{exact:true}).selectOption(s.sources["shipments.csv"].canonical_id);
   await page.getByLabel("Nguồn đối ứng",{exact:true}).selectOption(s.sources["delivery-confirmations.csv"].canonical_id);
@@ -123,7 +124,7 @@ test("Planner UI accepts sources with no common key and presents review-only sug
   });
   await page.route("**/api/jobs/mock-planning",route=>route.fulfill({json:{id:"mock-planning",status:"SUCCEEDED",result:{plan_id:"mock-proposal"}}}));
   await page.route("**/api/reconciliation-plans/mock-proposal",route=>route.fulfill({json:{id:"mock-proposal",origin:"GEMINI",contract_id:null,proposal:{status:"NEEDS_REVIEW",plan:null,reasoning:"Different field IDs refer to the same tracking identifier",missing_requirements:["Confirm reporting period and coverage"],suggestions:{left_role:"reference",right_role:"counterpart",join_keys:[{left:"tracking_id",right:"external_tracking"}],comparison_metrics:[],cardinality:"ONE_TO_ONE",comparison_grain:"delivery",aggregation:"NONE",evidence_ids:[left,right]}}}}));
-  await page.goto("/");await page.locator("#project-select").selectOption(s.project_id);
+  await page.goto("/");await selectProject(page, s.project_id);
   await page.getByRole("button",{name:"Đối soát",exact:true}).click();
   await page.getByLabel("Nguồn tham chiếu",{exact:true}).selectOption(left);
   await page.getByLabel("Nguồn đối ứng",{exact:true}).selectOption(right);
@@ -144,7 +145,7 @@ test("Planner UI accepts sources with no common key and presents review-only sug
 for(const size of [{width:390,height:844},{width:768,height:1024},{width:1366,height:768},{width:1920,height:1080}]){
   test(`reconciliation results responsive ${size.width}`,async({page})=>{
     const s=await state();await page.setViewportSize(size);await page.goto("/");
-    await page.locator("#project-select").selectOption(s.project_id);
+    await selectProject(page, s.project_id);
     if(size.width<=768)await page.getByRole("button",{name:"Mở điều hướng",exact:true}).click();
     await page.getByRole("button",{name:"Báo cáo",exact:true}).click();
     await page.getByLabel("Lần đối soát",{exact:true}).selectOption(s.runs.delivery.run_id);
