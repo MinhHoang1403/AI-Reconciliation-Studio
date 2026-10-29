@@ -2,6 +2,10 @@
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
+Bằng chứng Final Acceptance mới nhất ngày **29/10/2026** ở [mục L của báo cáo](IMPLEMENTATION_STATUS.md#l-final-acceptance-hợp-nhất-và-vận-hành--29102026): 120 offline/143 tổng backend và 15 E2E MANUAL PASS, không cloud. T35 hiện xuất cả CSV/XLSX qua UI, đợi đúng export URL của từng format, kiểm SHA256/timestamp và lưu downloads/snapshot dưới runtime để đọc lại. Không đổi oracle, timeout hoặc số cases. Những số 91/9 ở phần nền tảng bên dưới là lịch sử Giai đoạn 1.
+
+Đối chiếu runtime/source khi release: từ tracked application source sạch, đặt build-only `$env:BUILDX_GIT_LABELS='full'` rồi `docker compose build backend frontend`, kiểm OCI revision/source của images trước `up`, `tools/verify-local.ps1` và so source/served assets SHA256. Label base image Nginx không phải revision của ứng dụng; cached Created timestamp không chứng minh commit. Không cần thêm biến runtime, service hoặc thay Dockerfile.
+
 Final Acceptance theo phạm vi mới ngày 28/10/2026 đã chạy lại: **91 backend PASS, 0 FAIL/SKIP** (79 offline + 12 PostgreSQL), Ruff/mypy và frontend TypeScript/lint/build PASS, **9 E2E MANUAL PASS, 0 FAIL/SKIP trong 19,6 giây**. T01–T16 và security nằm trong các suite này, không cộng thêm vào tổng. Baseline 87 backend/8 E2E tăng do bốn backend regression và một case document cached. Gemini live 9 E2E PASS là bằng chứng của lần chạy trước chỉ dẫn thu hẹp; không gọi lại cloud ở lượt này, quota vẫn 6/10. LlamaParse đọc lại hai kết quả live đã lưu, không tạo job mới. Chỉ nghiệm thu Giai đoạn 1, chờ prompt riêng trước Giai đoạn 2.
 
 ## Backend offline

@@ -1,5 +1,6 @@
 import {test,expect} from "@playwright/test";
-import {readFile,mkdir} from "node:fs/promises";
+import {readFile,mkdir,writeFile} from "node:fs/promises";
+import {createHash} from "node:crypto";
 
 type State={project_id:string;sources:Record<string,{canonical_id:string}>;runs:Record<string,{run_id:string;contract_id:string;plan:unknown;snapshot:{monetary:{absolute_variance:string}[]}}>};
 async function state(){return JSON.parse(await readFile("../runtime/reconciliation-acceptance.json","utf8")) as State;}
@@ -40,6 +41,17 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
   expect((await (await page.request.get(`/api/runs/${rid}`)).json()).status).toBe("VERIFIED");
   const before=await (await page.request.get(`/api/runs/${rid}/metrics`)).json();
   expect(before.monetary[0].absolute_variance).toBe("2.75");
+  expect(before.full_match_rate).toEqual({numerator:1,denominator:3,percent:"33.33"});
+  expect(before.eligible_units).toBe(3);
+  const originalGroups=await (await page.request.get(`/api/runs/${rid}/matches`)).json();
+  const mismatch=originalGroups.items.find((g:{comparison_state:string})=>g.comparison_state==="AMOUNT_MISMATCH");
+  expect(mismatch.key).toContain("000702");
+  expect(mismatch.linkage_state).toBe("LINKED");
+  expect(mismatch.members).toHaveLength(2);
+  expect(mismatch.comparisons[0]).toMatchObject({left_amount:"12.75",right_amount:"10.00",delta:"2.75"});
+  expect(originalGroups.items.filter((g:{comparison_state:string})=>g.comparison_state==="EQUAL")).toHaveLength(1);
+  expect(originalGroups.items.filter((g:{linkage_state:string})=>g.linkage_state==="UNMATCHED")).toHaveLength(2);
+  expect((await (await page.request.get(`/api/runs/${rid}/exceptions`)).json()).total).toBe(3);
   await page.getByRole("button",{name:"Ngoại lệ",exact:true}).click();
   await page.getByLabel("Lần đối soát",{exact:true}).selectOption(rid);
   const row=page.getByRole("row").filter({has:page.getByRole("cell",{name:"Lệch tiền",exact:true})});
@@ -52,18 +64,34 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
   const sourceDetail=dialog.getByRole("region",{name:"Chi tiết giá trị nguồn"});
   await expect(sourceDetail.getByRole("cell",{name:"12.75",exact:true})).toBeVisible();
   await expect(sourceDetail.getByRole("cell",{name:"delivery_charge (c4)",exact:true})).toBeVisible();
+  await expect(sourceDetail.getByRole("cell",{name:"CSV",exact:true})).toBeVisible();
+  await expect(sourceDetail.getByRole("cell",{name:"3",exact:true})).toBeVisible();
   await page.screenshot({path:"../runtime/screenshots/reconciliation-field-evidence.png",fullPage:true});
   await dialog.getByRole("combobox",{name:"Trạng thái xử lý",exact:true}).selectOption("RESOLVED");
   await dialog.getByLabel("Lý do / ghi chú",{exact:true}).fill("Đã xem bằng chứng tổng hợp; không sửa số tiền.");
   await dialog.getByRole("button",{name:"Lưu xem xét",exact:true}).click();
   await expect(dialog).not.toBeVisible();
   expect(await (await page.request.get(`/api/runs/${rid}/metrics`)).json()).toEqual(before);
-  await page.getByRole("button",{name:"Xuất XLSX",exact:true}).click();
-  await expect(page.getByRole("link",{name:"Tải báo cáo",exact:true})).toBeVisible();
-  await expect(page.getByText(/File bất biến từ lần tạo đầu/)).toBeVisible();
-  const download=await page.request.get(await page.getByRole("link",{name:"Tải báo cáo",exact:true}).getAttribute("href")||"");
-  expect(download.status()).toBe(200);
-  expect(download.headers()["content-type"]).toContain("spreadsheetml");
+  expect(await (await page.request.get(`/api/runs/${rid}/matches`)).json()).toEqual(originalGroups);
+  await mkdir("../runtime",{recursive:true});
+  const exports:Record<string,unknown>={};
+  for(const format of ["csv","xlsx"]){
+    const infoResponse=page.waitForResponse(response=>/^\/api\/exports\/[^/]+$/.test(new URL(response.url()).pathname)&&response.request().method()==="GET");
+    await page.getByRole("button",{name:format==="csv"?"Xuất CSV":"Xuất XLSX",exact:true}).click();
+    const info=await (await infoResponse).json();
+    await expect(page.getByRole("link",{name:"Tải báo cáo",exact:true})).toHaveAttribute("href",info.download_url);
+    await expect(page.getByText(/File bất biến từ lần tạo đầu/)).toBeVisible();
+    const download=await page.request.get(info.download_url);
+    expect(download.status()).toBe(200);
+    expect(download.headers()["content-type"]).toContain(format==="csv"?"text/csv":"spreadsheetml");
+    const bytes=await download.body();
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(info.sha256);
+    expect(info.review_state_scope).toBe("FIRST_GENERATION");
+    expect(info.review_state_as_of).toBeTruthy();
+    await writeFile(`../runtime/ui-reconciliation.${format}`,bytes);
+    exports[format]=info;
+  }
+  await writeFile("../runtime/ui-reconciliation-evidence.json",JSON.stringify({run_id:rid,snapshot:before,groups:originalGroups,exports},null,2));
   await page.reload();
   await page.getByRole("button",{name:"Báo cáo",exact:true}).click();
   await expect(page.getByLabel("Lần đối soát",{exact:true})).toHaveValue(rid);
