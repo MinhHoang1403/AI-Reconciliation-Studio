@@ -2,7 +2,7 @@
 
 Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, AI đề xuất ánh xạ, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
 
-**Trạng thái:** Giai đoạn 1 đã hợp nhất và gắn tag `data-foundation-accepted-20261028`. Giai đoạn 2 có rule builder/AI Planner, matching/verification, kết quả, ngoại lệ và CSV/XLSX trên `codex/reconciliation-engine`; chưa merge vào main. Gemini mặc định, mapping/rule luôn cần duyệt. Qwen live hoãn vì IP allowlist; LlamaParse tạo job OFF. Xem [bằng chứng và giới hạn](docs/IMPLEMENTATION_STATUS.md).
+**Trạng thái:** Giai đoạn 1 có tag `data-foundation-accepted-20261028`. Giai đoạn 2 đã nghiệm thu kỹ thuật trong phạm vi MVP và hợp nhất có lưu lịch sử vào `main` ngày 29/10/2026: rule builder/AI Planner, matching/verification, kết quả, ngoại lệ và CSV/XLSX. Gemini mặc định; mapping/rule luôn cần duyệt. Planner mới PASS MOCK/CONTRACT, chưa xác minh live; Qwen live hoãn do IP allowlist; LlamaParse tạo job OFF. Chưa triển khai Giai đoạn 3. Xem [bằng chứng và giới hạn](docs/IMPLEMENTATION_STATUS.md).
 
 ## Mở ứng dụng trong workspace hiện tại
 
@@ -49,8 +49,8 @@ PDF/DOCX mới cần allowance riêng được duyệt trước khi upload. Kế
 ## Đối soát và báo cáo
 
 1. Sau khi có hai canonical trong cùng project, mở **Đối soát**, chọn nguồn tham chiếu/đối ứng.
-2. Xác nhận khóa, quan hệ một-một/một-nhiều/nhiều-một, grain, metric/currency/basis, dấu tiền theo nguồn, kỳ `[start,end)`, timezone và coverage. Internal ecommerce lọc đúng platform/shop cho từng pair, không JOIN ba nguồn.
-3. Dùng **Kiểm tra điều kiện**, rồi lưu đề xuất thủ công hoặc yêu cầu Gemini đề xuất. AI dùng quota hiện có; manual không gọi cloud. Gemini Planner đã dùng thêm 1 attempt, tổng 7/10 còn 3; không reset/tăng. Không gọi Qwen hoặc mở parser khi lỗi AI.
+2. Có thể dùng AI chuẩn bị gợi ý khóa/chỉ tiêu trước khi nhập rule đầy đủ khi được cấp phép, hoặc mở phần chỉnh thủ công. Thiếu kỳ/coverage phải xác nhận, gợi ý không cấp quyền chạy. Prompt Planner mới chưa thử live; regression/Final Acceptance chỉ MANUAL/MOCK, không nhấn gọi AI live.
+3. Xác nhận khóa, quan hệ một-một/một-nhiều/nhiều-một, grain, metric/currency/basis, dấu tiền, kỳ `[start,end)`, timezone và coverage rồi **Kiểm tra điều kiện** và lưu đề xuất. Internal lọc đúng platform/shop cho từng pair, không JOIN ba nguồn. Manual không cloud; Gemini vẫn 7/10 còn 3, không reset/tăng hoặc fallback khi lỗi. Không gọi Qwen/mở parser.
 4. Review đề xuất, **Xác nhận quy tắc và dấu số tiền**, rồi **Chạy đối soát đã duyệt**. Duplicate/fuzzy mơ hồ giữ review, không tự chọn; null/invalid không thành zero. Coverage thiếu phải cho phép partial rõ ràng.
 5. **Báo cáo/Tổng quan** hiển thị snapshot đã verified, denominator/CU/period và từng metric/currency riêng. Không có verified result thì empty/loading state, không KPI giả. Lọc lịch sử theo kỳ/nguồn, chọn đúng run ID.
 6. **Ngoại lệ** có tìm kiếm, lọc loại/trạng thái, sort, bằng chứng hai bên và dòng nguồn. Resolve/dismiss cần ghi chú; review không sửa comparison, variance hoặc snapshot của run.
@@ -83,7 +83,7 @@ Named volumes `ai-reconciliation-studio_postgres_data` và `ai-reconciliation-st
 uv sync --frozen
 uv run pytest -q -m 'not integration'
 uv run ruff check backend tests tools
-uv run mypy backend/studio
+uv run mypy backend
 ./tools/test-postgres.ps1
 npm --prefix frontend ci
 npm --prefix frontend run check
@@ -108,6 +108,6 @@ Dependencies khóa bằng `uv.lock`, `requirements.txt` sinh từ lock và `fron
 - [Kiểm thử](docs/TESTING_GUIDE.md), [trạng thái nghiệm thu](docs/IMPLEMENTATION_STATUS.md).
 - [Kế hoạch ba giai đoạn](docs/PROJECT_PLAN.md), [Rules](Rules.md), [hướng dẫn Codex](AGENTS.md).
 
-Giai đoạn 2 dùng trực tiếp CanonicalDataset/MappingRevision/SchemaDefinition/EvidenceRef, queue, session và App Shell hiện có. Không triển khai Assistant Giai đoạn 3; dừng sau bàn giao feature branch để chủ dự án xem kết quả. Repository chính thức: [MinhHoang1403/AI-Reconciliation-Studio](https://github.com/MinhHoang1403/AI-Reconciliation-Studio).
+Giai đoạn 2 dùng trực tiếp CanonicalDataset/MappingRevision/SchemaDefinition/EvidenceRef, queue, session và App Shell hiện có; source đã hợp nhất `main`. Không triển khai Assistant Giai đoạn 3 hoặc tích hợp Argon trong nhiệm vụ nghiệm thu. `.vscode/settings.json` chỉ chia sẻ boolean dùng env file local; `.env`/credentials vẫn bị ignore. Repository chính thức: [MinhHoang1403/AI-Reconciliation-Studio](https://github.com/MinhHoang1403/AI-Reconciliation-Studio).
 
 Kiểm toán bổ sung: chọn hai nguồn → AI có thể gợi ý khóa/chỉ tiêu dù chưa nhập khóa; thiếu kỳ/coverage giữ trạng thái cần xác nhận. Nhập kỳ, múi giờ và phạm vi thực tế, xác nhận rồi lưu/duyệt rule; phần chỉnh thủ công dùng được khi cloud tắt hoặc hết quota. UI không tự chọn tháng/UTC. Trong bằng chứng, bấm **Xem nguồn [tên trường]** để xem giá trị gốc đúng cột/file/sheet/dòng. KPI **Tự động phân loại** bao gồm kết luận thiếu đối ứng/lệch đã xác minh, không phải tỷ lệ ngoại lệ đã giải quyết. Báo cáo export bất biến theo lần tạo đầu của run/định dạng/revision; UI và Summary ghi thời điểm/phạm vi review, review sau đó không cập nhật file cũ. Xem kết quả kiểm toán trong [báo cáo](docs/IMPLEMENTATION_STATUS.md).
