@@ -2,6 +2,10 @@
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
+Bằng chứng Final Acceptance mới nhất ngày **29/10/2026** ở [mục L của báo cáo](IMPLEMENTATION_STATUS.md#l-final-acceptance-hợp-nhất-và-vận-hành--29102026): 120 offline/143 tổng backend và 15 E2E MANUAL PASS, không cloud. T35 hiện xuất cả CSV/XLSX qua UI, đợi đúng export URL của từng format, kiểm SHA256/timestamp và lưu downloads/snapshot dưới runtime để đọc lại. Không đổi oracle, timeout hoặc số cases. Những số 91/9 ở phần nền tảng bên dưới là lịch sử Giai đoạn 1.
+
+Đối chiếu runtime/source khi release: từ tracked application source sạch, đặt build-only `$env:BUILDX_GIT_LABELS='full'` rồi `docker compose build backend frontend`, kiểm OCI revision/source của images trước `up`, `tools/verify-local.ps1` và so source/served assets SHA256. Label base image Nginx không phải revision của ứng dụng; cached Created timestamp không chứng minh commit. Không cần thêm biến runtime, service hoặc thay Dockerfile.
+
 Final Acceptance theo phạm vi mới ngày 28/10/2026 đã chạy lại: **91 backend PASS, 0 FAIL/SKIP** (79 offline + 12 PostgreSQL), Ruff/mypy và frontend TypeScript/lint/build PASS, **9 E2E MANUAL PASS, 0 FAIL/SKIP trong 19,6 giây**. T01–T16 và security nằm trong các suite này, không cộng thêm vào tổng. Baseline 87 backend/8 E2E tăng do bốn backend regression và một case document cached. Gemini live 9 E2E PASS là bằng chứng của lần chạy trước chỉ dẫn thu hẹp; không gọi lại cloud ở lượt này, quota vẫn 6/10. LlamaParse đọc lại hai kết quả live đã lưu, không tạo job mới. Chỉ nghiệm thu Giai đoạn 1, chờ prompt riêng trước Giai đoạn 2.
 
 ## Backend offline
@@ -128,3 +132,56 @@ Lỗi thật được giữ regression: upstream job ID là opaque `pjb-*`, khô
 PDF fixture đã render/kiểm tra hình ảnh. Renderer DOCX bundled trên Windows thiếu LibreOffice, nên không tuyên bố visual QA Word local; nội dung và số trang đã kiểm tra bằng kết quả provider có page cap và oracle, cùng UI cached. Hai fixtures là dữ liệu kiểm thử, không phải tuyên bố OCR tài chính đại diện hoặc artifact đã READY. UI không thực thi provider HTML và không tự normalize document.
 
 Repository checker rà known local credentials trong source candidates/Git history, các pattern secret phổ biến, runtime/binary candidates và đường dẫn Markdown. Kết hợp rà nội dung/diff trước public push; đây không phải bảo đảm đã audit mọi kiểu secret hoặc toàn bộ bảo mật hệ thống.
+
+## Reconciliation acceptance
+
+Các mốc số liệu ở phần trên là lịch sử Giai đoạn 1. Suite hiện thêm contracts/golden/property/reporting và PostgreSQL tests. `tools/test-postgres.ps1` làm mới đúng `/tmp/studio-tests` trước copy để không tạo `tests/tests` rồi chạy nhầm bản cũ; chỉ xóa cây source test tạm cố định trong backend, không chạm volume/storage. Bản pytest/hypothesis tạm dùng chung container, không tạo server/Compose test khác.
+
+```powershell
+uv run pytest -q -m 'not integration'
+./tools/test-postgres.ps1 -All
+uv run ruff check backend tests tools
+uv run mypy backend/studio
+npm --prefix frontend run check
+npm --prefix frontend run lint
+npm --prefix frontend run build
+$env:STUDIO_EXPECT_AI_PROVIDER='MANUAL'
+uv run python tools/check-reconciliation.py
+npm --prefix frontend run test:e2e
+./tools/check-persistence.ps1
+uv run python tools/benchmark-reconciliation.py
+uv run python tools/check_repository.py
+```
+
+| Golden catalogue | Evidence |
+|---|---|
+| T17–T20 | Invented source/field/evidence/AI APPROVED rejected; gross/net/stale/wrong scope/expired dates/cardinality blocked; incomplete coverage explicit partial; unapproved ID cannot execute |
+| T21–T24 | Manual oracle Internal/Shopee partition 11 = 1 invalid + 5 outside + 5 inside; zero-prefix/composite linkage; duplicate reviews; same ID amount diff LINKED/AMOUNT_MISMATCH |
+| T25–T26 | TikTok 1:N 20+30=50 with both members; inverse N:1; mixed currency NOT_COMPARABLE, no delta; signed refund retained |
+| T27–T28 | Near rigid IDs not auto-fuzzy; approved text blocking, bounded score/top-k, all ties/competing edges review-only; four synthetic admissible labelled pairs retained (not a representative blocking recall benchmark) |
+| T29–T30 | Exact/within/beyond boundary; null versus real zero; no null/invalid coercion; explicit date cutoff/coverage/due date |
+| T31–T33 | Corrupt amount or reused membership fails independent verifier; fault after draft write leaves no official metrics; retry publishes one logical run; failed verification has no metrics/exports |
+| T34–T35 | Zero denominator N/A; manual count/Decimal oracle; immutable snapshot identical API/CSV/XLSX; UI uses DTO; review leaves original snapshot equal; formula injection, numeric negatives, exact XML values, IDs checked by opening outputs |
+
+PostgreSQL migration test first creates approved canonical with historical migration, then upgrades head and compares artifact DTO/preview/counts; stale source/viewer/cross-project evidence/foreign group rejected. Template reuse returns PROPOSED with no contract ID and requires fresh approval. Existing Giai đoạn 1 tests remain in the same suite.
+
+Playwright adds manual rule builder → validate → save → approve → run → verified dashboard → exception evidence/review → XLSX download → reload/run selection, plus result layouts 390/768/1366/1920; combined with prior 1440 and Giai đoạn 1 flow. Screenshots wait for real detail rows, not loading placeholders. It never presses paid planner. Backend/API demo covers upload/manual mapping/normalization for all five labelled source files.
+
+Benchmark measures simple exact match on **total input records across both sources**: 1k (500/source), 10k (5k/source), 50k (25k/source), three new Windows processes/size. Matching p50/p95 ms: 31,57/37,58; 268,01/433,78; 1723,77/1792,43. Verification p50/p95: 17,06/19,02; 230,28/257,09; 1315,23/1521,31. Peak process MiB: 38,68 / 89,10 / 317,06. 500/5k/25k exact groups, zero fuzzy/review/cloud. Ryzen 5 7535HS/16 GB, no GPU. Excludes API/network/load/write/export/render and snapshot's additional verification pass; p95 is inclusive interpolation over 3 observations. Not a calibrated accuracy/throughput claim or 50k rows per source.
+
+Actual final PASS/FAIL/SKIP and persistent object counts are recorded in [implementation status](IMPLEMENTATION_STATUS.md); do not add historical/live/mock replays into one inflated test count.
+
+## Kiểm toán bổ sung Giai đoạn 2 — 28/10/2026
+
+Giữ nguyên oracle và matcher/verifier. Thêm regression vào các suite có sẵn:
+
+- Planner: request không join keys, schema khác field IDs, typed suggestions khi thiếu coverage; giả field/evidence/basis/cardinality hoặc đổi facts đã xác nhận bị từ chối. Context sai refs/workspace/stale bị chặn trước reservation. PostgreSQL quota hết dùng MockTransport, xác nhận 0 provider calls và manual proposal vẫn hoạt động; không thêm reservation trong ứng dụng thật.
+- Readiness: cùng ID hai tháng không trùng trong kỳ; duplicate thật trong kỳ, filter carrier/platform, missing date/invalid key và incomplete coverage. Đối chiếu cùng định nghĩa partition của engine, không sửa verifier.
+- Evidence: workbook tổng hợp nhiều sheet, ID ở c1/tiền ở c3/zero-prefix; 1:N nhiều source members mở đúng ô của từng dòng. Viewer đọc được, không review; group project khác bị từ chối. Playwright bấm trường tiền thật và kiểm raw value/cột thực tế c4 của CSV demo, không hardcode c1.
+- KPI: giữ numerator/denominator cũ; oracle 5 eligible CU, 2 full match, 4 automatically classified, 1 review. RESOLVED không đổi comparison/snapshot.
+- Export CSV/XLSX: export trước review → RESOLVED → export lại cùng revision phải cùng export ID/bytes. Summary/API timestamp và FIRST_GENERATION scope khớp; financial snapshot vẫn nguyên. Report-1 lịch sử giữ nguyên.
+- UI: period/timezone ban đầu trống, cần scope confirmation; Planner có thể hỏi trước keys, hiển thị review-only suggestions/lý do và chặn approve; provider budget error vẫn mở chỉnh thủ công. Planner E2E mới intercept endpoints hoàn toàn, **PASS MOCK**, không gọi Gemini.
+
+Lệnh chuẩn ở trên chạy cùng Docker project. Sau recreate phải chạy `tools/verify-local.ps1`; nếu proof bị mất trong phiên gián đoạn, UI bị chặn LOCAL_DEMO_NOT_VERIFIED là fail-closed đúng thiết kế, cần xác minh deployment rồi chạy lại E2E. Không bỏ kiểm tra auth hoặc tăng timeout để che lỗi.
+
+So sánh baseline 121 backend/14 E2E với kết quả thật ở mục K của báo cáo; không cộng các lần replay hoặc PASS LIVE lịch sử vào số cases hiện tại. Prompt planner sửa đổi chưa test live theo chỉ định 0 cloud requests.

@@ -1,0 +1,5 @@
+platform,shop_id,order_id,event_date,gross_amount,currency,description
+TikTok,SHOP-B,0001,2026-10-01,30.00,VND,Paid
+TikTok,SHOP-B,0005,2026-10-02,20.00,VND,Same SKU
+TikTok,SHOP-B,0005,2026-10-02,30.00,VND,Same SKU
+TikTok,SHOP-B,0008,2026-10-03,,VND,No amount

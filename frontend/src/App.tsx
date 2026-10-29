@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -32,6 +32,7 @@ import {
   Spinner,
 } from "./components";
 import { MappingStudio } from "./MappingStudio";
+const ReconciliationStudio = lazy(() => import("./ReconciliationStudio").then(m => ({default:m.ReconciliationStudio})));
 import {
   errorText,
   jobKind,
@@ -51,7 +52,7 @@ import {
   type WorkspaceSettings,
 } from "./types";
 
-type Page = "home" | "data" | "settings";
+type Page = "home" | "data" | "settings" | "reconcile" | "exceptions" | "reports";
 type Tab = "explore" | "mapping" | "normalize";
 type View = "parsed" | "raw" | "canonical" | "errors";
 
@@ -545,21 +546,18 @@ export function App() {
             <Database size={19} />
             Dữ liệu<span className="nav-count">{datasets.length}</span>
           </button>
-          <div className="future-nav">
+          <button className={page==="reconcile"?"active":""} onClick={()=>{setPage("reconcile");setSidebar(false);}}>
             <GitCompareArrows size={19} />
             <span>Đối soát</span>
-            <small>Sắp có</small>
-          </div>
-          <div className="future-nav">
+          </button>
+          <button className={page==="exceptions"?"active":""} onClick={()=>{setPage("exceptions");setSidebar(false);}}>
             <BellRing size={19} />
             <span>Ngoại lệ</span>
-            <small>Sắp có</small>
-          </div>
-          <div className="future-nav">
+          </button>
+          <button className={page==="reports"?"active":""} onClick={()=>{setPage("reports");setSidebar(false);}}>
             <ArrowDownToLine size={19} />
             <span>Báo cáo</span>
-            <small>Sắp có</small>
-          </div>
+          </button>
           <div className="future-nav">
             <Sparkles size={19} />
             <span>Trợ lý AI</span>
@@ -612,7 +610,7 @@ export function App() {
                 ? "Tổng quan"
                 : page === "data"
                   ? "Dữ liệu"
-                  : "Cài đặt"}
+                  : page==="reconcile"?"Đối soát":page==="exceptions"?"Ngoại lệ":page==="reports"?"Báo cáo":"Cài đặt"}
             </strong>
           </div>
           <div className="topbar-end">
@@ -632,18 +630,18 @@ export function App() {
                   ? "Nền tảng dữ liệu của bạn"
                   : page === "data"
                     ? "Quản lý dữ liệu"
-                    : "Cài đặt không gian làm việc"}
+                    : page==="reconcile"?"Đối soát có kiểm chứng":page==="exceptions"?"Ngoại lệ và bằng chứng":page==="reports"?"Báo cáo đối soát":"Cài đặt không gian làm việc"}
               </h1>
               <p>
                 {page === "home"
                   ? "Từ tệp nguồn đến dữ liệu chuẩn hóa — rõ ràng ở từng bước."
                   : page === "data"
                     ? "Khám phá nguồn, kiểm tra đề xuất và chuẩn bị dữ liệu đáng tin cậy."
-                    : "Chính sách xử lý và giới hạn đang áp dụng từ backend."}
+                    : page==="settings"?"Chính sách xử lý và giới hạn đang áp dụng từ backend.":"Quy tắc được duyệt, kết quả bất biến và bằng chứng từ dữ liệu nguồn."}
               </p>
             </div>
             <div className="heading-actions">
-              {page !== "settings" && (
+              {(page === "home" || page === "data") && (
                 <button
                   className={`button ${page === "data" && datasetId && tab !== "explore" ? "secondary" : "primary"}`}
                   disabled={!ready || busy}
@@ -715,6 +713,9 @@ export function App() {
                 <span className="scope-label">{project.business_scope}</span>
               )}
             </div>
+          )}
+          {ready && projectId && ["home","reconcile","exceptions","reports"].includes(page) && (
+            <Suspense fallback={<Spinner/>}><ReconciliationStudio key={`${projectId}:${page}`} projectId={projectId} mode={page as "home"|"reconcile"|"exceptions"|"reports"}/></Suspense>
           )}
           {ready && page === "home" && (
             <>

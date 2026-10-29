@@ -18,9 +18,14 @@ from studio.database import (
     AuditRow,
     CanonicalRow,
     DatasetRow,
+    ExceptionRow,
+    ExportRow,
     JobRow,
     MappingRow,
+    PlanRow,
     ProjectRow,
+    ReconciliationContractRow,
+    RunRow,
     SchemaRow,
     SessionFactory,
     TableRow,
@@ -54,6 +59,11 @@ def capture() -> dict[str, Any]:
             AttemptRow,
             AuditRow,
             TraceRow,
+            PlanRow,
+            ReconciliationContractRow,
+            RunRow,
+            ExceptionRow,
+            ExportRow,
         ):
             records = []
             for row in db.scalars(select(model)):
@@ -74,6 +84,22 @@ def capture() -> dict[str, Any]:
                 raise SystemExit("FAIL: artifact checksum differs from published ref")
             artifacts.append({"id": row.id, "kind": row.kind, "sha256": actual})
         result["artifacts"] = sorted(artifacts, key=lambda r: r["id"])
+        results = []
+        for row in db.scalars(select(RunRow)):
+            if row.result_key:
+                digest = checksum(storage_path(settings.storage_root, row.result_key))
+                if digest != row.result_sha256:
+                    raise SystemExit("FAIL: run artifact checksum changed")
+                results.append({"id": row.id, "sha256": digest})
+        result["run_artifacts"] = sorted(results, key=lambda r: r["id"])
+        exports = []
+        for row in db.scalars(select(ExportRow)):
+            if row.storage_key:
+                digest = checksum(storage_path(settings.storage_root, row.storage_key))
+                if digest != row.sha256:
+                    raise SystemExit("FAIL: export checksum changed")
+                exports.append({"id": row.id, "sha256": digest})
+        result["export_artifacts"] = sorted(exports, key=lambda r: r["id"])
     return result
 
 

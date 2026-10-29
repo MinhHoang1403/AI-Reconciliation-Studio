@@ -194,5 +194,76 @@ class TraceRow(Base):
     outcome: Mapped[str] = mapped_column(String(80))
 
 
+class PlanRow(Base):
+    __tablename__ = "reconciliation_plans"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    proposal: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    origin: Mapped[str] = mapped_column(String(30))
+    created_by: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ReconciliationContractRow(Base):
+    __tablename__ = "reconciliation_contracts"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("reconciliation_plans.id"), unique=True)
+    definition: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    source_signatures: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class RunRow(Base):
+    __tablename__ = "reconciliation_runs"
+    __table_args__ = (UniqueConstraint("project_id", "input_signature"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    contract_id: Mapped[str] = mapped_column(ForeignKey("reconciliation_contracts.id"))
+    input_signature: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(40), default="DRAFT")
+    engine_revision: Mapped[str] = mapped_column(String(80))
+    source_refs: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    checks: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    result_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    metric_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    result_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    result_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ExceptionRow(Base):
+    __tablename__ = "exception_cases"
+    __table_args__ = (UniqueConstraint("run_id", "match_group_id", "type"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("reconciliation_runs.id"), index=True)
+    match_group_id: Mapped[str] = mapped_column(String(64))
+    type: Mapped[str] = mapped_column(String(60))
+    definition: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    workflow_state: Mapped[str] = mapped_column(String(40), default="OPEN")
+    notes: Mapped[str] = mapped_column(String(2000), default="")
+    reviewed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ExportRow(Base):
+    __tablename__ = "run_exports"
+    __table_args__ = (UniqueConstraint("run_id", "format", "revision"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("reconciliation_runs.id"))
+    format: Mapped[str] = mapped_column(String(10))
+    revision: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(40), default="QUEUED")
+    storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 engine = create_engine(settings.database_url, pool_pre_ping=True, pool_size=5, max_overflow=2)
 SessionFactory = sessionmaker(engine, expire_on_commit=False)

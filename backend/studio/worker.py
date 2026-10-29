@@ -2,6 +2,7 @@
 
 import logging
 import time
+from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -597,16 +598,28 @@ def _normalize(job_id: str, token: str) -> None:
 
 
 def process_job(job_id: str, token: str) -> None:
+    from studio.reconciliation_exports import execute_export
+    from studio.reconciliation_jobs import execute_planning, execute_reconciliation
+
     try:
         with SessionFactory() as db:
             job = db.get(JobRow, job_id)
             assert job is not None
             kind = job.kind
-        handlers = {
+        handlers: dict[str, Callable[[str, str], None]] = {
             "parse": _parse,
             "mapping": _mapping,
             "normalize": _normalize,
             "document_parse": _document,
+            "export": lambda job_id, token: execute_export(
+                job_id, token, SessionFactory, _fence, _finish
+            ),
+            "reconciliation_plan": lambda job_id, token: execute_planning(
+                job_id, token, SessionFactory, _fence, _finish
+            ),
+            "reconcile": lambda job_id, token: execute_reconciliation(
+                job_id, token, SessionFactory, _fence, _finish
+            ),
         }
         if kind not in handlers:
             raise DomainError("UNKNOWN_JOB_KIND", "Loại job chưa được hỗ trợ.")
@@ -641,6 +654,12 @@ def process_job(job_id: str, token: str) -> None:
                 dataset = db.get(DatasetRow, job.payload["dataset_id"])
                 if dataset:
                     dataset.status = "FAILED"
+            if kind == "reconcile" and job.status in {"FAILED", "BLOCKED"}:
+                from studio.database import RunRow
+
+                run = db.get(RunRow, job.payload["run_id"])
+                if run is not None and run.metric_snapshot is None:
+                    run.status = "BLOCKED"
             db.commit()
 
 

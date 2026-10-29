@@ -1,0 +1,4 @@
+carrier,tracking_id,event_date,delivery_charge,currency,description
+CARRIER-A,000701,2026-10-01,25.00,VND,Parcel A
+CARRIER-A,000702,2026-10-02,10.00,VND,Parcel B
+CARRIER-A,000704,2026-10-04,7.00,VND,Parcel D

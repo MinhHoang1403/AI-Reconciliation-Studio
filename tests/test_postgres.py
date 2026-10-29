@@ -28,7 +28,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def pg(monkeypatch, tmp_path):
+def pg(monkeypatch, tmp_path, request):
     import os
 
     if os.environ.get("STUDIO_POSTGRES_TESTS") != "1":
@@ -55,7 +55,9 @@ def pg(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "instance_path", tmp_path / "instance")
     monkeypatch.setattr(settings, "demo_proof_path", tmp_path / "proof")
     monkeypatch.setattr(settings, "local_demo_access", False)
-    command.upgrade(Config("alembic.ini"), "head")
+    target = getattr(request, "param", "head")
+    assert target in {"head", "create_data_foundation"}
+    command.upgrade(Config("alembic.ini"), target)
     with factory() as db:
         seed_demo(db)
         token = secrets.token_urlsafe(32)

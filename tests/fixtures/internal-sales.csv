@@ -1,0 +1,12 @@
+platform,shop_id,order_id,event_date,gross_amount,currency,description
+Shopee,SHOP-A,0001,2026-10-01,100.00,VND,=SUM(1+1)
+Shopee,SHOP-A,0002,2026-10-02,200.00,VND,Paid
+Shopee,SHOP-A,0003,2026-10-03,-10.00,VND,Refund
+Shopee,SHOP-A,0004,2026-10-04,50.00,VND,Missing
+Shopee,SHOP-A,0099,2026-10-05,invalid,VND,Invalid amount
+Shopee,SHOP-A,0010,2026-10-31,10.00,VND,Outside period
+Shopee,SHOP-A,0007,2026-10-06,40.00,VND,Duplicate counterpart
+TikTok,SHOP-B,0001,2026-10-01,30.00,VND,Paid
+TikTok,SHOP-B,0005,2026-10-02,50.00,VND,Two order lines
+TikTok,SHOP-B,0008,2026-10-03,0.00,VND,Missing amount counterpart
+TikTok,SHOP-B,0009,2026-10-04,10.00,VND,Missing

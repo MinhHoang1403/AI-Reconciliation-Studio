@@ -3,9 +3,21 @@ name = "ai-reconciliation-studio"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "fastapi", "uvicorn", "pydantic-settings", "sqlalchemy", "psycopg[binary]",
-  "alembic", "polars", "fastexcel", "openpyxl", "httpx", "python-multipart",
+  "fastapi",
+  "uvicorn",
+  "pydantic-settings",
+  "sqlalchemy",
+  "psycopg[binary]",
+  "alembic",
+  "polars",
+  "fastexcel",
+  "openpyxl",
+  "httpx",
+  "python-multipart",
   "defusedxml",
+  "duckdb==2.0.0",
+  "rapidfuzz==3.14.6",
+  "pytz==2026.5",
 ]
 
 [dependency-groups]
