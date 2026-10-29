@@ -1,8 +1,8 @@
 # Trạng thái triển khai và nghiệm thu
 
-**Hiện tại:** Final Acceptance ngày 29/10/2026 ở mục L; Giai đoạn 2 đạt nghiệm thu kỹ thuật trong phạm vi MVP đã công bố. Các mục A–K giữ nguyên lịch sử; không dùng quota/counts hoặc lệnh dừng của nhiệm vụ cũ thay cho bằng chứng và ủy quyền mới.
+**Hiện tại:** nghiệm thu chất lượng frontend/UX ngày **30/10/2026** ở mục M. Giai đoạn 1–2 giữ phạm vi MVP đã công bố; kết quả mới **145 backend / 34 E2E PASS**. Các mục A–L giữ nguyên lịch sử; không dùng quota/counts hoặc lệnh dừng của nhiệm vụ cũ thay cho bằng chứng và ủy quyền mới.
 
-Nhiệm vụ tiếp theo: Quality Hardening + UX Refinement, theo prompt riêng của chủ dự án, trên `codex/interface-quality` từ main `0b9421e`. Chỉ hoàn thiện Giai đoạn 1–2, không merge main, không cloud/Argon/Giai đoạn 3. Bằng chứng thực hiện ghi tại mục M; số liệu mục L là baseline lịch sử.
+Quality Hardening + UX Refinement theo prompt riêng của chủ dự án nằm trên `codex/interface-quality`, từ main `0b9421e`. Chỉ hoàn thiện Giai đoạn 1–2; chờ chủ dự án review branch, không tự merge main hoặc bắt đầu cloud/Argon/Giai đoạn 3. Bằng chứng và giới hạn ghi tại mục M; số liệu mục L là baseline lịch sử.
 
 ## Final Acceptance — Giai đoạn 1 (lịch sử)
 
@@ -427,3 +427,100 @@ Backend full vẫn **145 PASS** (120offline+25PG); chạy lại Windows offline 
 Full regression trên runtime `246fe45`: **145 backend PASS, 0 FAIL/SKIP (44,02s)** và **34 E2E PASS, 0 FAIL/SKIP (~1,3phút)**. Bổ sung assertions vào năm cases responsive hiện có: dialog nằm trong viewport, outline focus thấy được, tỷ lệ màu chữ trên nền thực của tên/phạm vi/mã project đang highlight và placeholder ít nhất4,5:1. Regression thực tế phát hiện mã project highlight chỉ **4,3728:1**; đổi riêng màu chữ từ `#64748b` sang `#475569`, giữ nền/palette và hành vi. Sau sửa **5 PASS (10,4s)** trên production frontend vừa build; TypeScript/ESLint/build/source scan PASS. Không tăng số cases vì thêm assertions.
 
 Đối chiếu [WCAG 2.2 SC1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html) và [ARIA combobox pattern](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/); đây là kiểm tra các màu/interaction cụ thể, chưa phải toàn bộ WCAG/screen-reader audit. Xem ảnh selector390/1440 và Dashboard390, dialog cuộn nội bộ, không cắt control. Restart, recreate toàn bộ và recreate frontend trên runtime246 đều đã PASS metadata/artifact bytes và fail-closed local proof; bản cập nhật contrast sẽ được xác minh lại trên image từ commit sạch trước bàn giao.
+
+### Bàn giao chất lượng — 30/10/2026
+
+#### A. Phân loại phát hiện
+
+- **Confirmed bug:** saved project ngoài trang50 bị bỏ; sidebar đếm page thay tổng; response project/run cũ có thể ghi đè context mới, trong đó evidence đã có regression FAIL trước sửa; focus không trả về trigger của dialog mới; màu mã project highlight4,3728:1. Hai lỗi phát hiện trong quá trình sửa (GROUP BY JSON PostgreSQL và focus dialog) đều được sửa, không còn FAIL trong bộ chốt.
+- **UX gap:** READY0 không giải thích PARTIAL/stale/FAILED, thiếu chỉ dẫn đúng dataset/table, số0 lúc chưa tải và lỗi API dễ lẫn empty, role/footer/thuật ngữ khó hiểu, idle polling liên tục.
+- **Maintainability concern:** App/ReconciliationStudio gộp nhiều trách nhiệm, JSX dài; tách đúng selector/overview/evidence, giữ state chung của form/results và các phần chưa cần thay.
+- **Accepted limitation:** artifacts/jobs tổng hợp vẫn tăng khi replay; chưa cleanup lịch sử hoặc triển khai retention. Các giới hạn AI/accessibility/benchmark còn lại ghi mục G.
+- **Not reproduced:** không tìm thấy sai lệch mới trong Decimal, matching, verifier, MetricSnapshot hoặc export khi replay oracle hiện có. Đây không phải chứng minh mọi dữ liệu/thuật toán đều không còn lỗi.
+
+#### B. Thay đổi trước/sau và bằng chứng
+
+| Hạng mục | Trước | Sau | Files chính | Kiểm chứng |
+|---|---|---|---|---|
+| Project selector | Select cơ bản, khó phân biệt tên trùng | Search tên/phạm vi có dấu, scope/ID, keyboard/ARIA, debounce/abort | ProjectSelector.tsx, components.tsx | 1/10/50/120, Unicode, no-result/error/retry/focus |
+| Project pagination/restore | Chỉ trang50, saved ID có thể mất |20/trang, GET theo ID scoped, search literal bounded/stable | api.py, ProjectSelector.tsx, App.tsx | PG120 + browser off-page/reload/foreign404/race |
+| Dashboard counts | Sidebar datasets.length; loading fallback0 | Tổng API, loading/error riêng, giải thích nguồn/bảng/job | App.tsx, DataOverview.tsx |80datasets/page25, pending/error/retry |
+| Dataset status | READY không giải thích kết quả chưa đạt | PARTIAL/stale/FAILED riêng, invalid/row counts, link xem lỗi | repository.py, contracts/api.py, App.tsx | PG lifecycle và lỗi đúng canonical/table |
+| Next action | Thiếu hướng dẫn theo gate | Target deterministic scoped, stable priority; chỉ điều hướng | repository.py, DataOverview.tsx, App.tsx | WAIT/upload/review/normalize/partial/reconcile/verified links; không tự POST |
+| Frontend organization | Evidence/API/state lẫn trong file lớn |3 focused components typed props; format rule/results; generation guards | ReconciliationEvidence.tsx, ReconciliationStudio.tsx, types | Delayed evidence regression, T35, giữ draft/run khi đổi màn hình |
+| UI wording/accessibility | Footer theo giai đoạn, role/thuật ngữ lẫn; drawer keyboard | Footer sản phẩm, role thật, labels Việt, inert/trap/focus return | App.tsx, MappingStudio.tsx, styles.css, api.ts |5 widths, Escape/Tab/Enter, dialog bounds, outline,4 màu contrast cụ thể |
+| Jobs/test fixtures | Poll cả idle, project mới theo timestamp | Poll chỉ active/stop unmount, refresh thật; reuse project, fresh bytes | App.tsx, ReconciliationStudio.tsx, e2e/*.spec.ts | Clock polling/terminal/manual;4 replay pipelines, project28 giữ ổn định |
+
+Backend chỉ thêm read/search/summary DTO, không migration, không thay engine/financial semantics. Trước đó single-project GET thực tế chưa tồn tại; bổ sung đúng endpoint scoped cần khôi phục ID, không tạo API xóa hoặc workflow thứ hai. Schema test tạm nằm trong PostgreSQL hiện có và được harness dọn đúng schema, không là môi trường ứng dụng mới.
+
+#### C. Quality thực tế
+
+| Lệnh/nhóm | Kết quả chốt |
+|---|---|
+| `./tools/test-postgres.ps1 -All` | **145 PASS, 0 FAIL/SKIP,44,02s** =120offline+25PG; baseline143+2casePG mới |
+| `uv run pytest -q -m 'not integration'` | **120 PASS**,25integration deselected,10,73s; không cộng replay vào145 |
+| Ruff / mypy | PASS;31 backend/migration files được mypy kiểm |
+| `npm --prefix frontend run check` / `lint` / `build` | PASS sau sửa contrast; main378,26kB, lazy reconciliation/chart491,55kB; dependency/lockfile không đổi |
+| `$env:STUDIO_EXPECT_AI_PROVIDER='MANUAL'; npm --prefix frontend run test:e2e` | **34 PASS, 0 FAIL/SKIP,~1,2phút** trên image source sạch `ac44915`;9foundation+18interface+7reconciliation, baseline15+19case |
+| Browser integration / mock | Foundation/T35 chạy UI→API→worker thật trên local production;18interface cases và Planner UI dùng mocked GET/contracts, không ghi chúng thành live AI |
+| Security regression | Workspace/foreign resource/viewer/CSRF/Host/local fail-closed, scoped evidence/export, injection/cloud OFF/quota và worker/recovery trong backend/E2E trên; không cộng thêm cases |
+| UI/export read-back và oracle độc lập | PASS cả CSV/XLSX downloads: SHA256, nguyên Snapshot JSON/as-of, zero-prefix, không công thức KPI; Shopee/TikTok/giao nhận đúng membership/amounts/denominators/cases |
+| Responsive/accessibility thực chạy |390/768/1366/1440/1920; page overflow, dialog bounds, tables scroll, keyboard/labels/ARIA/status, Escape/focus return/drawer trap;4 mẫu chữ trong selector đều≥4,5:1 (mã highlight sau sửa6,963:1) |
+
+Backend source/tests không đổi từ lần145PASS tại246fe45 sang ac44915; hashes34files trên cả backend/worker khớp source. Frontend chốt chạy lại toàn34 sau thay đổi contrast. Uncaught pageerrors=0 trong từng test; console errors=0 trong các luồng foundation/T35 thành công. Các lỗi HTTP/mock có chủ đích vẫn được kiểm thông báo thật. Cảnh báo Starlette/httpx deprecation và Node color-env còn; không phải test FAIL. Chưa audit mọi màu/trạng thái hoặc chạy screen reader thật; không tuyên bố WCAG toàn bộ PASS.
+
+#### D. Data integrity, cloud và Docker
+
+| Metadata/artifact | Trước nhiệm vụ | Sau bộ chốt |
+|---|---:|---:|
+| Workspaces / projects |1 /27 |1 /28 |
+| Datasets / versions / source tables |32 /32 /30 |36 /36 /34 |
+| Schemas / mappings / canonical |64 /64 /27 |72 /72 /31 |
+| Jobs / attempts / audits / traces |109 /113 /112 /17 |129 /133 /132 /17 |
+| Plans / contracts / runs / cases |14 /13 /13 /43 |18 /17 /17 /55 |
+| Foundation / match / export files |118 /13 /22 |134 /17 /30 |
+
+Đã so **từng ID + metadata SHA256 + artifact bytes** của baseline và snapshot sau replay đầu với hiện trạng: nguyên vẹn, chỉ append dữ liệu tổng hợp. VerifiedRun chứa MetricSnapshot, mappings/revisions/approvals, job/run/export lịch sử không bị sửa hoặc xóa. Project count27→28 ở lần đầu, sau đó28 ở cả ba lần replay đầy đủ; không tạo project theo timestamp nữa. Snapshot từ chối khi còn active jobs; không có job active lúc kiểm persistence.
+
+Gemini trước/sau **7/10 attempts**, còn **3**, global/workspace đều7 với ceilings10; planner attempt **1**, LlamaParse reservations **2**, traces **17** không đổi. Model mặc định vẫn `gemini-3.5-flash-lite`; cloud request delta **0**, không reset/tăng budget/reservation, parser creation **OFF** cả env/workspace. Không gọi Qwen/Gemini/LlamaParse/Argon. Qwen vẫn **BLOCKED/DEFERRED** theo chỉ định HTTP403; live planner revision mới vẫn **NOT VERIFIED**. Parser live lịch sử không bị gán thành live request của nhiệm vụ này.
+
+Image sạch build bằng Compose chính với OCI revision/source đúng **ac44915df1610c32fbd82c895b1163a23b65dcf6**. Backend/worker34tracked files mỗi service và4production files phục vụ HTTP đều khớp SHA256 local; không `.env` trong image. Immutable identifiers lấy từ `.Image` của container đang dùng:
+
+| Service | Image ID |
+|---|---|
+| Backend / worker |`sha256:54e818ae7d52fcfeb01d30e6c4d01d1189eb7e7e330e3fa6b5a5b74cc9830879` |
+| Frontend |`sha256:c4cfc088571db643b77ee085edf509cbc84dc4671b8adfb186cd3310515c7b6e` |
+| PostgreSQL giữ nguyên |`sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` |
+
+Một Compose project `ai-reconciliation-studio`,4services healthy, chỉ publish127.0.0.1:18180. Giữ volumes `ai-reconciliation-studio_postgres_data` và `ai-reconciliation-studio_artifacts`, cặp rollback-e025094 đã nghiệm thu không đổi. Không rebuild PostgreSQL, xóa containers/image/volume/cache bằng cleanup hoặc global prune. Docker host aggregate lúc kiểm:51images/39,39GB,31containers/574,6MB,36volumes/5,432GB,build cache47,66GB; đây là tổng host, không quy toàn bộ cho dự án hoặc tuyên bố dung lượng đã thu hồi.
+
+Sau full34E2E trên imageac44915, chạy lại `./tools/check-persistence.ps1`: **restart PASS, force-recreate cả bốn PASS, frontend-only recreate PASS**. Mỗi thao tác xác nhận local demo proof bị vô hiệu (403), verify loopback rồi exact metadata/artifact bytes khớp snapshot sau tests; cả4services healthy. Không có job active trước thao tác. Source/assets hashes, oracle/API/export read-back và quota được kiểm lại sau recreate, không request cloud hoặc sửa dữ liệu lịch sử.
+
+Evidence local bị ignore: `runtime/interface-quality-before.json`, `runtime/interface-quality-after-first-e2e.json`, `runtime/interface-quality-after-tests.json`, `runtime/interface-quality-runtime.json`, screenshots/downloads. Persistence không thay backup/restore PostgreSQL; không commit các inventory/raw/runtime này.
+
+#### E. GitHub và files
+
+Nhánh **codex/interface-quality**,25files so main:3backend/API/DTO,11frontend source,4E2E/helper,2backend test files và5Markdown hiện có. Phần lớn diff ReconciliationStudio/reconciliationTypes là format; không thêm dependency/config/framework. Kiểm diff riêng engine/verifier/normalization/schema_mapping/migrations/Compose/locks/Rules/AGENTS/PROJECT_PLAN: rỗng.
+
+| Nhóm commit đã push | SHA |
+|---|---|
+| Selector/search/restore |`58dc8a0c18387a75e83e2a41c24054f1e625f738` |
+| Counts/readiness/next action |`ddceb7dbb43f7da07cc93cd20ca55c4fd3bbb2fb` |
+| Scoped evidence/UX/fixtures |`246fe459d127d5c1010c414e9b0cd6faa23719be` |
+| Contrast/dialog assertions |`ac44915df1610c32fbd82c895b1163a23b65dcf6` |
+
+Commit báo cáo cuối chỉ sửa Markdown; SHA được báo sau commit, không tự ghi SHA của chính nó vào file. Image giữ source ứng dụngac44915, diff application giữa source này và commit tài liệu phải rỗng. Origin chính thức được đối chiếu/fetch trước push; không force-push/merge/tag mới. Main/origin main giữ **0b9421e1fbbc1e13537b5c5510b3769e387f91a5**; accepted tag targets giữ **78e68c08e60c7af2359e46def43196cf5b1a6dc1** và **be6b8a067ca052ea989a029a15558b0fd5ee48ef**. Repository check111source candidates, known-secret scan trong source/reachable history và Markdown local paths PASS; không đưa runtime/secrets vào stage. Final local/remote HEAD và working tree được xác minh khi bàn giao.
+
+#### F. Đối chiếu Rules.md
+
+Clean Code/trách nhiệm: tách3ranh giới có lợi ích và typed props, không refactor theo số dòng. Contracts/provenance: backend quyết định counts/targets, frontend không tính tiền/KPI hoặc sửa lineage. Không overengineering: dùng Radix/state/API hiện có, không thêm library/service/migration. UX Việt/loading/error/focus và disabled theo quyền đã kiểm; next action thật chỉ điều hướng, không approve/chạy tự động. Permission boundaries vẫn enforce backend, viewer tests/security suite PASS. Docker/Git/scope: một repo/Compose, dữ liệu/rollback giữ nguyên, feature branch đã push từng nhóm, main/tags bảo toàn, không cloud/Giai đoạn3. Đây là đối chiếu phạm vi đã kiểm, không chứng nhận tuân thủ mọi tình huống chưa đo.
+
+#### G. Giới hạn và quyết định
+
+- Retention dữ liệu test: project không tăng tiếp, artifacts/jobs tổng hợp vẫn append; không xóa bằng chứng cũ. Chủ dự án có thể giao chính sách lưu trữ/cleanup có scope riêng.
+- App còn lớn; data workspace/settings/setup/results giữ state chung để giảm rủi ro, không coi tách selector/overview/evidence là đã refactor toàn frontend.
+- Search ILIKE/paging đã kiểm120projects và80datasets, chưa benchmark search1k/10k hoặc mọi collation. Không tuyên bố khả năng mở rộng từ vài fixtures.
+- Keyboard/ARIA/focus/contrast/5widths đã có bằng chứng cụ thể, chưa audit WCAG/screen reader toàn diện. Security regression không thay production penetration test; persistence không thay DR restore drill.
+- Qwen live hoãn; Planner revision mới live chưa xác minh; Argon không tích hợp. Mapping/linkage precision/recall đại diện và các giới hạn MVP lịch sử giữ nguyên, không nâng thành PASS bằng UI tests.
+
+**ĐẠT nhiệm vụ hoàn thiện frontend/UX trong phạm vi được giao:** bộ chốt145backend/34E2E không FAIL/SKIP, dữ liệu lịch sử giữ nguyên, không cloud. Đủ để chủ dự án review `codex/interface-quality`; không tự coi đây là quyền merge hoặc production release. **DỪNG sau push báo cáo; chờ lệnh riêng, không merge main, không bắt đầu Giai đoạn3 hoặc Argon.**
