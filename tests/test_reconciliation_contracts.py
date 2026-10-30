@@ -1,4 +1,6 @@
+import runpy
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -13,6 +15,30 @@ def sources():
         catalogue("internal", records("internal-sales.csv")),
         catalogue("shopee", records("shopee-orders.csv")),
     ]
+
+
+def test_acceptance_cli_planner_payload_matches_current_api_and_preserves_confirmed_scope():
+    from studio.reconciliation_api import AIPlanInput
+    from studio.reconciliation_planner import validate_planning_request
+
+    candidate = Path(__file__).resolve().parents[1] / "tools/check-reconciliation.py"
+    if not candidate.is_file():
+        candidate = Path(__file__).with_name("check-reconciliation.py")
+    helper = runpy.run_path(str(candidate))
+    confirmed = plan()
+    body = helper["planner_input"]("project", confirmed.model_dump(mode="json"))
+    parsed = AIPlanInput.model_validate(body)
+    validate_planning_request(parsed.request, sources(), "demo", "project")
+    assert parsed.project_id == "project"
+    assert parsed.request.left.canonical_id == confirmed.left.canonical_id
+    assert parsed.request.right.canonical_id == confirmed.right.canonical_id
+    assert parsed.request.left.coverage_start == confirmed.left.coverage_start
+    assert parsed.request.right.coverage_end == confirmed.right.coverage_end
+    assert parsed.request.period_start == confirmed.period_start
+    assert parsed.request.period_end == confirmed.period_end
+    assert parsed.request.timezone == confirmed.timezone
+    assert "join_keys" not in body["request"]
+    assert "comparison_metrics" not in body["request"]
 
 
 def test_T17_nonexistent_key_or_evidence_rejected():

@@ -7,6 +7,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot refresh temporary synthetic test source
 docker compose cp tests backend:/tmp/studio-tests
 docker compose cp tools/check-backup-restore.py backend:/tmp/studio-tests/check-backup-restore.py
 if ($LASTEXITCODE -ne 0) { throw 'Cannot copy backup verification helper.' }
+docker compose cp tools/check-reconciliation.py backend:/tmp/studio-tests/check-reconciliation.py
+if ($LASTEXITCODE -ne 0) { throw 'Cannot copy reconciliation acceptance helper.' }
 docker compose cp pyproject.toml backend:/tmp/studio-pyproject.toml
 if ($LASTEXITCODE -ne 0) { throw 'Cannot copy synthetic tests.' }
 docker compose exec -T backend python -m pip install --quiet --upgrade --target /tmp/studio-checks pytest==9.1.1 hypothesis==6.170.12

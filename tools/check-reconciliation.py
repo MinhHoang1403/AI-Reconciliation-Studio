@@ -7,14 +7,25 @@ an unknown delivery. State and downloaded reports stay under ignored runtime.
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / "runtime" / "reconciliation-acceptance.json"
+sys.path.insert(0, str(ROOT / "backend"))
+
+
+def planner_input(project_id: str, plan: dict[str, Any]) -> dict[str, Any]:
+    """Use the current proposal input contract without sending executable matching rules."""
+    from studio.contracts.reconciliation import PlanningRequest, ReconciliationPlan
+
+    request = PlanningRequest.from_plan(ReconciliationPlan.model_validate(plan))
+    return dict(project_id=project_id, request=request.model_dump(mode="json", exclude_unset=True))
 
 
 def main() -> None:
@@ -259,6 +270,7 @@ def main() -> None:
             save()
             print(f"PASS {name}: verified snapshot matches manual oracle; CSV/XLSX ready")
         if args.planner_live:
+            cached = bool(state.get("planner_job_id"))
             if state.get("planner_job_id"):
                 job = wait(state["planner_job_id"])
             else:
@@ -269,16 +281,20 @@ def main() -> None:
                 )
                 job = post(
                     "/reconciliation-plans/ai",
-                    dict(project_id=project_id, plan=state["runs"]["delivery"]["plan"]),
+                    planner_input(project_id, state["runs"]["delivery"]["plan"]),
                 )
                 state["planner_job_id"] = job["job_id"]
                 save()
                 job = wait(job["job_id"])
             state["planner"] = get("/reconciliation-plans/" + job["result"]["plan_id"])
             assert state["planner"]["contract_id"] is None
-            print(
-                "PASS LIVE planner transport/typed semantic validation; proposal requires approval"
+            assert state["planner"]["origin"] == "GEMINI"
+            evidence = (
+                "PASS CACHED historical planner; no new live verification"
+                if cached
+                else "PASS LIVE planner transport/typed semantic validation"
             )
+            print(evidence + "; proposal requires approval")
             save()
         final = get("/settings")
         delta = final["gemini_requests_used"] - initial_budget
