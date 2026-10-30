@@ -1,6 +1,6 @@
 # Trạng thái triển khai và nghiệm thu
 
-**Hiện tại:** Hợp nhất UX và Docker release ngày **30/10/2026** ở mục O. Cổng A/B đã PASS trước triển khai Assistant. Các mục A–N giữ nguyên lịch sử; không dùng quota/counts hoặc lệnh dừng của nhiệm vụ cũ thay cho bằng chứng và ủy quyền mới.
+**Hiện tại:** Hoàn tất triển khai candidate Giai đoạn 3 trong phạm vi demo local ngày **30/10/2026**, bằng chứng tại mục P: **176 backend / 54 E2E PASS**, persistence, worker recovery và backup/restore PASS. Runtime source `9802545`; Assistant facts chạy Backend xác định, provider transport PASS MOCK, không gọi live mới. Main giữ UX đã nghiệm thu, chưa merge Assistant. Các mục A–O giữ nguyên lịch sử.
 
 Quality Hardening + UX Refinement trước đây nằm trên `codex/interface-quality`, từ main `0b9421e`. Prompt hợp nhất UX, Docker release và Giai đoạn 3 là ủy quyền mới; không thay đổi kết luận lịch sử ở mục N. Assistant chỉ thực hiện trên `codex/assistant-automation`, không tự merge vào main.
 
@@ -702,3 +702,95 @@ Build sạch từ main `5f358c4` với `BUILDX_GIT_LABELS=full`; Compose/network
 Host trước/sau: 51 images, 39,39 GB; 31 containers; build cache khoảng 47,55 GB. Volume allocation thay đổi trong quá trình test (6,950 → 6,677 GB), không xóa volume và không quy biến động này thành dung lượng thu hồi. **Physical bytes reclaimed: NOT VERIFIED**. Other/unknown image IDs giữ nguyên; 4/4 healthy, lịch sử/evidence/exports và quota kiểm tra lại PASS. Inventory runtime/receipts nằm ngoài Git.
 
 **Cổng A và B đạt.** Được bắt đầu Giai đoạn 3 theo prompt mới trên feature branch; main chỉ giữ UX/release đã nghiệm thu. Chưa có code hoặc kết luận nghiệm thu Assistant trong mốc này.
+
+## P. Assistant, automation và release candidate — 30/10/2026
+
+### A. UX merge và Git
+
+Cổng A/B được hoàn tất trước dòng code Assistant đầu tiên, bằng chứng chi tiết tại mục O. Main trước `0b9421e`, merge UX `--no-ff` tại `5f358c487f7f29482951aff1cc5aa757a5f9f1ec`, báo cáo main tại `eefdd4441d7f7ef52b08e7d35d3c68894de191dd`; đã push/fetch chính thức. UX HEAD `4b854c6` là ancestor; branch đã xóa an toàn sau kiểm tra không có PR/unique commits. Hai acceptance tags cũ không đổi. Giai đoạn 3 chỉ trên `codex/assistant-automation`, từ main đã nghiệm thu; không merge vào main.
+
+Các nhóm đã commit/push: `9ffbf0f` (tools/FactSet/validation), `482ee1c` (hội thoại/queue), `ff00ec9` (panel/workflow), `9c565a6` (templates/restore verification), **`9802545b8a0281cc608f29d1d8b4ffd3444c454b`** (visible context/recovery docs). Commit bàn giao sau cùng chỉ cập nhật tài liệu; runtime vẫn ghi đúng source code `9802545`. Không force-push, worktree, clone, dependency/framework hay Compose project mới.
+
+### B. Docker và phiên bản runtime
+
+| Thành phần | Image ID cuối | Trạng thái |
+|---|---|---|
+| Backend/Worker | `sha256:a81b192d549497881249036c717d577cf130fe16a46d137351cb6a98f7a1f357` | Chung image, `candidate-9802545` |
+| Frontend | `sha256:453b653abb403b4965989951b796eec73eda0a5d512e79cba487a91ff2c3ae2b` | `candidate-9802545` |
+| PostgreSQL | `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` | Giữ nguyên image/volume |
+
+OCI source chính thức và revision `9802545` đã đối chiếu; **40 tracked source hashes** trong cả Backend/Worker và **6 frontend assets qua HTTP** khớp build local. 4/4 healthy; chỉ `127.0.0.1:18180`, không publish Backend/PG. Giữ nguyên `ai-reconciliation-studio_postgres_data`/`ai-reconciliation-studio_artifacts` và network. Runtime candidate không được gọi là accepted main.
+
+Giữ hai image main `accepted-main-5f358c4` (IDs tại mục O) và bộ `rollback-e025094`, không ghi đè. **Rollback drill PASS LOCAL**: chạy main trên schema additive bằng `tools/rollback.ps1`, kiểm lại historical golden/evidence/CSV/XLSX, quay lại candidate và đối chiếu metadata/artifacts/hội thoại không đổi. Startup override chỉ tránh Alembic cũ không biết revision mới; không downgrade/xóa schema hay financial data.
+
+Inventory cleanup tại Cổng B: **0 image được xóa**, không có candidate đủ điều kiện. Cuối nhiệm vụ Docker host có **53 images/39,39 GB, 31 containers, 36 volumes khoảng 7,19 GB, build cache khoảng 47,57 GB**; các số là toàn host, không phải riêng ứng dụng. Không prune cache/volumes/unknown/other-project images. Physical bytes reclaimed **NOT VERIFIED**, không nhận biến động allocation làm dung lượng thu hồi. Other/unknown image IDs ban đầu được giữ nguyên.
+
+### C. Chức năng Giai đoạn 3
+
+| Hạng mục | Kết quả thực |
+|---|---|
+| Bảy typed read-only tools | **PASS LOCAL/CONTRACT**: allowlist đóng; auth/workspace/project/run/case/group, pagination, SQL/evidence timeouts; không SQL/code/path/write tools từ model |
+| Verified AnswerFactSet | **PASS LOCAL**: content hash, business scope, snapshot/period/currency/rule revision, group/member/source refs; copy đúng số liệu đã verified |
+| Answer validation/Gateway | **PASS LOCAL + PASS MOCK**: model chỉ chọn facts/claim codes; reject fake IDs, amounts/prose ngoài schema và unsupported claims; dùng một Gateway, một HTTP attempt tối đa khi được phép |
+| Contextual panel | **PASS LOCAL E2E**: sidebar, dataset/run/group/case, source citations/evidence/rule/report; abort/sequence chặn stale responses; phân biệt facts, supported interpretation, hypothesis, unknown/insufficient |
+| Persistent conversations | **PASS LOCAL/PG**: private theo actor/project, immutable context, messages/claims/refs/timestamps, cursor pagination, reopen, idempotency, xóa nội dung/tombstone/audit đúng quyền |
+| Language workflows | **PASS LOCAL**: yêu cầu hai/ba nguồn tạo review proposal; thiếu năm/kỳ/coverage hỏi xác nhận; chọn READY sources/rule đã duyệt; hai cặp cho ba nguồn; reuse qua API cũ, kiểm signatures, idempotency; vẫn phải kiểm tra/lưu/duyệt trước run |
+| Smart suggestions/cache | **PASS LOCAL**: navigation evidence/exception/rule/data/report; reuse chỉ deterministic answer cùng context/FactSet/question, không cache mơ hồ thành confirmed |
+| Cost/security/reliability | **PASS LOCAL + MOCK** trong các cases bên dưới; không reset quota, không blind retry khi delivery chưa rõ, không duplicate response/action |
+
+Migration additive duy nhất `create_conversations` thêm `conversations` và `conversation_messages`; historical migrations không đổi. Backend module chính: `contracts/assistant.py`, `assistant_tools.py`, `assistant.py`, `assistant_api.py`, `assistant_jobs.py`; frontend: `AssistantStudio.tsx`, `AssistantWorkflow.tsx`, `assistantTypes.ts`, integration nhỏ trong App/ReconciliationStudio/Modal. Dùng queue/auth/session/AI Gateway/API approved templates có sẵn; không sửa matcher, verifier, normalization, tiền, semantic contracts, lockfiles hoặc kế hoạch ba giai đoạn.
+
+### D. Kiểm thử và hiệu năng
+
+- **176 backend PASS / 0 FAIL / 0 skipped**: 138 offline + 38 PostgreSQL trên UUID schemas thuộc PG hiện có. T01–T40 nằm trong suite, không cộng thêm. Lượt runtime backend tại `9c565a6`: 60,34 giây; Backend/migrations không đổi byte sang source cuối `9802545`, source/container hashes đã xác minh. Một cảnh báo deprecation Starlette/TestClient/httpx còn giữ, không đổi dependency ngoài nhiệm vụ.
+- **54 Playwright PASS / 0 FAIL / 0 skipped / 0 flaky**, 145,758 giây trên images `9802545`: 9 foundation + 25 UX + 7 reconciliation + 13 Assistant. TypeScript, ESLint, production build, Ruff toàn backend/tests/tools, mypy **37 source files**, diff và repository/credential/history/Markdown scans PASS.
+- T36–T40: cloud OFF không request; ID/claim giả reject; cross-project/actor/cursor và late response không leak; missing metric không tạo KPI; delivery **12.75 − 10.00 = 2.75 VND**, Shopee delta **10.00**, TikTok **EQUAL** đúng oracle, không bịa phí/nguyên nhân. Tests transport Gemini thành công/timeout/invalid output dùng **MOCK**, không phải live.
+- Luồng ba file thực: upload UI ba fixtures mới → approval/normalization qua API có auth → đề xuất hai cặp → UI xác nhận nguồn/kỳ/coverage → kiểm tra/lưu/duyệt → verified run → hỏi vì sao lệch → export CSV. Suite foundation riêng tiếp tục kiểm Smart Setup/approval/normalization trên UI; suite reconciliation kiểm evidence/review/CSV và XLSX. Không dùng fixture chứa lỗi như nguồn READY, không sửa oracle để tạo mismatch giả.
+- SIGKILL worker normalization **75.000 dòng PASS LOCAL**: reclaim đúng 2 attempts, 1 canonical, raw hash không đổi; toàn pipeline upload/approval/crash/recovery/publish **14,734 giây**, khoảng **5.090 dòng/giây quan sát được**, không coi là throughput steady-state. PG tests Assistant kiểm stale fencing, idempotency, delete pending, unknown delivery/reservation hold và đúng một response.
+- Responsive tại 390/768/1366/1440/1920, keyboard/close/focus, error/retry, history/context, source/evidence checks PASS. Đã xem screenshots 390/1440 và capture 768 với dữ liệu tổng hợp ngoài Git; không tuyên bố chứng nhận toàn bộ WCAG.
+
+Benchmark tổng hợp trên Ryzen 5 7535HS (6 cores/12 threads), khoảng 16 GB RAM, Polars 2 threads; worker concurrency 1, không GPU/model inference. Foundation và exact matching chạy local; evidence/SQL trong Backend hiện có. p95 bên dưới là quantile quan sát từ mẫu nhỏ, không phải SLA:
+
+| Khối lượng | Parse p50 ms | Profile p50 ms | Normalize/write p50 ms | Match p50 ms | Verify p50 ms |
+|---|---:|---:|---:|---:|---:|
+| 1.000 | 33,82 | 6,07 | 64,54 | 32,69 | 18,10 |
+| 10.000 | 43,05 | 21,28 | 419,61 | 348,46 | 267,63 |
+| 50.000 | 67,24 | 94,16 | 1.671,75 | 2.624,05 | 2.006,15 |
+
+Ba repeats mỗi size. Foundation count là dòng một nguồn; match count là tổng hai nguồn (25.000 mỗi phía ở size 50k), không so các cột như cùng một workload. Peak process lần lượt tối đa 174,31 MiB foundation và 318,71 MiB matcher/verifier. Ở 50k, p95 quan sát parse/profile/normalize là 68,13/97,44/2.145,93 ms; match/verify 2.695,42/2.006,62 ms.
+
+Evidence benchmark 10 samples/size **1k/10k/50k nhóm**: p50 **32,506/36,328/30,696 ms**, p95 **71,100/42,424/33,567 ms**, peak tối đa **297,20 MiB**. Size 50k nhóm tương ứng 100k source records chỉ trong read benchmark; chưa đo full pipeline 100k. Trên run tổng hợp hiện có, summary tool p50/p95 **1,016/2,611 ms**, FactSet **4,004/6,841 ms**; SQL EXPLAIN actual **0,036 ms**, estimated cost **6,35**, shared hits **6** (không phải chi phí tiền). Conversation reopen/render một sample mỗi viewport 390/768/1440: **1.122/1.170/513 ms**; cache contract/hits được test, chưa có production cache-throughput benchmark. Toàn bộ benchmark **0 cloud request**, cost để null khi không có receipt; không suy ra precision/recall/99% accuracy từ exact/golden fixtures.
+
+### E. AI policy và usage cuối
+
+- Gemini mặc định **`gemini-3.5-flash-lite`**, durable HTTP attempts vẫn **7/10, còn 3**; không reset/tăng allowance. **Assistant Gemini live: DEFERRED theo chỉ định không dùng quota**; transport chỉ PASS MOCK.
+- **Assistant cloud false, task budget 0**. Facts/answers tại local là **DETERMINISTIC/CACHE**, không gắn nhãn Gemini live. Durable task reservation giữ cùng transaction/global lock; failure ghi reservation đã biết, tokens/cost thiếu để null.
+- Qwen `knowledge`: **DEFERRED vì HTTP 403 lịch sử**, không probe/call lại. LlamaParse tạo job **OFF**, hai document reservations giữ nguyên; tests đọc cached PDF/DOCX, không request/credit mới. Argon **research only**, không adapter/env/budget/fallback.
+- Trace hiện có 47 rows gồm 30 Assistant deterministic/cache outcomes cộng 17 traces cũ; trace không đồng nghĩa cloud request. Thực tế `ASSISTANT_REQUEST_RESERVED=0`, `GEMINI_REQUEST_RESERVED=7`, `LLAMAPARSE_DOCUMENT_RESERVED=2`.
+
+### F. Dữ liệu, persistence và backup/restore
+
+Toàn bộ ID, metadata hashes và file SHA256 trong snapshot trước nhiệm vụ giữ nguyên sau nhiệm vụ. Chỉ thêm fixtures tổng hợp; **28 projects lịch sử còn đủ**, cộng 1 project TEST rõ ràng cho worker recovery, tổng **29 TEST / 0 WORK / 0 UNKNOWN**; không xóa/hide dữ liệu để giảm counts.
+
+Snapshot cuối: **57 datasets/versions, 55 tables, 114 schemas/mappings, 52 canonical, 228 jobs/233 attempts, 236 audits, 34 plans/27 contracts/27 runs, 97 cases/47 exports, 30 conversations/60 messages**. Published bytes: **218 foundation artifacts + 27 run artifacts + 47 export files**. Không có jobs active; không còn restore schema do drill tạo.
+
+`check-persistence.ps1` trên candidate cuối: **3/3 metadata/artifact comparisons PASS** (restart, recreate cả bốn, frontend-only recreate), **3/3 fail-closed checks PASS** trước loopback re-verification. Hội thoại/FactSet/citations được mở lại sau các thao tác và rollback round-trip. Local Dashboard không nhập token, auth/Origin/CSRF không bị bỏ.
+
+**Backup/restore PASS LOCAL** cuối cùng:
+
+- Backup ID **`backup_5ba8a4af594445098e6ab2010ed0d807`**, receipt **10:48:45 +07 ngày 30/10/2026**, schema `create_conversations`.
+- Transaction snapshot phản chiếu **23 bảng / 2.277 metadata rows** tại thời điểm backup (bao gồm sessions, quotas/audits, approved rules, snapshots và conversations); **292 published files** khớp checksum. Metadata SHA256 **`c6ed1eb238640b69fe7213e9610ec99df2d0f9a5e25032742d72cddbdc8000dd`**.
+- Backup **1,243 giây**, restore/validation **1,358 giây** đo trên local. Restore vào UUID schema trong PostgreSQL hiện có; đối chiếu đủ metadata và bản sao file rồi chỉ dọn schema/copy do drill tạo. Production metadata/artifact bytes trước/sau không đổi. Corrupted metadata checksum và path traversal bị từ chối.
+- Backup trên volume đã copy cả metadata/manifest/files ra host dưới `runtime/backups/` và kiểm lại toàn bộ hashes. Không commit backup/runtime/screenshots/secrets. Baseline pg_dump/artifacts trước migration cũng được giữ ngoài Git. **Off-host encrypted backup và ghi đè production restore: NOT VERIFIED/chưa thực hiện**, không nhận local drill là cam kết DR production.
+
+### G. Lỗi đã sửa và giới hạn bàn giao
+
+1. **DetachedInstanceError sau rollback ORM**: giữ conversation ID độc lập, fence và kiểm membership/tombstone lại trước atomic publish; regression queue/recovery PASS.
+2. **Shortlist che mẫu cũ hợp lệ**: UI lấy danh sách approved templates từ API scoped, không dùng shortlist làm quyền; thêm pending-plan pagination trên metadata sẵn có để mở lại action sau khi đóng panel. Workflow E2E PASS.
+3. **Context sidebar thiếu dataset/run đang xem**: truyền đúng ID thuộc project, không trộn dữ liệu khi đổi scope; dataset/run/case/late-response regressions PASS.
+4. Bổ sung idempotency cho reuse API và giữ explicit request key phía client; resend cùng nội dung không nhân action, khác nội dung 409. Xóa hội thoại đang chờ không được resurrect bởi worker.
+5. Sửa harness kiểm backup codec để copy đúng helper vào container hiện có. Các lỗi test-only TikTok không có mismatch, nguồn PARTIAL không READY và focus assertion phải chờ lifecycle đã được sửa theo oracle/contract; không sửa tiền hoặc hạ validation để PASS.
+
+Giới hạn còn lại: Assistant hỗ trợ intents facts/workflow có giới hạn và claim allowlist, không phải chatbot suy luận tự do; nhóm quá 100 evidence cần UI phân trang, sources/templates vẫn theo caps hiện có. Chưa có automatic retention, model quality/precision/recall đại diện, full-pipeline 100k, production load/HA/off-host DR hoặc chứng nhận bảo mật/WCAG toàn diện. API auth ngoài loopback vẫn cần quy trình deployment riêng. Không gọi live provider để che các giới hạn này.
+
+**Hoàn tất triển khai và kiểm chứng candidate Giai đoạn 3 trong phạm vi demo local/manual/mock đã được giao; Gemini Assistant live/Qwen live được hoãn rõ ràng.** Source đã push trên feature branch, main giữ UX được nghiệm thu. **DỪNG sau bàn giao; chủ dự án quyết định nghiệm thu và merge Giai đoạn 3 bằng nhiệm vụ riêng.**

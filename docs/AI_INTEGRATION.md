@@ -6,6 +6,8 @@ Task `answer_verified_question`, prompt `assistant-grounded-1`, dùng cùng Gemi
 
 `ASSISTANT_CLOUD_ENABLED=false`, `ASSISTANT_REQUEST_BUDGET=0` là mặc định độc lập với ngân sách mapping/planner đang có. Không bật hai quyền này trong nhiệm vụ; không dùng ba attempts Gemini còn lại. Nếu sau này được cấp quyền, transport hỗ trợ đúng một HTTP attempt cho Assistant, không tự retry khi delivery chưa rõ. Qwen vẫn hoãn, LlamaParse OFF và Argon research only.
 
+Task allowance dùng audit `ASSISTANT_REQUEST_RESERVED` dưới cùng transaction/lock với `GEMINI_REQUEST_RESERVED`; reservation commit trước HTTP. Reclaimed job có reservation chưa rõ delivery bị BLOCKED, không resend. Output chỉ được cache khi deterministic, đã có facts, cùng context/FactSet hash và câu hỏi; cache hit không gửi provider. Trace tách `DETERMINISTIC`/`CACHE` khỏi Gemini, lưu actual provider/model/task/tokens/latency khi có receipt; token hoặc cost thiếu để null. Tests transport thành công/timeout/invalid output là **PASS MOCK**, không là Gemini Assistant live. Facts backend/REST/queue/UI là kiểm chứng local thật.
+
 Thiết kế quyền và output allowlist áp dụng hướng dẫn [OWASP Prompt Injection Prevention](https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html): user/file/tool output là dữ liệu không tin cậy; kiểm quyền/tham số tại tool boundary, không dựa riêng vào prompt. Đây là giới hạn thiết kế và các regression cụ thể, không là tuyên bố miễn nhiễm prompt injection.
 
 Nghiên cứu ngày 29/10/2026: [phân tuyến Flash-Lite/Argon, contracts, ngân sách và giới hạn](AI_MODEL_ROUTING_RESEARCH.md). **Chỉ nghiên cứu**; Argon chưa tích hợp/chưa live, không có runtime env hoặc quota mới. Gemini mặc định và lịch sử request hiện tại được giữ nguyên.

@@ -200,3 +200,17 @@ So sánh baseline 121 backend/14 E2E với kết quả thật ở mục K của 
 `tools/test-postgres.ps1 -All -Source` chạy nguồn feature trong thư mục tạm của Backend hiện có và UUID schema trên PostgreSQL hiện có; không sửa `/app`, không tạo Compose/server riêng. Khi đã deploy đúng image dùng `-All` để kiểm runtime thực. Suite bổ sung T36–T40, privacy actor/project/run, ID giả, KPI thiếu, idempotency, concurrent pending requests, cache FactSet, xóa hội thoại đang chờ, lease/fencing và durable task reservation. Transport provider dùng MOCK; không dùng quota live.
 
 Frontend Assistant thêm contextual panel, citations/source evidence, khôi phục và phân trang hội thoại, workflow hai/ba nguồn qua API reuse hiện có. Idempotency-Key explicit được giữ khi retry; reuse trả PROPOSED cần người dùng duyệt. Nguồn/kỳ/coverage/mẫu không được suy ra từ câu nói thiếu năm hoặc thiếu nguồn.
+
+Nguồn candidate đã replay toàn bộ: **176 backend (138 offline/38 PostgreSQL)** và **54 Playwright (9 foundation/25 interface/7 reconciliation/13 Assistant)**; bằng chứng và revision cụ thể tại mục P của [báo cáo](IMPLEMENTATION_STATUS.md). T36–T40 nằm trong các suite, không cộng thêm số cases. Backend ở `9c565a6` không đổi byte sang `9802545`; E2E cuối chạy trên images `9802545` đã đối chiếu source và assets.
+
+| Catalogue | Bằng chứng Assistant |
+|---|---|
+| T36 | LOCAL_ONLY/task OFF không reserve/gọi cloud; adapter Qwen HTTP 403 MOCK vẫn giữ tests cũ, không fallback live |
+| T37 | fake FactSet/fact/evidence, extra amount/prose và claim không hỗ trợ bị reject |
+| T38 | context/project/workspace/actor/run/case/group và cursor sai bị từ chối; E2E chặn response hội thoại muộn sau đổi project |
+| T39 | metric ngoài snapshot trả thiếu bằng chứng, không tính lại hoặc gọi provider |
+| T40 | oracle delivery 12.75 − 10.00 = 2.75 VND; Shopee delta 10.00; TikTok EQUAL không bị gọi là mismatch; đúng run/snapshot/rule/evidence và không bịa phí |
+
+Luồng ba file dùng upload thật trên UI, approval/normalization qua API có auth cho fixtures tổng hợp mới, rồi UI đề xuất hai cặp → xác nhận → kiểm tra/lưu/duyệt rule → chạy verified → hỏi chênh lệch → export. Bộ foundation riêng tiếp tục kiểm Smart Setup/mapping/normalization trên UI; Planner dùng MOCK, không dùng quota live. Không thay oracle để ép TikTok có mismatch; không bỏ validation READY cho fixtures chứa lỗi.
+
+Benchmark: `uv run python tools/benchmark-foundation.py`, `uv run python tools/benchmark-reconciliation.py`; `benchmark-assistant.py` copy/chạy trong Backend hiện có để đo Parquet evidence và read-only SQL. Không tạo service/container mới. Kết quả là samples tổng hợp; không suy ra precision/recall đại diện hoặc SLA. `check-worker-recovery.py` kiểm SIGKILL normalization thật; PG tests kiểm stale claim/fencing/không duplicate Assistant response và unknown delivery. `check-persistence.ps1` kiểm cả ConversationRow/MessageRow sau restart/recreate và frontend-only recreate. Backup/restore commands tại [README](../README.md); backup codec có regression chống JSON giả type tags.
