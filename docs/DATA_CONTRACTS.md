@@ -106,7 +106,7 @@ Pydantic contracts ở `contracts/reconciliation.py`: ReconciliationPlan/Contrac
 | GET /api/runs/{id}/metrics | Chỉ VERIFIED/PARTIAL_VERIFIED, đúng một immutable snapshot |
 | GET /api/runs/{id}/matches | Server pagination/search/linkage/comparison filters; match groups typed |
 | GET /api/runs/{id}/groups/{group_id}/evidence | Group thuộc đúng run; scoped source records/provenance, filename; `field_evidence` là EvidenceRef theo đúng MappingRevision của canonical lịch sử. Preview mỗi source 100 records, field refs 100 source rows/record |
-| GET /api/runs/{id}/exceptions | Search, state/type filters, type/state sort, pagination; current_open_count riêng; thêm groups gồm id/key/comparisons của đúng các case trong trang, tối đa 100 group, không tính lại tiền và không trả toàn bộ membership |
+| GET /api/runs/{id}/exceptions | Search, state/type/case_id filters, type/state sort, pagination; current_open_count riêng; thêm groups gồm id/key/comparisons của đúng các case trong trang, tối đa 100 group, không tính lại tiền và không trả toàn bộ membership. case_id luôn kết hợp run/workspace scope, giúp trở về đúng case từ Assistant dù ngoài trang mặc định |
 | PATCH /api/exceptions/{id}/review | Editor, lý do bắt buộc khi resolve/dismiss, audit actor/time; không đổi monetary result |
 | POST /api/runs/{id}/exports?format=csv hoặc xlsx | Verified only; queue và cached immutable export theo run/revision |
 | GET /api/exports/{id}, /download | Workspace scope, checksum, same-origin auth; metadata revision/review_state_scope/review_state_as_of; không token/path trong URL |

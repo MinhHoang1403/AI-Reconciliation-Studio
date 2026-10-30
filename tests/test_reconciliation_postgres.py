@@ -252,6 +252,10 @@ def test_T20_T34_T35_rule_approval_snapshot_exports_and_workflow(pg):  # noqa: F
     bounded = client.get(f"/api/runs/{rid}/exceptions?limit=1").json()
     assert len(bounded["items"]) == len(bounded["groups"]) == 1
     assert bounded["groups"][0]["id"] == bounded["items"][0]["match_group_id"]
+    selected_case = client.get(f"/api/runs/{rid}/exceptions", params={"case_id": case["id"]}).json()
+    assert selected_case["total"] == 1
+    assert selected_case["items"][0]["id"] == case["id"]
+    assert client.get(f"/api/runs/{rid}/exceptions?case_id=nonexistent").json()["items"] == []
     assert (
         client.patch(
             f"/api/exceptions/{case['id']}/review",

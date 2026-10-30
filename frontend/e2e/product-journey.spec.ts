@@ -276,6 +276,22 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     .getByRole("button", { name: "← Trở về trang trước", exact: true })
     .click();
   await expect(mismatch).toBeVisible();
+  await expect(
+    page.getByText("Đang xem ngoại lệ từ Trợ lý.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("table", { name: "Danh sách ngoại lệ", exact: true })
+      .locator("tbody tr"),
+  ).toHaveCount(1);
+  await page
+    .getByRole("button", { name: "Xem tất cả ngoại lệ", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("table", { name: "Danh sách ngoại lệ", exact: true })
+      .locator("tbody tr"),
+  ).toHaveCount(3);
   await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
   const downloads: string[] = [];
   for (const format of ["CSV", "XLSX"]) {

@@ -114,14 +114,14 @@ export function ReconciliationStudio({
   canEdit: boolean;
   onAsk: (context: AssistantContext) => void;
   requestedPlan: { id: string; request: number } | null;
-  requestedRun: { id: string; request: number } | null;
+  requestedRun: { id: string; request: number; caseId?: string | null } | null;
   onSetup: () => void;
-  onRunSelected: (id: string) => void;
+  onRunSelected: (id: string, caseId?: string) => void;
 }) {
   const [catalogue, setCatalogue] = useState<Catalogue[]>([]),
     [runs, setRuns] = useState<Run[]>([]);
   const [runId, setRunId] = useState(
-    localStorage.getItem(`studio.run.${projectId}`) || "",
+    requestedRun?.id || localStorage.getItem(`studio.run.${projectId}`) || "",
   );
   const [run, setRun] = useState<Run | null>(null),
     [groups, setGroups] = useState<Group[]>([]),
@@ -132,6 +132,9 @@ export function ReconciliationStudio({
   const [caseGroups, setCaseGroups] = useState<
     Pick<Group, "id" | "key" | "comparisons">[]
   >([]);
+  const [selectedCaseId, setSelectedCaseId] = useState(
+    requestedRun?.caseId || "",
+  );
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(""),
     [message, setMessage] = useState(""),
@@ -159,6 +162,13 @@ export function ReconciliationStudio({
     [sourceFilter, setSourceFilter] = useState("");
   useEffect(() => {
     if (!requestedRun) return;
+    setSelectedCaseId(requestedRun.caseId || "");
+    if (requestedRun.caseId) {
+      setOffset(0);
+      setSearch("");
+      setFilter("");
+      setIssueFilter("");
+    }
     setRunId(requestedRun.id);
     setRunOffset(0);
     setFromPeriod("");
@@ -166,6 +176,9 @@ export function ReconciliationStudio({
     setSourceFilter("");
   }, [requestedRun]);
   const alive = useRef(true);
+  useEffect(() => {
+    if (runId) onRunSelected(runId, selectedCaseId || undefined);
+  }, [runId, selectedCaseId]);
   const controller = useRef(new AbortController());
   const runScope = useRef({ id: runId });
   if (runScope.current.id !== runId) runScope.current = { id: runId };
@@ -266,7 +279,6 @@ export function ReconciliationStudio({
     }
     let active = true;
     localStorage.setItem(`studio.run.${projectId}`, runId);
-    onRunSelected(runId);
     setRun(null);
     setEvidence(null);
     setDownload("");
@@ -306,7 +318,7 @@ export function ReconciliationStudio({
         current_open_count: number;
         groups?: Pick<Group, "id" | "key" | "comparisons">[];
       }>(
-        `/runs/${run.id}/exceptions?${query}&state=${mode === "exceptions" ? filter : ""}&issue=${issueFilter}&sort=${caseSort}`,
+        `/runs/${run.id}/exceptions?${query}&state=${mode === "exceptions" ? filter : ""}&issue=${issueFilter}&sort=${caseSort}${mode === "exceptions" && selectedCaseId ? `&case_id=${selectedCaseId}` : ""}`,
       ),
     ])
       .then(([g, c]) => {
@@ -329,7 +341,16 @@ export function ReconciliationStudio({
     return () => {
       active = false;
     };
-  }, [run, offset, search, filter, mode, issueFilter, caseSort]);
+  }, [
+    run,
+    offset,
+    search,
+    filter,
+    mode,
+    issueFilter,
+    caseSort,
+    selectedCaseId,
+  ]);
   const sources = catalogue.filter(
     (c) => !c.canonical.stale && c.canonical.quality_status !== "FAILED",
   );
@@ -1208,7 +1229,10 @@ export function ReconciliationStudio({
                               );
                               await wait(accepted.job_id);
                               await refresh();
-                              if (alive.current) setRunId(accepted.run_id);
+                              if (alive.current) {
+                                setSelectedCaseId("");
+                                setRunId(accepted.run_id);
+                              }
                             })
                           }
                         >
@@ -1331,7 +1355,10 @@ export function ReconciliationStudio({
                     <td>
                       <button
                         className="text-button"
-                        onClick={() => setRunId(r.id)}
+                        onClick={() => {
+                          setSelectedCaseId("");
+                          setRunId(r.id);
+                        }}
                       >
                         Mở kết quả
                       </button>
@@ -1384,7 +1411,10 @@ export function ReconciliationStudio({
               <select
                 aria-label="Lần đối soát"
                 value={runId}
-                onChange={(e) => setRunId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedCaseId("");
+                  setRunId(e.target.value);
+                }}
               >
                 {runId && !runs.some((r) => r.id === runId) && (
                   <option value={runId}>
@@ -1541,6 +1571,23 @@ export function ReconciliationStudio({
                   </h3>
                 </div>
                 <div className="result-filters">
+                  {mode === "exceptions" && selectedCaseId && (
+                    <Notice>
+                      Đang xem ngoại lệ từ Trợ lý.
+                      <button
+                        className="text-button"
+                        onClick={() => {
+                          setSelectedCaseId("");
+                          setOffset(0);
+                          setFilter("");
+                          setSearch("");
+                          setIssueFilter("");
+                        }}
+                      >
+                        Xem tất cả ngoại lệ
+                      </button>
+                    </Notice>
+                  )}
                   <label>
                     Tìm kiếm
                     <input
@@ -1628,7 +1675,14 @@ export function ReconciliationStudio({
                 {exportNotice && <Notice>{exportNotice}</Notice>}
                 {detailLoading && <Spinner />}
                 <div className="table-scroll">
-                  <table className="result-table">
+                  <table
+                    className="result-table"
+                    aria-label={
+                      mode === "exceptions"
+                        ? "Danh sách ngoại lệ"
+                        : "Chi tiết đối soát"
+                    }
+                  >
                     <thead>
                       <tr>
                         {(mode === "exceptions"

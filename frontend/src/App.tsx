@@ -141,6 +141,7 @@ export function App() {
   const [runNavigation, setRunNavigation] = useState<{
     id: string;
     request: number;
+    caseId?: string | null;
   } | null>(null);
   const [selectedSource, setSelectedSource] = useState<Dataset | null>(null);
   const [pendingTarget, setPendingTarget] = useState<PreparationAction | null>(
@@ -344,7 +345,11 @@ export function App() {
         setLocation(next);
         writeLocation(next, true);
         if (initial.context?.run_id && restored)
-          setRunNavigation({ id: initial.context.run_id, request: Date.now() });
+          setRunNavigation({
+            id: initial.context.run_id,
+            caseId: initial.context.case_id,
+            request: Date.now(),
+          });
         setWorkspace(s);
         setActorRole(actor.role);
         setDraftOwner(
@@ -696,7 +701,11 @@ export function App() {
         if (controller.signal.aborted || current !== navigationSequence.current)
           return;
         if (next.context?.run_id)
-          setRunNavigation({ id: next.context.run_id, request: Date.now() });
+          setRunNavigation({
+            id: next.context.run_id,
+            caseId: next.context.case_id,
+            request: Date.now(),
+          });
         setLocation(next);
       } catch (err) {
         if (
@@ -1268,12 +1277,16 @@ export function App() {
                         | "reports"
                     }
                     onSetup={() => setPage("reconcile")}
-                    onRunSelected={(id) => {
+                    onRunSelected={(id, caseId) => {
                       const current = locationRef.current;
                       if (current.page === "assistant") return;
                       const next = {
                         ...current,
-                        context: { project_id: projectId, run_id: id },
+                        context: {
+                          project_id: projectId,
+                          run_id: id,
+                          ...(caseId ? { case_id: caseId } : {}),
+                        },
                       };
                       writeLocation(next, true);
                       locationRef.current = next;
@@ -1294,6 +1307,7 @@ export function App() {
                     if (current.run_id)
                       setRunNavigation({
                         id: current.run_id,
+                        caseId: current.case_id,
                         request: Date.now(),
                       });
                     navigate(location.origin, current);
@@ -1328,6 +1342,7 @@ export function App() {
                       if (context.run_id)
                         setRunNavigation({
                           id: context.run_id,
+                          caseId: context.case_id,
                           request: Date.now(),
                         });
                       if (target === "OPEN_DATA") {

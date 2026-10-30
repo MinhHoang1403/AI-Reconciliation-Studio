@@ -689,6 +689,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         issue: str = "",
         search: str = Query("", max_length=120),
         sort: Literal["type", "state"] = "type",
+        case_id: str = Query("", max_length=64, pattern=r"^[A-Za-z0-9_-]*$"),
     ) -> CaseList:
         row = get_scoped(db, RunRow, run_id, actor)
         require_verified(row)
@@ -704,6 +705,8 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             or 0
         )
         query = base
+        if case_id:
+            query = query.where(ExceptionRow.id == case_id)
         if state:
             query = query.where(ExceptionRow.workflow_state == state)
         if issue:
