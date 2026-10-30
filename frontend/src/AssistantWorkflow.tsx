@@ -33,6 +33,8 @@ export function AssistantWorkflow({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<Proposal[]>([]);
+  const [pending, setPending] = useState<Proposal[]>([]);
+  const [pendingTotal, setPendingTotal] = useState(0);
   const alive = useRef(true);
   const keys = useRef(new Map<string, string>());
   const projectId = answer.fact_set.context.project_id;
@@ -49,19 +51,23 @@ export function AssistantWorkflow({
         `/projects/${projectId}/reconciliation-templates`,
         { signal: controller.signal },
       ),
+      api<{ items: Proposal[]; total: number }>(
+        `/projects/${projectId}/reconciliation-plans?limit=20`,
+        { signal: controller.signal },
+      ),
     ])
-      .then(([catalogue, rules]) => {
+      .then(([catalogue, rules, plans]) => {
         if (!alive.current) return;
         setSources(
           catalogue.items.filter(
             (s) => s.canonical.quality_status === "READY" && !s.canonical.stale,
           ),
         );
-        setTemplates(
-          rules.items.filter((t) =>
-            answer.proposal?.approved_rule_ids.includes(t.id),
-          ),
-        );
+        // Proposal contains a bounded shortlist, not an authorization allowlist.
+        // The existing scoped endpoint supplies all currently approved templates.
+        setTemplates(rules.items);
+        setPending(plans.items);
+        setPendingTotal(plans.total);
       })
       .catch((err) => {
         if (alive.current)
@@ -324,6 +330,45 @@ export function AssistantWorkflow({
               </button>
             </Notice>
           ))}
+          <details>
+            <summary>Kế hoạch của bạn đang chờ duyệt ({pendingTotal})</summary>
+            {pending.map((result) => (
+              <button
+                className="text-button"
+                key={result.id}
+                onClick={() => onReview(result.id)}
+              >
+                Mở bản nháp{" "}
+                {result.proposal.plan?.name || result.id.slice(0, 8)}
+              </button>
+            ))}
+            {pending.length < pendingTotal && (
+              <button
+                className="text-button"
+                onClick={() =>
+                  void api<{ items: Proposal[]; total: number }>(
+                    `/projects/${projectId}/reconciliation-plans?limit=20&offset=${pending.length}`,
+                  )
+                    .then((page) => {
+                      if (alive.current) {
+                        setPending((old) => [...old, ...page.items]);
+                        setPendingTotal(page.total);
+                      }
+                    })
+                    .catch((err) => {
+                      if (alive.current)
+                        setError(
+                          err instanceof Error
+                            ? err.message
+                            : "Không tải được bản nháp.",
+                        );
+                    })
+                }
+              >
+                Tải thêm bản nháp
+              </button>
+            )}
+          </details>
           {error && <Notice tone="error">{error}</Notice>}
           <p>
             Mở kế hoạch mới sẽ thay bản nháp đang xem; kết quả và nguồn lịch sử

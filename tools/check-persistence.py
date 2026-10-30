@@ -17,11 +17,13 @@ from studio.database import (
     AttemptRow,
     AuditRow,
     CanonicalRow,
+    ConversationRow,
     DatasetRow,
     ExceptionRow,
     ExportRow,
     JobRow,
     MappingRow,
+    MessageRow,
     PlanRow,
     ProjectRow,
     ReconciliationContractRow,
@@ -64,6 +66,8 @@ def capture() -> dict[str, Any]:
             RunRow,
             ExceptionRow,
             ExportRow,
+            ConversationRow,
+            MessageRow,
         ):
             records = []
             for row in db.scalars(select(model)):

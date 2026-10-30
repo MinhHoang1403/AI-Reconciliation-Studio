@@ -288,6 +288,32 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     def get_plan(plan_id: str, db: DB, actor: User) -> PlanView:
         return plan_view(db, get_scoped(db, PlanRow, plan_id, actor))
 
+    @router.get("/projects/{project_id}/reconciliation-plans")
+    def pending_plans(
+        project_id: str,
+        db: DB,
+        actor: User,
+        offset: int = Query(0, ge=0),
+        limit: int = Query(20, ge=1, le=50),
+    ) -> dict[str, Any]:
+        """Resume reviewed actions from existing plan metadata, without another workflow store."""
+        get_scoped(db, ProjectRow, project_id, actor)
+        query = (
+            select(PlanRow)
+            .outerjoin(ReconciliationContractRow, ReconciliationContractRow.plan_id == PlanRow.id)
+            .where(
+                PlanRow.workspace_id == actor.workspace_id,
+                PlanRow.project_id == project_id,
+                PlanRow.created_by == actor.id,
+                ReconciliationContractRow.id.is_(None),
+            )
+        )
+        total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+        rows = db.scalars(
+            query.order_by(PlanRow.created_at.desc(), PlanRow.id.desc()).offset(offset).limit(limit)
+        )
+        return dict(items=[plan_view(db, row) for row in rows], total=total)
+
     @router.post(
         "/reconciliation-contracts/{plan_id}/approve", response_model=ReconciliationContract
     )

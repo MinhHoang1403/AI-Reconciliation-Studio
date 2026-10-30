@@ -5,6 +5,8 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
 docker compose exec -T --user root backend python -c "from pathlib import Path; import shutil; p=Path('/tmp/studio-tests'); assert p.resolve()==Path('/tmp/studio-tests'); shutil.rmtree(p) if p.exists() else None"
 if ($LASTEXITCODE -ne 0) { throw 'Cannot refresh temporary synthetic test source.' }
 docker compose cp tests backend:/tmp/studio-tests
+docker compose cp tools/check-backup-restore.py backend:/tmp/studio-tests/check-backup-restore.py
+if ($LASTEXITCODE -ne 0) { throw 'Cannot copy backup verification helper.' }
 docker compose cp pyproject.toml backend:/tmp/studio-pyproject.toml
 if ($LASTEXITCODE -ne 0) { throw 'Cannot copy synthetic tests.' }
 docker compose exec -T backend python -m pip install --quiet --upgrade --target /tmp/studio-checks pytest==9.1.1 hypothesis==6.170.12

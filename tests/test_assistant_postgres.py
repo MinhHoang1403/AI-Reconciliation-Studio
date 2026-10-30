@@ -272,6 +272,8 @@ def test_reviewed_template_action_idempotent_and_unapproved_until_human_confirma
     two = client.post(path, json=body, headers={"Idempotency-Key": "reviewed-action"})
     assert two.json() == one.json()
     assert one.json()["proposal"]["status"] == "PROPOSED" and one.json()["contract_id"] is None
+    listed = client.get(f"/api/projects/{rule['project_id']}/reconciliation-plans?limit=1").json()
+    assert listed["items"][0]["id"] == one.json()["id"] and listed["total"] == 1
     body["snapshot_at"] = "2026-11-01T00:00:00Z"
     assert (
         client.post(path, json=body, headers={"Idempotency-Key": "reviewed-action"}).status_code
