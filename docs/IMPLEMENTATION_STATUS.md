@@ -1,8 +1,8 @@
 # Trạng thái triển khai và nghiệm thu
 
-**Hiện tại:** Final UX hardening ngày **30/10/2026** ở mục N. Giai đoạn 1–2 giữ phạm vi MVP đã công bố; kết quả mới **149 backend / 41 E2E PASS**. Các mục A–M giữ nguyên lịch sử; không dùng quota/counts hoặc lệnh dừng của nhiệm vụ cũ thay cho bằng chứng và ủy quyền mới.
+**Hiện tại:** Hợp nhất UX và Docker release ngày **30/10/2026** ở mục O. Cổng A/B đã PASS trước triển khai Assistant. Các mục A–N giữ nguyên lịch sử; không dùng quota/counts hoặc lệnh dừng của nhiệm vụ cũ thay cho bằng chứng và ủy quyền mới.
 
-Quality Hardening + UX Refinement theo prompt riêng của chủ dự án nằm trên `codex/interface-quality`, từ main `0b9421e`. Chỉ hoàn thiện Giai đoạn 1–2; chờ chủ dự án review branch, không tự merge main hoặc bắt đầu cloud/Argon/Giai đoạn 3. Bằng chứng mới và giới hạn ghi tại mục N; số liệu mục L–M là baseline lịch sử.
+Quality Hardening + UX Refinement trước đây nằm trên `codex/interface-quality`, từ main `0b9421e`. Prompt hợp nhất UX, Docker release và Giai đoạn 3 là ủy quyền mới; không thay đổi kết luận lịch sử ở mục N. Assistant chỉ thực hiện trên `codex/assistant-automation`, không tự merge vào main.
 
 ## Final Acceptance — Giai đoạn 1 (lịch sử)
 
@@ -664,3 +664,41 @@ Main/origin main giữ **0b9421e1fbbc1e13537b5c5510b3769e387f91a5**; acceptance 
 - Qwen live, Planner revision mới live, precision/recall đại diện và các giới hạn MVP lịch sử giữ nguyên. Không mở cloud, Argon, Assistant hoặc Giai đoạn 3.
 
 **ĐẠT Final UX hardening trong phạm vi được giao:** TEST ẩn mặc định và có thể mở lại; UNKNOWN không bị ẩn; lựa chọn/bản nháp không đổi ngầm; Recent Data đúng nguồn/project; **149 backend / 41 E2E PASS**, không cloud, lịch sử nguyên vẹn. Đủ để chủ dự án review branch, chưa là quyền merge hoặc release production. **DỪNG sau push báo cáo, chờ review; không merge main hoặc triển khai Giai đoạn 3.**
+
+## O. Hợp nhất UX và Docker release — 30/10/2026
+
+### A. UX merge — PASS
+
+- Baseline thực: main `0b9421e1fbbc1e13537b5c5510b3769e387f91a5`, UX `4b854c631e9cfb68c664b7fc57186281da906976`, ahead 7/behind 0, working tree sạch; origin chính thức đã fetch.
+- `tools/test-postgres.ps1 -All`: **149 PASS**, một cảnh báo deprecation Starlette/httpx. Ruff toàn backend/tests/tools, mypy 31 source files, TypeScript, ESLint, production build, repository/history/Markdown scan và diff check PASS.
+- Playwright MANUAL: **41 PASS / 0 FAIL / 0 skipped**, 90,599 giây. Lượt trước đó thất bại vì demo chưa được xác minh sau khởi động lại, bị chặn đúng chính sách; chạy `verify-local.ps1` rồi replay toàn bộ, không bỏ auth hay sửa expected values.
+- CSV/XLSX đọc lại đúng snapshot/checksum/timestamp/zero-prefix; oracle độc lập Shopee/TikTok/giao nhận, membership/population/cases và historical exports PASS.
+- Merge `--no-ff`: **`5f358c487f7f29482951aff1cc5aa757a5f9f1ec`**; tree khớp hoàn toàn UX đã kiểm thử, không conflict. Đã push/fetch, main local = origin/main; UX HEAD là ancestor, không còn unique commits/open PR, đã xóa branch UX bằng normal delete.
+- Tags không đổi: `data-foundation-accepted-20261028` trỏ `78e68c08e60c7af2359e46def43196cf5b1a6dc1`, `reconciliation-engine-accepted-20261029` trỏ `be6b8a067ca052ea989a029a15558b0fd5ee48ef` (peeled targets, không nhầm với annotated-tag object IDs).
+
+### B. Docker main — PASS
+
+Build sạch từ main `5f358c4` với `BUILDX_GIT_LABELS=full`; Compose/network/volumes/healthchecks không đổi, không rebuild PostgreSQL. Backend/Worker chung image. OCI source/revision và 34 source hashes trong cả Backend/Worker, bốn frontend assets qua HTTP khớp build local.
+
+| Thành phần | Immutable image ID | Bảo vệ |
+|---|---|---|
+| Backend/Worker | `sha256:7a00801051416c143e0d0199919bb9a43fa319a01fd01b1a8010b1d5d8781e29` | `ai-reconciliation-studio-backend:accepted-main-5f358c4` |
+| Frontend | `sha256:1049ba4457ebad8971d0be29cb523b7429714fb2c3dc1abcd28a9ef1a40ab215` | `ai-reconciliation-studio-frontend:accepted-main-5f358c4` |
+| PostgreSQL | `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` | Giữ nguyên |
+| Rollback Backend | `sha256:c966a65d026417d8e2a7e7662f8ab888aca582fd1a59aa319a12f6abd396f553` | `rollback-e025094`, không ghi đè |
+| Rollback Frontend | `sha256:57a48c3e6ff1bedf63162b71e3a8d1292af421d177a4e7afa50dedfd31a54979` | `rollback-e025094`, không ghi đè |
+
+- Runtime trước build `8789940` khác UX HEAD chỉ tests/docs; source hashes và served assets đã đối chiếu. Runtime mới đúng main merge. Rollback `e025094` có cùng hai migrations, dependencies và Compose với main mới: không cần downgrade/xóa dữ liệu. Chưa chạy đổi runtime về rollback trong nhiệm vụ này, không gọi đây là restore drill.
+- Playwright trên image main mới: **41 PASS / 0 FAIL / 0 skipped**, 85,334 giây. Golden/report read-back PASS.
+- `check-persistence.ps1`: restart, force-recreate bốn service và frontend-only recreate đều **PASS**; mỗi lần `/api/session` trả 403 trước xác minh loopback, sau `verify-local.ps1` truy cập bình thường. 4/4 healthy, chỉ publish `127.0.0.1:18180`.
+- Giữ `ai-reconciliation-studio_postgres_data` và `ai-reconciliation-studio_artifacts`. Snapshot trước/sau xác nhận **mọi record/artifact lịch sử giữ nguyên ID, metadata hash và SHA256**; hai replay chỉ thêm dữ liệu tổng hợp trong project TEST đã có.
+- Thực tế sau gates: 28 projects, 41 datasets/versions, 39 tables, 82 schemas/mappings, 36 canonical, 151 jobs/155 attempts, 182 audits/17 AI traces, 22 plans/21 contracts/21 runs, 67 cases/38 exports; 154 foundation artifacts/21 run artifacts/38 export files.
+- Gemini mặc định `gemini-3.5-flash-lite`, vẫn **7/10 attempts, còn 3**; không request mới/reset/tăng quota. Qwen hoãn HTTP 403; LlamaParse không tạo job mới; Argon research only.
+
+### C. Docker inventory/cleanup — PASS trong phạm vi an toàn
+
+Đã inventory toàn bộ 51 image IDs và tham chiếu của 31 containers (running và stopped), bảo vệ current/accepted/rollback. Không có old project image không tham chiếu đủ điều kiện xóa; **0 image bị xóa bằng cleanup**. Giữ toàn bộ image không rõ ownership, dự án khác, PostgreSQL, cache và volumes. Hai tag `local` được build thay source theo quy trình Docker; không ghi việc thay tag là cleanup thu hồi storage.
+
+Host trước/sau: 51 images, 39,39 GB; 31 containers; build cache khoảng 47,55 GB. Volume allocation thay đổi trong quá trình test (6,950 → 6,677 GB), không xóa volume và không quy biến động này thành dung lượng thu hồi. **Physical bytes reclaimed: NOT VERIFIED**. Other/unknown image IDs giữ nguyên; 4/4 healthy, lịch sử/evidence/exports và quota kiểm tra lại PASS. Inventory runtime/receipts nằm ngoài Git.
+
+**Cổng A và B đạt.** Được bắt đầu Giai đoạn 3 theo prompt mới trên feature branch; main chỉ giữ UX/release đã nghiệm thu. Chưa có code hoặc kết luận nghiệm thu Assistant trong mốc này.
