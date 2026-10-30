@@ -805,15 +805,15 @@ Nguyên tắc: một vùng làm việc chính, ngữ cảnh nhìn thấy đượ
 
 | Màn hình / phân loại | Bằng chứng, nguyên nhân và ảnh hưởng | Giải pháp / ưu tiên | Kiểm chứng hiện tại |
 |---|---|---|---|
-| Assistant — design improvement | Browser thật 390/768/1440: Modal side che trang, lịch sử nằm trên transcript, ô nhập trôi theo hội thoại | Trang trong AppShell, lịch sử riêng và transcript cuộn, composer cố định vùng; P0 | Regression mới tái hiện baseline có dialog thay vì trang; đang kiểm tra bản sửa |
-| Điều hướng — confirmed UI bug | App chỉ có useState page, không history; bản nháp mất khi unmount; requested run bị thay nếu ngoài trang lịch sử | URL identifiers + back/forward, restore qua API, bản nháp theo scope trong tab, giữ lượt được yêu cầu; P0 | Tests mới cho page/draft/reload/project switching và lượt ngoài trang lịch sử |
-| Thanh dự án — usability issue | Cảnh báo TEST dài bên ngoài selector, phạm vi nghiệp vụ lặp lại | Bỏ cảnh báo, nhãn TEST nhỏ, refresh icon, giữ filter/owner classification; P0 | Giữ các regression selector trước đó, đổi assertion theo thiết kế mới |
-| Tổng quan — design improvement | Ba thẻ hướng dẫn hiện cả project đang làm việc | Thu gọn khi có dữ liệu, mở sẵn cho project mới; P1 | DTO/next action và recent5 giữ nguyên |
-| Dữ liệu / Mapping — accepted limitation | Bố cục đã có sheet/paging/raw/canonical/errors, review trường và semantics; không cần đổi parser hay mapping | Bảo toàn gates; kiểm lại luồng thực tế và responsive; P1 | Chưa kết luận PASS của nhiệm vụ mới |
-| Đối soát — usability issue | Khóa/chỉ tiêu thiết yếu bị đóng trong details; tiến trình chỉ ghi bốn bước | Mở mặc định khóa/chỉ tiêu, diễn giải năm bước; giữ xác nhận kỳ/timezone/coverage và approval; P1 | Chưa kết luận PASS của nhiệm vụ mới |
-| Ngoại lệ — integration limitation | Case DTO không có key/amount; GET matches có paging khác, không thể ghép hai trang độc lập để đủ 25 cases | Bổ sung summary theo đúng group IDs của trang case, một truy vấn tham số hóa, backend trả số tiền gốc; P1 | Regression PG đối chiếu 12.75/10.00/2.75 và giới hạn một case |
-| Báo cáo / ngoại lệ rỗng — usability issue | Lịch sử và bộ lọc đứng trước kết quả; không run vẫn hiện bảng rỗng | Lịch sử thu gọn; empty CTA thiết lập; selected run giữ khi ngoài trang lịch sử; P1 | Chưa kết luận PASS của nhiệm vụ mới |
-| Cài đặt — accepted limitation | Policy/quotas đọc từ backend, không có quyền sửa secrets; còn thông tin kỹ thuật | Kiểm quyền, quota và trình bày progressive disclosure trong phạm vi hiện có; P2 | Chưa kết luận PASS của nhiệm vụ mới |
+| Assistant — design improvement | Browser thật 390/768/1440: Modal side che trang, lịch sử nằm trên transcript, ô nhập trôi theo hội thoại | Trang trong AppShell, lịch sử riêng và transcript cuộn, composer cố định vùng; P0 | PASS LOCAL; regression baseline FAIL trước sửa, page/focus/composer ở5viewport PASS sau sửa |
+| Điều hướng — confirmed UI bug | App chỉ có useState page, không history; bản nháp mất khi unmount; requested run bị thay nếu ngoài trang lịch sử | URL identifiers + back/forward, restore qua API, bản nháp theo scope trong tab, giữ lượt được yêu cầu; P0 | PASS LOCAL; draft/reload/project switching/run ngoài trang/delayed Back/selected case regressions |
+| Thanh dự án — usability issue | Cảnh báo TEST dài bên ngoài selector, phạm vi nghiệp vụ lặp lại | Bỏ cảnh báo, nhãn TEST nhỏ, refresh icon, giữ filter/owner classification; P0 | PASS LOCAL/MOCK; selector regressions và hành trình owner classify TEST qua UI |
+| Tổng quan — design improvement | Ba thẻ hướng dẫn hiện cả project đang làm việc | Thu gọn khi có dữ liệu, mở sẵn cho project mới; P1 | PASS LOCAL/MOCK; DTO/next action/recent5, empty/error/loading/partial/scope |
+| Dữ liệu / Mapping — accepted limitation | Bố cục đã có sheet/paging/raw/canonical/errors, review trường và semantics; không cần đổi parser hay mapping | Bảo toàn gates; kiểm lại luồng thực tế và responsive; P1 | PASS LOCAL CSV/XLSX, T01–T16; PDF/DOCX adapter MOCK và cached read, không gọi live mới |
+| Đối soát — usability issue | Khóa/chỉ tiêu thiết yếu bị đóng trong details; tiến trình chỉ ghi bốn bước | Mở mặc định khóa/chỉ tiêu, diễn giải năm bước; giữ xác nhận kỳ/timezone/coverage và approval; P1 | PASS LOCAL/manual và Planner MOCK; golden/schema/approval regressions |
+| Ngoại lệ — integration limitation | Case DTO không có key/amount; GET matches có paging khác, không thể ghép hai trang độc lập để đủ 25 cases | Bổ sung summary theo đúng group IDs của trang case, một truy vấn tham số hóa, backend trả số tiền gốc; P1 | PASS PG/UI: 12.75/10.00/2.75, case filter scoped/limit1, quay về case và xem tất cả |
+| Báo cáo / ngoại lệ rỗng — usability issue | Lịch sử và bộ lọc đứng trước kết quả; không run vẫn hiện bảng rỗng | Lịch sử thu gọn; empty CTA thiết lập; selected run giữ khi ngoài trang lịch sử; P1 | PASS LOCAL/MOCK; UI downloads CSV/XLSX đọc lại, đúng run/period/snapshot/oracle |
+| Cài đặt — accepted limitation | Policy/quotas đọc từ backend, không có quyền sửa secrets; còn thông tin kỹ thuật | Kiểm quyền, quota và trình bày progressive disclosure trong phạm vi hiện có; P2 | PASS LOCAL read-only; basic/advanced và quota thật, không giao diện sửa secrets/budget |
 | Cloud / production / trên 100 thành viên — accepted limitation / out of scope | Cloud OFF, caps evidence công bố; chưa có benchmark hoặc off-host DR production | Giữ cap/warnings và ghi NOT VERIFIED, không dựng framework hoặc gọi provider để che giới hạn | Không dùng PASS mock thay PASS live |
 
 Snapshot trước nhiệm vụ: 29 projects, 57 datasets/versions, 55 tables, 114 schemas/mappings, 52 canonical, 27 contracts/runs, 34 plans, 97 cases, 30 conversations/60 messages; 218 foundation artifacts + 27 run artifacts + 47 exports. Hash metadata/bytes đã lưu ngoài Git ở `runtime/product-ux-before.json` để đối chiếu; không xóa fixtures lịch sử. Số liệu cuối và kết quả kiểm thử sẽ ghi sau khi thực thi.
@@ -831,3 +831,90 @@ Candidate tiếp theo `bffd5743f0753a8c39584fe001bbe925f7405b32`: **57/58 E2E PA
 Audit race bổ sung: `navigation cancels a delayed Back restore without leaving the page inert` **FAIL trên runtime bffd574**. Khi Back đang GET project, user chọn trang khác làm abort effect; cờ restoring không được giải phóng do guard chỉ nằm trong effect cũ. Sửa navigation sequence chung, hủy hiệu lực restore cũ khi user điều hướng và giải phóng cờ ngay; response cũ không chọn lại project. Đang chờ replay của bản sửa; không bỏ inert/fail-closed hoặc nới quyền API.
 
 Candidate `fc3d959b286dbc12fd3ca18ab97921cbc3b1cbc9`: **59/59 E2E PASS, 0 FAIL/SKIP**, 234,41 giây; race Back/sidebar/new navigation, request idempotency sau reload, partial-pair workflow retry và hành trình mới đều PASS. Bổ sung cuối cho việc trở về đúng case sau reload: `case_id` filter scoped cùng run/workspace, selected case có trạng thái rõ và nút xem tất cả, không suy case từ hai trang khác nhau. Source PostgreSQL full replay sau bổ sung **190 PASS / 0 FAIL/SKIP**, 71,32 giây. Đang chờ build/replay bản source cuối và các drill vận hành trước khi kết luận nhiệm vụ.
+
+### C. Kết quả kiểm thử source cuối
+
+Source ứng dụng **`446d0312048cb0fe70052944e6972d28cf7bf773`** đã commit/push, build từ Git sạch. Không thêm dependency, migration, queue, framework, engine hoặc implementation Assistant thứ hai. Backend chỉ bổ sung case summary/filter scoped để tích hợp UI và sửa câu hướng dẫn EVIDENCE_LIMIT vốn ngụ ý UI đã có phân trang đầy đủ. Semantic/financial contracts giữ nguyên.
+
+| Kiểm tra mới thực thi | Kết quả |
+|---|---|
+| Full backend trên backend/PostgreSQL hiện có | **190 PASS, 0 FAIL/SKIP / 63,08 giây**: 152 offline + 38 PostgreSQL; baseline176 tăng14 cases (12 câu hỏi + cap100/101); các assertions PG bổ sung nằm trong case cũ |
+| Full Playwright MANUAL trên Nginx candidate | **59 PASS, 0 FAIL/SKIP/flaky / 200,11 giây**: 9 foundation + 25 interface + 7 reconciliation + 17 Assistant + 1 journey; baseline54 tăng5 cases; không cộng replays |
+| TypeScript / ESLint / production build | PASS; 6 served files, không thêm thư viện |
+| Ruff / mypy / source sanitization | PASS; mypy33 source files, repository scanner129 source candidates; Markdown paths và `git diff --check` PASS tại nhóm source cuối |
+| T01–T40, golden/property/security/migrations/worker fences | PASS trong bộ190; UUID test schemas trên PostgreSQL sẵn có, không Compose test project/server mới |
+| Read-back CSV/XLSX và independent oracle | PASS: snapshots/identity/membership/population/cases/exports của Shopee, TikTok, delivery; không dùng Matcher hoặc AI làm oracle |
+| Worker recovery local thực tế | PASS: SIGKILL giữa normalize75.000 dòng, expire đúng lease tổng hợp, reclaim2 attempts, **1 canonical**, raw checksum giữ nguyên; 19,750 giây gồm toàn luồng, không gọi là throughput ổn định |
+
+Lỗi đã được regression xác nhận và sửa: thiếu page/history state, mất bản nháp khi unmount, selected run bị thay bởi trang lịch sử, mất request identity sau reload, delayed Back restore làm main inert, thiếu selected-case navigation. Thiết kế được cập nhật: toolbar project gọn/TEST badge, hướng dẫn thu gọn, khóa/chỉ tiêu mở sẵn, lịch sử runs thu gọn, export gần selected run/kỳ, Exceptions ưu tiên danh sách có key/số tiền; Settings chia cơ bản/nâng cao. Mapping/parser/normalization/verifier không được viết lại.
+
+### D. Browser QA và số đo UX
+
+**PASS LOCAL** cho 35 captures của 7 trang ở **390/768/1366/1440/1920**, 0 uncaught pageerrors và không tràn viewport ngang. Kiểm tra ảnh thực tế: sidebar active/breadcrumb, hàng project, Assistant có transcript/history/composer riêng, history đóng/mở, Reports/Exceptions, Settings và các bảng. 12 captures bổ sung cho empty/loading/error/viewer/permission denied/long content ở390/1440 là **MOCK scoped GET**; không coi đây là kết quả authorization server. Quyền thật được kiểm ở PG/E2E. Mapping/PARTIAL source và evidence được mở từ dữ liệu tổng hợp thật; viewport390×600 vẫn có composer trong bounds. Chưa xác minh bàn phím hệ điều hành mobile hoặc screen reader thực; không tuyên bố chứng nhận toàn bộ WCAG.
+
+Ảnh và receipts ở `runtime/screenshots/`, `runtime/product-ux-visual.json`, `runtime/product-ux-states.json`, không đưa vào Git. Lịch sử hội thoại hỗ trợ duyệt từng trang20 và resume, có cap UI rõ; chưa có server search hội thoại. Nhóm lớn hơn100 bị Assistant từ chối kết luận; evidence UI công bố cap100 thành viên/20 ô, export giữ lineage đầy đủ. Không giả vờ đã triển khai pagination toàn evidence.
+
+Số đo serial local (Chromium headless1440×1000, full document navigation; **3 mẫu** cho mỗi điểm trừ khi ghi khác), median và khoảng quan sát:
+
+| Điểm UX | Median / min–max (ms) |
+|---|---|
+| Dashboard | 370 / 361–3260 |
+| Run history mở danh sách | 1432 / 932–1651 |
+| Evidence | 319 / 288–351 |
+| Mở lại conversation | 903 / 876–1425 |
+| Mở dataset / trang dữ liệu đầu | 355 / 222–370 |
+| Tìm project / đổi project | 1223 / 1102 (mỗi điểm1 mẫu) |
+
+Đổi project: **7 API requests**; idle sau settle: **0 API requests / 3 giây**. Nguồn75.000 dòng: trang đầu343ms, **25 dòng được render**, total75.000 từ backend. Long chat **MOCK GET**, 200 messages qua9 lần lấy trang thêm:1010ms, JS heap20 messages23.055.488bytes →200 messages24.589.772bytes; không điều khiển GC nên không dùng để kết luận không rò bộ nhớ. Không phải SLA/load test/benchmark production. Hai lượt đo harness đầu bị loại: dùng cùng-document navigation chưa chờ settle và init script chạm localStorage ở about:blank; không sửa code/cache ứng dụng để che số đo.
+
+12 câu hỏi bổ sung kiểm why mismatch, total variance, unresolved cases, missing counterpart, unverified run, rule, source, fee uncertainty, ba nguồn, KPI không tồn tại, foreign project và nhóm quá100. Intents chưa hỗ trợ phải trả thiếu bằng chứng/provider unavailable, không tự tính KPI hoặc suy phí. Workflow ba nguồn được kiểm ở API/E2E riêng với xác nhận người dùng, hai approved templates, partial failure và idempotent retry. Không tuyên bố mọi câu hỏi đều được chatbot suy luận tự do trả lời.
+
+### E. Toàn vẹn dữ liệu và AI policy
+
+**PASS LOCAL**: mọi ID và hash metadata/bytes có trong snapshot trước nhiệm vụ vẫn còn và khớp hoàn toàn. Snapshot sau tests/worker drill so với sau restart/backup/rollback round-trip cũng **bằng nhau chính xác** đối với các bảng nghiệp vụ/artifacts được `check-persistence.py` kiểm tra. Không sửa/xóa dữ liệu lịch sử, không reset quota, không đổi schema/parser/mapping/engine revisions để hợp thức hóa kết quả.
+
+Snapshot cuối: **34 projects (34 TEST / 0 WORK / 0 UNKNOWN), 82 datasets/versions, 80 tables, 164 schemas/mappings, 77 canonical, 349 jobs/355 attempts, 329 audits, 53 plans, 38 contracts/runs, 146 cases, 64 exports, 72 conversations/146 messages, 90 traces**. Published bytes: **318 foundation artifacts + 38 run artifacts + 64 export files = 420 files**. So với trước nhiệm vụ thêm5 project tổng hợp (4 lần kiểm journey, gồm1 lượt dừng do test selector; 1 worker recovery); giữ đủ29 project trước đó. Các lần replay tạo thêm dữ liệu tổng hợp có chủ đích, không xóa để giảm counts. Long chat/performance/state mocks chỉ intercept GET, không tạo200 messages trên server.
+
+- Gemini vẫn **`gemini-3.5-flash-lite`**, **7/10 đã dùng, 3 còn lại**; durable `GEMINI_REQUEST_RESERVED=7` trước/sau, không tăng ngân sách hay request. **0 Gemini live requests mới**.
+- Assistant cloud **OFF**, task budget **0**, `ASSISTANT_REQUEST_RESERVED=0`. Câu trả lời local là DETERMINISTIC/CACHE hoặc thiếu bằng chứng, không gắn nhãn AI live.
+- Qwen `knowledge` **DEFERRED do HTTP403 lịch sử**, không probe/gọi lại. LlamaParse tạo job **OFF**, durable document reservations giữ **2**; PDF/DOCX adapter **PASS MOCK/cached read**, live mới **NOT VERIFIED theo chỉ định không gọi cloud**, không có credits/request phát sinh trong nhiệm vụ. Không tìm key hoặc lấy key từ dự án khác. Argon research only, không adapter/request.
+- 90 traces không tương đương90 cloud calls. Các mock transport/timeout/quota/security tests chạy trong UUID test schemas và không tác động quota production.
+
+### F. Docker, persistence, backup và rollback
+
+**PASS LOCAL** trên đúng Compose `ai-reconciliation-studio`, hai volumes `ai-reconciliation-studio_postgres_data` và `ai-reconciliation-studio_artifacts`. Docker cuối **4/4 running/healthy**; frontend bind `127.0.0.1:18180`, local Dashboard không nhập token. Không tắt auth/Origin/CSRF; **3/3 fail-closed** checks trước re-verification. Migration vẫn **`create_conversations`**, không thêm migration ở nhiệm vụ này.
+
+`tools/check-persistence.ps1`: **3/3 metadata/artifact comparisons PASS** qua restart, force-recreate đủ bốn service và frontend-only recreate. Sau các thao tác, hai hội thoại thuộc hai project mở lại đúng run, saved answers/citations khớp, selected case và raw source cells đọc được, snapshot không đổi; **0 browser API mutations** khi reopen.
+
+Backup/restore bằng helper sẵn có, không server/container mới và không overwrite public:
+
+- Backup **`backup_1a0eba7eb2a04228a6792d4a7d9f731b`**, receipt **13:04:32 +07 ngày30/10/2026**, schema `create_conversations`.
+- **23 bảng / 3.384 metadata rows** (gồm sessions, memberships, conversations/messages, rules/snapshots, audits và quota reservations), **420 published files**. Metadata SHA256 **`5ffdf4d0e54fb0d858ed732e011e1fb676ee1061711f02ce558c1d79bc299859`**.
+- Backup1,899giây, restore/validation2,238giây. Restore schema UUID được đối chiếu đầy đủ rồi dọn đúng schema/copy drill; cuối cùng **0 restore schemas** còn lại. Corrupted metadata checksum và path traversal bị từ chối; production metadata không đổi trong drill.
+- Đã copy toàn bộ backup từ volume ra host `runtime/backups/` và kiểm lại metadata cùng từng file SHA256. Không commit backup/data. **Off-host encrypted DR và restore đè production: NOT VERIFIED**, không suy từ local drill.
+
+Rollback bằng `tools/rollback.ps1 -ReleaseRevision 5f358c4`: cặp main được bảo vệ lên4/4healthy, giữ schema/volumes; ba oracle và exports cũ đọc lại PASS. Startup override chỉ áp dụng compatibility đã kiểm cho additive schema, không downgrade DB. Sau đó plain Compose trả về candidate **446d031**, source/assets hash và hội thoại/evidence/case reopen đều PASS. Business snapshot trước/sau round-trip bằng nhau.
+
+Images cuối (OCI revision/source đúng official repository, 40 tracked backend files khớp trong cả backend/worker, 6 served frontend files khớp SHA256):
+
+| Thành phần | Image ID |
+|---|---|
+| Backend/Worker | `sha256:bd55a66b87642c2978370de5c4013120ded2b6fa6fcafab47ce2dacfd31bec67` |
+| Frontend | `sha256:929002794a6d1937689f3560adac2fc7caf7323c2ce0b5b908ab8227f4fc6e6a` |
+| PostgreSQL giữ nguyên | `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` |
+
+Candidate được giữ thêm bằng hai tag `candidate-446d031`; image sizes backend156.312.351bytes và frontend25.824.956bytes (Docker reported size, không phải exclusive disk usage). Sáu references main/candidate9802545/rollback trước nhiệm vụ vẫn đúng IDs cũ. **Không prune/xóa image/cache/volume**, không dọn tài nguyên toàn host hay tác động project khác.
+
+### G. Git và tài liệu bàn giao
+
+Các nhóm source hợp lệ đã commit/push trên **`codex/assistant-automation`**: `f6aa092` (Assistant page/scoped results), `bffd574` (request identity/result actions), `fc3d959` (cancel stale restores), **`446d031` (selected exception navigation, source đang chạy)**. Remote chính thức `https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git`. Báo cáo và tài liệu hành vi được commit riêng sau kiểm tra; hash commit bàn giao và trạng thái local/remote được báo trong câu trả lời cuối, không tạo hash tự tham chiếu trong file.
+
+Main local/origin giữ **`eefdd4441d7f7ef52b08e7d35d3c68894de191dd`**; không merge main, force-push hoặc di chuyển tags. Chỉ tài liệu hành vi/report được chỉnh sau source446d031; runtime không giả nhận hash commit tài liệu là image revision. README sửa câu lỗi thời “chat chưa triển khai” và phân biệt Planner live lịch sử với đợt này local/mock; Testing Guide cập nhật counts/catalogue. Không sửa kế hoạch ba giai đoạn.
+
+### H. Kết luận và giới hạn
+
+**HOÀN TẤT PRODUCT UX & RELIABILITY TRONG PHẠM VI DEMO LOCAL/MANUAL/MOCK ĐƯỢC GIAO.** Các lỗi xác nhận trong phạm vi đã sửa và regression đạt; không còn FAIL đã biết của suite cuối. Candidate sẵn sàng để chủ dự án đọc báo cáo và review trực tiếp, **chưa tự merge main và không tuyên bố production ready**.
+
+Giới hạn giữ công khai: intents Assistant/claim allowlist có giới hạn, không chatbot suy luận tự do; duyệt history theo trang, chưa server search; evidence caps và catalogue/template caps hiện có; native mobile keyboard/screen reader/full WCAG, production load/HA, representative model precision/recall, retention tự động và off-host DR chưa được xác minh. Bản nháp lưu trong tab, đóng tab có thể mất; đây không phải backup hội thoại. Các giới hạn này không được gắn PASS live hoặc giải quyết bằng cloud/framework ngoài phạm vi.
+
+**DỪNG TOÀN BỘ CÔNG VIỆC SAU BÀN GIAO. Chờ chủ dự án review và giao nhiệm vụ riêng; không tự merge hoặc bắt đầu giai đoạn tiếp theo.**

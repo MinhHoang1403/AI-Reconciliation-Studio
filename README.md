@@ -2,7 +2,7 @@
 
 Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, AI đề xuất ánh xạ, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
 
-**Trạng thái:** Giai đoạn 1–2 và UX đã hợp nhất có lưu lịch sử vào `main`; Docker main được nghiệm thu trước khi mở `codex/assistant-automation`. Nhánh Assistant bổ sung facts có bằng chứng, hội thoại và đề xuất workflow có review, chưa tự merge main. Gemini mặc định; mapping/rule luôn cần duyệt. Planner mới PASS MOCK/CONTRACT, chưa xác minh live; Qwen live hoãn do IP allowlist; LlamaParse tạo job OFF. Xem [bằng chứng và giới hạn](docs/IMPLEMENTATION_STATUS.md).
+**Trạng thái:** Giai đoạn 1–2 và UX đã hợp nhất có lưu lịch sử vào `main`; Docker main được nghiệm thu trước khi mở `codex/assistant-automation`. Nhánh Assistant bổ sung facts có bằng chứng, hội thoại, trang Trợ lý riêng và đề xuất workflow có review, chưa tự merge main. Gemini mặc định; mapping/rule luôn cần duyệt. Planner có bằng chứng Gemini live lịch sử trong báo cáo; đợt Product UX này chỉ local/manual/mock, không gọi cloud. Qwen live hoãn do IP allowlist; LlamaParse tạo job OFF. Xem [bằng chứng và giới hạn](docs/IMPLEMENTATION_STATUS.md).
 
 ## Mở ứng dụng trong workspace hiện tại
 

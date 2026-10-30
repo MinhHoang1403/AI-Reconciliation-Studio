@@ -1,6 +1,6 @@
 # Kiến trúc ứng dụng
 
-Data Foundation và Reconciliation đã nghiệm thu theo [kế hoạch](PROJECT_PLAN.md). Assistant đang triển khai trên feature branch, tiêu thụ các contracts hiện có; không viết lại engine hay verifier.
+Data Foundation và Reconciliation đã nghiệm thu theo [kế hoạch](PROJECT_PLAN.md). Assistant candidate trên feature branch tiêu thụ các contracts hiện có; không viết lại engine hay verifier. Bằng chứng, giới hạn và trạng thái chưa merge main tại [báo cáo triển khai](IMPLEMENTATION_STATUS.md).
 
 ## Contextual Assistant
 
