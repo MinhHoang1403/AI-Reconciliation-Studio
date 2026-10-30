@@ -1,9 +1,16 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowDownToLine,
   ArrowRight,
   BellRing,
-  CheckCheck,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
@@ -22,17 +29,24 @@ import {
   X,
 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { api } from "./api";
+import { api, ApiError } from "./api";
+import { ProjectSelector } from "./ProjectSelector";
+import { DataOverview } from "./DataOverview";
 import {
   Badge,
   DataTable,
+  DatasetList,
   formatValue,
   Modal,
   Notice,
   Spinner,
 } from "./components";
 import { MappingStudio } from "./MappingStudio";
-const ReconciliationStudio = lazy(() => import("./ReconciliationStudio").then(m => ({default:m.ReconciliationStudio})));
+const ReconciliationStudio = lazy(() =>
+  import("./ReconciliationStudio").then((m) => ({
+    default: m.ReconciliationStudio,
+  })),
+);
 import {
   errorText,
   jobKind,
@@ -45,6 +59,7 @@ import {
   type Job,
   type Mapping,
   type Preview,
+  type PreparationAction,
   type Profile,
   type Project,
   type ProjectSummary,
@@ -52,28 +67,44 @@ import {
   type WorkspaceSettings,
 } from "./types";
 
-type Page = "home" | "data" | "settings" | "reconcile" | "exceptions" | "reports";
+type Page =
+  "home" | "data" | "settings" | "reconcile" | "exceptions" | "reports";
 type Tab = "explore" | "mapping" | "normalize";
 type View = "parsed" | "raw" | "canonical" | "errors";
 
 export function App() {
   const [page, setPage] = useState<Page>("home");
   const [tab, setTab] = useState<Tab>("explore");
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState(
-    localStorage.getItem("studio.project") || "",
-  );
+  const [project, setProject] = useState<Project | null>(null);
+  const [projectId, setProjectId] = useState("");
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [recent, setRecent] = useState<{
+    projectId: string;
+    items: Dataset[];
+    loading: boolean;
+    error: string;
+  }>({ projectId: "", items: [], loading: true, error: "" });
+  const [recentRetry, setRecentRetry] = useState(0);
   const [datasetOffset, setDatasetOffset] = useState(0);
   const [datasetTotal, setDatasetTotal] = useState(0);
   const [summary, setSummary] = useState<ProjectSummary | null>(null);
+  const [projectLoading, setProjectLoading] = useState(false);
+  const [projectError, setProjectError] = useState("");
+  const [runNavigation, setRunNavigation] = useState<{
+    id: string;
+    request: number;
+  } | null>(null);
+  const [selectedSource, setSelectedSource] = useState<Dataset | null>(null);
+  const [pendingTarget, setPendingTarget] = useState<PreparationAction | null>(
+    null,
+  );
   const [jobs, setJobs] = useState<Job[]>([]);
   const [datasetId, setDatasetId] = useState("");
   const [tables, setTables] = useState<Table[]>([]);
   const [documentState, setDocumentState] = useState<{
     datasetId: string;
     items: DocumentArtifact[];
-  }>({datasetId: "", items: []});
+  }>({ datasetId: "", items: [] });
   const [tableId, setTableId] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [mappings, setMappings] = useState<Mapping[]>([]);
@@ -86,6 +117,7 @@ export function App() {
   const [search, setSearch] = useState("");
   const [workspace, setWorkspace] = useState<WorkspaceSettings | null>(null);
   const [ready, setReady] = useState(false);
+  const [actorRole, setActorRole] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
@@ -107,11 +139,79 @@ export function App() {
   const scopeRef = useRef({ projectId, datasetId, tableId, datasetOffset });
   scopeRef.current = { projectId, datasetId, tableId, datasetOffset };
   const fileInput = useRef<HTMLInputElement>(null);
-  const selectedDataset = datasets.find((d) => d.id === datasetId);
+  const modalFocus = useRef<HTMLElement | null>(null);
+  const navigation = useRef<HTMLElement | null>(null);
+  const projectSequence = useRef(0);
+  const refreshController = useRef<AbortController | null>(null);
+  const selectedDataset =
+    datasets.find((d) => d.id === datasetId) ||
+    (selectedSource?.id === datasetId && selectedSource.project_id === projectId
+      ? selectedSource
+      : undefined);
   const table = tables.find((t) => t.id === tableId);
-  const project = projects.find((p) => p.id === projectId);
   const currentCanonical = canonicals.find((c) => c.id === canonicalId);
   const activeMapping = mappings.find((m) => m.id === table?.active_mapping_id);
+
+  useEffect(() => {
+    if (!sidebar) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const items = () =>
+      Array.from(
+        navigation.current?.querySelectorAll<HTMLElement>(
+          "a[href], button:not(:disabled)",
+        ) || [],
+      );
+    items()[0]?.focus();
+    function keydown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSidebar(false);
+      }
+      if (event.key === "Tab") {
+        const controls = items();
+        if (event.shiftKey && document.activeElement === controls[0]) {
+          event.preventDefault();
+          controls.at(-1)?.focus();
+        } else if (
+          !event.shiftKey &&
+          document.activeElement === controls.at(-1)
+        ) {
+          event.preventDefault();
+          controls[0]?.focus();
+        }
+      }
+    }
+    const viewport = window.matchMedia("(max-width: 900px)");
+    const resized = () => {
+      if (!viewport.matches) setSidebar(false);
+    };
+    document.addEventListener("keydown", keydown);
+    viewport.addEventListener("change", resized);
+    return () => {
+      document.removeEventListener("keydown", keydown);
+      viewport.removeEventListener("change", resized);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [sidebar]);
+
+  const canEdit = actorRole === "owner" || actorRole === "editor";
+
+  function openUpload() {
+    if (!canEdit) {
+      setError("Bạn chỉ có quyền xem. Cần quyền chỉnh sửa để tải dữ liệu.");
+      return;
+    }
+    modalFocus.current = document.activeElement as HTMLElement | null;
+    setUploadOpen(true);
+  }
+  function openNewProject() {
+    if (!canEdit) {
+      setError("Bạn chỉ có quyền xem. Cần quyền chỉnh sửa để tạo dự án.");
+      return;
+    }
+    modalFocus.current = document.activeElement as HTMLElement | null;
+    setProjectOpen(true);
+  }
 
   const run = useCallback(async (task: () => Promise<void>) => {
     setBusy(true);
@@ -132,18 +232,36 @@ export function App() {
     let mounted = true;
     void (async () => {
       try {
-        await api("/session");
-        const [p, s] = await Promise.all([
-          api<{ items: Project[] }>("/projects"),
-          api<WorkspaceSettings>("/settings"),
-        ]);
+        const actor = await api<{ role: string }>("/session");
+        const s = await api<WorkspaceSettings>("/settings");
+        const savedId = localStorage.getItem("studio.project");
+        let restored: Project | null = null;
+        try {
+          restored = savedId
+            ? await api<Project>(`/projects/${encodeURIComponent(savedId)}`)
+            : (
+                await api<{ items: Project[] }>(
+                  "/projects?include_test=false&limit=1",
+                )
+              ).items[0] || null;
+        } catch (err) {
+          if (!mounted) return;
+          if (
+            err instanceof ApiError &&
+            ["RESOURCE_NOT_FOUND", "FORBIDDEN"].includes(err.code)
+          ) {
+            setError(
+              "Dự án đã lưu không còn tồn tại hoặc bạn không còn quyền truy cập. Hãy chọn dự án khác.",
+            );
+            localStorage.removeItem("studio.project");
+          } else throw err;
+        }
         if (!mounted) return;
-        setProjects(p.items);
+        setProject(restored);
+        setProjectId(restored?.id || "");
         setWorkspace(s);
+        setActorRole(actor.role);
         setReady(true);
-        setProjectId((old) =>
-          p.items.some((p) => p.id === old) ? old : p.items[0]?.id || "",
-        );
       } catch (err) {
         if (mounted)
           setError(
@@ -157,27 +275,46 @@ export function App() {
   }, []);
 
   const refreshProject = useCallback(async () => {
-    if (!projectId) {
-      setDatasets([]);
-      setJobs([]);
-      return;
+    if (!projectId) return;
+    const sequence = ++projectSequence.current;
+    refreshController.current?.abort();
+    const controller = new AbortController();
+    refreshController.current = controller;
+    setProjectLoading(true);
+    setProjectError("");
+    try {
+      const [d, j, s] = await Promise.all([
+        api<{ items: Dataset[]; total: number }>(
+          `/datasets?project_id=${projectId}&offset=${datasetOffset}&limit=25`,
+          { signal: controller.signal },
+        ),
+        api<{ items: Job[] }>(`/jobs?project_id=${projectId}`, {
+          signal: controller.signal,
+        }),
+        api<ProjectSummary>(`/projects/${projectId}/summary`, {
+          signal: controller.signal,
+        }),
+      ]);
+      if (
+        controller.signal.aborted ||
+        sequence !== projectSequence.current ||
+        scopeRef.current.projectId !== projectId ||
+        scopeRef.current.datasetOffset !== datasetOffset
+      )
+        return;
+      setDatasets(d.items);
+      setDatasetTotal(d.total);
+      setJobs(j.items);
+      setSummary(s);
+    } catch (err) {
+      if (!controller.signal.aborted && sequence === projectSequence.current)
+        setProjectError(
+          err instanceof Error ? err.message : "Không tải được dữ liệu dự án.",
+        );
+    } finally {
+      if (!controller.signal.aborted && sequence === projectSequence.current)
+        setProjectLoading(false);
     }
-    const [d, j, s] = await Promise.all([
-      api<{ items: Dataset[]; total: number }>(
-        `/datasets?project_id=${projectId}&offset=${datasetOffset}&limit=25`,
-      ),
-      api<{ items: Job[] }>(`/jobs?project_id=${projectId}`),
-      api<ProjectSummary>(`/projects/${projectId}/summary`),
-    ]);
-    if (
-      scopeRef.current.projectId !== projectId ||
-      scopeRef.current.datasetOffset !== datasetOffset
-    )
-      return;
-    setDatasets(d.items);
-    setDatasetTotal(d.total);
-    setJobs(j.items);
-    setSummary(s);
   }, [projectId, datasetOffset]);
   useEffect(() => {
     if (!ready || page !== "settings") return;
@@ -194,7 +331,7 @@ export function App() {
     };
   }, [ready, page]);
   useEffect(() => {
-    localStorage.setItem("studio.project", projectId);
+    if (ready && projectId) localStorage.setItem("studio.project", projectId);
     setDatasetId("");
     setTableId("");
     setTables([]);
@@ -202,16 +339,63 @@ export function App() {
     setMappings([]);
     setPreview(null);
     setDatasetOffset(0);
-  }, [projectId]);
+  }, [projectId, ready]);
   useEffect(() => {
     if (!ready) return;
-    void refreshProject().catch((err) => setError(String(err.message)));
-    const timer = setInterval(
-      () => void refreshProject().catch((err) => setError(String(err.message))),
-      3000,
-    );
-    return () => clearInterval(timer);
+    void refreshProject();
+    return () => {
+      refreshController.current?.abort();
+    };
   }, [ready, refreshProject]);
+  useEffect(() => {
+    if (!ready || !projectId || !summary || page !== "home") return;
+    const controller = new AbortController();
+    setRecent({ projectId, items: [], loading: true, error: "" });
+    void api<{ items: Dataset[] }>(
+      `/datasets?project_id=${projectId}&offset=0&limit=5`,
+      { signal: controller.signal },
+    )
+      .then((result) => {
+        if (
+          !controller.signal.aborted &&
+          scopeRef.current.projectId === projectId
+        )
+          setRecent({
+            projectId,
+            items: result.items,
+            loading: false,
+            error: "",
+          });
+      })
+      .catch((err) => {
+        if (
+          !controller.signal.aborted &&
+          scopeRef.current.projectId === projectId
+        )
+          setRecent({
+            projectId,
+            items: [],
+            loading: false,
+            error:
+              err instanceof Error
+                ? err.message
+                : "Không tải được dữ liệu gần đây.",
+          });
+      });
+    return () => controller.abort();
+  }, [ready, projectId, page, summary, recentRetry]);
+  useEffect(() => {
+    if (
+      !ready ||
+      page === "settings" ||
+      !summary?.active_job_count ||
+      projectLoading ||
+      projectError
+    )
+      return;
+    const timer = setTimeout(() => void refreshProject(), 3000);
+    return () => clearTimeout(timer);
+  }, [ready, page, summary, projectLoading, projectError, refreshProject]);
 
   const loadTables = useCallback(async () => {
     if (!datasetId) {
@@ -224,19 +408,31 @@ export function App() {
     if (scopeRef.current.datasetId !== datasetId) return;
     setTables(result.items);
     setTableId((old) =>
-      result.items.some((t) => t.id === old) ? old : result.items[0]?.id || "",
+      pendingTarget?.table_id &&
+      result.items.some((t) => t.id === pendingTarget.table_id)
+        ? pendingTarget.table_id
+        : result.items.some((t) => t.id === old)
+          ? old
+          : result.items[0]?.id || "",
     );
-  }, [datasetId]);
+  }, [datasetId, pendingTarget]);
   useEffect(() => {
     void loadTables().catch((err) => setError(err.message));
   }, [loadTables, selectedDataset?.status]);
   useEffect(() => {
-    if (!datasetId || !/\.(pdf|docx)$/i.test(selectedDataset?.name || "")) return;
+    if (!datasetId || !/\.(pdf|docx)$/i.test(selectedDataset?.name || ""))
+      return;
     let current = true;
     void api<DocumentArtifact[]>(`/datasets/${datasetId}/documents`)
-      .then((items) => { if (current) setDocumentState({datasetId, items}); })
-      .catch((err) => { if (current) setError(err.message); });
-    return () => { current = false; };
+      .then((items) => {
+        if (current) setDocumentState({ datasetId, items });
+      })
+      .catch((err) => {
+        if (current) setError(err.message);
+      });
+    return () => {
+      current = false;
+    };
   }, [datasetId, selectedDataset?.name, selectedDataset?.status]);
 
   const loadDetails = useCallback(async () => {
@@ -260,17 +456,20 @@ export function App() {
       (c) => c.source_table_id === tableId,
     );
     setCanonicalId((old) =>
-      candidates.some((c) => c.id === old && !c.stale)
-        ? old
-        : candidates.filter((c) => !c.stale).at(-1)?.id ||
-          candidates.at(-1)?.id ||
-          "",
+      pendingTarget?.canonical_id &&
+      candidates.some((c) => c.id === pendingTarget.canonical_id)
+        ? pendingTarget.canonical_id
+        : candidates.some((c) => c.id === old && !c.stale)
+          ? old
+          : candidates.filter((c) => !c.stale).at(-1)?.id ||
+            candidates.at(-1)?.id ||
+            "",
     );
-  }, [tableId, datasetId]);
+  }, [tableId, datasetId, pendingTarget]);
   useEffect(() => {
     setOffset(0);
     setSearch("");
-    setView("parsed");
+    setView(pendingTarget?.canonical_id ? "errors" : "parsed");
     setPreview(null);
     void loadDetails().catch((err) => setError(err.message));
   }, [loadDetails]);
@@ -324,6 +523,8 @@ export function App() {
   }, [evidenceId, evidenceRow]);
 
   function chooseDataset(d: Dataset) {
+    setPendingTarget(null);
+    setSelectedSource(d);
     if (datasetId !== d.id) {
       setTables([]);
       setTableId("");
@@ -337,6 +538,76 @@ export function App() {
     setTab("explore");
     setSidebar(false);
   }
+  function chooseProject(selected: Project) {
+    if (selected.id === projectId) return;
+    scopeRef.current = {
+      projectId: selected.id,
+      datasetId: "",
+      tableId: "",
+      datasetOffset: 0,
+    };
+    projectSequence.current += 1;
+    refreshController.current?.abort();
+    setProjectLoading(false);
+    setProjectError("");
+    setRunNavigation(null);
+    setSelectedSource(null);
+    setPendingTarget(null);
+    setProject(selected);
+    setProjectId(selected.id);
+    setDatasets([]);
+    setRecent({ projectId: selected.id, items: [], loading: true, error: "" });
+    setDatasetTotal(0);
+    setDatasetOffset(0);
+    setJobs([]);
+    setSummary(null);
+    setDatasetId("");
+    setTables([]);
+    setTableId("");
+    setProfile(null);
+    setMappings([]);
+    setCanonicals([]);
+    setCanonicalId("");
+    setPreview(null);
+    setDocumentState({ datasetId: "", items: [] });
+    setEvidenceId("");
+    setEvidence(null);
+    setError("");
+    setSuccess("");
+    setTab("explore");
+  }
+  async function openPreparation(action: PreparationAction) {
+    if (action.kind === "UPLOAD") {
+      openUpload();
+      return;
+    }
+    if (action.kind === "WAIT") {
+      await changed();
+      return;
+    }
+    if (action.kind === "RECONCILE") {
+      setPage("reconcile");
+      return;
+    }
+    if (!action.dataset_id) return;
+    const selectedProject = projectId;
+    const dataset = await api<Dataset>(`/datasets/${action.dataset_id}`);
+    if (
+      scopeRef.current.projectId !== selectedProject ||
+      dataset.project_id !== selectedProject
+    )
+      return;
+    chooseDataset(dataset);
+    setPendingTarget(action);
+    setTab(
+      action.kind === "REVIEW_MAPPING"
+        ? "mapping"
+        : action.kind === "NORMALIZE"
+          ? "normalize"
+          : "explore",
+    );
+    setView(action.canonical_id ? "errors" : "parsed");
+  }
   function showEvidence(id: string, row?: number) {
     setEvidenceRow(row);
     setEvidenceId(id);
@@ -347,13 +618,13 @@ export function App() {
   async function createProject() {
     const p = await api<Project>("/projects", {
       method: "POST",
-      body: JSON.stringify({ name: newName, business_scope: newScope }),
+      body: JSON.stringify({
+        name: newName,
+        business_scope: newScope,
+        classification: "WORK",
+      }),
     });
-    setProjects((old) => [p, ...old]);
-    setDatasets([]);
-    setJobs([]);
-    setSummary(null);
-    setProjectId(p.id);
+    chooseProject(p);
     setProjectOpen(false);
     setNewName("");
     setNewScope("");
@@ -500,7 +771,13 @@ export function App() {
           onClick={() => setSidebar(false)}
         />
       )}
-      <aside className={`sidebar ${sidebar ? "sidebar-open" : ""}`}>
+      <aside
+        ref={navigation}
+        className={`sidebar ${sidebar ? "sidebar-open" : ""}`}
+        role={sidebar ? "dialog" : undefined}
+        aria-modal={sidebar || undefined}
+        aria-label={sidebar ? "Điều hướng" : undefined}
+      >
         <a
           className="brand"
           href="#"
@@ -519,7 +796,7 @@ export function App() {
         <div className="workspace-switch">
           <span className="workspace-icon">LS</span>
           <div>
-            <strong>Local workspace</strong>
+            <strong>Không gian làm việc</strong>
             <small>Dữ liệu của bạn · lưu bền vững</small>
           </div>
           <ShieldCheck size={16} />
@@ -544,17 +821,38 @@ export function App() {
             }}
           >
             <Database size={19} />
-            Dữ liệu<span className="nav-count">{datasets.length}</span>
+            Dữ liệu
+            <span className="nav-count">
+              {projectId ? (summary ? datasetTotal : "…") : "—"}
+            </span>
           </button>
-          <button className={page==="reconcile"?"active":""} onClick={()=>{setPage("reconcile");setSidebar(false);}}>
+          <button
+            className={page === "reconcile" ? "active" : ""}
+            onClick={() => {
+              setPage("reconcile");
+              setSidebar(false);
+            }}
+          >
             <GitCompareArrows size={19} />
             <span>Đối soát</span>
           </button>
-          <button className={page==="exceptions"?"active":""} onClick={()=>{setPage("exceptions");setSidebar(false);}}>
+          <button
+            className={page === "exceptions" ? "active" : ""}
+            onClick={() => {
+              setPage("exceptions");
+              setSidebar(false);
+            }}
+          >
             <BellRing size={19} />
             <span>Ngoại lệ</span>
           </button>
-          <button className={page==="reports"?"active":""} onClick={()=>{setPage("reports");setSidebar(false);}}>
+          <button
+            className={page === "reports" ? "active" : ""}
+            onClick={() => {
+              setPage("reports");
+              setSidebar(false);
+            }}
+          >
             <ArrowDownToLine size={19} />
             <span>Báo cáo</span>
           </button>
@@ -588,12 +886,20 @@ export function App() {
             <span>LC</span>
             <div>
               <strong>Người dùng local</strong>
-              <small>Workspace owner</small>
+              <small>
+                {(
+                  {
+                    owner: "Chủ không gian",
+                    editor: "Có quyền chỉnh sửa",
+                    viewer: "Chỉ xem",
+                  } as Record<string, string>
+                )[actorRole] || "Đang xác minh quyền"}
+              </small>
             </div>
           </div>
         </div>
       </aside>
-      <div className="main-shell">
+      <div className="main-shell" inert={sidebar || undefined}>
         <header className="topbar">
           <div className="breadcrumb">
             <button
@@ -603,14 +909,20 @@ export function App() {
             >
               <Menu size={22} />
             </button>
-            <span>Workspace</span>
+            <span>Không gian làm việc</span>
             <ChevronRight size={14} />
             <strong>
               {page === "home"
                 ? "Tổng quan"
                 : page === "data"
                   ? "Dữ liệu"
-                  : page==="reconcile"?"Đối soát":page==="exceptions"?"Ngoại lệ":page==="reports"?"Báo cáo":"Cài đặt"}
+                  : page === "reconcile"
+                    ? "Đối soát"
+                    : page === "exceptions"
+                      ? "Ngoại lệ"
+                      : page === "reports"
+                        ? "Báo cáo"
+                        : "Cài đặt"}
             </strong>
           </div>
           <div className="topbar-end">
@@ -630,24 +942,30 @@ export function App() {
                   ? "Nền tảng dữ liệu của bạn"
                   : page === "data"
                     ? "Quản lý dữ liệu"
-                    : page==="reconcile"?"Đối soát có kiểm chứng":page==="exceptions"?"Ngoại lệ và bằng chứng":page==="reports"?"Báo cáo đối soát":"Cài đặt không gian làm việc"}
+                    : page === "reconcile"
+                      ? "Đối soát có kiểm chứng"
+                      : page === "exceptions"
+                        ? "Ngoại lệ và bằng chứng"
+                        : page === "reports"
+                          ? "Báo cáo đối soát"
+                          : "Cài đặt không gian làm việc"}
               </h1>
               <p>
                 {page === "home"
                   ? "Từ tệp nguồn đến dữ liệu chuẩn hóa — rõ ràng ở từng bước."
                   : page === "data"
                     ? "Khám phá nguồn, kiểm tra đề xuất và chuẩn bị dữ liệu đáng tin cậy."
-                    : page==="settings"?"Chính sách xử lý và giới hạn đang áp dụng từ backend.":"Quy tắc được duyệt, kết quả bất biến và bằng chứng từ dữ liệu nguồn."}
+                    : page === "settings"
+                      ? "Chính sách xử lý và giới hạn đang áp dụng từ backend."
+                      : "Quy tắc được duyệt, kết quả bất biến và bằng chứng từ dữ liệu nguồn."}
               </p>
             </div>
             <div className="heading-actions">
               {(page === "home" || page === "data") && (
                 <button
                   className={`button ${page === "data" && datasetId && tab !== "explore" ? "secondary" : "primary"}`}
-                  disabled={!ready || busy}
-                  onClick={() =>
-                    projectId ? setUploadOpen(true) : setProjectOpen(true)
-                  }
+                  disabled={!ready || busy || !canEdit}
+                  onClick={() => (projectId ? openUpload() : openNewProject())}
                 >
                   <Upload size={17} />
                   {projectId ? "Tải dữ liệu" : "Tạo dự án đầu tiên"}
@@ -659,6 +977,14 @@ export function App() {
             <Notice tone="error">
               <div className="notice-content">
                 {error}
+                {!ready && (
+                  <button
+                    className="text-button"
+                    onClick={() => window.location.reload()}
+                  >
+                    Kết nối lại
+                  </button>
+                )}
                 <button
                   className="icon-button"
                   aria-label="Ẩn thông báo lỗi"
@@ -673,39 +999,30 @@ export function App() {
           {!ready && !error && <Spinner />}
           {ready && page !== "settings" && (
             <div className="project-bar">
-              <label htmlFor="project-select">
-                <FolderOpen size={17} />
-                Dự án
-              </label>
-              <select
-                id="project-select"
-                value={projectId}
-                onChange={(e) => {
-                  setDatasets([]);
-                  setJobs([]);
-                  setSummary(null);
-                  setDatasetId("");
-                  setTables([]);
-                  setTableId("");
-                  setProfile(null);
-                  setMappings([]);
-                  setCanonicals([]);
-                  setPreview(null);
-                  setProjectId(e.target.value);
-                }}
-              >
-                <option value="" disabled>
-                  Chọn dự án
-                </option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              <ProjectSelector
+                project={project}
+                onSelect={chooseProject}
+                disabled={busy}
+                canClassify={actorRole === "owner"}
+                onClassificationChange={(value) =>
+                  setProject((current) =>
+                    current?.id === value.id ? value : current,
+                  )
+                }
+              />
+              {projectId && (
+                <button
+                  className="text-button"
+                  disabled={busy || projectLoading}
+                  onClick={() => void run(changed)}
+                >
+                  {projectLoading ? "Đang cập nhật…" : "Cập nhật dự án"}
+                </button>
+              )}
               <button
                 className="text-button"
-                onClick={() => setProjectOpen(true)}
+                disabled={!canEdit}
+                onClick={() => openNewProject()}
               >
                 + Tạo dự án
               </button>
@@ -714,186 +1031,69 @@ export function App() {
               )}
             </div>
           )}
-          {ready && projectId && ["home","reconcile","exceptions","reports"].includes(page) && (
-            <Suspense fallback={<Spinner/>}><ReconciliationStudio key={`${projectId}:${page}`} projectId={projectId} mode={page as "home"|"reconcile"|"exceptions"|"reports"}/></Suspense>
+          {ready && !projectId && page !== "settings" && (
+            <Notice>
+              Chọn hoặc tạo dự án để xem dữ liệu. Dự án chưa được chọn; không
+              hiển thị số liệu của dự án khác.
+            </Notice>
           )}
-          {ready && page === "home" && (
-            <>
-              {datasets.length === 0 ? (
-                <section className="welcome-card">
-                  <div className="welcome-copy">
-                    <span className="pill">
-                      <Sparkles size={14} />
-                      AI SMART SETUP
-                    </span>
-                    <h2>
-                      Khởi đầu từ dữ liệu.
-                      <br />
-                      <span>Sẵn sàng cho điều tiếp theo.</span>
-                    </h2>
-                    <p>
-                      Tải CSV hoặc Excel lên. Hệ thống đọc cấu trúc, phân tích
-                      chất lượng và dùng{" "}
-                      {workspace?.mapping_ai_provider === "GEMINI" ? "Gemini" : "Qwen"}{" "}
-                      để đề xuất ánh xạ. Quyết định cuối
-                      cùng luôn thuộc về bạn.
-                    </p>
-                    <div className="welcome-points">
-                      <span>
-                        <CheckCheck size={16} />
-                        Giữ nguyên tệp nguồn
-                      </span>
-                      <span>
-                        <CheckCheck size={16} />
-                        Truy vết từng dòng
-                      </span>
-                      <span>
-                        <CheckCheck size={16} />
-                        Lưu quyết định đã duyệt
-                      </span>
-                    </div>
-                    <button
-                      className="text-button"
-                      onClick={() => {
-                        setPage("data");
-                      }}
-                    >
-                      Tìm hiểu quy trình chuẩn bị dữ liệu{" "}
-                      <ArrowRight size={16} />
-                    </button>
-                  </div>
-                  <div
-                    className="flow-illustration"
-                    aria-label="Quy trình từ tệp nguồn đến dữ liệu chuẩn hóa"
-                  >
-                    <div className="flow-node">
-                      <span className="node-icon">
-                        <FileSpreadsheet size={23} />
-                      </span>
-                      <div>
-                        <strong>Tệp nguồn</strong>
-                        <small>CSV · XLSX</small>
-                      </div>
-                      <ShieldCheck size={18} />
-                    </div>
-                    <div className="flow-line" />
-                    <div className="flow-node flow-ai">
-                      <span className="node-icon">
-                        <Sparkles size={23} />
-                      </span>
-                      <div>
-                        <strong>AI Smart Setup</strong>
-                        <small>Đề xuất · kiểm tra · xác nhận</small>
-                      </div>
-                    </div>
-                    <div className="flow-line" />
-                    <div className="flow-node">
-                      <span className="node-icon mint">
-                        <Database size={23} />
-                      </span>
-                      <div>
-                        <strong>Dữ liệu chuẩn hóa</strong>
-                        <small>Có kiểu · có nguồn gốc</small>
-                      </div>
-                      <CheckCheck size={18} />
-                    </div>
-                  </div>
-                </section>
-              ) : (
-                <section className="stats-grid">
-                  <Stat
-                    icon={<FileSpreadsheet />}
-                    value={summary?.dataset_count ?? 0}
-                    label="Nguồn dữ liệu"
-                  />
-                  <Stat
-                    icon={<Layers3 />}
-                    value={summary?.mapping_review_count ?? 0}
-                    label="Bảng cần xác nhận"
-                  />
-                  <Stat
-                    icon={<CheckCheck />}
-                    value={summary?.ready_canonical_count ?? 0}
-                    label="Bảng đã chuẩn hóa"
-                  />
-                  <Stat
-                    icon={<Sparkles />}
-                    value={summary?.active_job_count ?? 0}
-                    label="Tác vụ đang xử lý"
-                  />
-                </section>
-              )}
-              <div className="section-heading">
-                <div>
-                  <h2>Quy trình chuẩn bị dữ liệu</h2>
-                  <p>
-                    Một luồng thống nhất, từ bản gốc đến dữ liệu có thể sử dụng.
-                  </p>
-                </div>
-                <span className="subtle">3 bước rõ ràng</span>
-              </div>
-              <section className="steps-grid">
-                {[
-                  {
-                    title: "Tải nguồn dữ liệu",
-                    icon: <Upload size={21} />,
-                    text: "CSV, Excel nhiều sheet. Tệp gốc được lưu bất biến trong workspace.",
-                  },
-                  {
-                    title: "Kiểm tra ánh xạ",
-                    icon: <Sparkles size={21} />,
-                    text: "Xem đề xuất AI, dữ liệu mẫu và xác nhận những trường cần sử dụng.",
-                  },
-                  {
-                    title: "Chuẩn hóa & khám phá",
-                    icon: <Database size={21} />,
-                    text: "Xem kết quả có kiểu dữ liệu, lỗi chuyển đổi và nguồn gốc từng dòng.",
-                  },
-                ].map((s, i) => (
-                  <article className="step-card" key={s.title}>
-                    <div className="step-top">
-                      <span>{s.icon}</span>
-                      <small>0{i + 1}</small>
-                    </div>
-                    <h3>{s.title}</h3>
-                    <p>{s.text}</p>
-                  </article>
-                ))}
-              </section>
-              <section className="panel">
-                <div className="panel-heading">
-                  <div>
-                    <h2>Dữ liệu gần đây</h2>
-                    <p>Tiếp tục công việc từ nơi bạn đã dừng.</p>
-                  </div>
-                  <button
-                    className="text-button"
-                    onClick={() => setPage("data")}
-                  >
-                    Xem tất cả <ArrowRight size={15} />
-                  </button>
-                </div>
-                {datasets.length ? (
-                  <DatasetList
-                    items={datasets.slice(0, 5)}
-                    onSelect={chooseDataset}
-                  />
-                ) : (
-                  <div className="empty-state">
-                    <FileSpreadsheet size={31} />
-                    <h3>Chưa có nguồn dữ liệu</h3>
-                    <p>Tạo dự án và tải tệp đầu tiên để bắt đầu.</p>
-                    <span className="supported">
-                      CSV & XLSX · Tối đa{" "}
-                      {workspace ? workspace.max_upload_bytes / 1048576 : 20}{" "}
-                      MB/tệp
-                    </span>
-                  </div>
-                )}
-              </section>
-            </>
+          {ready && projectId && projectError && (
+            <Notice tone="error">
+              {projectError} Dữ liệu chưa cập nhật.
+              <button
+                className="text-button"
+                onClick={() => void refreshProject()}
+              >
+                Thử tải lại dự án
+              </button>
+            </Notice>
           )}
-          {ready && page === "data" && (
+          {ready && projectId && !summary && !projectError && (
+            <div role="status">
+              <Spinner /> Đang tải dữ liệu dự án…
+            </div>
+          )}
+          {ready &&
+            projectId &&
+            ["home", "reconcile", "exceptions", "reports"].includes(page) && (
+              <Suspense fallback={<Spinner />}>
+                <ReconciliationStudio
+                  key={projectId}
+                  projectId={projectId}
+                  canEdit={canEdit}
+                  requestedRun={runNavigation}
+                  mode={page as "home" | "reconcile" | "exceptions" | "reports"}
+                />
+              </Suspense>
+            )}
+          {ready && page === "home" && projectId && summary && (
+            <DataOverview
+              summary={summary}
+              datasets={recent.projectId === projectId ? recent.items : []}
+              recentLoading={recent.projectId !== projectId || recent.loading}
+              recentError={recent.projectId === projectId ? recent.error : ""}
+              onRecentRetry={() => setRecentRetry((value) => value + 1)}
+              workspace={workspace}
+              busy={busy}
+              onAction={(action) => void run(() => openPreparation(action))}
+              onResults={(target) => {
+                if (summary.latest_verified_run_id)
+                  localStorage.setItem(
+                    `studio.run.${projectId}`,
+                    summary.latest_verified_run_id,
+                  );
+                if (summary.latest_verified_run_id)
+                  setRunNavigation((old) => ({
+                    id: summary.latest_verified_run_id!,
+                    request: (old?.request || 0) + 1,
+                  }));
+                setPage(target);
+              }}
+              onData={() => setPage("data")}
+              chooseDataset={chooseDataset}
+            />
+          )}
+          {ready && projectId && summary && page === "data" && (
             <>
               {datasets.length === 0 ? (
                 <section className="panel empty-state">
@@ -957,30 +1157,53 @@ export function App() {
                         </div>
                         <Badge status={selectedDataset.status} />
                       </div>
+                      {selectedDataset.status === "PARTIAL" && (
+                        <Notice tone="warning">
+                          Dữ liệu cần kiểm tra.{" "}
+                          {currentCanonical
+                            ? `${currentCanonical.invalid_count} / ${currentCanonical.row_count} dòng cần kiểm tra trong kết quả đang chọn.`
+                            : "Mở bảng và xem kết quả hoặc hoạt động xử lý để tìm nguyên nhân; trạng thái này không tự cho biết ánh xạ đã được duyệt hay chưa."}
+                          {currentCanonical && (
+                            <button
+                              className="text-button"
+                              onClick={() => {
+                                setTab("explore");
+                                setView("errors");
+                                setOffset(0);
+                              }}
+                            >
+                              Xem cảnh báo / lỗi dữ liệu
+                            </button>
+                          )}
+                        </Notice>
+                      )}
                       {tables.length === 0 ? (
                         <div className="empty-state">
                           {/\.(pdf|docx)$/i.test(selectedDataset.name) ? (
                             <div>
                               <Notice tone="warning">
-                                Bản trích xuất chưa được xác minh. Không tự dùng số tiền trong tài liệu để đối soát.
+                                Bản trích xuất chưa được xác minh. Không tự dùng
+                                số tiền trong tài liệu để đối soát.
                               </Notice>
                               {documentState.datasetId === datasetId && (
-                                <DocumentPreview documents={documentState.items} />
+                                <DocumentPreview
+                                  documents={documentState.items}
+                                />
                               )}
                             </div>
                           ) : (
-                          <>
-                          {["UPLOADED", "PARSING"].includes(
-                            selectedDataset.status,
-                          ) ? (
-                            <Spinner />
-                          ) : (
-                            <Notice tone="warning">
-                              Chưa có bảng được công bố. Kiểm tra trạng thái tác
-                              vụ bên dưới.
-                            </Notice>
-                          )}
-                          </>
+                            <>
+                              {["UPLOADED", "PARSING"].includes(
+                                selectedDataset.status,
+                              ) ? (
+                                <Spinner />
+                              ) : (
+                                <Notice tone="warning">
+                                  Chưa có bảng được công bố. Kiểm tra trạng thái
+                                  tác vụ bên dưới.
+                                </Notice>
+                              )}
+                            </>
                           )}
                         </div>
                       ) : (
@@ -1037,6 +1260,7 @@ export function App() {
                           <div className="tab-content">
                             {tab === "mapping" && table && profile && (
                               <MappingStudio
+                                readOnly={!canEdit}
                                 table={table}
                                 profile={profile}
                                 mappings={mappings}
@@ -1063,6 +1287,7 @@ export function App() {
                                     className="button primary"
                                     disabled={
                                       busy ||
+                                      !canEdit ||
                                       !activeMapping ||
                                       activeMapping.status !== "APPROVED"
                                     }
@@ -1341,11 +1566,15 @@ export function App() {
                   </dd>
                   <dt>Provider đề xuất ánh xạ</dt>
                   <dd>
-                    {workspace.mapping_ai_provider === "GEMINI" ? "Gemini" : "Qwen"}
+                    {workspace.mapping_ai_provider === "GEMINI"
+                      ? "Gemini"
+                      : "Qwen"}
                   </dd>
                   <dt>Gemini</dt>
                   <dd>
-                    {workspace.gemini_configured ? workspace.gemini_model : "Chưa cấu hình khóa"}
+                    {workspace.gemini_configured
+                      ? workspace.gemini_model
+                      : "Chưa cấu hình khóa"}
                   </dd>
                   <dt>Mỗi tệp</dt>
                   <dd>{workspace.max_upload_bytes / 1048576} MB</dd>
@@ -1355,8 +1584,9 @@ export function App() {
                   <dd>{workspace.max_rows.toLocaleString("vi-VN")} dòng</dd>
                 </dl>
                 <Notice>
-                  Khóa và địa chỉ provider chỉ được quản lý trên backend.
-                  Mỗi lần gọi Gemini tiêu thụ ngân sách, kể cả lỗi hoặc thử lại. Parser cloud có quyền riêng.
+                  Khóa và địa chỉ provider chỉ được quản lý trên backend. Mỗi
+                  lần gọi Gemini tiêu thụ ngân sách, kể cả lỗi hoặc thử lại.
+                  Parser cloud có quyền riêng.
                 </Notice>
               </div>
             </section>
@@ -1373,7 +1603,7 @@ export function App() {
                   disabled={busy}
                   onClick={() => void run(changed)}
                 >
-                  Cập nhật
+                  Cập nhật trạng thái xử lý
                 </button>
               </div>
               {jobs.slice(0, 6).map((j) => (
@@ -1407,11 +1637,16 @@ export function App() {
           <footer>
             <ShieldCheck size={14} />
             Tệp gốc bất biến · Ánh xạ có phê duyệt · Dữ liệu có nguồn gốc
-            <span>Data Foundation</span>
+            <span>Kết quả có kiểm chứng</span>
           </footer>
         </main>
       </div>
-      <Modal title="Tạo dự án" open={projectOpen} onOpenChange={setProjectOpen}>
+      <Modal
+        title="Tạo dự án"
+        open={projectOpen}
+        onOpenChange={setProjectOpen}
+        returnFocus={modalFocus}
+      >
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -1457,7 +1692,7 @@ export function App() {
             </button>
             <button
               className="button primary"
-              disabled={busy || !newName.trim() || !newScope.trim()}
+              disabled={busy || !canEdit || !newName.trim() || !newScope.trim()}
             >
               {busy ? <Spinner /> : "Tạo dự án"}
             </button>
@@ -1465,6 +1700,7 @@ export function App() {
         </form>
       </Modal>
       <Modal
+        returnFocus={modalFocus}
         title="Tải nguồn dữ liệu"
         open={uploadOpen}
         onOpenChange={setUploadOpen}
@@ -1530,8 +1766,11 @@ export function App() {
           <details>
             <summary>Tùy chọn đọc nâng cao</summary>
             <label className="check-label">
-              <input type="checkbox" checked={requestAiMapping}
-                onChange={(event) => setRequestAiMapping(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={requestAiMapping}
+                onChange={(event) => setRequestAiMapping(event.target.checked)}
+              />
               Dùng AI đề xuất ánh xạ trong hạn mức
             </label>
             <div className="form-grid">
@@ -1585,7 +1824,7 @@ export function App() {
             </button>
             <button
               className="button primary"
-              disabled={busy || files.length === 0}
+              disabled={busy || !canEdit || files.length === 0}
             >
               {busy ? (
                 <Spinner />
@@ -1652,44 +1891,45 @@ export function App() {
   );
 }
 
-function Stat({
-  icon,
-  value,
-  label,
-}: {
-  icon: React.ReactNode;
-  value: number;
-  label: string;
-}) {
-  return (
-    <article className="stat-card">
-      <span>{icon}</span>
-      <strong>{value}</strong>
-      <p>{label}</p>
-    </article>
-  );
-}
 function DocumentPreview({ documents }: { documents: DocumentArtifact[] }) {
   return documents.map((doc) => (
     <article key={doc.artifact.id}>
       <h3>{doc.source_file.filename}</h3>
       {doc.extraction.pages.map((page) => {
-        const tables = page.items.filter((item) => item.type === "table" &&
-          Array.isArray(item.rows) && item.rows.every((row) => Array.isArray(row) &&
-            row.every((cell) => typeof cell === "string")));
+        const tables = page.items.filter(
+          (item) =>
+            item.type === "table" &&
+            Array.isArray(item.rows) &&
+            item.rows.every(
+              (row) =>
+                Array.isArray(row) &&
+                row.every((cell) => typeof cell === "string"),
+            ),
+        );
         return (
           <section key={page.page_number}>
             <h4>Trang {page.page_number}</h4>
             {tables.map((table, index) => {
               const rows = table.rows as string[][];
-              return <div className="table-scroll" key={index}>
-                <table className="document-table"><tbody>
-                  {rows.map((row, ri) => <tr key={ri}>
-                    {row.map((value, ci) => ri === 0
-                      ? <th key={ci}>{value}</th> : <td key={ci}>{value}</td>)}
-                  </tr>)}
-                </tbody></table>
-              </div>;
+              return (
+                <div className="table-scroll" key={index}>
+                  <table className="document-table">
+                    <tbody>
+                      {rows.map((row, ri) => (
+                        <tr key={ri}>
+                          {row.map((value, ci) =>
+                            ri === 0 ? (
+                              <th key={ci}>{value}</th>
+                            ) : (
+                              <td key={ci}>{value}</td>
+                            ),
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
             })}
             <details>
               <summary>Nội dung trích xuất nguyên gốc</summary>
@@ -1700,36 +1940,4 @@ function DocumentPreview({ documents }: { documents: DocumentArtifact[] }) {
       })}
     </article>
   ));
-}
-
-function DatasetList({
-  items,
-  onSelect,
-  selected,
-}: {
-  items: Dataset[];
-  onSelect: (dataset: Dataset) => void;
-  selected?: string;
-}) {
-  return (
-    <div className="dataset-list">
-      {items.map((d) => (
-        <button
-          className={`dataset-item ${selected === d.id ? "dataset-selected" : ""}`}
-          key={d.id}
-          onClick={() => onSelect(d)}
-        >
-          <span className="file-type">
-            <FileSpreadsheet size={22} />
-          </span>
-          <span className="dataset-name">
-            <strong>{d.name}</strong>
-            <small>{new Date(d.created_at).toLocaleString("vi-VN")}</small>
-          </span>
-          <Badge status={d.status} />
-          <ChevronRight size={18} />
-        </button>
-      ))}
-    </div>
-  );
 }

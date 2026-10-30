@@ -60,11 +60,18 @@ class Workspace(Contract):
     policy: WorkspacePolicy
 
 
+class ProjectClassification(StrEnum):
+    WORK = "WORK"
+    TEST = "TEST"
+    UNKNOWN = "UNKNOWN"
+
+
 class Project(Contract):
     id: str
     workspace_id: str
     name: str
     business_scope: str
+    classification: ProjectClassification = ProjectClassification.UNKNOWN
 
 
 class Dataset(Contract):

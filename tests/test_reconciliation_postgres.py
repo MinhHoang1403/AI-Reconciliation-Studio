@@ -217,6 +217,10 @@ def test_T20_T34_T35_rule_approval_snapshot_exports_and_workflow(pg):  # noqa: F
     execute_reconciliation(*claimed, factory, worker._fence, worker._finish)
     run = client.get(f"/api/runs/{rid}").json()
     assert run["status"] == "VERIFIED", run
+    preparation = client.get(f"/api/projects/{pid}/summary").json()
+    assert preparation["latest_verified_run_id"] == rid
+    assert preparation["ready_canonical_count"] == 2
+    assert preparation["preparation_action"]["kind"] == "RECONCILE"
     snapshot = client.get(f"/api/runs/{rid}/metrics").json()
     assert (
         client.get(

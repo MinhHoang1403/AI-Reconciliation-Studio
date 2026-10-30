@@ -14,10 +14,10 @@ from fastapi import Depends, FastAPI, File, Form, Header, Query, Request, Respon
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import Field
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
-from studio.access import Actor, authenticate, bootstrap_session, require_editor
+from studio.access import Actor, authenticate, bootstrap_session, require_editor, require_owner
 from studio.config import settings
 from studio.contracts import (
     ApprovedTransformRule,
@@ -29,6 +29,8 @@ from studio.contracts import (
     MappingRevision,
     MappingStatus,
     ParsedTableArtifact,
+    Project,
+    ProjectClassification,
     SchemaDefinition,
     SchemaProposal,
     WorkspacePolicy,
@@ -74,6 +76,8 @@ from studio.repository import (
     gemini_request_counts,
     get_scoped,
     mapping_contract,
+    preparation_overview,
+    project_classification_expression,
     project_for_table,
 )
 from studio.schema_mapping import compile_transform_plan, validate_mapping
@@ -183,15 +187,40 @@ def session(request: Request, response: Response, db: DB) -> dict[str, str]:
 class ProjectInput(Contract):
     name: str = Field(min_length=1, max_length=200)
     business_scope: str = Field(min_length=1, max_length=200)
+    classification: ProjectClassification = ProjectClassification.WORK
+
+
+class ProjectClassificationInput(Contract):
+    classification: ProjectClassification
+    expected_classification: ProjectClassification
 
 
 @app.get("/api/projects", response_model=ProjectList)
 def projects(
-    db: DB, actor: CurrentActor, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100)
+    db: DB,
+    actor: CurrentActor,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    search: str = Query("", max_length=200),
+    include_test: bool = True,
 ) -> dict[str, Any]:
-    query = select(ProjectRow).where(ProjectRow.workspace_id == actor.workspace_id)
+    """Bounded, workspace-scoped literal search; stable tie ordering across pages."""
+    classification = project_classification_expression().label("classification")
+    query = select(ProjectRow, classification).where(ProjectRow.workspace_id == actor.workspace_id)
+    if not include_test:
+        query = query.where(classification != ProjectClassification.TEST)
+    if search.strip():
+        literal = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(
+            or_(
+                ProjectRow.name.ilike(f"%{literal}%", escape="\\"),
+                ProjectRow.business_scope.ilike(f"%{literal}%", escape="\\"),
+            )
+        )
     total = db.scalar(select(func.count()).select_from(query.subquery()))
-    items = db.scalars(query.order_by(ProjectRow.created_at.desc()).offset(offset).limit(limit))
+    items = db.execute(
+        query.order_by(ProjectRow.created_at.desc(), ProjectRow.id).offset(offset).limit(limit)
+    )
     return {
         "items": [
             {
@@ -199,16 +228,69 @@ def projects(
                 "workspace_id": p.workspace_id,
                 "name": p.name,
                 "business_scope": p.business_scope,
+                "classification": category,
             }
-            for p in items
+            for p, category in items
         ],
         "total": total,
     }
 
 
+@app.get("/api/projects/{project_id}", response_model=Project)
+def project_detail(project_id: str, db: DB, actor: CurrentActor) -> Project:
+    """Restore a saved ID without scanning pages or changing workspace authorization."""
+    row = get_scoped(db, ProjectRow, project_id, actor)
+    return Project(
+        id=row.id,
+        workspace_id=row.workspace_id,
+        name=row.name,
+        business_scope=row.business_scope,
+        classification=db.scalar(
+            select(project_classification_expression()).where(ProjectRow.id == row.id)
+        ),
+    )
+
+
+@app.patch("/api/projects/{project_id}/classification", response_model=Project)
+def classify_project(
+    project_id: str, body: ProjectClassificationInput, db: DB, actor: CurrentActor
+) -> Project:
+    """Owner-only reversible metadata, serialized per project; no downstream invalidation.
+
+    A stale expected classification returns 409 rather than overwriting another
+    owner's decision. A no-op adds no event. Audit stores actor/time/project and
+    exact destination; earlier events retain the complete classification history.
+    """
+    require_owner(actor, db, project_id)
+    get_scoped(db, ProjectRow, project_id, actor)
+    db.scalar(select(ProjectRow).where(ProjectRow.id == project_id).with_for_update())
+    current = db.scalar(
+        select(project_classification_expression()).where(ProjectRow.id == project_id)
+    )
+    if current != body.expected_classification:
+        raise DomainError(
+            "PROJECT_CLASSIFICATION_CONFLICT",
+            "Phân loại đã thay đổi. Đóng và mở lại danh sách để kiểm tra trước khi xác nhận.",
+            409,
+        )
+    if current != body.classification:
+        db.add(
+            AuditRow(
+                workspace_id=actor.workspace_id,
+                actor_id=actor.id,
+                action=f"PROJECT_CLASSIFIED_{body.classification}",
+                resource_id=project_id,
+            )
+        )
+        db.commit()
+    return project_detail(project_id, db, actor)
+
+
 @app.post("/api/projects", status_code=201)
 def create_project(body: ProjectInput, db: DB, actor: CurrentActor) -> dict[str, str]:
     require_editor(actor, db)
+    if body.classification != ProjectClassification.WORK:
+        require_owner(actor, db, "workspace")
     row = ProjectRow(
         workspace_id=actor.workspace_id,
         name=body.name.strip(),
@@ -217,12 +299,22 @@ def create_project(body: ProjectInput, db: DB, actor: CurrentActor) -> dict[str,
     if not row.name or not row.business_scope:
         raise DomainError("PROJECT_NAME_EMPTY", "Tên dự án và phạm vi không được để trống.")
     db.add(row)
+    db.flush()
+    db.add(
+        AuditRow(
+            workspace_id=actor.workspace_id,
+            actor_id=actor.id,
+            action=f"PROJECT_CLASSIFIED_{body.classification}",
+            resource_id=row.id,
+        )
+    )
     db.commit()
     return {
         "id": row.id,
         "name": row.name,
         "business_scope": row.business_scope,
         "workspace_id": row.workspace_id,
+        "classification": body.classification,
     }
 
 
@@ -282,6 +374,7 @@ def project_summary(project_id: str, db: DB, actor: CurrentActor) -> ProjectSumm
         mapping_review_count=review_count,
         ready_canonical_count=canonical_count,
         active_job_count=job_count,
+        **preparation_overview(db, project_id, job_count),
     )
 
 
@@ -346,7 +439,9 @@ def datasets(
         "items": [
             _dataset_dto(d)
             for d in db.scalars(
-                query.order_by(DatasetRow.created_at.desc()).offset(offset).limit(limit)
+                query.order_by(DatasetRow.created_at.desc(), DatasetRow.id)
+                .offset(offset)
+                .limit(limit)
             )
         ],
         "total": db.scalar(select(func.count()).select_from(query.subquery())),

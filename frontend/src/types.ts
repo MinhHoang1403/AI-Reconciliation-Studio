@@ -9,11 +9,13 @@ export type Status =
   | "READY"
   | "PARTIAL"
   | "FAILED";
+export type ProjectClassification = "WORK" | "TEST" | "UNKNOWN";
 export interface Project {
   id: string;
   name: string;
   business_scope: string;
   workspace_id: string;
+  classification: ProjectClassification;
 }
 export interface ProjectSummary {
   dataset_count: number;
@@ -21,6 +23,23 @@ export interface ProjectSummary {
   mapping_review_count: number;
   ready_canonical_count: number;
   active_job_count: number;
+  partial_canonical_count: number;
+  stale_canonical_count: number;
+  failed_canonical_count: number;
+  preparation_action: PreparationAction | null;
+  latest_verified_run_id: string | null;
+}
+export interface PreparationAction {
+  kind:
+    | "UPLOAD"
+    | "WAIT"
+    | "REVIEW_MAPPING"
+    | "NORMALIZE"
+    | "REVIEW_DATA"
+    | "RECONCILE";
+  dataset_id: string | null;
+  table_id: string | null;
+  canonical_id: string | null;
 }
 export interface Dataset {
   id: string;
@@ -63,7 +82,11 @@ export interface DocumentArtifact {
   source_file: { id: string; filename: string; sha256: string };
   extraction: {
     verification_status: "UNVERIFIED_EXTRACTION";
-    pages: { page_number: number; markdown: string; items: Record<string, unknown>[] }[];
+    pages: {
+      page_number: number;
+      markdown: string;
+      items: Record<string, unknown>[];
+    }[];
     usage: { credits?: number | null };
   };
   warnings: string[];
@@ -203,15 +226,21 @@ export const jobKind: Record<string, string> = {
   export: "Xuất báo cáo",
 };
 export const errorText: Record<string, string> = {
-  PARSER_BUDGET_EXHAUSTED: "Hết allowance LlamaParse. Không tạo thêm job tính phí.",
-  PARSER_CREDITS_NOT_VERIFIED: "Chưa xác minh được credits LlamaParse. Tệp gốc được giữ nguyên.",
-  CLOUD_PARSING_DISABLED: "Chưa có quyền tạo job LlamaParse. Kết quả đã lưu vẫn đọc được.",
-  LLAMAPARSE_POLL_TIMEOUT: "Tài liệu chưa hoàn tất trong thời gian chờ. Không gửi lại job tính phí.",
+  PARSER_BUDGET_EXHAUSTED:
+    "Hết allowance LlamaParse. Không tạo thêm job tính phí.",
+  PARSER_CREDITS_NOT_VERIFIED:
+    "Chưa xác minh được credits LlamaParse. Tệp gốc được giữ nguyên.",
+  CLOUD_PARSING_DISABLED:
+    "Chưa có quyền tạo job LlamaParse. Kết quả đã lưu vẫn đọc được.",
+  LLAMAPARSE_POLL_TIMEOUT:
+    "Tài liệu chưa hoàn tất trong thời gian chờ. Không gửi lại job tính phí.",
   GEMINI_KEY_MISSING: "Chưa cấu hình khóa Gemini. Có thể dùng ánh xạ thủ công.",
-  GEMINI_HTTP_ERROR: "Gemini từ chối yêu cầu. Cần kiểm tra khóa, model hoặc quyền truy cập.",
+  GEMINI_HTTP_ERROR:
+    "Gemini từ chối yêu cầu. Cần kiểm tra khóa, model hoặc quyền truy cập.",
   GEMINI_UNAVAILABLE: "Gemini chưa phản hồi. Có thể dùng ánh xạ thủ công.",
   CLOUD_AI_DISABLED: "Workspace chưa được cấp quyền AI cloud.",
-  CLOUD_BUDGET_EXHAUSTED: "Đã hết ngân sách request Gemini. Có thể duyệt ánh xạ thủ công.",
+  CLOUD_BUDGET_EXHAUSTED:
+    "Đã hết ngân sách request Gemini. Có thể duyệt ánh xạ thủ công.",
   QWEN_ACCESS_DENIED:
     "Qwen từ chối IP truy cập. Bạn vẫn có thể xác nhận ánh xạ thủ công.",
   QWEN_UNAVAILABLE: "Qwen chưa phản hồi. Bạn vẫn có thể chỉnh ánh xạ thủ công.",

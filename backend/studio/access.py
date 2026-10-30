@@ -188,6 +188,21 @@ def require_editor(actor: Actor, db: Session, resource_id: str = "workspace") ->
         raise DomainError("ROLE_FORBIDDEN", "Chỉ người có quyền chỉnh sửa mới được thực hiện.", 403)
 
 
+def require_owner(actor: Actor, db: Session, resource_id: str) -> None:
+    """Project classification is a workspace-owner decision, independently of visibility."""
+    if actor.role != "owner":
+        db.add(
+            AuditRow(
+                workspace_id=actor.workspace_id,
+                actor_id=actor.id,
+                action="ACCESS_DENIED",
+                resource_id=resource_id,
+            )
+        )
+        db.commit()
+        raise DomainError("ROLE_FORBIDDEN", "Chỉ chủ không gian mới được phân loại dự án.", 403)
+
+
 def seed_demo(db: Session) -> None:
     if db.get(WorkspaceRow, "demo") is None:
         db.add(

@@ -1,6 +1,6 @@
 """Public REST envelopes; flexible table cells are bounded JSON values, not provider output."""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, JsonValue
 
@@ -99,9 +99,21 @@ class JobAccepted(Contract):
     status: JobStatus
 
 
+class PreparationAction(Contract):
+    kind: Literal["UPLOAD", "WAIT", "REVIEW_MAPPING", "NORMALIZE", "REVIEW_DATA", "RECONCILE"]
+    dataset_id: str | None = None
+    table_id: str | None = None
+    canonical_id: str | None = None
+
+
 class ProjectSummary(Contract):
     dataset_count: int
     table_count: int
     mapping_review_count: int
     ready_canonical_count: int
     active_job_count: int
+    partial_canonical_count: int = 0
+    stale_canonical_count: int = 0
+    failed_canonical_count: int = 0
+    preparation_action: PreparationAction | None = None
+    latest_verified_run_id: str | None = None

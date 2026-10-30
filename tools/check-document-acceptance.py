@@ -96,6 +96,7 @@ def main() -> None:
                 json={
                     "name": "Kiểm tra tài liệu tổng hợp",
                     "business_scope": "synthetic-document-acceptance",
+                    "classification": "TEST",
                 },
             )
             response.raise_for_status()

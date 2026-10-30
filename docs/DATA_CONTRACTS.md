@@ -21,7 +21,12 @@ Giai đoạn sau phải dùng các refs và API này, không viết parser/mappi
 
 ## REST đang hỗ trợ
 
+Project purpose là metadata hiển thị `WORK/TEST/UNKNOWN`, mặc định UNKNOWN cho project lịch sử chưa có quyết định. Dùng audit append-only `PROJECT_CLASSIFIED_WORK/TEST/UNKNOWN` theo workspace/resource ID; sự kiện mới nhất theo created_at/id là phân loại hiện hành. Không cần migration/cột mới, không suy ra nhóm từ tên. `POST /api/projects` mặc định WORK, nhận classification explicit; tạo TEST/UNKNOWN cần owner. `PATCH /api/projects/{id}/classification` chỉ owner, bắt buộc classification và expected_classification; khóa project/so trạng thái cũ, conflict409, no-op không thêm audit. Không invalidate nguồn/mapping/run hoặc đổi quyền truy cập. `GET /api/projects?include_test=false` lọc TEST trước search/offset/limit và count; UNKNOWN/WORK vẫn hiện. API giữ include_test=true khi bỏ tham số để tương thích clients cũ; UI gửi false mặc định. GET theo ID tiếp tục đọc TEST theo quyền, độc lập bộ lọc.
+
+`GET /api/datasets` sắp xếp created_at DESC, id ASC ổn định. Dashboard dùng riêng offset0/limit5, độc lập offset25 của danh sách Dữ liệu; cùng scoped API, không endpoint hoặc business state mới. Loading/error riêng, abort khi đổi project/page; refresh/upload/job completion cập nhật summary rồi danh sách gần đây.
+
 - `GET/POST /api/projects`, `GET /api/projects/{id}/summary`.
+- `GET /api/projects?search=...&offset=0&limit=20` tìm literal theo tên/phạm vi, không phân biệt hoa/thường, giữ Unicode và workspace scope; max search200/limit100, thứ tự created_at DESC/id ổn định. `GET /api/projects/{id}` khôi phục saved project ngoài trang đầu; missing/khác workspace cùng404, không lộ metadata. Không tải toàn bộ danh sách vào frontend.
 - `GET /api/datasets?project_id=...&offset=0&limit=25`, `POST /api/datasets/uploads` (multipart nhiều tệp).
 - `GET /api/datasets/{id}`, `/tables`, `/artifacts`.
 - `GET /api/tables/{id}/profile`, `/mappings`, `/preview`.
@@ -36,6 +41,8 @@ Giai đoạn sau phải dùng các refs và API này, không viết parser/mappi
 Preview dùng `kind=raw|parsed|canonical|errors`, `offset`, `limit` tối đa 100 và `search` literal. Canonical/errors bắt buộc `canonical_id` cụ thể. `raw` là preview lexical values đọc từ raw artifact, không phải tải raw bytes ra browser. Tìm kiếm/phân trang thực hiện trên backend; tiền trả chuỗi Decimal chính xác.
 
 Dashboard đếm từ `/projects/{id}/summary`, không tự tính KPI hoặc suy đoán kết luận nghiệp vụ. Dataset list có phân trang 25 nguồn/trang. Metadata lists nhỏ như projects/mappings có giới hạn API theo phạm vi hiện tại.
+
+Quality hardening bổ sung additive `partial_canonical_count`, `stale_canonical_count`, `failed_canonical_count` (đếm artifact; stale tách riêng khỏi chất lượng hiện hành), `preparation_action` và `latest_verified_run_id` vào summary; fields cũ giữ nguyên. Mapping review = bảng không active mapping, job active chỉ QUEUED/RUNNING/RETRYABLE_FAILURE. Action chỉ điều hướng/refresh, không cấp quyền mutate: WAIT → failed dataset → REVIEW_MAPPING → NORMALIZE khi không current canonical → REVIEW_DATA cho PARTIAL/FAILED → RECONCILE khi có ít nhất hai READY → UPLOAD. Cùng ưu tiên chọn theo dataset created_at/id và table id; trả một target có dataset/table/canonical IDs scoped kể cả ngoài trang datasets hiện tại. READY không chứng minh hai nguồn tương thích metric/grain; approval/readiness/verification gates không đổi. Latest verified run chỉ gồm VERIFIED/PARTIAL_VERIFIED đúng project, dùng cho link lịch sử.
 
 ## Canonical record
 
