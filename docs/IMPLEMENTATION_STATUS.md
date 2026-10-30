@@ -1,8 +1,8 @@
 # Trạng thái triển khai và nghiệm thu
 
-**Hiện tại:** Hoàn tất triển khai candidate Giai đoạn 3 trong phạm vi demo local ngày **30/10/2026**, bằng chứng tại mục P: **176 backend / 54 E2E PASS**, persistence, worker recovery và backup/restore PASS. Runtime source `9802545`; Assistant facts chạy Backend xác định, provider transport PASS MOCK, không gọi live mới. Main giữ UX đã nghiệm thu, chưa merge Assistant. Các mục A–O giữ nguyên lịch sử.
+**Hiện tại — 30/10/2026:** Nghiệm thu mới tại **mục R**: **191 backend / 59 E2E PASS**, Assistant **PASS LIVE**, Planner `reconciliation-planning-2` **FAIL LIVE** (`AI_INVALID_JSON`). **CHƯA ĐẠT GATE RELEASE**: merge main, dọn feature branch và Docker release/image cleanup mới **BLOCKED** theo prompt. Gemini **9/10**, còn1; không retry hoặc tăng/reset ngân sách. Runtime vẫn source `446d031`, bốn dịch vụ healthy, dữ liệu/persistence/backup đã kiểm tra lại. Các mục A–Q là lịch sử, không thay cho kết quả mới.
 
-Quality Hardening + UX Refinement trước đây nằm trên `codex/interface-quality`, từ main `0b9421e`. Prompt hợp nhất UX, Docker release và Giai đoạn 3 là ủy quyền mới; không thay đổi kết luận lịch sử ở mục N. Assistant chỉ thực hiện trên `codex/assistant-automation`, không tự merge vào main.
+Bối cảnh lịch sử: Quality Hardening + UX Refinement trước đây nằm trên `codex/interface-quality`, từ main `0b9421e`. Các nhiệm vụ P/Q triển khai Assistant trên `codex/assistant-automation` và dừng trước merge. Mục R ghi ủy quyền hợp nhất mới cùng gate live đang BLOCKED; không thay đổi kết luận lịch sử ở mục N.
 
 ## Final Acceptance — Giai đoạn 1 (lịch sử)
 
@@ -918,3 +918,110 @@ Main local/origin giữ **`eefdd4441d7f7ef52b08e7d35d3c68894de191dd`**; không m
 Giới hạn giữ công khai: intents Assistant/claim allowlist có giới hạn, không chatbot suy luận tự do; duyệt history theo trang, chưa server search; evidence caps và catalogue/template caps hiện có; native mobile keyboard/screen reader/full WCAG, production load/HA, representative model precision/recall, retention tự động và off-host DR chưa được xác minh. Bản nháp lưu trong tab, đóng tab có thể mất; đây không phải backup hội thoại. Các giới hạn này không được gắn PASS live hoặc giải quyết bằng cloud/framework ngoài phạm vi.
 
 **DỪNG TOÀN BỘ CÔNG VIỆC SAU BÀN GIAO. Chờ chủ dự án review và giao nhiệm vụ riêng; không tự merge hoặc bắt đầu giai đoạn tiếp theo.**
+
+## R. Acceptance, repository consolidation và Docker release — 30/10/2026
+
+### A. Nghiệm thu trải nghiệm — PASS LOCAL / PASS MOCK theo từng trường hợp
+
+Ủy quyền mới yêu cầu nghiệm thu rồi hợp nhất `codex/assistant-automation`, build main và dọn images an toàn; thay thế điểm dừng không merge của nhiệm vụ Q. Tuy nhiên prompt mới cũng bắt buộc: **nếu gate bắt buộc thất bại thì không được vượt qua bằng cách hạ tiêu chí**. Planner FAIL LIVE ở mục B nên chưa được thực hiện các bước merge/release phụ thuộc. Vẫn hoàn thành các kiểm tra, sửa lỗi công cụ, cleanup cache và bảo toàn dữ liệu độc lập. Không đổi kế hoạch ba giai đoạn, kiến trúc, công thức, matcher/verifier hoặc validators.
+
+Baseline thật: Git sạch trên feature `2971605c3cf5f06b789de35ea8f5390278e964e7`; main/local/origin `eefdd4441d7f7ef52b08e7d35d3c68894de191dd`; app runtime `446d0312048cb0fe70052944e6972d28cf7bf773`. Đã đọc Rules/AGENTS/kế hoạch/hợp đồng và báo cáo. Giữ một checkout, một Compose, hai volumes hiện có; không tìm keys ở dự án khác.
+
+- **PASS LOCAL:** Tổng quan, Dữ liệu, Đối soát, Ngoại lệ, Báo cáo, Trợ lý AI dạng trang và Cài đặt ở390/768/1366/1440/1920:35captures, không uncaught pageerror hoặc tràn viewport ngang. Đã xem ảnh thực tế Assistant mobile, Reports desktop, Exceptions tablet; mapping/PARTIAL và composer390×600 trong bounds.
+- **PASS MOCK:**12captures empty/loading/error/viewer/permission-denied/long-content ở390/1440, intercept GET có scope; không dùng làm bằng chứng quyền server. Quyền thật, CSRF/isolation/viewer denial có PG/E2E.
+- **PASS LOCAL:** Hành trình project mới → CSV/XLSX → profile/mapping approval → normalize → manual rule review/approve → verified run → exception/source evidence → Assistant → export CSV/XLSX → reload. Oracle literal12.75−10.00=2.75VND; independent readback còn kiểm identity/membership/population/cases của Shopee/TikTok/delivery. Không lấy Matcher hoặc LLM làm oracle.
+- Page/history/back-forward/drafts, scope switching, stale responses, request identity/idempotency, permissions/network failures và saved run/case có trong59E2E. Không phát hiện UX bug mới cần sửa ứng dụng. Keyboard/focus/contrast checks có trong suite; native mobile keyboard/screen reader/full WCAG vẫn **NOT VERIFIED**.
+
+Ảnh mới `runtime/screenshots/consolidation-*`; receipts `runtime/consolidation-ux-visual.json`, `consolidation-ux-states.json`, `product-journey.json` và logs tương ứng, ngoài Git. Lượt E2E ban đầu sau gián đoạn gặp403 LOCAL_DEMO_NOT_VERIFIED, không ghi PASS; xác minh published loopback bằng verify-local rồi mới replay. Không tắt auth hoặc sửa timeout.
+
+### B. Gemini LIVE — Assistant PASS, Planner FAIL
+
+Preflight PostgreSQL xác nhận key đã cấu hình trong chính dự án, provider GEMINI/model `gemini-3.5-flash-lite`, workspace CLOUD_ALLOWED và global/workspace ceiling10. Baseline durable Gemini7, Assistant0, Planner1, LlamaParse2; không active jobs. Hai request chỉ dùng dữ liệu tổng hợp có canonical/VerifiedRun thật.
+
+| Task / revision | Kết quả và validator | HTTP attempts / latency | Usage provider trả về |
+|---|---|---|---|
+| `answer_verified_question` / `assistant-grounded-1` | **PASS LIVE**: job SUCCEEDED; model chọn comparison/comparison_0 của đúng FactSet/run/snapshot; Backend render12.75/10.00/2.75VND, citations về nhóm và hai dòng nguồn; không bịa nguyên nhân, tiền hoặc thực thi workflow | **1 / 1.564ms**, không retry | Input3.454, output155; thinking/cache không có receipt, cost null |
+| `propose_reconciliation_contract` / `reconciliation-planning-2` | **FAIL LIVE**: response JSON đọc được, status NEEDS_REVIEW, plan=null, có suggestions nhưng Pydantic từ chối `AI_INVALID_JSON`; job BLOCKED, không tạo proposal/contract/run | **1 / 2.168ms**, không retry | Input8.163, output436, total8.599; không suy chi phí tiền tệ |
+
+Assistant job `179865c6-3e40-472b-8370-8dd830188a1e`, conversation `b07e67ba-0e5c-56f6-b093-9f05baa76e5d`; Planner job `169b2fd0-5c7f-4c25-9b25-8eee1f3497a7`. Receipt tổng hợp tại `runtime/consolidation-live.json` giữ IDs, trace/usage, input đã scope và response hash, không vào Git. Trace Planner chỉ giữ mã lỗi, không giữ raw response hoặc ValidationError theo trường; **nguyên nhân tại trường cụ thể NOT VERIFIED**, không suy đoán rồi sửa prompt/output. Schema gate FAIL nên semantic validation/oracle của Planner **chưa được nghiệm thu live**. Các mock tests valid suggestions/giả fields/evidence/basis/cardinality/đổi scope vẫn PASS; không thay thế kết quả live.
+
+Harness dùng API auth/queue và production worker handlers/Gateway/reservations/validators hiện có trong backend. Dừng worker thường tạm để tránh claim race; bật Assistant cloud/budget1 chỉ trong tiến trình kiểm thử, giới hạn transport max_attempts=1 và chặn HTTP thứ hai cho mỗi job; không sửa output/validator, `.env` Assistant hoặc global/workspace ceiling. Finally bật lại worker; không tự resend khi lỗi. Chỉ đúng **2/2 attempts mới**, hết allowance của nhiệm vụ.
+
+Durable sau thử và sau restart/backup: **Gemini9/10, còn1; Assistant1; Planner2; LlamaParse2**. Planner task lifetime cap2 cũng đã đầy; không tự nới để kiểm lại. Assistant OFF/budget0. Workspace parser đã OFF từ trước, preflight thấy env parsing vẫn true nên đã đưa `ALLOW_CLOUD_PARSING=false` và recreate đúng backend/worker; giữ nguyên key/credits/allowance/history. Không gọi parser/Qwen/Argon. Qwen **DEFERRED do403 lịch sử**; LlamaParse live mới **NOT VERIFIED theo chỉ định không gọi**, adapter/cached reads kiểm local/mock. Không ghi historical live thành request mới.
+
+### C. Repository audit và cleanup — PASS phần an toàn
+
+Inventory gồm tracked/untracked/ignored: **19.161 files / 3.207 directories / 792.876.283bytes** tại mốc trước kiểm tra, gồm cả Git, dependencies và runtime. Từng path có type/bytes/Git classification/role/KEEP hoặc DELETE/evidence trong `runtime/consolidation-repository-before.json`;129tracked files có SHA/import/reference/role và quyết định trong `consolidation-source-audit.json`. Đây là kiểm toán cấu trúc/static/contracts kết hợp tests, không chứng minh mọi dynamic path là dead code.
+
+Đã rà root, `.vscode`, backend/contracts/migrations/tests, frontend/components/E2E, tools/docs, config/lockfiles, Docker và local cache/build/logs. `.agents` và `.github` không tồn tại, không tạo thay. Ruff/TypeScript noUnused/ESLint kiểm unused imports/locals; imports/references/scripts và dependency use được đối chiếu. Hai constructor có body trùng thuộc Qwen/Gemini adapters có vai trò khác nhau: KEEP, không tạo abstraction mới. Không chứng minh source/component/dependency nào thừa để xóa an toàn. Giữ Qwen adapter, migrations, contracts, Rules/AGENTS/PROJECT_PLAN và research; không chỉnh kế hoạch để khớp code.
+
+**Chỉ xóa73generated ignored cache files, 28.799.351bytes**. Trước mỗi xóa kiểm resolved absolute path nằm trong workspace, không symlink, không Git tracked; loại trừ runtime/.git/.venv/node_modules/.vscode. Danh sách đầy đủ từng file/hash/bytes/lý do ở `runtime/consolidation-cache-cleanup.json`:
+
+| Thư mục cache đã dọn | Files |
+|---|---:|
+| `.mypy_cache` |18|
+| `.pytest_cache` |5|
+| `.ruff_cache` |7|
+| `backend/studio/__pycache__` |23|
+| `backend/studio/contracts/__pycache__` |4|
+| `tests/__pycache__` |16|
+
+Ngay sau cleanup: **19.164 files / 3.194 directories / 774.138.120bytes**. Mốc inventory sau tests/backup: **19.702 files / 3.904 directories / 855.915.781bytes**. Gross counts/bytes gồm evidence và backup mới, Git/tool caches cũng tái tạo khi kiểm tra; không suy73file đã xóa từ phép trừ gross counts hoặc coi tăng footprint là xóa thất bại. Không xóa cache lặp để làm đẹp số cuối.
+
+KEEP: `.env`, `.vscode`, `.git`, node_modules/.venv, dist dùng so served assets, mọi runtime logs/screenshots/exports/conversations/raw/Parquet/backups và unknown ownership. Không xóa dữ liệu tổng hợp cũ. Không gộp/xóa tài liệu có vai trò hoặc lịch sử riêng; đồng bộ các câu current-status lỗi thời về live/quota và tập trung kết luận mới ở mục R, không tạo Markdown report khác.
+
+Lỗi công cụ thật: `tools/check-reconciliation.py --planner-live` dùng payload cũ `{project_id,plan}` trong khi API yêu cầu `request:PlanningRequest`. Tái hiện offline422 missing request/extra plan → regression FAIL trước sửa → chuyển qua typed PlanningRequest.from_plan, giữ facts đã xác nhận và không gửi join_keys/comparison rule → regression PASS. Sửa harness copy helper vào backend/tmp để PG suite kiểm đúng source. Khi đọc historical cached proposal, CLI nay ghi **PASS CACHED**, không PASS LIVE mới. Đây là sửa công cụ riêng, **không chữa được Planner FAIL LIVE**, vì live harness đã dùng payload đúng.
+
+### D. GitHub consolidation — feature đã push; merge BLOCKED
+
+Remote đã fetch/xác minh `https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git`. Chỉ có main và codex/assistant-automation ở local/origin; main là ancestor của feature. Đã kiểm diff/scope/ancestry/history, source/public-content/known credentials/Markdown links. Feature trước nhiệm vụ có12commits nối tiếp main; giữ nguyên lịch sử, không merge theo tên branch.
+
+Sửa công cụ/tests đã commit/push **`e8e9bcd3aeedfd329d2fec07a669cd17a5b89d25`**. Tài liệu nghiệm thu commit riêng sau kiểm chứng; hash bàn giao/local-origin verification ghi trong trả lời cuối, tránh hash tự tham chiếu. Không stage `.env`, runtime, backup hoặc binary artifacts.
+
+**Main giữ `eefdd4441d7f7ef52b08e7d35d3c68894de191dd`**; không merge commit, không push main, không xóa feature còn chưa tích hợp. Gate live thất bại nên regression trên merge result/main mới **BLOCKED**, không giả kết quả. Hai annotated tags cũ giữ đúng ref objects `37209cb21f8f786dc4b23d316f9e0772170a6122` và `2f3cb8210568e753f85e110cbecaddecd931f81e`; không di chuyển/xóa/tạo tag nghiệm thu mới. Không force-push/reset/worktree/clone.
+
+### E. Docker, persistence và backup — PASS LOCAL; release/cleanup mới BLOCKED
+
+Một Compose `ai-reconciliation-studio`,4/4running/healthy, frontend127.0.0.1:18180; giữ network và hai volumes `ai-reconciliation-studio_postgres_data`, `ai-reconciliation-studio_artifacts`, migration `create_conversations`. Không rebuild PostgreSQL. Runtime vẫn **446d031**, không nhận feature docs/tools commit là image revision. OCI official source/revision,40tracked backend source hashes trong cả backend/worker và6frontend served assets khớp; receipt `runtime/consolidation-runtime.json`.
+
+| Thành phần | Image ID còn chạy |
+|---|---|
+| Backend/Worker |`sha256:bd55a66b87642c2978370de5c4013120ded2b6fa6fcafab47ce2dacfd31bec67`|
+| Frontend |`sha256:929002794a6d1937689f3560adac2fc7caf7323c2ce0b5b908ab8227f4fc6e6a`|
+| PostgreSQL giữ nguyên |`sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7`|
+
+**PASS LOCAL:** persistence helper kiểm3/3metadata/artifact comparisons qua restart, force-recreate toàn bộ và frontend-only;3/3demo proof fail-closed trước verify-local. Snapshot sau tests bằng chính xác sau restart và backup. Mọi ID/hash baseline vẫn còn nguyên; chỉ append fixtures/jobs/audits đã nêu. Sau restart mở lại hai scoped conversations/evidence/selected case/source cells và riêng Gemini live answer,0browser API mutations; quota giữ9/10.
+
+Snapshot mới: **37projects,95datasets/versions,93tables,190schemas/mappings,90canonical,415jobs/422attempts,382audits,63plans,44contracts/runs,172cases,74exports,95conversations/192messages,114traces**. Published files **370foundation+44run+74exports=488**; baseline420files đều giữ SHA. Ba projects mới là hai hành trình UI và một worker drill; không xóa34projects trước. Chỉ còn1GEMINI PlanRow lịch sử, Planner lỗi không thêm proposal.
+
+Backup mới **`backup_26fda69452d742cb8dcad9a50b62c918`**, **14:41:48 +07 ngày30/10/2026**:23bảng/3.978metadata rows (gồm798sessions),488files; metadata SHA256 **`96eb7c4e0285e4defa414c2c3e0dfeaa0bf7210bffff767da6bf169e118594e2`**. Backup1,768s, restore/validation2,477s; checksum corruption/path traversal bị chặn, public metadata không đổi. Restore UUID schema/copy drill đã dọn,0restore schemas còn lại. Copy cả backup ra host runtime/backups và kiểm metadata/từngfile SHA PASS. Off-host encrypted DR/restore đè production vẫn **NOT VERIFIED**.
+
+Inventory host trước/sau:55images/31containers, gồm27containers ngoài project ở baseline. Giữ đủ8project image references: candidate446d031, candidate9802545, accepted-main5f358c4 và rollbacke025094 cho backend/frontend. Cặp rollback accepted-main đã có drill tương thích ở mục Q; hai IDs được kiểm lại còn nguyên: backend `7a00801051416c143e0d0199919bb9a43fa319a01fd01b1a8010b1d5d8781e29`, frontend `1049ba4457ebad8971d0be29cb523b7429714fb2c3dc1abcd28a9ef1a40ab215`. **Không có rollback drill mới hoặc main release mới trong mục R**; không lấy healthcheck thay kết quả release.
+
+**0image deletions/0build-cache prune/0volume deletions**: gate main release chưa đạt nên chưa đủ điều kiện dọn images cũ. Không chạy global prune hoặc tác động models/caches của ứng dụng khác. Images virtual total39,39GB cả hai mốc không đồng nghĩa disk đã thu hồi; free C đo137.583.370.240→137.030.660.096bytes, có backup/evidence và hoạt động khác trên host, không quy thành dung lượng cache thực thu hồi.
+
+Inventory cuối có23/27containers ngoài project khớp;4containers có khác biệt ID/image/mount inventory và2images ngoài project biến mất trong khoảng quan sát. Nhiệm vụ chỉ chạy mutation Compose của project này, không sửa các tài nguyên ngoài; nguyên nhân hoạt động ngoài và khẳng định toàn host bất biến **NOT VERIFIED**. Không tự sửa/xóa chúng để khớp baseline. Chi tiết local ở `consolidation-docker-before.json` / `consolidation-final-inventory.json`, không public tên/config dự án khác.
+
+### F. Chất lượng — số liệu mới, không cộng replays
+
+| Kiểm tra thực thi | Kết quả |
+|---|---|
+| Backend/PostgreSQL trước cleanup |190PASS,0FAIL/SKIP,43,58s|
+| Backend/PostgreSQL sau sửa/cleanup |**191PASS,0FAIL/SKIP,55,45s**;153offline+38PG, tăng1regression so baseline190|
+| Playwright trước/sau cleanup |**59PASS mỗi lượt**,0FAIL/SKIP/flaky;192,04s trước/192,85s sau;9foundation+25interface+7reconciliation+17Assistant+1journey|
+| T01–T40/golden/property/migrations/security/fencing |PASS trong suite; giữ contract/oracle/monetary invariants; không cộng thêm counts|
+| Ruff / mypy33modules / TypeScript / ESLint / production build |PASS; không dependency mới|
+| Known credential/history/public source/Markdown paths / diff check |PASS,129source candidates; không phải chứng nhận security toàn diện|
+| Export readback / independent oracle |PASS CSV/XLSX/SHA/timestamp/zero-prefix/snapshot và3pair goldens|
+| Worker recovery SIGKILL |PASS75.000dòng,2attempts/1canonical/raw hash nguyên;14,875s gồm toàn journey, không là throughput ổn định|
+| Persistence / backup restore / saved conversations |PASS LOCAL như mục E; không cloud mới|
+
+Một Starlette TestClient/httpx deprecation warning còn lại. Tool runner sau thay đổi môi trường không tìm thấy pwsh được chạy lại bằng Windows PowerShell hiện có; không tính lệnh chưa khởi chạy pytest là suite PASS. Lỗi encoding ở script chỉnh tài liệu tạm đã được phát hiện và sửa UTF-8 trước scanner/commit; source ứng dụng không thay đổi.
+
+### G. Kết luận, giới hạn và điểm dừng
+
+**CHƯA ĐẠT NGHIỆM THU RELEASE/HỢP NHẤT — PLANNER FAIL LIVE.** Local/manual/mock regressions, Assistant live và các phần bảo toàn/cleanup an toàn đã có bằng chứng. Không dùng chúng để phủ FAIL LIVE hoặc tuyên bố production-ready. Các bước merge main, xóa feature branch, build/deploy main mới và dọn images phụ thuộc giữ **BLOCKED**, không âm thầm bỏ qua.
+
+Cần nhiệm vụ riêng chẩn đoán Planner typed output (hiện không có raw response/chi tiết lỗi theo trường) và quyết định allowance nghiệm thu mới; nhiệm vụ hiện đã hết2attempts, global còn1 nhưng Planner lifetime cap2 đã đầy. Không tự tăng/reset cap, sửa validator hoặc retry. Giữ công khai các giới hạn Q: intents/claim allowlist, caps100evidence/20source cells/catalogue/templates, chưa conversation server search, mobile keyboard/screen-reader/full WCAG, representative model quality/precision/recall, production load/HA, retention và off-host DR chưa verified. Qwen DEFERRED, Argon research-only, không triển khai phase/tính năng khác.
+
+**DỪNG sau kiểm chứng và commit/push báo cáo trên feature branch. Không tự merge hoặc gọi thêm Gemini.**

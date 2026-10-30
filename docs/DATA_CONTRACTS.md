@@ -124,3 +124,10 @@ Automation coverage giữ nguyên `metric-snapshot-1` và công thức PROJECT_P
 Report mới dùng **report-2**, giữ nguyên report-1 và bytes/checksum đã công bố. `Summary` ghi Report generated at, Review state scope FIRST_GENERATION và giải thích automation. Worker đọc trạng thái review nhất quán trong một PostgreSQL REPEATABLE READ snapshot. API trả `review_state_as_of` từ job result; request lại cùng run/format/report revision reuse file cũ. CSV và XLSX được tạo vào hai thời điểm khác nhau có thể chứa trạng thái review khác nhau; KPI vẫn từ cùng MetricSnapshot. Report-1 cũ chưa lưu thời điểm review, trả null kèm thông báo UI; không tự suy ra timestamp hoặc sửa file lịch sử.
 
 UI đọc tối đa 20 ô nguồn mỗi lần mở chi tiết và báo khi giới hạn; tên cột/giá trị/file/sheet/row hiển thị dạng bảng, không JSON. Transform nhiều inputs hiển thị các ô input, aggregate giữ các source members. Không sửa raw/canonical để khớp hiển thị.
+
+
+## Nghiệm thu hợp đồng AI ngày 30/10/2026
+
+Không đổi schema hay semantic contracts. `POST /api/reconciliation-plans/ai` nhận `{project_id, request: PlanningRequest}`, không nhận trường `plan`; công cụ nghiệm thu đã sửa theo contract này và regression bảo toàn source IDs/period/timezone/coverage. Không gọi live khi chạy regression. Đọc proposal cached được ghi PASS CACHED, không PASS LIVE mới.
+
+Assistant live đã chọn comparison/comparison_0 của đúng FactSet/run/snapshot, citations về nhóm và hai dòng nguồn; số tiền Backend render từ verified facts. Planner live trả JSON chưa đạt PlanProposal nên job BLOCKED/AI_INVALID_JSON, không tạo PlanRow hay approved contract. Đây là FAIL LIVE của provider output, không đổi thành NEEDS_REVIEW thành công hoặc sửa dữ liệu để qua gate. Lịch sử raw/canonical/MetricSnapshot/exports và reservations được bảo toàn.

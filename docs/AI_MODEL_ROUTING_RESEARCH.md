@@ -143,7 +143,7 @@ Interactions là phương án khác, không trộn snake_case của nó với ca
 
 ## 10. Hai ngân sách và usage [D]
 
-**Attempt ceiling:** giữ lifetime global/workspace hiện có (đang **7/10**, còn 3), planner cap 2 (đã 1); thêm cap Argon mặc định 0, không reset audit khi restart/đổi model. Mọi POST retry/hop là attempt mới. **Token/USD ceiling:** độc lập, Argon mặc định 0; phải đồng thời còn cả hai loại ngân sách mới được gửi.
+**Attempt ceiling:** giữ lifetime global/workspace hiện có (tại mốc nghiên cứu 29/10/2026: **7/10**, còn3; số hiện tại xem báo cáo nghiệm thu), planner cap2 (đã1 tại mốc nghiên cứu); thêm cap Argon mặc định0, không reset audit khi restart/đổi model. Mọi POST retry/hop là attempt mới. **Token/USD ceiling:** độc lập, Argon mặc định0; phải đồng thời còn cả hai loại ngân sách mới được gửi.
 
 [S] Rate limits theo **project**, không theo key; gồm RPM/TPM/RPD, reset RPD theo Pacific. Google còn giới hạn spend rolling; active limits xem AI Studio. [Rate limits][s7]. `[V]` Không có con số Standard RPM/TPM của tài khoản này; không lấy Batch enqueued-token limits làm quota Standard. App budget không thay provider quota.
 

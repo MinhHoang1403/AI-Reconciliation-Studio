@@ -2,7 +2,7 @@
 
 Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, AI đề xuất ánh xạ, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
 
-**Trạng thái:** Giai đoạn 1–2 và UX đã hợp nhất có lưu lịch sử vào `main`; Docker main được nghiệm thu trước khi mở `codex/assistant-automation`. Nhánh Assistant bổ sung facts có bằng chứng, hội thoại, trang Trợ lý riêng và đề xuất workflow có review, chưa tự merge main. Gemini mặc định; mapping/rule luôn cần duyệt. Planner có bằng chứng Gemini live lịch sử trong báo cáo; đợt Product UX này chỉ local/manual/mock, không gọi cloud. Qwen live hoãn do IP allowlist; LlamaParse tạo job OFF. Xem [bằng chứng và giới hạn](docs/IMPLEMENTATION_STATUS.md).
+**Trạng thái:** Giai đoạn 1–2 và UX đã hợp nhất có lưu lịch sử vào `main`; Docker main được nghiệm thu trước khi mở `codex/assistant-automation`. Nhánh Assistant bổ sung facts có bằng chứng, hội thoại, trang Trợ lý riêng và đề xuất workflow có review, chưa tự merge main. Gemini mặc định; mapping/rule luôn cần duyệt. Nghiệm thu 30/10/2026: Assistant **PASS LIVE**, Planner `reconciliation-planning-2` **FAIL LIVE** do output không đạt Pydantic; merge main và release mới **BLOCKED**. Kết quả Product UX trước đó là local/manual/mock. Qwen live hoãn do IP allowlist; LlamaParse tạo job OFF. Xem [bằng chứng và giới hạn](docs/IMPLEMENTATION_STATUS.md).
 
 ## Mở ứng dụng trong workspace hiện tại
 
@@ -24,7 +24,7 @@ Máy đã kiểm tra: Windows, Ryzen 5 7535HS (6 cores/12 threads), khoảng 16 
 
 ## Trợ lý có bằng chứng
 
-Assistant dùng Backend xác định cho câu hỏi facts, không gọi đó là LLM live. `ASSISTANT_CLOUD_ENABLED=false` và `ASSISTANT_REQUEST_BUDGET=0` mặc định; không dùng ba HTTP attempts Gemini còn lại. Mở trang “Trợ lý AI” hoặc “Hỏi vì sao lệch” trên run/ngoại lệ; citations mở đúng evidence. Sidebar và ngữ cảnh vẫn hiện, có lịch sử thu gọn và ô nhập riêng. Hội thoại riêng theo người tạo/project và giữ run/snapshot đã hỏi. Đổi run cần hội thoại mới; có lịch sử, phân trang và xóa nội dung theo quyền. Bản nháp chưa gửi lưu trong sessionStorage của tab, tách actor/workspace/project/run/group/case/dataset/hội thoại; chuyển trang hoặc dự án không tự gửi hay xóa bản nháp. Đóng tab có thể mất bản nháp; không coi đây là backup hội thoại. Câu “Đối soát ba file tháng 10” chỉ tạo đề xuất: phải chọn nguồn/mẫu/kỳ/coverage rồi review và duyệt rule bằng API Đối soát hiện có.
+Assistant dùng Backend xác định cho câu hỏi facts, không gọi đó là LLM live. `ASSISTANT_CLOUD_ENABLED=false` và `ASSISTANT_REQUEST_BUDGET=0` mặc định; sau kiểm thử được cấp phép đã dùng 9/10 HTTP attempts, còn 1; không tự gọi thêm hoặc tăng/reset ngân sách. Mở trang “Trợ lý AI” hoặc “Hỏi vì sao lệch” trên run/ngoại lệ; citations mở đúng evidence. Sidebar và ngữ cảnh vẫn hiện, có lịch sử thu gọn và ô nhập riêng. Hội thoại riêng theo người tạo/project và giữ run/snapshot đã hỏi. Đổi run cần hội thoại mới; có lịch sử, phân trang và xóa nội dung theo quyền. Bản nháp chưa gửi lưu trong sessionStorage của tab, tách actor/workspace/project/run/group/case/dataset/hội thoại; chuyển trang hoặc dự án không tự gửi hay xóa bản nháp. Đóng tab có thể mất bản nháp; không coi đây là backup hội thoại. Câu “Đối soát ba file tháng 10” chỉ tạo đề xuất: phải chọn nguồn/mẫu/kỳ/coverage rồi review và duyệt rule bằng API Đối soát hiện có.
 
 ## Vận hành và khôi phục
 
@@ -82,8 +82,8 @@ PDF/DOCX mới cần allowance riêng được duyệt trước khi upload. Kế
 ## Đối soát và báo cáo
 
 1. Sau khi có hai canonical trong cùng project, mở **Đối soát**, chọn nguồn tham chiếu/đối ứng.
-2. Có thể dùng AI chuẩn bị gợi ý khóa/chỉ tiêu trước khi nhập rule đầy đủ khi được cấp phép, hoặc mở phần chỉnh thủ công. Thiếu kỳ/coverage phải xác nhận, gợi ý không cấp quyền chạy. Prompt Planner mới chưa thử live; regression/Final Acceptance chỉ MANUAL/MOCK, không nhấn gọi AI live.
-3. Xác nhận khóa, quan hệ một-một/một-nhiều/nhiều-một, grain, metric/currency/basis, dấu tiền, kỳ `[start,end)`, timezone và coverage rồi **Kiểm tra điều kiện** và lưu đề xuất. Internal lọc đúng platform/shop cho từng pair, không JOIN ba nguồn. Manual không cloud; Gemini vẫn 7/10 còn 3, không reset/tăng hoặc fallback khi lỗi. Không gọi Qwen/mở parser.
+2. Có thể dùng AI chuẩn bị gợi ý khóa/chỉ tiêu trước khi nhập rule đầy đủ khi được cấp phép, hoặc mở phần chỉnh thủ công. Thiếu kỳ/coverage phải xác nhận, gợi ý không cấp quyền chạy. Prompt Planner mới FAIL LIVE ở gate schema; regression dùng MANUAL/MOCK, không nhấn gọi AI live để retry.
+3. Xác nhận khóa, quan hệ một-một/một-nhiều/nhiều-một, grain, metric/currency/basis, dấu tiền, kỳ `[start,end)`, timezone và coverage rồi **Kiểm tra điều kiện** và lưu đề xuất. Internal lọc đúng platform/shop cho từng pair, không JOIN ba nguồn. Manual không cloud; Gemini hiện 9/10 còn 1, không reset/tăng hoặc fallback khi lỗi. Không gọi Qwen/mở parser.
 4. Review đề xuất, **Xác nhận quy tắc và dấu số tiền**, rồi **Chạy đối soát đã duyệt**. Duplicate/fuzzy mơ hồ giữ review, không tự chọn; null/invalid không thành zero. Coverage thiếu phải cho phép partial rõ ràng.
 5. **Báo cáo/Tổng quan** hiển thị snapshot đã verified, denominator/CU/period và từng metric/currency riêng. Không có verified result thì empty/loading state, không KPI giả. Lọc lịch sử theo kỳ/nguồn, chọn đúng run ID.
 6. **Ngoại lệ** có tìm kiếm, lọc loại/trạng thái, sort, bằng chứng hai bên và dòng nguồn. Resolve/dismiss cần ghi chú; review không sửa comparison, variance hoặc snapshot của run.
@@ -96,7 +96,7 @@ Chạy bộ demo có oracle trên dữ liệu tổng hợp, không gọi AI:
 uv run python tools/check-reconciliation.py
 ```
 
-Công cụ tạo/reuse đúng một project demo, năm nguồn CSV và ba pair runs, kiểm oracle, lưu báo cáo tại runtime bị ignore. Gemini planner live đã thử và được cache; không chạy lại cloud chỉ để replay. `--planner-live` là lựa chọn explicit có quota guard/task cap, không phải regression mặc định.
+Công cụ tạo/reuse đúng một project demo, năm nguồn CSV và ba pair runs, kiểm oracle, lưu báo cáo tại runtime bị ignore. Planner prompt cũ có kết quả live cached; prompt `reconciliation-planning-2` FAIL LIVE ở lượt mới. Đọc cache không phải live mới; không chạy lại cloud chỉ để replay. `--planner-live` là lựa chọn explicit có quota guard/task cap, không phải regression mặc định.
 
 ## Vận hành và bảo toàn dữ liệu
 
