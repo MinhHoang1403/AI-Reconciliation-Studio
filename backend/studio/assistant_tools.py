@@ -246,6 +246,7 @@ def build_fact_set(db: Session, actor: Actor, context: AssistantContext) -> Answ
     row = scoped_context(db, actor, context)
     values: dict[str, Any] = dict(
         workspace_id=actor.workspace_id,
+        business_scope=get_scoped(db, ProjectRow, context.project_id, actor).business_scope,
         context=context,
         verification_status="INSUFFICIENT_EVIDENCE",
         facts=[],
@@ -284,7 +285,13 @@ def build_fact_set(db: Session, actor: Actor, context: AssistantContext) -> Answ
             facts.append(
                 VerifiedFact(
                     id=metric,
-                    label=metric,
+                    label={
+                        "full_match_rate": "Tỷ lệ khớp đã xác minh",
+                        "linkage_rate": "Tỷ lệ liên kết",
+                        "exception_rate": "Tỷ lệ ngoại lệ",
+                        "automation_coverage": "Mức tự động hóa",
+                        "review_rate": "Tỷ lệ cần review",
+                    }[metric],
                     value=(
                         f"{rate.percent if rate.percent is not None else 'N/A'} "
                         f"({rate.numerator}/{rate.denominator})"

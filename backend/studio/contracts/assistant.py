@@ -110,6 +110,7 @@ class VerifiedFact(Contract):
 class AnswerFactSet(Contract):
     id: str
     workspace_id: str
+    business_scope: str = ""
     context: AssistantContext
     verification_status: Literal["VERIFIED", "PARTIAL_VERIFIED", "INSUFFICIENT_EVIDENCE"]
     snapshot: MetricSnapshot | None = None
@@ -146,6 +147,9 @@ class WorkflowProposal(Contract):
     questions: list[str]
     action: Literal["OPEN_RECONCILIATION"] = "OPEN_RECONCILIATION"
     confirmation_required: Literal[True] = True
+    required_sources: Literal[2, 3] = 2
+    requested_month: int | None = Field(default=None, ge=1, le=12)
+    requested_year: int | None = Field(default=None, ge=2000, le=2099)
 
 
 class AssistantUsage(Contract):

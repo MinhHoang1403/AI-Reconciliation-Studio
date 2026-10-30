@@ -168,6 +168,7 @@ export interface Preview {
   view: string;
 }
 export interface WorkspaceSettings {
+  assistant_cloud_enabled?: boolean;
   workspace_name: string;
   qwen_configured: boolean;
   qwen_model: string;

@@ -55,6 +55,7 @@ export function Modal({
   onOpenChange,
   wide = false,
   returnFocus,
+  side = false,
 }: {
   title: string;
   children: ReactNode;
@@ -62,13 +63,14 @@ export function Modal({
   onOpenChange: (open: boolean) => void;
   wide?: boolean;
   returnFocus?: RefObject<HTMLElement | null>;
+  side?: boolean;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="modal-overlay" />
         <Dialog.Content
-          className={`modal ${wide ? "modal-wide" : ""}`}
+          className={`modal ${wide ? "modal-wide" : ""} ${side ? "modal-side" : ""}`}
           aria-describedby={undefined}
           onCloseAutoFocus={(event) => {
             if (returnFocus?.current) {

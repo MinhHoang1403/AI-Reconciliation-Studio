@@ -243,8 +243,40 @@ def test_language_request_checks_preparation_and_never_auto_runs(pg):  # noqa: F
         and answer["proposal"]["confirmation_required"] is True
     )
     assert answer["proposal"]["approved_rule_ids"] == []
+    assert answer["proposal"]["required_sources"] == 3
+    assert (
+        answer["proposal"]["requested_month"] == 10 and answer["proposal"]["requested_year"] is None
+    )
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(RunRow)) == 0
+
+
+def test_reviewed_template_action_idempotent_and_unapproved_until_human_confirmation(pg):  # noqa: F811
+    client, _, _ = pg
+    _, plan, rule, _ = create_approved_run(pg)
+    body = dict(
+        left_canonical_id=plan.left.canonical_id,
+        right_canonical_id=plan.right.canonical_id,
+        period_start=str(plan.period_start),
+        period_end=str(plan.period_end),
+        left_coverage_start=str(plan.left.coverage_start),
+        left_coverage_end=str(plan.left.coverage_end),
+        right_coverage_start=str(plan.right.coverage_start),
+        right_coverage_end=str(plan.right.coverage_end),
+        completeness="CONFIRMED",
+        snapshot_at=plan.left.snapshot_at.isoformat(),
+    )
+    path = f"/api/reconciliation-contracts/{rule['id']}/reuse"
+    one = client.post(path, json=body, headers={"Idempotency-Key": "reviewed-action"})
+    assert one.status_code == 201, one.text
+    two = client.post(path, json=body, headers={"Idempotency-Key": "reviewed-action"})
+    assert two.json() == one.json()
+    assert one.json()["proposal"]["status"] == "PROPOSED" and one.json()["contract_id"] is None
+    body["snapshot_at"] = "2026-11-01T00:00:00Z"
+    assert (
+        client.post(path, json=body, headers={"Idempotency-Key": "reviewed-action"}).status_code
+        == 409
+    )
 
 
 def test_task_budget_reservation_failure_receipt_and_no_blind_resend(pg, monkeypatch):  # noqa: F811

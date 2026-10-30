@@ -1,6 +1,7 @@
 """Câu trả lời có bằng chứng: model chọn fact IDs, backend kiểm tra và render tiền/KPI."""
 
 import json
+import re
 import unicodedata
 from collections.abc import Callable
 from typing import Any
@@ -184,10 +185,24 @@ def deterministic_answer(question: str, facts: AnswerFactSet) -> AssistantAnswer
     )
 
 
-def workflow_proposal(facts: AnswerFactSet, status: WorkflowStatus) -> AssistantAnswer:
+def workflow_proposal(
+    facts: AnswerFactSet, status: WorkflowStatus, question: str
+) -> AssistantAnswer:
     questions = list(status.questions)
-    if status.ready_canonical_count < 2:
-        questions.append("Chưa đủ hai nguồn canonical READY; hoàn tất mapping/chuẩn hóa trước.")
+    normalized = plain_question(question)
+    required = (
+        3 if any(w in normalized for w in ("ba file", "3 file", "ba nguon", "3 nguon")) else 2
+    )
+    month_match = re.search(r"\bthang\s+(\d{1,2})\b", normalized)
+    year_match = re.search(r"\b(20\d{2})\b", normalized)
+    month = int(month_match[1]) if month_match and 1 <= int(month_match[1]) <= 12 else None
+    year = int(year_match[1]) if year_match else None
+    if not year:
+        questions.append("Chưa xác nhận năm; không tự suy ra kỳ theo ngày hệ thống.")
+    if status.ready_canonical_count < required:
+        questions.append(
+            f"Chưa đủ {required} nguồn canonical READY; hoàn tất mapping/chuẩn hóa trước."
+        )
     if status.mapping_review_count:
         questions.append("Còn ánh xạ cần người dùng xác nhận.")
     if not status.approved_rule_ids:
@@ -197,7 +212,13 @@ def workflow_proposal(facts: AnswerFactSet, status: WorkflowStatus) -> Assistant
         mode="DETERMINISTIC",
         fact_set=facts,
         lines=[AnswerLine(classification="INSUFFICIENT_EVIDENCE", text=q) for q in questions],
-        proposal=WorkflowProposal(approved_rule_ids=status.approved_rule_ids, questions=questions),
+        proposal=WorkflowProposal(
+            approved_rule_ids=status.approved_rule_ids,
+            questions=questions,
+            required_sources=required,
+            requested_month=month,
+            requested_year=year,
+        ),
         suggestions=["OPEN_DATA"],
     )
 

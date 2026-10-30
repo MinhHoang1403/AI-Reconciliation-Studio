@@ -32,6 +32,7 @@ import {
   type SourceEvidence,
 } from "./reconciliationTypes";
 import type { Job } from "./types";
+import type { AssistantContext } from "./assistantTypes";
 
 echarts.use([
   PieChart,
@@ -103,10 +104,14 @@ export function ReconciliationStudio({
   mode,
   requestedRun,
   canEdit,
+  onAsk,
+  requestedPlan,
 }: {
   projectId: string;
   mode: Mode;
   canEdit: boolean;
+  onAsk: (context: AssistantContext) => void;
+  requestedPlan: { id: string; request: number } | null;
   requestedRun: { id: string; request: number } | null;
 }) {
   const [catalogue, setCatalogue] = useState<Catalogue[]>([]),
@@ -159,6 +164,33 @@ export function ReconciliationStudio({
   if (runScope.current.id !== runId) runScope.current = { id: runId };
   const evidenceSequence = useRef(0);
   const evidenceTrigger = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!requestedPlan) return;
+    const read = new AbortController();
+    void api<Proposal & { project_id: string }>(
+      `/reconciliation-plans/${requestedPlan.id}`,
+      { signal: read.signal },
+    )
+      .then((result) => {
+        if (read.signal.aborted) return;
+        if (result.project_id !== projectId || !result.proposal.plan)
+          throw new Error("Kế hoạch không thuộc dự án hoặc còn thiếu rule.");
+        setDraft(result.proposal.plan);
+        setProposal(result);
+        setReadiness(null);
+        setScopeConfirmed(false);
+        setMessage(
+          "Đã mở kế hoạch từ Trợ lý; kiểm tra và xác nhận trước khi duyệt.",
+        );
+      })
+      .catch((err) => {
+        if (!read.signal.aborted)
+          setError(
+            err instanceof Error ? err.message : "Không mở được kế hoạch.",
+          );
+      });
+    return () => read.abort();
+  }, [requestedPlan, projectId]);
   useEffect(() => {
     alive.current = true;
     controller.current = new AbortController();
@@ -518,6 +550,15 @@ export function ReconciliationStudio({
       </div>
       {error && <Notice tone="error">{error}</Notice>}
       {message && <Notice tone="success">{message}</Notice>}
+      {run?.id === runId && run.metric_snapshot && (
+        <button
+          className="text-button"
+          onClick={() => onAsk({ project_id: projectId, run_id: runId })}
+        >
+          <Sparkles size={16} />
+          Hỏi Trợ lý về run này
+        </button>
+      )}
       {!canEdit && (
         <Notice>
           Bạn có quyền xem dữ liệu và bằng chứng. Cần quyền chỉnh sửa để tạo,
@@ -1587,6 +1628,19 @@ export function ReconciliationStudio({
                                 >
                                   Xem ngoại lệ
                                 </button>
+                                <button
+                                  className="text-button"
+                                  onClick={() =>
+                                    onAsk({
+                                      project_id: projectId,
+                                      run_id: runId,
+                                      group_id: c.match_group_id,
+                                      case_id: c.id,
+                                    })
+                                  }
+                                >
+                                  Hỏi vì sao lệch
+                                </button>
                               </td>
                             </tr>
                           ))
@@ -1608,6 +1662,18 @@ export function ReconciliationStudio({
                                   onClick={() => void openEvidence(g.id)}
                                 >
                                   Xem bằng chứng
+                                </button>
+                                <button
+                                  className="text-button"
+                                  onClick={() =>
+                                    onAsk({
+                                      project_id: projectId,
+                                      run_id: runId,
+                                      group_id: g.id,
+                                    })
+                                  }
+                                >
+                                  Hỏi vì sao lệch
                                 </button>
                               </td>
                             </tr>

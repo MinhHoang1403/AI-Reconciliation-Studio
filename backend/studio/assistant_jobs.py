@@ -136,7 +136,7 @@ def execute_assistant(
 
     try:
         answer = cached or (
-            workflow_proposal(facts, workflow)
+            workflow_proposal(facts, workflow, question)
             if workflow
             else answer_question(question, facts, policy, settings, reserve)
         )

@@ -193,3 +193,10 @@ Giữ nguyên oracle và matcher/verifier. Thêm regression vào các suite có 
 Lệnh chuẩn ở trên chạy cùng Docker project. Sau recreate phải chạy `tools/verify-local.ps1`; nếu proof bị mất trong phiên gián đoạn, UI bị chặn LOCAL_DEMO_NOT_VERIFIED là fail-closed đúng thiết kế, cần xác minh deployment rồi chạy lại E2E. Không bỏ kiểm tra auth hoặc tăng timeout để che lỗi.
 
 So sánh baseline 121 backend/14 E2E với kết quả thật ở mục K của báo cáo; không cộng các lần replay hoặc PASS LIVE lịch sử vào số cases hiện tại. Prompt planner sửa đổi chưa test live theo chỉ định 0 cloud requests.
+
+
+## Assistant contracts và hội thoại
+
+`tools/test-postgres.ps1 -All -Source` chạy nguồn feature trong thư mục tạm của Backend hiện có và UUID schema trên PostgreSQL hiện có; không sửa `/app`, không tạo Compose/server riêng. Khi đã deploy đúng image dùng `-All` để kiểm runtime thực. Suite bổ sung T36–T40, privacy actor/project/run, ID giả, KPI thiếu, idempotency, concurrent pending requests, cache FactSet, xóa hội thoại đang chờ, lease/fencing và durable task reservation. Transport provider dùng MOCK; không dùng quota live.
+
+Frontend Assistant thêm contextual panel, citations/source evidence, khôi phục và phân trang hội thoại, workflow hai/ba nguồn qua API reuse hiện có. Idempotency-Key explicit được giữ khi retry; reuse trả PROPOSED cần người dùng duyệt. Nguồn/kỳ/coverage/mẫu không được suy ra từ câu nói thiếu năm hoặc thiếu nguồn.

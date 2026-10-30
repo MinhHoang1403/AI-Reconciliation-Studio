@@ -10,7 +10,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !(init.body instanceof FormData))
     headers.set("Content-Type", "application/json");
-  if (init.method && init.method !== "GET")
+  if (init.method && init.method !== "GET" && !headers.has("Idempotency-Key"))
     headers.set("Idempotency-Key", crypto.randomUUID());
   let response: Response;
   try {

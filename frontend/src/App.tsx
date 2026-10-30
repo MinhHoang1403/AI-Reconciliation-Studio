@@ -42,6 +42,10 @@ import {
   Spinner,
 } from "./components";
 import { MappingStudio } from "./MappingStudio";
+import type { AssistantContext } from "./assistantTypes";
+const AssistantStudio = lazy(() =>
+  import("./AssistantStudio").then((m) => ({ default: m.AssistantStudio })),
+);
 const ReconciliationStudio = lazy(() =>
   import("./ReconciliationStudio").then((m) => ({
     default: m.ReconciliationStudio,
@@ -68,15 +72,37 @@ import {
 } from "./types";
 
 type Page =
-  "home" | "data" | "settings" | "reconcile" | "exceptions" | "reports";
+  | "home"
+  | "data"
+  | "settings"
+  | "reconcile"
+  | "exceptions"
+  | "reports";
 type Tab = "explore" | "mapping" | "normalize";
 type View = "parsed" | "raw" | "canonical" | "errors";
 
 export function App() {
+  const [assistantContext, setAssistantContext] =
+    useState<AssistantContext | null>(null);
+  const assistantFocus = useRef<HTMLElement | null>(null);
+  function openAssistant(context: AssistantContext) {
+    assistantFocus.current = document.activeElement as HTMLElement | null;
+    if (sidebar)
+      assistantFocus.current = document.querySelector<HTMLButtonElement>(
+        'button[aria-label="Mở điều hướng"]',
+      );
+    setAssistantContext(context);
+    setSidebar(false);
+  }
   const [page, setPage] = useState<Page>("home");
   const [tab, setTab] = useState<Tab>("explore");
   const [project, setProject] = useState<Project | null>(null);
   const [projectId, setProjectId] = useState("");
+  const [planNavigation, setPlanNavigation] = useState<{
+    id: string;
+    projectId: string;
+    request: number;
+  } | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [recent, setRecent] = useState<{
     projectId: string;
@@ -856,11 +882,14 @@ export function App() {
             <ArrowDownToLine size={19} />
             <span>Báo cáo</span>
           </button>
-          <div className="future-nav">
+          <button
+            className={assistantContext ? "active" : ""}
+            disabled={!ready || !projectId}
+            onClick={() => openAssistant({ project_id: projectId })}
+          >
             <Sparkles size={19} />
             <span>Trợ lý AI</span>
-            <small>Sắp có</small>
-          </div>
+          </button>
         </nav>
         <div className="sidebar-bottom">
           <div className="local-card">
@@ -1061,6 +1090,12 @@ export function App() {
                   key={projectId}
                   projectId={projectId}
                   canEdit={canEdit}
+                  onAsk={openAssistant}
+                  requestedPlan={
+                    planNavigation?.projectId === projectId
+                      ? planNavigation
+                      : null
+                  }
                   requestedRun={runNavigation}
                   mode={page as "home" | "reconcile" | "exceptions" | "reports"}
                 />
@@ -1641,6 +1676,48 @@ export function App() {
           </footer>
         </main>
       </div>
+      {assistantContext?.project_id === projectId && (
+        <Modal
+          title="Trợ lý AI"
+          side
+          open
+          onOpenChange={(open) => {
+            if (!open) setAssistantContext(null);
+          }}
+          returnFocus={assistantFocus}
+        >
+          <Suspense fallback={<Spinner />}>
+            <AssistantStudio
+              key={JSON.stringify(assistantContext)}
+              initialContext={assistantContext}
+              cloudEnabled={!!workspace?.assistant_cloud_enabled}
+              canEdit={canEdit}
+              onReview={(id) => {
+                setPlanNavigation({ id, projectId, request: Date.now() });
+                setAssistantContext(null);
+                setPage("reconcile");
+              }}
+              onNavigate={(target, context) => {
+                if (context.project_id !== projectId) return;
+                setAssistantContext(null);
+                if (context.run_id)
+                  setRunNavigation({ id: context.run_id, request: Date.now() });
+                if (target === "OPEN_DATA") {
+                  if (context.dataset_id) setDatasetId(context.dataset_id);
+                  setPage("data");
+                } else
+                  setPage(
+                    target === "OPEN_REPORT"
+                      ? "reports"
+                      : target === "OPEN_EXCEPTIONS"
+                        ? "exceptions"
+                        : "reconcile",
+                  );
+              }}
+            />
+          </Suspense>
+        </Modal>
+      )}
       <Modal
         title="Tạo dự án"
         open={projectOpen}

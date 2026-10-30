@@ -356,7 +356,15 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     @router.post(
         "/reconciliation-contracts/{contract_id}/reuse", response_model=PlanView, status_code=201
     )
-    def reuse(contract_id: str, body: TemplateInput, db: DB, actor: User) -> PlanView:
+    def reuse(
+        contract_id: str,
+        body: TemplateInput,
+        db: DB,
+        actor: User,
+        key: Annotated[
+            str | None, Header(min_length=1, max_length=160, alias="Idempotency-Key")
+        ] = None,
+    ) -> PlanView:
         require_editor(actor, db, contract_id)
         row = get_scoped(db, ReconciliationContractRow, contract_id, actor)
         old = ReconciliationContract.model_validate(row.definition)
@@ -391,15 +399,38 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         draft.evidence_ids = [body.left_canonical_id, body.right_canonical_id]
         draft = ReconciliationPlan.model_validate(draft.model_dump())
         validate_reconciliation_contract(draft, cats, actor.workspace_id, row.project_id)
+        proposal = PlanProposal(
+            status="PROPOSED",
+            plan=draft,
+            missing_requirements=["Xác nhận lại coverage, kỳ và rule trước approval."],
+        ).model_dump(mode="json")
+        plan_id = identifier()
+        if key:
+            plan_id = str(
+                uuid5(
+                    NAMESPACE_URL, f"template:{actor.workspace_id}:{actor.id}:{contract_id}:{key}"
+                )
+            )
+            db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"), {"key": plan_id}
+            )
+            existing = db.get(PlanRow, plan_id)
+            if existing:
+                if (
+                    existing.project_id != row.project_id
+                    or existing.proposal != proposal
+                    or existing.created_by != actor.id
+                ):
+                    raise DomainError(
+                        "IDEMPOTENCY_CONFLICT", "Mã reuse đã dùng cho nội dung khác.", 409
+                    )
+                return plan_view(db, existing)
         plan = PlanRow(
+            id=plan_id,
             workspace_id=actor.workspace_id,
             project_id=row.project_id,
             origin="APPROVED_TEMPLATE",
-            proposal=PlanProposal(
-                status="PROPOSED",
-                plan=draft,
-                missing_requirements=["Xác nhận lại coverage, kỳ và rule trước approval."],
-            ).model_dump(mode="json"),
+            proposal=proposal,
             created_by=actor.id,
         )
         db.add(plan)
