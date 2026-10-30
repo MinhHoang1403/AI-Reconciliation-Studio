@@ -114,6 +114,61 @@ async function ask(page: Page, text: string) {
   return dialog.locator(".assistant-message.assistant").last();
 }
 
+test("unknown message delivery keeps its idempotency key after reload", async ({
+  page,
+}) => {
+  const s = await state();
+  const assistant = await openAssistant(page, s.project_id);
+  await assistant
+    .getByLabel("Run làm ngữ cảnh", { exact: true })
+    .selectOption(s.runs.delivery.run_id);
+  await assistant
+    .getByRole("button", { name: "Hội thoại mới", exact: true })
+    .click();
+  const question = `Tóm tắt kết quả đối soát ${crypto.randomUUID()}`;
+  const keys: string[] = [];
+  let firstJob = "";
+  let loseResponse = true;
+  await page.route("**/api/assistant/messages", async (route) => {
+    keys.push(route.request().headers()["idempotency-key"]);
+    if (loseResponse) {
+      loseResponse = false;
+      const accepted = await route.fetch();
+      expect(accepted.status()).toBe(202);
+      firstJob = (await accepted.json()).job_id;
+      await route.abort("failed");
+    } else await route.continue();
+  });
+  await assistant
+    .getByLabel("Câu hỏi cho Trợ lý", { exact: true })
+    .fill(question);
+  await assistant
+    .getByRole("button", { name: "Gửi câu hỏi", exact: true })
+    .click();
+  await expect(assistant.getByRole("alert")).toContainText(
+    "Không kết nối được máy chủ",
+  );
+  await page.reload();
+  await expect(
+    assistant.getByLabel("Câu hỏi cho Trợ lý", { exact: true }),
+  ).toHaveValue(question);
+  await expect(
+    assistant.getByRole("button", { name: "Gửi câu hỏi", exact: true }),
+  ).toBeEnabled();
+  const retried = page.waitForResponse(
+    (r) =>
+      r.url().endsWith("/assistant/messages") &&
+      r.request().method() === "POST",
+  );
+  await assistant
+    .getByRole("button", { name: "Gửi câu hỏi", exact: true })
+    .click();
+  expect((await (await retried).json()).job_id).toBe(firstJob);
+  await expect(assistant.locator(".assistant-message")).toHaveCount(2);
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).toBe(keys[1]);
+});
+
 for (const name of ["shopee", "tiktok", "delivery"]) {
   test(`T40 ${name}: actual verified evidence and persistent contextual answer`, async ({
     page,
@@ -374,6 +429,19 @@ test("language workflow requires source/period/template confirmation before exis
   const answer = await ask(page, "Đối soát ba file tháng 10");
   await expect(answer).toContainText("Chưa xác nhận năm");
   const writes: string[] = [];
+  const reuseKeys: string[] = [];
+  await page.route("**/api/reconciliation-contracts/*/reuse", async (route) => {
+    reuseKeys.push(route.request().headers()["idempotency-key"]);
+    if (reuseKeys.length === 2)
+      await route.fulfill({
+        status: 503,
+        json: {
+          code: "SYNTHETIC_SECOND_PAIR_FAILURE",
+          message_vi: "Cặp thứ hai tạm chưa thực hiện được.",
+        },
+      });
+    else await route.continue();
+  });
   page.on("request", (r) => {
     if (r.method() === "POST" && r.url().includes("/reconciliation-"))
       writes.push(r.url());
@@ -439,10 +507,17 @@ test("language workflow requires source/period/template confirmation before exis
   expect(writes).toEqual([]);
   await workflow.getByRole("checkbox").check();
   await create.click();
+  await expect(workflow.getByRole("alert")).toContainText("Đã tạo 1 kế hoạch");
+  await expect(
+    workflow.getByRole("button", { name: /Mở kế hoạch .* để duyệt/ }),
+  ).toHaveCount(1);
+  await create.click();
   await expect(
     workflow.getByRole("button", { name: /Mở kế hoạch .* để duyệt/ }),
   ).toHaveCount(2);
-  expect(writes.length).toBe(2);
+  expect(writes.length).toBe(4);
+  expect(reuseKeys[0]).toBe(reuseKeys[2]);
+  expect(reuseKeys[1]).toBe(reuseKeys[3]);
   expect(writes.every((url) => url.endsWith("/reuse"))).toBe(true);
   await workflow
     .getByRole("button", { name: /Mở kế hoạch .* để duyệt/ })
@@ -483,9 +558,7 @@ test("language workflow requires source/period/template confirmation before exis
     run,
     { timeout: 60000 },
   );
-  await expect(
-    page.getByText("Đã xác minh", { exact: true }).first(),
-  ).toBeVisible();
+  await expect(page.locator(".run-toolbar .badge-verified")).toBeVisible();
   const mismatch = page
     .getByRole("row")
     .filter({ hasText: "0002" })
@@ -529,7 +602,11 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
       page.getByRole("dialog", { name: "Trợ lý AI", exact: true }),
     ).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "Trợ lý AI", exact: true }),
+      page.getByRole("button", {
+        name: "Trợ lý AI",
+        exact: true,
+        includeHidden: true,
+      }),
     ).toHaveAttribute("aria-current", "page");
     const composer = await dialog.locator(".assistant-composer").boundingBox();
     expect(composer!.y + composer!.height).toBeLessThanOrEqual(900);

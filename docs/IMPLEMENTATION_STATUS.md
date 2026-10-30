@@ -817,3 +817,11 @@ Nguyên tắc: một vùng làm việc chính, ngữ cảnh nhìn thấy đượ
 | Cloud / production / trên 100 thành viên — accepted limitation / out of scope | Cloud OFF, caps evidence công bố; chưa có benchmark hoặc off-host DR production | Giữ cap/warnings và ghi NOT VERIFIED, không dựng framework hoặc gọi provider để che giới hạn | Không dùng PASS mock thay PASS live |
 
 Snapshot trước nhiệm vụ: 29 projects, 57 datasets/versions, 55 tables, 114 schemas/mappings, 52 canonical, 27 contracts/runs, 34 plans, 97 cases, 30 conversations/60 messages; 218 foundation artifacts + 27 run artifacts + 47 exports. Hash metadata/bytes đã lưu ngoài Git ở `runtime/product-ux-before.json` để đối chiếu; không xóa fixtures lịch sử. Số liệu cuối và kết quả kiểm thử sẽ ghi sau khi thực thi.
+
+### B. Kiểm tra candidate và lỗi truyền request
+
+Source `f6aa092376e8174889a277cceda3d10c602e9673` đã commit/push, build từ Git sạch; 4/4 service healthy, 40 tracked backend files trong cả backend/worker và 6 assets HTTP khớp hash. PostgreSQL giữ image/volumes, các image main/candidate/rollback được bảo vệ không thay đổi. Bộ backend trên container **190 PASS, 0 FAIL/SKIP**, 79,10 giây: 152 offline + 38 PostgreSQL. Gồm 12 câu hỏi kiểm phạm vi facts, bảy tools từ chối workspace lạ và cap 100/101 thành viên trên Parquet thật. Đây là local/mock, không phải live AI.
+
+Lượt browser đầu **47 PASS / 9 FAIL / 0 SKIP**, 320,66 giây. Lỗi harness sau thay đổi thiết kế: `.first()` trỏ vào trạng thái trong lịch sử đã đóng, sidebar mobile bị ẩn, thao tác mở details lại đóng phần đã mở mặc định, fixture runs nằm ở trang hai khi lịch sử tăng. Điều chỉnh selectors để kiểm badge của selected run, expanded semantics và thao tác phân trang thật; giữ oracle và gates.
+
+Kiểm tra bổ sung tái hiện **lỗi thực tế**: server đã nhận câu hỏi nhưng response bị mất; reload rồi gửi lại tạo job ID khác vì request key chỉ nằm trong ref của React. Regression `unknown message delivery keeps its idempotency key after reload` **FAIL trên runtime f6aa092** với hai job ID khác nhau. Sửa client lưu cặp body/key và key tạo hội thoại trong sessionStorage theo actor/project; response chưa rõ không tự resend, user resend cùng nội dung dùng key cũ. Không đổi queue/Gateway/budget. Bản sửa đang chờ browser replay; không ghi PASS trước khi chạy.

@@ -4,7 +4,11 @@ import { api, ApiError } from "./api";
 import { Notice, Spinner } from "./components";
 import { ReconciliationEvidence } from "./ReconciliationEvidence";
 import { AssistantWorkflow } from "./AssistantWorkflow";
-import type { Run, SourceEvidence } from "./reconciliationTypes";
+import {
+  reconciliationLabels,
+  type Run,
+  type SourceEvidence,
+} from "./reconciliationTypes";
 import type { Job } from "./types";
 import type {
   AssistantAnswer,
@@ -18,7 +22,7 @@ import type {
 } from "./assistantTypes";
 
 const labels: Record<string, string> = {
-  VERIFIED_FACT: "Fact đã xác minh",
+  VERIFIED_FACT: "Dữ kiện đã xác minh",
   SUPPORTED_INTERPRETATION: "Diễn giải có bằng chứng",
   HYPOTHESIS: "Giả thuyết cần kiểm tra",
   UNKNOWN: "Chưa xác định",
@@ -98,8 +102,9 @@ export function AssistantStudio({
   const historySequence = useRef(0);
   const citationTrigger = useRef<HTMLElement | null>(null);
   const pendingRequest = useRef<{ body: string; key: string } | null>(null);
-  const createKey = useRef(crypto.randomUUID());
+  const createKey = useRef<string>(crypto.randomUUID());
   const storageKey = `studio.conversation.${initialContext.project_id}`;
+  const requestStorageKey = `studio.assistant-request.${draftOwner}.${initialContext.project_id}`;
   const getOptions = () => ({ signal: controller.current.signal });
   useEffect(() => {
     onContextChange(context);
@@ -275,6 +280,7 @@ export function AssistantStudio({
     setConfirmWorkflow(null);
     pendingRequest.current = null;
     createKey.current = crypto.randomUUID();
+    sessionStorage.removeItem(`${draftKey.current}.create`);
     localStorage.removeItem(storageKey);
   }
   async function send() {
@@ -285,6 +291,11 @@ export function AssistantStudio({
     try {
       let active = conversation;
       if (!active) {
+        const savedCreateKey = sessionStorage.getItem(
+          `${draftKey.current}.create`,
+        );
+        if (savedCreateKey) createKey.current = savedCreateKey;
+        sessionStorage.setItem(`${draftKey.current}.create`, createKey.current);
         active = await api<Conversation>("/conversations", {
           method: "POST",
           body: JSON.stringify({ context }),
@@ -297,15 +308,28 @@ export function AssistantStudio({
         draftKey.current = draftKeyFor(context, active.id);
         sessionStorage.setItem(draftKey.current, text);
         sessionStorage.removeItem(previousDraft);
+        sessionStorage.removeItem(`${previousDraft}.create`);
       }
       const body = JSON.stringify({
         conversation_id: active.id,
         context: active.context,
         text: text.trim(),
       });
-      const previous = pendingRequest.current;
+      let previous = pendingRequest.current;
+      if (!previous) {
+        try {
+          const saved = JSON.parse(
+            sessionStorage.getItem(requestStorageKey) || "null",
+          );
+          if (typeof saved?.body === "string" && typeof saved?.key === "string")
+            previous = saved;
+        } catch {
+          /* A malformed local draft is never authority to send a request. */
+        }
+      }
       const key = previous?.body === body ? previous.key : crypto.randomUUID();
       pendingRequest.current = { body, key };
+      sessionStorage.setItem(requestStorageKey, JSON.stringify({ body, key }));
       const accepted = await api<{ job_id: string }>("/assistant/messages", {
         method: "POST",
         body,
@@ -313,6 +337,7 @@ export function AssistantStudio({
       });
       if (!alive.current || request !== sequence.current) return;
       pendingRequest.current = null;
+      sessionStorage.removeItem(requestStorageKey);
       setText("");
       sessionStorage.removeItem(draftKey.current);
       await refreshMessages(active.id, request);
@@ -625,7 +650,21 @@ export function AssistantStudio({
                               {labels[line.classification] ||
                                 line.classification}
                             </span>
-                            <p>{line.text}</p>
+                            <p>
+                              {line.text.replace(
+                                /\b[A-Z_]+\b/g,
+                                (value) => reconciliationLabels[value] || value,
+                              )}
+                            </p>
+                            {line.text.replace(
+                              /\b[A-Z_]+\b/g,
+                              (value) => reconciliationLabels[value] || value,
+                            ) !== line.text && (
+                              <details>
+                                <summary>Thuật ngữ gốc</summary>
+                                <p>{line.text}</p>
+                              </details>
+                            )}
                             {line.reference_ids.slice(0, 3).map((id) => {
                               const ref =
                                 message.answer!.fact_set.references.find(

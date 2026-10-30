@@ -1400,6 +1400,36 @@ export function ReconciliationStudio({
               </select>
             </label>
             {run && <Badge status={run.status} />}
+            {snapshot && (
+              <div className="rule-actions">
+                <button
+                  className="button secondary"
+                  disabled={busy || !canEdit}
+                  onClick={() => void exportFile("csv")}
+                >
+                  <ArrowDownToLine size={16} />
+                  Xuất CSV
+                </button>
+                <button
+                  className="button secondary"
+                  disabled={busy || !canEdit}
+                  onClick={() => void exportFile("xlsx")}
+                >
+                  Xuất XLSX
+                </button>
+                {download && (
+                  <a className="button primary" href={download} download>
+                    Tải báo cáo
+                  </a>
+                )}
+              </div>
+            )}
+            {snapshot && (
+              <p className="muted">
+                {snapshot.period_start} → {snapshot.period_end} (không gồm) ·{" "}
+                {snapshot.timezone}
+              </p>
+            )}
           </div>
           {runId && !run && !error && <Spinner />}
           {run?.id === runId && !snapshot && (
@@ -1416,88 +1446,92 @@ export function ReconciliationStudio({
           )}
           {snapshot && (
             <>
-              <div className="result-kpis">
-                {[
-                  [
-                    "Tỷ lệ khớp",
-                    snapshot.full_match_rate.percent === null
-                      ? "N/A"
-                      : `${snapshot.full_match_rate.percent}%`,
-                    `${snapshot.full_match_rate.numerator}/${snapshot.full_match_rate.denominator} đơn vị đủ điều kiện`,
-                  ],
-                  [
-                    "Cần kiểm tra",
-                    openCount === null ? "Đang tải…" : String(openCount),
-                    "case đang mở hiện tại",
-                  ],
-                  [
-                    "Giá trị lệch tuyệt đối",
-                    snapshot.monetary[0]?.absolute_variance ?? "N/A",
-                    `${snapshot.monetary[0]?.currency || ""} · ${snapshot.monetary[0]?.metric_id || ""}`,
-                  ],
-                  [
-                    "Tự động phân loại",
-                    snapshot.automation_coverage.percent === null
-                      ? "N/A"
-                      : `${snapshot.automation_coverage.percent}%`,
-                    `${snapshot.automation_coverage.numerator}/${snapshot.automation_coverage.denominator} đơn vị đủ điều kiện; gồm thiếu đối ứng/lệch đã xác minh, không phải ngoại lệ đã xử lý`,
-                  ],
-                ].map(([name, value, detail]) => (
-                  <article className="card" key={name}>
-                    <span>{name}</span>
-                    <strong>{value}</strong>
-                    <small>{detail}</small>
-                  </article>
-                ))}
-              </div>
-              <div className="result-panels">
-                <div className="card">
-                  <h3>Trạng thái liên kết</h3>
-                  <p className="muted">
-                    Đếm nhóm kết quả, gồm cả ngoài phạm vi. Mẫu số KPI được công
-                    bố riêng.
-                  </p>
-                  <StatusChart counts={snapshot.linkage_counts} />
-                </div>
-                <div className="card">
-                  <h3>Phạm vi và mẫu số</h3>
-                  <p>
-                    {snapshot.period_start} đến trước {snapshot.period_end} ·{" "}
-                    {snapshot.timezone}
-                  </p>
-                  <p>
-                    {snapshot.comparison_unit ===
-                    "Left canonical reference group"
-                      ? "Một nhóm tham chiếu ở nguồn trái"
-                      : "Một bản ghi chuẩn hóa tham chiếu ở nguồn trái"}
-                  </p>
-                  <p className="muted">
-                    Đơn vị trong phạm vi có khóa, số tiền và tiền tệ hợp lệ.
-                    Loại lỗi, ngoài kỳ, đang chờ và thiếu tiền nguồn trái khỏi
-                    mẫu số. Đơn vị mơ hồ vẫn được tính để review. Tự động hóa là
-                    phân loại đã kiểm chứng, không cần quyết định thủ công trên
-                    từng đơn vị.
-                  </p>
-                  <p>
-                    Đủ điều kiện: {snapshot.eligible_units}. Case tại thời điểm
-                    chạy: {snapshot.unresolved_cases_at_run}.
-                  </p>
-                  {Object.entries(snapshot.excluded_counts).map(
-                    ([key, value]) => (
-                      <p key={key}>
-                        Loại khỏi mẫu số: {label(key)} — {value}
+              {mode !== "exceptions" && (
+                <>
+                  <div className="result-kpis">
+                    {[
+                      [
+                        "Tỷ lệ khớp",
+                        snapshot.full_match_rate.percent === null
+                          ? "N/A"
+                          : `${snapshot.full_match_rate.percent}%`,
+                        `${snapshot.full_match_rate.numerator}/${snapshot.full_match_rate.denominator} đơn vị đủ điều kiện`,
+                      ],
+                      [
+                        "Cần kiểm tra",
+                        openCount === null ? "Đang tải…" : String(openCount),
+                        "case đang mở hiện tại",
+                      ],
+                      [
+                        "Giá trị lệch tuyệt đối",
+                        snapshot.monetary[0]?.absolute_variance ?? "N/A",
+                        `${snapshot.monetary[0]?.currency || ""} · ${snapshot.monetary[0]?.metric_id || ""}`,
+                      ],
+                      [
+                        "Tự động phân loại",
+                        snapshot.automation_coverage.percent === null
+                          ? "N/A"
+                          : `${snapshot.automation_coverage.percent}%`,
+                        `${snapshot.automation_coverage.numerator}/${snapshot.automation_coverage.denominator} đơn vị đủ điều kiện; gồm thiếu đối ứng/lệch đã xác minh, không phải ngoại lệ đã xử lý`,
+                      ],
+                    ].map(([name, value, detail]) => (
+                      <article className="card" key={name}>
+                        <span>{name}</span>
+                        <strong>{value}</strong>
+                        <small>{detail}</small>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="result-panels">
+                    <div className="card">
+                      <h3>Trạng thái liên kết</h3>
+                      <p className="muted">
+                        Đếm nhóm kết quả, gồm cả ngoài phạm vi. Mẫu số KPI được
+                        công bố riêng.
                       </p>
-                    ),
-                  )}
-                  {snapshot.monetary.map((m) => (
-                    <p key={m.metric_id}>
-                      {m.metric_id} ({m.currency}): chênh lệch signed{" "}
-                      {m.signed_variance}, tuyệt đối {m.absolute_variance};{" "}
-                      {m.comparable_groups} nhóm so sánh được.
-                    </p>
-                  ))}
-                </div>
-              </div>
+                      <StatusChart counts={snapshot.linkage_counts} />
+                    </div>
+                    <div className="card">
+                      <h3>Phạm vi và mẫu số</h3>
+                      <p>
+                        {snapshot.period_start} đến trước {snapshot.period_end}{" "}
+                        · {snapshot.timezone}
+                      </p>
+                      <p>
+                        {snapshot.comparison_unit ===
+                        "Left canonical reference group"
+                          ? "Một nhóm tham chiếu ở nguồn trái"
+                          : "Một bản ghi chuẩn hóa tham chiếu ở nguồn trái"}
+                      </p>
+                      <p className="muted">
+                        Đơn vị trong phạm vi có khóa, số tiền và tiền tệ hợp lệ.
+                        Loại lỗi, ngoài kỳ, đang chờ và thiếu tiền nguồn trái
+                        khỏi mẫu số. Đơn vị mơ hồ vẫn được tính để review. Tự
+                        động hóa là phân loại đã kiểm chứng, không cần quyết
+                        định thủ công trên từng đơn vị.
+                      </p>
+                      <p>
+                        Đủ điều kiện: {snapshot.eligible_units}. Case tại thời
+                        điểm chạy: {snapshot.unresolved_cases_at_run}.
+                      </p>
+                      {Object.entries(snapshot.excluded_counts).map(
+                        ([key, value]) => (
+                          <p key={key}>
+                            Loại khỏi mẫu số: {label(key)} — {value}
+                          </p>
+                        ),
+                      )}
+                      {snapshot.monetary.map((m) => (
+                        <p key={m.metric_id}>
+                          {m.metric_id} ({m.currency}): chênh lệch signed{" "}
+                          {m.signed_variance}, tuyệt đối {m.absolute_variance};{" "}
+                          {m.comparable_groups} nhóm so sánh được.
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="card">
                 <div className="section-heading">
                   <h3>
@@ -1505,28 +1539,6 @@ export function ReconciliationStudio({
                       ? "Danh sách ngoại lệ"
                       : "Chi tiết đối soát"}
                   </h3>
-                  <div className="rule-actions">
-                    <button
-                      className="button secondary"
-                      disabled={busy || !canEdit}
-                      onClick={() => void exportFile("csv")}
-                    >
-                      <ArrowDownToLine size={16} />
-                      Xuất CSV
-                    </button>
-                    <button
-                      className="button secondary"
-                      disabled={busy || !canEdit}
-                      onClick={() => void exportFile("xlsx")}
-                    >
-                      Xuất XLSX
-                    </button>
-                    {download && (
-                      <a className="button primary" href={download} download>
-                        Tải báo cáo
-                      </a>
-                    )}
-                  </div>
                 </div>
                 <div className="result-filters">
                   <label>

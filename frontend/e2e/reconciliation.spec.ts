@@ -32,6 +32,41 @@ async function state() {
   ) as State;
 }
 
+/** History is server-paged; exercise the visible history controls for older fixture runs. */
+async function selectRun(page: Page, id: string) {
+  const select = page.getByLabel("Lần đối soát", { exact: true });
+  await expect(select).toBeVisible();
+  const option = select.locator(`option[value="${id}"]`);
+  if (!(await option.count())) {
+    const history = page.locator(".run-history");
+    if ((await history.getAttribute("open")) === null)
+      await history.locator("summary").click();
+    for (let index = 0; index < 20 && !(await option.count()); index++) {
+      const next = history.getByRole("button", {
+        name: "Trang lần chạy sau",
+        exact: true,
+      });
+      if (!(await next.isEnabled())) break;
+      const response = page.waitForResponse(
+        (r) =>
+          new URL(r.url()).pathname === "/api/runs" &&
+          r.request().method() === "GET",
+      );
+      await next.click();
+      const first = (await (await response).json()).items[0];
+      if (first)
+        await expect(
+          history.getByRole("cell", {
+            name: first.id.slice(0, 8),
+            exact: true,
+          }),
+        ).toBeVisible();
+    }
+  }
+  await select.selectOption(id);
+  await expect(select).toHaveValue(id);
+}
+
 test("late evidence from a previous run cannot open under the selected run", async ({
   page,
 }) => {
@@ -58,13 +93,13 @@ test("late evidence from a previous run cannot open under the selected run", asy
   await page.goto("/");
   await selectProject(page, s.project_id);
   await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
-  await page.getByLabel("Lần đối soát", { exact: true }).selectOption(original);
+  await selectRun(page, original);
   await page
     .getByRole("button", { name: "Xem bằng chứng", exact: true })
     .first()
     .click();
   await pending;
-  await page.getByLabel("Lần đối soát", { exact: true }).selectOption(next);
+  await selectRun(page, next);
   await expect(page.getByLabel("Lần đối soát", { exact: true })).toHaveValue(
     next,
   );
@@ -417,7 +452,9 @@ test("Planner UI accepts sources with no common key and presents review-only sug
   await expect(
     page.getByText("Confirm reporting period and coverage", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/tracking_id ↔ external_tracking/)).toBeVisible();
+  await expect(
+    page.getByText(/tracking_id ↔ external_tracking/),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", {
       name: "Xác nhận quy tắc và dấu số tiền",
@@ -444,9 +481,11 @@ test("Planner UI accepts sources with no common key and presents review-only sug
   await expect(
     page.getByText(/CLOUD_BUDGET_EXHAUSTED.*Có thể tạo rule thủ công/),
   ).toBeVisible();
-  await page
-    .getByText("Chỉnh khóa và chỉ tiêu thủ công", { exact: true })
-    .click();
+  await expect(
+    page
+      .getByText("Chỉnh khóa và chỉ tiêu thủ công", { exact: true })
+      .locator(".."),
+  ).toHaveAttribute("open", "");
   await expect(
     page.getByRole("group", { name: "Khóa liên kết đã xác nhận", exact: true }),
   ).toBeVisible();
@@ -469,9 +508,7 @@ for (const size of [
         .getByRole("button", { name: "Mở điều hướng", exact: true })
         .click();
     await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
-    await page
-      .getByLabel("Lần đối soát", { exact: true })
-      .selectOption(s.runs.delivery.run_id);
+    await selectRun(page, s.runs.delivery.run_id);
     await expect(
       page.getByText("Giá trị lệch tuyệt đối", { exact: true }),
     ).toBeVisible();
