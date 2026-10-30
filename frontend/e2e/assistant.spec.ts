@@ -532,3 +532,36 @@ test("conversation history failure shows recoverable error", async ({
     dialog.getByRole("textbox", { name: "Câu hỏi cho Trợ lý" }),
   ).toBeEnabled();
 });
+
+test("data screen passes only its current scoped dataset to assistant", async ({
+  page,
+}) => {
+  const s = await state();
+  await page.goto("/");
+  await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
+  await selectProject(page, s.project_id);
+  const dataset = (
+    await (
+      await page.request.get(`/api/datasets?project_id=${s.project_id}&limit=1`)
+    ).json()
+  ).items[0];
+  await page
+    .getByRole("button", { name: /^Dữ liệu/ })
+    .first()
+    .click();
+  await page
+    .getByRole("button")
+    .filter({ hasText: dataset.name })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("heading", { name: dataset.name, exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Trợ lý AI", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Trợ lý AI", exact: true });
+  await expect(dialog).toContainText(
+    `Nguồn đang xem: ${dataset.id.slice(0, 8)}`,
+  );
+  const answer = await ask(page, "Tóm tắt kết quả đối soát");
+  await expect(answer).toContainText("Chưa đủ bằng chứng");
+});

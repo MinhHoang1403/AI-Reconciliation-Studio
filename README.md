@@ -2,7 +2,7 @@
 
 Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, AI đề xuất ánh xạ, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
 
-**Trạng thái:** Giai đoạn 1 có tag `data-foundation-accepted-20261028`. Giai đoạn 2 đã nghiệm thu kỹ thuật trong phạm vi MVP và hợp nhất có lưu lịch sử vào `main` ngày 29/10/2026: rule builder/AI Planner, matching/verification, kết quả, ngoại lệ và CSV/XLSX. Gemini mặc định; mapping/rule luôn cần duyệt. Planner mới PASS MOCK/CONTRACT, chưa xác minh live; Qwen live hoãn do IP allowlist; LlamaParse tạo job OFF. Chưa triển khai Giai đoạn 3. Xem [bằng chứng và giới hạn](docs/IMPLEMENTATION_STATUS.md).
+**Trạng thái:** Giai đoạn 1–2 và UX đã hợp nhất có lưu lịch sử vào `main`; Docker main được nghiệm thu trước khi mở `codex/assistant-automation`. Nhánh Assistant bổ sung facts có bằng chứng, hội thoại và đề xuất workflow có review, chưa tự merge main. Gemini mặc định; mapping/rule luôn cần duyệt. Planner mới PASS MOCK/CONTRACT, chưa xác minh live; Qwen live hoãn do IP allowlist; LlamaParse tạo job OFF. Xem [bằng chứng và giới hạn](docs/IMPLEMENTATION_STATUS.md).
 
 ## Mở ứng dụng trong workspace hiện tại
 
@@ -21,6 +21,36 @@ Script tạo `.env` với credentials local ngẫu nhiên nếu chưa có, build
 ```
 
 Máy đã kiểm tra: Windows, Ryzen 5 7535HS (6 cores/12 threads), khoảng 16 GB RAM; Docker Desktop/Linux Engine 29.7.2, Compose 5.5.0. Chỉ cần Docker để chạy ứng dụng; Node/Python local dùng cho phát triển và tests. Cổng `18180` phải còn trống. Backend/worker/PostgreSQL không publish host ports.
+
+## Trợ lý có bằng chứng
+
+Assistant dùng Backend xác định cho câu hỏi facts, không gọi đó là LLM live. `ASSISTANT_CLOUD_ENABLED=false` và `ASSISTANT_REQUEST_BUDGET=0` mặc định; không dùng ba HTTP attempts Gemini còn lại. Mở “Trợ lý AI” hoặc “Hỏi vì sao lệch” trên run/ngoại lệ; citations mở đúng evidence. Hội thoại riêng theo người tạo/project và giữ run/snapshot đã hỏi. Đổi run cần hội thoại mới; có lịch sử, phân trang và xóa nội dung theo quyền. Câu “Đối soát ba file tháng 10” chỉ tạo đề xuất: phải chọn nguồn/mẫu/kỳ/coverage rồi review và duyệt rule bằng API Đối soát hiện có.
+
+## Vận hành và khôi phục
+
+```powershell
+docker compose stop
+./tools/start.ps1 -SkipBuild
+docker compose restart
+./tools/verify-local.ps1
+docker compose up -d --force-recreate --wait
+./tools/verify-local.ps1
+```
+
+Không dùng `down -v`, prune volumes hoặc tạo Compose project khác. Sau recreate, local demo bị khóa cho đến khi xác minh đúng published loopback ports; HTTP 403 ở bước này không phải lý do bỏ auth/CSRF.
+
+Backup/restore drill, trong lúc không có jobs hoặc thao tác ghi từ giao diện:
+
+```powershell
+docker compose cp tools/check-backup-restore.py backend:/tmp/check-backup-restore.py
+docker compose exec -T backend python /tmp/check-backup-restore.py
+```
+
+Tool dùng transaction PostgreSQL `REPEATABLE READ`, chụp metadata và copy mọi file đã được công bố theo DB refs/checksum; từ chối nếu metadata đổi hoặc jobs đang chạy. Backup giữ tại `/var/lib/studio/backups/backup_<UUID>/`, ngoài Git/image. Restore drill tạo schema UUID trong PostgreSQL hiện có, kiểm đủ metadata/artifacts rồi chỉ bỏ schema/copy do drill tạo; không overwrite public. Tool không phục hồi production tự động. Receipt ghi counts, schema, hashes, thời gian và lỗi checksum/path. Cơ sở: [PostgreSQL transaction isolation](https://www.postgresql.org/docs/18/transaction-iso.html).
+
+Copy cả thư mục backup theo ID được trả về ra host bằng `docker compose cp backend:/var/lib/studio/backups/backup_<UUID> runtime/backups/`, sau đó lưu bản sao mã hóa/off-host và cấu hình bí mật riêng theo quyền vận hành. Bản trên cùng volume hoặc GitHub không thay backup độc lập. Khôi phục production cần chọn backup đã xác minh và kế hoạch quyền/cấu hình riêng; chưa có thao tác tự ghi đè DB thật.
+
+Để quay lại image main đã nghiệm thu: `./tools/rollback.ps1 -ReleaseRevision 5f358c4`. Script kiểm source/labels, schema additive tương thích và không có job active; dùng cùng Compose/volumes, không downgrade. Override nằm ngoài Git tại `runtime/rollback-compose.json`; dùng cả hai file Compose khi vận hành bản rollback. `start.ps1 -SkipBuild` với Compose chuẩn quay lại candidate `local`. Bộ `accepted-main-5f358c4` và `rollback-e025094` được giữ; không tag đè hoặc xóa. Đây là demo loopback; chưa cấp quyền triển khai public/production.
 
 ## Cấu hình
 

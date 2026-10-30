@@ -129,11 +129,19 @@ def main() -> None:
     validate_backup(directory)
     # Failure cases use only disposable bytes generated for this drill.
     probe = directory / "checksum-probe"
-    probe.write_bytes(b"synthetic backup checksum probe")
-    digest = checksum(probe)
-    probe.write_bytes(b"corrupted")
-    assert checksum(probe) != digest
-    probe.unlink()
+    probe.mkdir()
+    (probe / "metadata.json").write_bytes(b"synthetic backup checksum probe")
+    digest = checksum(probe / "metadata.json")
+    (probe / "manifest.json").write_text(json.dumps(dict(metadata_sha256=digest, files={})))
+    (probe / "metadata.json").write_bytes(b"corrupted")
+    try:
+        validate_backup(probe)
+    except RuntimeError as exc:
+        assert str(exc) == "Backup metadata checksum mismatch"
+    else:
+        raise AssertionError("Corrupted backup was accepted")
+    assert probe.resolve().parent == directory.resolve()
+    shutil.rmtree(probe)
     try:
         storage_path(directory / "files", "../outside")
     except Exception:
@@ -189,9 +197,7 @@ def main() -> None:
     assert file_inventory(rows) == files
     (directory / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(json.dumps({k: v for k, v in manifest.items() if k != "files"}, ensure_ascii=False))
-    print(
-        "PASS: restored metadata and files; production unchanged; backup retained on volume"
-    )
+    print("PASS: restored metadata and files; production unchanged; backup retained on volume")
     engine.dispose()
 
 

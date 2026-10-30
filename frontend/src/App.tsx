@@ -885,7 +885,18 @@ export function App() {
           <button
             className={assistantContext ? "active" : ""}
             disabled={!ready || !projectId}
-            onClick={() => openAssistant({ project_id: projectId })}
+            onClick={() =>
+              openAssistant({
+                project_id: projectId,
+                ...(page === "data" && selectedDataset?.project_id === projectId
+                  ? { dataset_id: selectedDataset.id }
+                  : {}),
+                ...(["reconcile", "exceptions", "reports"].includes(page) &&
+                localStorage.getItem(`studio.run.${projectId}`)
+                  ? { run_id: localStorage.getItem(`studio.run.${projectId}`) }
+                  : {}),
+              })
+            }
           >
             <Sparkles size={19} />
             <span>Trợ lý AI</span>

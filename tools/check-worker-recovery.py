@@ -40,6 +40,7 @@ def wait_job(client: httpx.Client, job_id: str, desired: str) -> dict[str, objec
 
 
 def main() -> None:
+    started = time.monotonic()
     worker_id = docker("compose", "ps", "-q", "worker", capture=True)
     project = docker(
         "inspect",
@@ -193,6 +194,12 @@ with SessionFactory() as db:
             "project_id": project_id,
             "dataset_id": dataset["id"],
             "job_id": job_id,
+            "end_to_end_seconds": round(time.monotonic() - started, 3),
+            "observed_pipeline_rows_per_second": round(rows / (time.monotonic() - started), 2),
+            "measurement_scope": (
+                "upload, manual approval, normalization SIGKILL, reclaim, publication; "
+                "not steady-state worker throughput"
+            ),
         }
         output = ROOT / "runtime" / "worker-recovery.json"
         output.parent.mkdir(exist_ok=True)

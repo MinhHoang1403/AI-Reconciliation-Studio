@@ -413,6 +413,12 @@ export function AssistantStudio({
           Câu trả lời giữ đúng run này.
         </p>
       )}
+      {context.dataset_id && (
+        <p className="muted">
+          Nguồn đang xem: {context.dataset_id.slice(0, 8)}. Chọn run đã xác minh
+          để hỏi số liệu đối soát.
+        </p>
+      )}
       <details className="assistant-history">
         <summary>
           Lịch sử hội thoại ({history.length}
