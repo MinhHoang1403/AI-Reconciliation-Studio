@@ -4,7 +4,15 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, create_engine
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    create_engine,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -263,6 +271,32 @@ class ExportRow(Base):
     status: Mapped[str] = mapped_column(String(40), default="QUEUED")
     storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class ConversationRow(Base):
+    __tablename__ = "conversations"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    actor_id: Mapped[str] = mapped_column(String(64), index=True)
+    context: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    title: Mapped[str] = mapped_column(String(100))
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class MessageRow(Base):
+    __tablename__ = "conversation_messages"
+    __table_args__ = (UniqueConstraint("job_id", "role"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), index=True)
+    role: Mapped[str] = mapped_column(String(20))
+    text: Mapped[str] = mapped_column(String(2000))
+    context: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    answer: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 engine = create_engine(settings.database_url, pool_pre_ping=True, pool_size=5, max_overflow=2)

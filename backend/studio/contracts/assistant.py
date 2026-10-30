@@ -148,6 +148,15 @@ class WorkflowProposal(Contract):
     confirmation_required: Literal[True] = True
 
 
+class AssistantUsage(Contract):
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    thinking_tokens: int | None = None
+    cached_tokens: int | None = None
+    cost_estimate: str | None = None
+    cache_hits: int = 0
+
+
 class AssistantAnswer(Contract):
     status: Literal["ANSWERED", "INSUFFICIENT_EVIDENCE", "PROVIDER_UNAVAILABLE", "REVIEW_REQUIRED"]
     mode: Literal["DETERMINISTIC", "GEMINI", "MOCK", "CACHE"]
@@ -160,6 +169,7 @@ class AssistantAnswer(Contract):
     provider: str | None = None
     model: str | None = None
     request_count: int = 0
+    usage: AssistantUsage = Field(default_factory=AssistantUsage)
     prompt_revision: str = "assistant-grounded-1"
 
 
@@ -184,6 +194,7 @@ class ConversationView(Contract):
 
 class MessageView(Contract):
     id: str
+    job_id: str
     role: Literal["user", "assistant"]
     text: str
     context: AssistantContext

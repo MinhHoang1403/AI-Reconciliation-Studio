@@ -113,6 +113,9 @@ CurrentActor = Annotated[Actor, Depends(current_actor)]
 from studio.reconciliation_api import build_router  # noqa: E402
 
 app.include_router(build_router(database, current_actor))
+from studio.assistant_api import build_router as build_assistant_router  # noqa: E402
+
+app.include_router(build_assistant_router(database, current_actor))
 
 
 @app.exception_handler(DomainError)

@@ -32,7 +32,7 @@ def test_additive_migration_preserves_existing_approved_canonical(pg):  # noqa: 
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 1
         assert db.scalar(select(func.count()).select_from(RunRow)) == 0
-        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "create_reconciliation"
+        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "create_conversations"
     canonical = before["canonical_datasets"][0]
     preview = client.get(
         f"/api/tables/{table_id}/preview",

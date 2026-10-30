@@ -598,6 +598,7 @@ def _normalize(job_id: str, token: str) -> None:
 
 
 def process_job(job_id: str, token: str) -> None:
+    from studio.assistant_jobs import execute_assistant
     from studio.reconciliation_exports import execute_export
     from studio.reconciliation_jobs import execute_planning, execute_reconciliation
 
@@ -607,6 +608,9 @@ def process_job(job_id: str, token: str) -> None:
             assert job is not None
             kind = job.kind
         handlers: dict[str, Callable[[str, str], None]] = {
+            "assistant": lambda job_id, token: execute_assistant(
+                job_id, token, SessionFactory, _fence, _finish
+            ),
             "parse": _parse,
             "mapping": _mapping,
             "normalize": _normalize,

@@ -15,6 +15,7 @@ from studio.contracts.assistant import (
     AnswerFactSet,
     AnswerLine,
     AssistantAnswer,
+    AssistantUsage,
     ModelAnswer,
     WorkflowProposal,
     WorkflowStatus,
@@ -269,6 +270,7 @@ def answer_question(
         lines = provider.request_typed(
             prompt, policy, reserve, lambda content: validate_answer(content, facts), max_attempts=1
         )
+        receipt = provider.usage.get("tokens") or {}
         return AssistantAnswer(
             status="ANSWERED",
             mode="GEMINI",
@@ -278,6 +280,12 @@ def answer_question(
             provider="GEMINI",
             model=config.gemini_model,
             request_count=provider.usage["cloud_requests"],
+            usage=AssistantUsage(
+                input_tokens=receipt.get("promptTokenCount"),
+                output_tokens=receipt.get("candidatesTokenCount"),
+                thinking_tokens=receipt.get("thoughtsTokenCount"),
+                cached_tokens=receipt.get("cachedContentTokenCount"),
+            ),
         )
     finally:
         provider.close()

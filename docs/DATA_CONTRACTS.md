@@ -4,6 +4,8 @@
 
 ## Assistant: tools và facts
 
+API bổ sung: `POST /api/assistant/tools`, `POST /api/conversations`, `GET /api/conversations?project_id=...`, `GET /api/conversations/{id}`, `DELETE /api/conversations/{id}`, `POST /api/assistant/messages`. Create/message dùng `Idempotency-Key`; message trả job ID để resume bằng GET, không gửi lại provider. GET hỗ trợ limit 1–50 và `before_id` thuộc đúng project/hội thoại. Context và text khác với key cũ trả 409. Conversation/message output có source context riêng; hội thoại khác actor/project/workspace hoặc đã xóa trả 404.
+
 `AssistantContext` luôn có project; group/case bắt buộc explicit run. Bảy `ToolName` ở kế hoạch §34 là allowlist đóng, input không nhận SQL, code hoặc đường dẫn. Mỗi truy xuất kiểm workspace/project/run, output typed và có giới hạn trang; PostgreSQL statement timeout 2,5 giây, DuckDB evidence query 3 giây, nhóm tối đa 100 nguồn evidence cho Assistant. Nhóm lớn hơn yêu cầu mở evidence phân trang.
 
 `AnswerFactSet` có content hash, context, trạng thái verification, nguyên bản MetricSnapshot, rule ID/revision, facts và source references (run/snapshot/group/member/file/table/sheet/row). Facts tiền và tỷ lệ chỉ sao chép từ snapshot/comparison đã verified; không tính lại KPI. ID giả, run khác, snapshot/rule không khớp phải bị từ chối. FactSet cũ giữ nguyên run cũ, không được gắn làm kết quả mới.

@@ -210,3 +210,42 @@ def test_gateway_mock_validates_once_without_retry_after_unknown_delivery():
                 client=client,
             )
     assert len(calls) == 1
+
+
+def test_gateway_mock_success_copies_only_actual_usage_receipt():
+    config = Settings(
+        _env_file=None,
+        allow_external_ai=True,
+        external_ai_request_budget=10,
+        assistant_cloud_enabled=True,
+        assistant_request_budget=1,
+        gemini_api_key=SecretStr("synthetic"),
+    )
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=10
+    )
+    body = dict(
+        fact_set_id="factset",
+        claims=[dict(classification="VERIFIED_FACT", code="FACT", fact_id="comparison_0")],
+    )
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        return httpx.Response(
+            200,
+            json=dict(
+                candidates=[dict(content=dict(parts=[dict(text=json.dumps(body))]))],
+                usageMetadata=dict(
+                    promptTokenCount=40, candidatesTokenCount=10, thoughtsTokenCount=2
+                ),
+            ),
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        answer = answer_question(
+            "Yêu cầu suy luận cần provider", facts(), policy, config, lambda: True, client=client
+        )
+    assert len(calls) == 1 and answer.request_count == 1
+    assert answer.usage.input_tokens == 40 and answer.usage.output_tokens == 10
+    assert answer.usage.cached_tokens is None and answer.usage.cost_estimate is None
