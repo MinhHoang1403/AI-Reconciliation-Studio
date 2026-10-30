@@ -17,6 +17,7 @@ from studio.access import Actor, require_editor
 from studio.contracts import Contract, EvidenceRef, MappingRevision, ParsedTableArtifact
 from studio.contracts.api import JobAccepted
 from studio.contracts.reconciliation import (
+    ComparisonResult,
     ExceptionCase,
     MatchGroup,
     MetricSnapshot,
@@ -50,6 +51,7 @@ from studio.reconciliation_planner import validate_planning_request
 from studio.reconciliation_repository import (
     catalogue_for_project,
     load_canonical_records,
+    match_groups_by_ids,
     match_page,
     run_contract,
     selected_catalogue,
@@ -117,10 +119,17 @@ class MatchPage(Contract):
     limit: int
 
 
+class CaseGroupSummary(Contract):
+    id: str
+    key: list[str | None]
+    comparisons: list[ComparisonResult]
+
+
 class CaseList(Contract):
     items: list[ExceptionCase]
     total: int
     current_open_count: int
+    groups: list[CaseGroupSummary]
 
 
 def plan_view(db: Session, row: PlanRow) -> PlanView:
@@ -715,8 +724,15 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             .offset(offset)
             .limit(limit)
         )
+        items = [case_view(c) for c in db.scalars(query)]
+        groups = match_groups_by_ids(row, list({c.match_group_id for c in items}))
         return CaseList(
-            items=[case_view(c) for c in db.scalars(query)], total=total, current_open_count=opened
+            items=items,
+            total=total,
+            current_open_count=opened,
+            groups=[
+                CaseGroupSummary(id=g.id, key=g.key, comparisons=g.comparisons) for g in groups
+            ],
         )
 
     @router.patch("/exceptions/{case_id}/review", response_model=ExceptionCase)

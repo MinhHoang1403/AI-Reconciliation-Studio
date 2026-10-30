@@ -106,6 +106,8 @@ export function ReconciliationStudio({
   canEdit,
   onAsk,
   requestedPlan,
+  onSetup,
+  onRunSelected,
 }: {
   projectId: string;
   mode: Mode;
@@ -113,6 +115,8 @@ export function ReconciliationStudio({
   onAsk: (context: AssistantContext) => void;
   requestedPlan: { id: string; request: number } | null;
   requestedRun: { id: string; request: number } | null;
+  onSetup: () => void;
+  onRunSelected: (id: string) => void;
 }) {
   const [catalogue, setCatalogue] = useState<Catalogue[]>([]),
     [runs, setRuns] = useState<Run[]>([]);
@@ -125,6 +129,9 @@ export function ReconciliationStudio({
   const [cases, setCases] = useState<Case[]>([]),
     [caseTotal, setCaseTotal] = useState(0),
     [openCount, setOpenCount] = useState<number | null>(null);
+  const [caseGroups, setCaseGroups] = useState<
+    Pick<Group, "id" | "key" | "comparisons">[]
+  >([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState(""),
     [message, setMessage] = useState(""),
@@ -235,9 +242,8 @@ export function ReconciliationStudio({
       setRuns(r.items);
       setRunTotal(r.total);
       setTemplates(t.items);
-      setRunId((old) =>
-        r.items.some((r) => r.id === old) ? old : r.items[0]?.id || "",
-      );
+      // A bounded/filtered history page is not the authority for an explicitly selected run.
+      setRunId((old) => old || r.items[0]?.id || "");
     } catch (err) {
       if (alive.current && sequence === refreshSequence.current) throw err;
     } finally {
@@ -260,6 +266,7 @@ export function ReconciliationStudio({
     }
     let active = true;
     localStorage.setItem(`studio.run.${projectId}`, runId);
+    onRunSelected(runId);
     setRun(null);
     setEvidence(null);
     setDownload("");
@@ -284,6 +291,7 @@ export function ReconciliationStudio({
     let active = true;
     setGroups([]);
     setCases([]);
+    setCaseGroups([]);
     setOpenCount(null);
     if (!run?.metric_snapshot) return;
     setDetailLoading(true);
@@ -292,7 +300,12 @@ export function ReconciliationStudio({
       api<{ items: Group[]; total: number }>(
         `/runs/${run.id}/matches?${query}&linkage=${mode === "exceptions" ? "" : filter}`,
       ),
-      api<{ items: Case[]; total: number; current_open_count: number }>(
+      api<{
+        items: Case[];
+        total: number;
+        current_open_count: number;
+        groups?: Pick<Group, "id" | "key" | "comparisons">[];
+      }>(
         `/runs/${run.id}/exceptions?${query}&state=${mode === "exceptions" ? filter : ""}&issue=${issueFilter}&sort=${caseSort}`,
       ),
     ])
@@ -301,6 +314,7 @@ export function ReconciliationStudio({
           setGroups(g.items);
           setTotal(g.total);
           setCases(c.items);
+          setCaseGroups(c.groups || []);
           setCaseTotal(c.total);
           setOpenCount(c.current_open_count);
           setDetailLoading(false);
@@ -573,7 +587,8 @@ export function ReconciliationStudio({
           aria-label="Thiết lập quy tắc"
         >
           <h3>
-            1. Chọn nguồn → 2. AI chuẩn bị → 3. Duyệt → 4. Chạy và xem ngoại lệ
+            1. Chọn nguồn → 2. Quy tắc → 3. Kiểm tra và duyệt → 4. Chạy → 5. Kết
+            quả
           </h3>
           <p className="muted">
             Chọn hai nguồn đã chuẩn hóa. AI có thể tìm cặp khóa khác tên; bạn
@@ -765,7 +780,7 @@ export function ReconciliationStudio({
                       />
                     </label>
                   </div>
-                  <details>
+                  <details open>
                     <summary>Chỉnh khóa và chỉ tiêu thủ công</summary>
                     {pairBuilder("Khóa liên kết đã xác nhận", "join_keys")}
                     <fieldset className="rule-fieldset">
@@ -1250,9 +1265,9 @@ export function ReconciliationStudio({
           )}
         </fieldset>
       )}
-      {mode !== "home" && (
-        <div className="card">
-          <h3>Lịch sử các lần đối soát</h3>
+      {mode !== "home" && runs.length > 0 && (
+        <details className="card run-history">
+          <summary>Lịch sử các lần đối soát ({runTotal})</summary>
           <div className="rule-grid">
             <label>
               Kỳ bắt đầu từ
@@ -1343,11 +1358,11 @@ export function ReconciliationStudio({
               Trang lần chạy sau
             </button>
           </div>
-        </div>
+        </details>
       )}
       {listLoading ? (
         <Spinner />
-      ) : runs.length === 0 && !error ? (
+      ) : runs.length === 0 && !runId && !error ? (
         <div className="card empty-state">
           <GitCompareArrows size={28} />
           <h3>Chưa có lần đối soát trong bộ lọc</h3>
@@ -1355,6 +1370,11 @@ export function ReconciliationStudio({
             Chọn hai nguồn canonical, xác nhận quy tắc rồi chạy để có kết quả đã
             kiểm chứng.
           </p>
+          {mode !== "reconcile" && (
+            <button className="button primary" onClick={onSetup}>
+              Thiết lập đối soát
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -1366,6 +1386,12 @@ export function ReconciliationStudio({
                 value={runId}
                 onChange={(e) => setRunId(e.target.value)}
               >
+                {runId && !runs.some((r) => r.id === runId) && (
+                  <option value={runId}>
+                    {runId.slice(0, 8)} · {run ? label(run.status) : "Đang tải"}{" "}
+                    · ngoài trang lịch sử
+                  </option>
+                )}
                 {runs.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.id.slice(0, 8)} · {label(r.status)}
@@ -1595,7 +1621,9 @@ export function ReconciliationStudio({
                       <tr>
                         {(mode === "exceptions"
                           ? [
+                              "Tham chiếu giao dịch",
                               "Loại ngoại lệ",
+                              "Trái / Phải / Chênh lệch",
                               "Trạng thái xử lý",
                               "Ghi chú",
                               "Bằng chứng",
@@ -1616,7 +1644,23 @@ export function ReconciliationStudio({
                       {mode === "exceptions"
                         ? cases.map((c) => (
                             <tr key={c.id}>
+                              <td>
+                                {caseGroups
+                                  .find((g) => g.id === c.match_group_id)
+                                  ?.key.join(" / ") || "Mở bằng chứng"}
+                              </td>
                               <td>{label(c.type)}</td>
+                              <td>
+                                {caseGroups
+                                  .find((g) => g.id === c.match_group_id)
+                                  ?.comparisons.map((m) => (
+                                    <div key={m.metric_id}>
+                                      {m.left_amount ?? "N/A"} /{" "}
+                                      {m.right_amount ?? "N/A"} /{" "}
+                                      {m.delta ?? "N/A"} {m.currency}
+                                    </div>
+                                  )) || "Chưa tải được"}
+                              </td>
                               <td>{label(c.workflow_state)}</td>
                               <td>{c.notes || "Chưa có ghi chú"}</td>
                               <td>

@@ -24,7 +24,7 @@ Máy đã kiểm tra: Windows, Ryzen 5 7535HS (6 cores/12 threads), khoảng 16 
 
 ## Trợ lý có bằng chứng
 
-Assistant dùng Backend xác định cho câu hỏi facts, không gọi đó là LLM live. `ASSISTANT_CLOUD_ENABLED=false` và `ASSISTANT_REQUEST_BUDGET=0` mặc định; không dùng ba HTTP attempts Gemini còn lại. Mở “Trợ lý AI” hoặc “Hỏi vì sao lệch” trên run/ngoại lệ; citations mở đúng evidence. Hội thoại riêng theo người tạo/project và giữ run/snapshot đã hỏi. Đổi run cần hội thoại mới; có lịch sử, phân trang và xóa nội dung theo quyền. Câu “Đối soát ba file tháng 10” chỉ tạo đề xuất: phải chọn nguồn/mẫu/kỳ/coverage rồi review và duyệt rule bằng API Đối soát hiện có.
+Assistant dùng Backend xác định cho câu hỏi facts, không gọi đó là LLM live. `ASSISTANT_CLOUD_ENABLED=false` và `ASSISTANT_REQUEST_BUDGET=0` mặc định; không dùng ba HTTP attempts Gemini còn lại. Mở trang “Trợ lý AI” hoặc “Hỏi vì sao lệch” trên run/ngoại lệ; citations mở đúng evidence. Sidebar và ngữ cảnh vẫn hiện, có lịch sử thu gọn và ô nhập riêng. Hội thoại riêng theo người tạo/project và giữ run/snapshot đã hỏi. Đổi run cần hội thoại mới; có lịch sử, phân trang và xóa nội dung theo quyền. Bản nháp chưa gửi lưu trong sessionStorage của tab, tách actor/workspace/project/run/group/case/dataset/hội thoại; chuyển trang hoặc dự án không tự gửi hay xóa bản nháp. Đóng tab có thể mất bản nháp; không coi đây là backup hội thoại. Câu “Đối soát ba file tháng 10” chỉ tạo đề xuất: phải chọn nguồn/mẫu/kỳ/coverage rồi review và duyệt rule bằng API Đối soát hiện có.
 
 ## Vận hành và khôi phục
 
@@ -77,7 +77,7 @@ Bộ chọn dự án mặc định ẩn nhóm **Kiểm thử**, vẫn giữ dự
 7. Dùng lớp **Cảnh báo / lỗi** để kiểm tra invalid/null và **Xem nguồn** để mở dòng gốc. Dữ liệu lỗi không bị thay bằng zero hoặc bỏ đi. Sửa mapping tạo revision mới, canonical cũ được đánh dấu đã cũ; raw/parsed được bảo toàn.
 8. Mở lại trình duyệt, chọn dự án cũ để tiếp tục. Tệp cùng nội dung/config trong cùng dự án được reuse; mẫu đã duyệt chỉ được gợi ý trong scope tương thích.
 
-PDF/DOCX mới cần allowance riêng được duyệt trước khi upload. Kết quả đã lưu có preview theo file/trang/bảng và luôn “chưa được xác minh”; không tự chuyển thành canonical hoặc suy ra kết luận tiền. Đọc lại kết quả không gọi provider. Trợ lý AI chat chưa triển khai.
+PDF/DOCX mới cần allowance riêng được duyệt trước khi upload. Kết quả đã lưu có preview theo file/trang/bảng và luôn “chưa được xác minh”; không tự chuyển thành canonical hoặc suy ra kết luận tiền. Đọc lại kết quả không gọi provider. Assistant trên feature branch được mô tả ở phần trên; kết quả live của provider không được suy từ câu trả lời xác định.
 
 ## Đối soát và báo cáo
 

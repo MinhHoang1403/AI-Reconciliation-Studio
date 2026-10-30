@@ -244,6 +244,14 @@ def test_T20_T34_T35_rule_approval_snapshot_exports_and_workflow(pg):  # noqa: F
     assert duplicate["run_id"] == rid
     cases = client.get(f"/api/runs/{rid}/exceptions").json()
     case = next(c for c in cases["items"] if c["type"] == "AMOUNT_MISMATCH")
+    summary = next(g for g in cases["groups"] if g["id"] == case["match_group_id"])
+    assert summary["comparisons"][0]["left_amount"] == "12.75"
+    assert summary["comparisons"][0]["right_amount"] == "10.00"
+    assert summary["comparisons"][0]["delta"] == "2.75"
+    assert summary["key"]
+    bounded = client.get(f"/api/runs/{rid}/exceptions?limit=1").json()
+    assert len(bounded["items"]) == len(bounded["groups"]) == 1
+    assert bounded["groups"][0]["id"] == bounded["items"][0]["match_group_id"]
     assert (
         client.patch(
             f"/api/exceptions/{case['id']}/review",

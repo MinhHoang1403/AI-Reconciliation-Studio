@@ -124,6 +124,15 @@ export function ReconciliationEvidence({
                   Nguồn {i === 0 ? "trái" : "phải"} · {source.filename}
                 </h3>
                 <p>{source.member_count} thành viên nguồn</p>
+                <details>
+                  <summary>Phiên bản dữ liệu dùng so sánh</summary>
+                  <p>Canonical: {source.canonical.id}</p>
+                  <p>
+                    Ánh xạ:{" "}
+                    {source.canonical.mapping_revision_id ||
+                      "Không có trong phản hồi"}
+                  </p>
+                </details>
                 {source.records.map((r) => (
                   <article className="evidence-record" key={r.id}>
                     <dl>

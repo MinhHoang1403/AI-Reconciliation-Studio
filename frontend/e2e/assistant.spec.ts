@@ -8,10 +8,83 @@ type State = {
   runs: Record<string, { run_id: string }>;
   sources: Record<string, { canonical_id: string }>;
 };
+
+test("Assistant is a scoped page; draft survives history, reload and project switching", async ({
+  page,
+}) => {
+  const s = await state();
+  await openAssistant(page, s.project_id);
+  await expect(
+    page.getByRole("heading", { name: "Trợ lý AI", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Trợ lý AI", exact: true }),
+  ).toHaveCount(0);
+  const input = page.getByRole("textbox", { name: "Câu hỏi cho Trợ lý" });
+  const draft = `Bản nháp chưa gửi ${crypto.randomUUID()}`;
+  await input.fill(draft);
+  await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
+  await page.goBack();
+  await expect(input).toHaveValue(draft);
+  await page.reload();
+  await expect(input).toHaveValue(draft);
+  const projects = (
+    await (
+      await page.request.get("/api/projects?include_test=true&limit=100")
+    ).json()
+  ).items;
+  const other = projects.find(
+    (p: { id: string; classification: string }) =>
+      p.id !== s.project_id && p.classification === "TEST",
+  );
+  expect(other).toBeTruthy();
+  await selectProject(page, other.id);
+  await expect(input).not.toHaveValue(draft);
+  await page.goBack();
+  await expect(page.locator("#project-select")).toHaveAttribute(
+    "data-project-id",
+    s.project_id,
+  );
+  await expect(input).toHaveValue(draft);
+});
 const state = async () =>
   JSON.parse(
     await readFile("../runtime/reconciliation-acceptance.json", "utf8"),
   ) as State;
+
+test("explicit report run outside the bounded history page is never replaced by latest", async ({
+  page,
+}) => {
+  const s = await state();
+  const target = s.runs.delivery.run_id;
+  await page.route("**/api/runs?**", async (route) => {
+    const response = await route.fetch();
+    const result = await response.json();
+    await route.fulfill({
+      json: {
+        ...result,
+        items: result.items.filter((r: { id: string }) => r.id !== target),
+      },
+    });
+  });
+  await page.goto(`/#page=reports&project=${s.project_id}&run_id=${target}`);
+  await expect(page.getByLabel("Lần đối soát", { exact: true })).toHaveValue(
+    target,
+  );
+  await expect(page.locator(".result-kpis")).toContainText("2.75");
+  await page
+    .getByRole("button", { name: "Hỏi Trợ lý về run này", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Run làm ngữ cảnh", { exact: true }),
+  ).toHaveValue(target);
+  await page
+    .getByRole("button", { name: "← Trở về trang trước", exact: true })
+    .click();
+  await expect(page.getByLabel("Lần đối soát", { exact: true })).toHaveValue(
+    target,
+  );
+});
 async function openAssistant(page: Page, projectId: string) {
   await page.goto("/");
   await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
@@ -19,7 +92,7 @@ async function openAssistant(page: Page, projectId: string) {
   const menu = page.getByRole("button", { name: "Mở điều hướng", exact: true });
   if (await menu.isVisible()) await menu.click();
   await page.getByRole("button", { name: "Trợ lý AI", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Trợ lý AI", exact: true });
+  const dialog = page.getByRole("region", { name: "Trợ lý AI", exact: true });
   await expect(dialog).toBeVisible();
   await expect(
     dialog.getByRole("combobox", { name: "Run làm ngữ cảnh" }),
@@ -27,7 +100,7 @@ async function openAssistant(page: Page, projectId: string) {
   return dialog;
 }
 async function ask(page: Page, text: string) {
-  const dialog = page.getByRole("dialog", { name: "Trợ lý AI", exact: true });
+  const dialog = page.getByRole("region", { name: "Trợ lý AI", exact: true });
   await dialog.getByRole("textbox", { name: "Câu hỏi cho Trợ lý" }).fill(text);
   await dialog
     .getByRole("button", { name: "Gửi câu hỏi", exact: true })
@@ -95,6 +168,7 @@ for (const name of ["shopee", "tiktok", "delivery"]) {
         "chưa chứng minh nguyên nhân hoặc khoản phí",
       );
     else await expect(answer).toContainText("LINKED + EQUAL");
+    await answer.getByText("Có bằng chứng", { exact: true }).click();
     await expect(answer).toContainText("Backend xác định");
     await answer
       .getByRole("button", { name: "Xem bằng chứng", exact: true })
@@ -424,15 +498,15 @@ test("language workflow requires source/period/template confirmation before exis
   await expect(explanation).toContainText("10.00");
   await expect(explanation).toContainText("chưa chứng minh nguyên nhân");
   await page
-    .getByRole("dialog", { name: "Trợ lý AI", exact: true })
-    .getByRole("button", { name: "Đóng", exact: true })
+    .getByRole("region", { name: "Trợ lý AI", exact: true })
+    .getByRole("button", { name: "← Trở về trang trước", exact: true })
     .click();
   await page.getByRole("button", { name: "Xuất CSV", exact: true }).click();
   await expect(page.getByRole("link", { name: /Tải báo cáo/ })).toBeVisible();
 });
 
 for (const width of [390, 768, 1366, 1440, 1920]) {
-  test(`assistant panel responsive and keyboard ${width}`, async ({ page }) => {
+  test(`assistant page responsive and keyboard ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const s = await state();
     const dialog = await openAssistant(page, s.project_id);
@@ -450,10 +524,19 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     ).toBe(true);
     await dialog.getByRole("textbox", { name: "Câu hỏi cho Trợ lý" }).focus();
     await page.keyboard.press("Escape");
+    await expect(dialog).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: "Trợ lý AI", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Trợ lý AI", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    const composer = await dialog.locator(".assistant-composer").boundingBox();
+    expect(composer!.y + composer!.height).toBeLessThanOrEqual(900);
+    await dialog
+      .getByRole("button", { name: "← Trở về trang trước", exact: true })
+      .click();
     await expect(dialog).not.toBeVisible();
-    await expect
-      .poll(() => page.evaluate(() => document.activeElement?.tagName))
-      .toBe("BUTTON");
   });
 }
 
@@ -466,7 +549,9 @@ test("late conversation response cannot reopen under another project", async ({
     .getByRole("button", { name: "Hội thoại mới", exact: true })
     .click();
   await ask(page, "Tóm tắt kết quả đối soát");
-  await dialog.getByRole("button", { name: "Đóng", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "← Trở về trang trước", exact: true })
+    .click();
   let held = false;
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
@@ -478,8 +563,8 @@ test("late conversation response cannot reopen under another project", async ({
   await page.getByRole("button", { name: "Trợ lý AI", exact: true }).click();
   await expect.poll(() => held).toBe(true);
   await page
-    .getByRole("dialog", { name: "Trợ lý AI", exact: true })
-    .getByRole("button", { name: "Đóng", exact: true })
+    .getByRole("region", { name: "Trợ lý AI", exact: true })
+    .getByRole("button", { name: "← Trở về trang trước", exact: true })
     .click();
   const projects = (
     await (
@@ -495,7 +580,7 @@ test("late conversation response cannot reopen under another project", async ({
   release();
   await page.unroute("**/api/conversations/*?limit=20");
   await page.getByRole("button", { name: "Trợ lý AI", exact: true }).click();
-  const next = page.getByRole("dialog", { name: "Trợ lý AI", exact: true });
+  const next = page.getByRole("region", { name: "Trợ lý AI", exact: true });
   await expect(next).toBeVisible();
   await expect(next.locator(".assistant-message")).toHaveCount(0);
   await expect(
@@ -558,7 +643,7 @@ test("data screen passes only its current scoped dataset to assistant", async ({
     page.getByRole("heading", { name: dataset.name, exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Trợ lý AI", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Trợ lý AI", exact: true });
+  const dialog = page.getByRole("region", { name: "Trợ lý AI", exact: true });
   await expect(dialog).toContainText(
     `Nguồn đang xem: ${dataset.id.slice(0, 8)}`,
   );

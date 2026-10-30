@@ -21,6 +21,7 @@ import {
   Layers3,
   LayoutDashboard,
   Menu,
+  RefreshCw,
   Search,
   Settings2,
   ShieldCheck,
@@ -43,6 +44,12 @@ import {
 } from "./components";
 import { MappingStudio } from "./MappingStudio";
 import type { AssistantContext } from "./assistantTypes";
+import {
+  readLocation,
+  writeLocation,
+  type Page,
+  type Location,
+} from "./navigation";
 const AssistantStudio = lazy(() =>
   import("./AssistantStudio").then((m) => ({ default: m.AssistantStudio })),
 );
@@ -71,30 +78,38 @@ import {
   type WorkspaceSettings,
 } from "./types";
 
-type Page =
-  | "home"
-  | "data"
-  | "settings"
-  | "reconcile"
-  | "exceptions"
-  | "reports";
 type Tab = "explore" | "mapping" | "normalize";
 type View = "parsed" | "raw" | "canonical" | "errors";
 
 export function App() {
-  const [assistantContext, setAssistantContext] =
-    useState<AssistantContext | null>(null);
-  const assistantFocus = useRef<HTMLElement | null>(null);
+  const [location, setLocation] = useState(readLocation);
+  const { page, context: assistantContext } = location;
+  const locationRef = useRef(location);
+  locationRef.current = location;
+  const [restoringLocation, setRestoringLocation] = useState(false);
+  function navigate(
+    next: Page,
+    context: AssistantContext | null = null,
+    selectedProject = projectId,
+    replace = false,
+  ) {
+    const nextLocation: Location = {
+      page: next,
+      projectId: selectedProject,
+      context,
+      origin: page === "assistant" ? location.origin : page,
+    };
+    writeLocation(nextLocation, replace);
+    setLocation(nextLocation);
+  }
+  function setPage(next: Page) {
+    navigate(next);
+  }
   function openAssistant(context: AssistantContext) {
-    assistantFocus.current = document.activeElement as HTMLElement | null;
-    if (sidebar)
-      assistantFocus.current = document.querySelector<HTMLButtonElement>(
-        'button[aria-label="Mở điều hướng"]',
-      );
-    setAssistantContext(context);
+    if (page === "assistant") return;
+    navigate("assistant", context);
     setSidebar(false);
   }
-  const [page, setPage] = useState<Page>("home");
   const [tab, setTab] = useState<Tab>("explore");
   const [project, setProject] = useState<Project | null>(null);
   const [projectId, setProjectId] = useState("");
@@ -144,6 +159,7 @@ export function App() {
   const [workspace, setWorkspace] = useState<WorkspaceSettings | null>(null);
   const [ready, setReady] = useState(false);
   const [actorRole, setActorRole] = useState("");
+  const [draftOwner, setDraftOwner] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
@@ -177,6 +193,24 @@ export function App() {
   const table = tables.find((t) => t.id === tableId);
   const currentCanonical = canonicals.find((c) => c.id === canonicalId);
   const activeMapping = mappings.find((m) => m.id === table?.active_mapping_id);
+
+  useEffect(() => {
+    if (page !== "assistant") return;
+    const viewport = window.visualViewport;
+    const resize = () =>
+      document.documentElement.style.setProperty(
+        "--assistant-viewport-height",
+        `${viewport?.height || window.innerHeight}px`,
+      );
+    resize();
+    viewport?.addEventListener("resize", resize);
+    return () => {
+      viewport?.removeEventListener("resize", resize);
+      document.documentElement.style.removeProperty(
+        "--assistant-viewport-height",
+      );
+    };
+  }, [page]);
 
   useEffect(() => {
     if (!sidebar) return;
@@ -258,9 +292,15 @@ export function App() {
     let mounted = true;
     void (async () => {
       try {
-        const actor = await api<{ role: string }>("/session");
+        const actor = await api<{
+          role: string;
+          actor_id?: string;
+          workspace_id?: string;
+        }>("/session");
         const s = await api<WorkspaceSettings>("/settings");
-        const savedId = localStorage.getItem("studio.project");
+        const savedId =
+          locationRef.current.projectId ||
+          localStorage.getItem("studio.project");
         let restored: Project | null = null;
         try {
           restored = savedId
@@ -285,8 +325,24 @@ export function App() {
         if (!mounted) return;
         setProject(restored);
         setProjectId(restored?.id || "");
+        const initial = locationRef.current;
+        const next = {
+          ...initial,
+          projectId: restored?.id || "",
+          context:
+            restored && initial.page === "assistant"
+              ? { ...(initial.context || {}), project_id: restored.id }
+              : null,
+        };
+        setLocation(next);
+        writeLocation(next, true);
+        if (initial.context?.run_id && restored)
+          setRunNavigation({ id: initial.context.run_id, request: Date.now() });
         setWorkspace(s);
         setActorRole(actor.role);
+        setDraftOwner(
+          `${actor.workspace_id || "local"}.${actor.actor_id || "demo"}`,
+        );
         setReady(true);
       } catch (err) {
         if (mounted)
@@ -564,7 +620,7 @@ export function App() {
     setTab("explore");
     setSidebar(false);
   }
-  function chooseProject(selected: Project) {
+  function chooseProject(selected: Project, recordHistory = true) {
     if (selected.id === projectId) return;
     scopeRef.current = {
       projectId: selected.id,
@@ -601,7 +657,57 @@ export function App() {
     setError("");
     setSuccess("");
     setTab("explore");
+    setPlanNavigation(null);
+    if (recordHistory)
+      navigate(
+        page,
+        page === "assistant" ? { project_id: selected.id } : null,
+        selected.id,
+      );
   }
+  useEffect(() => {
+    if (!ready) return;
+    const controller = new AbortController();
+    let request = 0;
+    const restore = async () => {
+      const current = ++request;
+      const next = readLocation();
+      setRestoringLocation(true);
+      setSidebar(false);
+      try {
+        if (next.projectId && next.projectId !== scopeRef.current.projectId) {
+          const selected = await api<Project>(
+            `/projects/${encodeURIComponent(next.projectId)}`,
+            { signal: controller.signal },
+          );
+          if (controller.signal.aborted || current !== request) return;
+          chooseProject(selected, false);
+        }
+        if (controller.signal.aborted || current !== request) return;
+        if (next.context?.run_id)
+          setRunNavigation({ id: next.context.run_id, request: Date.now() });
+        setLocation(next);
+      } catch (err) {
+        if (!controller.signal.aborted && current === request) {
+          setError(
+            err instanceof Error ? err.message : "Không khôi phục được trang.",
+          );
+          writeLocation(locationRef.current, true);
+        }
+      } finally {
+        if (!controller.signal.aborted && current === request)
+          setRestoringLocation(false);
+      }
+    };
+    const listener = () => {
+      void restore();
+    };
+    window.addEventListener("popstate", listener);
+    return () => {
+      controller.abort();
+      window.removeEventListener("popstate", listener);
+    };
+  }, [ready, projectId, page]);
   async function openPreparation(action: PreparationAction) {
     if (action.kind === "UPLOAD") {
       openUpload();
@@ -883,7 +989,8 @@ export function App() {
             <span>Báo cáo</span>
           </button>
           <button
-            className={assistantContext ? "active" : ""}
+            className={page === "assistant" ? "active" : ""}
+            aria-current={page === "assistant" ? "page" : undefined}
             disabled={!ready || !projectId}
             onClick={() =>
               openAssistant({
@@ -962,7 +1069,9 @@ export function App() {
                       ? "Ngoại lệ"
                       : page === "reports"
                         ? "Báo cáo"
-                        : "Cài đặt"}
+                        : page === "assistant"
+                          ? "Trợ lý AI"
+                          : "Cài đặt"}
             </strong>
           </div>
           <div className="topbar-end">
@@ -973,7 +1082,11 @@ export function App() {
             <span className="avatar">LC</span>
           </div>
         </header>
-        <main id="main-content">
+        <main
+          id="main-content"
+          className={page === "assistant" ? "assistant-main" : ""}
+          inert={restoringLocation || undefined}
+        >
           <div className="page-heading">
             <div>
               <span className="eyebrow">AI RECONCILIATION STUDIO</span>
@@ -988,16 +1101,20 @@ export function App() {
                         ? "Ngoại lệ và bằng chứng"
                         : page === "reports"
                           ? "Báo cáo đối soát"
-                          : "Cài đặt không gian làm việc"}
+                          : page === "assistant"
+                            ? "Trợ lý AI"
+                            : "Cài đặt không gian làm việc"}
               </h1>
               <p>
                 {page === "home"
                   ? "Từ tệp nguồn đến dữ liệu chuẩn hóa — rõ ràng ở từng bước."
                   : page === "data"
                     ? "Khám phá nguồn, kiểm tra đề xuất và chuẩn bị dữ liệu đáng tin cậy."
-                    : page === "settings"
-                      ? "Chính sách xử lý và giới hạn đang áp dụng từ backend."
-                      : "Quy tắc được duyệt, kết quả bất biến và bằng chứng từ dữ liệu nguồn."}
+                    : page === "assistant"
+                      ? "Hỏi từ dữ kiện, kiểm tra bằng chứng và chọn bước tiếp theo."
+                      : page === "settings"
+                        ? "Chính sách xử lý và giới hạn đang áp dụng từ backend."
+                        : "Quy tắc được duyệt, kết quả bất biến và bằng chứng từ dữ liệu nguồn."}
               </p>
             </div>
             <div className="heading-actions">
@@ -1052,11 +1169,16 @@ export function App() {
               />
               {projectId && (
                 <button
-                  className="text-button"
+                  className="icon-button"
+                  aria-label="Cập nhật dự án"
+                  title="Cập nhật dự án"
                   disabled={busy || projectLoading}
                   onClick={() => void run(changed)}
                 >
-                  {projectLoading ? "Đang cập nhật…" : "Cập nhật dự án"}
+                  <RefreshCw
+                    size={17}
+                    className={projectLoading ? "spin" : ""}
+                  />
                 </button>
               )}
               <button
@@ -1066,9 +1188,6 @@ export function App() {
               >
                 + Tạo dự án
               </button>
-              {project && (
-                <span className="scope-label">{project.business_scope}</span>
-              )}
             </div>
           )}
           {ready && !projectId && page !== "settings" && (
@@ -1095,22 +1214,121 @@ export function App() {
           )}
           {ready &&
             projectId &&
-            ["home", "reconcile", "exceptions", "reports"].includes(page) && (
-              <Suspense fallback={<Spinner />}>
-                <ReconciliationStudio
-                  key={projectId}
-                  projectId={projectId}
-                  canEdit={canEdit}
-                  onAsk={openAssistant}
-                  requestedPlan={
-                    planNavigation?.projectId === projectId
-                      ? planNavigation
-                      : null
-                  }
-                  requestedRun={runNavigation}
-                  mode={page as "home" | "reconcile" | "exceptions" | "reports"}
-                />
-              </Suspense>
+            [
+              "home",
+              "reconcile",
+              "exceptions",
+              "reports",
+              "assistant",
+            ].includes(page) && (
+              <div hidden={page === "assistant"}>
+                <Suspense fallback={<Spinner />}>
+                  <ReconciliationStudio
+                    key={projectId}
+                    projectId={projectId}
+                    canEdit={canEdit}
+                    onAsk={openAssistant}
+                    requestedPlan={
+                      planNavigation?.projectId === projectId
+                        ? planNavigation
+                        : null
+                    }
+                    requestedRun={runNavigation}
+                    mode={
+                      (page === "assistant"
+                        ? [
+                            "home",
+                            "reconcile",
+                            "exceptions",
+                            "reports",
+                          ].includes(location.origin)
+                          ? location.origin
+                          : "home"
+                        : page) as
+                        | "home"
+                        | "reconcile"
+                        | "exceptions"
+                        | "reports"
+                    }
+                    onSetup={() => setPage("reconcile")}
+                    onRunSelected={(id) => {
+                      const current = locationRef.current;
+                      if (current.page === "assistant") return;
+                      const next = {
+                        ...current,
+                        context: { project_id: projectId, run_id: id },
+                      };
+                      writeLocation(next, true);
+                      locationRef.current = next;
+                    }}
+                  />
+                </Suspense>
+              </div>
+            )}
+          {ready &&
+            projectId &&
+            page === "assistant" &&
+            assistantContext?.project_id === projectId && (
+              <section className="assistant-page" aria-label="Trợ lý AI">
+                <button
+                  className="text-button assistant-return"
+                  onClick={() => {
+                    const current = readLocation().context || assistantContext;
+                    if (current.run_id)
+                      setRunNavigation({
+                        id: current.run_id,
+                        request: Date.now(),
+                      });
+                    navigate(location.origin, current);
+                  }}
+                >
+                  ← Trở về trang trước
+                </button>
+                <Suspense fallback={<Spinner />}>
+                  <AssistantStudio
+                    key={JSON.stringify(assistantContext)}
+                    initialContext={assistantContext}
+                    projectName={project?.name || "Dự án hiện tại"}
+                    draftOwner={draftOwner}
+                    onContextChange={(context) => {
+                      const current = readLocation();
+                      if (
+                        current.page === "assistant" &&
+                        current.projectId === context.project_id
+                      )
+                        writeLocation({ ...current, context }, true);
+                    }}
+                    cloudEnabled={!!workspace?.assistant_cloud_enabled}
+                    canEdit={canEdit}
+                    onReview={(id) => {
+                      setPlanNavigation({ id, projectId, request: Date.now() });
+
+                      setPage("reconcile");
+                    }}
+                    onNavigate={(target, context) => {
+                      if (context.project_id !== projectId) return;
+
+                      if (context.run_id)
+                        setRunNavigation({
+                          id: context.run_id,
+                          request: Date.now(),
+                        });
+                      if (target === "OPEN_DATA") {
+                        if (context.dataset_id)
+                          setDatasetId(context.dataset_id);
+                        setPage("data");
+                      } else
+                        setPage(
+                          target === "OPEN_REPORT"
+                            ? "reports"
+                            : target === "OPEN_EXCEPTIONS"
+                              ? "exceptions"
+                              : "reconcile",
+                        );
+                    }}
+                  />
+                </Suspense>
+              </section>
             )}
           {ready && page === "home" && projectId && summary && (
             <DataOverview
@@ -1580,12 +1798,22 @@ export function App() {
                   <dt>Workspace</dt>
                   <dd>{workspace.workspace_name}</dd>
                   <dt>Chế độ mặc định</dt>
-                  <dd>{workspace.policy.mode}</dd>
+                  <dd>
+                    {workspace.policy.mode === "LOCAL_ONLY"
+                      ? "Xử lý nội bộ"
+                      : "Theo chính sách workspace"}
+                  </dd>
                   <dt>Gemini cloud</dt>
                   <dd>
                     {workspace.policy.allow_external_ai ? "Có quyền" : "Tắt"} ·{" "}
                     {workspace.gemini_requests_remaining} request còn lại ·{" "}
                     {workspace.gemini_requests_used} đã dùng
+                  </dd>
+                  <dt>Trợ lý cloud</dt>
+                  <dd>
+                    {workspace.assistant_cloud_enabled
+                      ? "Được cấp phép theo từng tác vụ"
+                      : "Tắt · chế độ dữ kiện"}
                   </dd>
                   <dt>Parser cloud</dt>
                   <dd>
@@ -1604,24 +1832,6 @@ export function App() {
                   <h2>Giới hạn xử lý</h2>
                 </div>
                 <dl>
-                  <dt>Qwen</dt>
-                  <dd>
-                    {workspace.qwen_configured
-                      ? `Đã cấu hình · ${workspace.qwen_model}`
-                      : "Chưa cấu hình"}
-                  </dd>
-                  <dt>Provider đề xuất ánh xạ</dt>
-                  <dd>
-                    {workspace.mapping_ai_provider === "GEMINI"
-                      ? "Gemini"
-                      : "Qwen"}
-                  </dd>
-                  <dt>Gemini</dt>
-                  <dd>
-                    {workspace.gemini_configured
-                      ? workspace.gemini_model
-                      : "Chưa cấu hình khóa"}
-                  </dd>
                   <dt>Mỗi tệp</dt>
                   <dd>{workspace.max_upload_bytes / 1048576} MB</dd>
                   <dt>Mỗi lần tải</dt>
@@ -1629,6 +1839,29 @@ export function App() {
                   <dt>Mỗi bảng</dt>
                   <dd>{workspace.max_rows.toLocaleString("vi-VN")} dòng</dd>
                 </dl>
+                <details className="settings-advanced">
+                  <summary>Thông tin AI nâng cao</summary>
+                  <dl>
+                    <dt>Qwen</dt>
+                    <dd>
+                      {workspace.qwen_configured
+                        ? `Đã cấu hình · ${workspace.qwen_model}`
+                        : "Chưa cấu hình"}
+                    </dd>
+                    <dt>Provider đề xuất ánh xạ</dt>
+                    <dd>
+                      {workspace.mapping_ai_provider === "GEMINI"
+                        ? "Gemini"
+                        : "Qwen"}
+                    </dd>
+                    <dt>Gemini</dt>
+                    <dd>
+                      {workspace.gemini_configured
+                        ? workspace.gemini_model
+                        : "Chưa cấu hình khóa"}
+                    </dd>
+                  </dl>
+                </details>
                 <Notice>
                   Khóa và địa chỉ provider chỉ được quản lý trên backend. Mỗi
                   lần gọi Gemini tiêu thụ ngân sách, kể cả lỗi hoặc thử lại.
@@ -1637,98 +1870,61 @@ export function App() {
               </div>
             </section>
           )}
-          {ready && jobs.length > 0 && page !== "settings" && (
-            <section className="panel jobs-panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>Hoạt động xử lý</h2>
-                  <p>Trạng thái thực tế từ worker.</p>
-                </div>
-                <button
-                  className="text-button"
-                  disabled={busy}
-                  onClick={() => void run(changed)}
-                >
-                  Cập nhật trạng thái xử lý
-                </button>
-              </div>
-              {jobs.slice(0, 6).map((j) => (
-                <div className="job-row" key={j.id}>
-                  <span className="job-icon">
-                    {j.kind === "mapping" ? (
-                      <Sparkles size={17} />
-                    ) : (
-                      <Layers3 size={17} />
-                    )}
-                  </span>
+          {ready &&
+            jobs.length > 0 &&
+            page !== "settings" &&
+            page !== "assistant" && (
+              <section className="panel jobs-panel">
+                <div className="panel-heading">
                   <div>
-                    <strong>
-                      {j.kind === "mapping" &&
-                      j.result?.source === "APPROVED_TEMPLATE"
-                        ? "Gợi ý từ mẫu đã duyệt"
-                        : jobKind[j.kind] || j.kind}
-                    </strong>
-                    {j.error_code && (
-                      <p className="job-error">
-                        {errorText[j.error_code] ||
-                          `Xử lý bị chặn: ${j.error_code}`}
-                      </p>
-                    )}
+                    <h2>Hoạt động xử lý</h2>
+                    <p>Trạng thái thực tế từ worker.</p>
                   </div>
-                  <Badge status={j.status} />
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => void run(changed)}
+                  >
+                    Cập nhật trạng thái xử lý
+                  </button>
                 </div>
-              ))}
-            </section>
+                {jobs.slice(0, 6).map((j) => (
+                  <div className="job-row" key={j.id}>
+                    <span className="job-icon">
+                      {j.kind === "mapping" ? (
+                        <Sparkles size={17} />
+                      ) : (
+                        <Layers3 size={17} />
+                      )}
+                    </span>
+                    <div>
+                      <strong>
+                        {j.kind === "mapping" &&
+                        j.result?.source === "APPROVED_TEMPLATE"
+                          ? "Gợi ý từ mẫu đã duyệt"
+                          : jobKind[j.kind] || j.kind}
+                      </strong>
+                      {j.error_code && (
+                        <p className="job-error">
+                          {errorText[j.error_code] ||
+                            `Xử lý bị chặn: ${j.error_code}`}
+                        </p>
+                      )}
+                    </div>
+                    <Badge status={j.status} />
+                  </div>
+                ))}
+              </section>
+            )}
+          {page !== "assistant" && (
+            <footer>
+              <ShieldCheck size={14} />
+              Tệp gốc bất biến · Ánh xạ có phê duyệt · Dữ liệu có nguồn gốc
+              <span>Kết quả có kiểm chứng</span>
+            </footer>
           )}
-          <footer>
-            <ShieldCheck size={14} />
-            Tệp gốc bất biến · Ánh xạ có phê duyệt · Dữ liệu có nguồn gốc
-            <span>Kết quả có kiểm chứng</span>
-          </footer>
         </main>
       </div>
-      {assistantContext?.project_id === projectId && (
-        <Modal
-          title="Trợ lý AI"
-          side
-          open
-          onOpenChange={(open) => {
-            if (!open) setAssistantContext(null);
-          }}
-          returnFocus={assistantFocus}
-        >
-          <Suspense fallback={<Spinner />}>
-            <AssistantStudio
-              key={JSON.stringify(assistantContext)}
-              initialContext={assistantContext}
-              cloudEnabled={!!workspace?.assistant_cloud_enabled}
-              canEdit={canEdit}
-              onReview={(id) => {
-                setPlanNavigation({ id, projectId, request: Date.now() });
-                setAssistantContext(null);
-                setPage("reconcile");
-              }}
-              onNavigate={(target, context) => {
-                if (context.project_id !== projectId) return;
-                setAssistantContext(null);
-                if (context.run_id)
-                  setRunNavigation({ id: context.run_id, request: Date.now() });
-                if (target === "OPEN_DATA") {
-                  if (context.dataset_id) setDatasetId(context.dataset_id);
-                  setPage("data");
-                } else
-                  setPage(
-                    target === "OPEN_REPORT"
-                      ? "reports"
-                      : target === "OPEN_EXCEPTIONS"
-                        ? "exceptions"
-                        : "reconcile",
-                  );
-              }}
-            />
-          </Suspense>
-        </Modal>
-      )}
       <Modal
         title="Tạo dự án"
         open={projectOpen}

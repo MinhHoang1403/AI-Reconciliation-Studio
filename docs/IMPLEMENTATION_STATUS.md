@@ -794,3 +794,26 @@ Snapshot cuối: **57 datasets/versions, 55 tables, 114 schemas/mappings, 52 can
 Giới hạn còn lại: Assistant hỗ trợ intents facts/workflow có giới hạn và claim allowlist, không phải chatbot suy luận tự do; nhóm quá 100 evidence cần UI phân trang, sources/templates vẫn theo caps hiện có. Chưa có automatic retention, model quality/precision/recall đại diện, full-pipeline 100k, production load/HA/off-host DR hoặc chứng nhận bảo mật/WCAG toàn diện. API auth ngoài loopback vẫn cần quy trình deployment riêng. Không gọi live provider để che các giới hạn này.
 
 **Hoàn tất triển khai và kiểm chứng candidate Giai đoạn 3 trong phạm vi demo local/manual/mock đã được giao; Gemini Assistant live/Qwen live được hoãn rõ ràng.** Source đã push trên feature branch, main giữ UX được nghiệm thu. **DỪNG sau bàn giao; chủ dự án quyết định nghiệm thu và merge Giai đoạn 3 bằng nhiệm vụ riêng.**
+
+## Q. Product UX và reliability — nhiệm vụ ngày 30/10/2026
+
+### A. Phạm vi và kiểm toán giao diện
+
+Nhiệm vụ mới tiếp tục trên `codex/assistant-automation`, baseline source `3f079150ee14545fcb5fc77197f9104788f68abe`, main `eefdd4441d7f7ef52b08e7d35d3c68894de191dd`, runtime ban đầu `9802545b8a0281cc608f29d1d8b4ffd3444c454b`. Baseline 176 backend/54 E2E là lịch sử, không dùng làm kết quả mới. Một repo/Compose và volumes hiện có; không gọi cloud, thay engine, công thức, semantic contracts hoặc kế hoạch ba giai đoạn. Yêu cầu mới **chính thức cho phép Assistant thành trang riêng**, thay panel bên phải tại kế hoạch §28 và thiết kế của mục P; không sửa kế hoạch để che thay đổi được chủ dự án chỉ định.
+
+Nguyên tắc: một vùng làm việc chính, ngữ cảnh nhìn thấy được, hướng dẫn mở khi cần, thông tin quyết định được giữ trước phê duyệt. Điều hướng dùng History API hiện có của trình duyệt, không thêm router/dependency; tham khảo [MDN History API](https://developer.mozilla.org/en-US/docs/Web/API/History_API/Working_with_the_History_API). Nút thu gọn dùng trạng thái expanded/controls theo [W3C Disclosure](https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/), không nhận đây là chứng nhận toàn bộ WCAG.
+
+| Màn hình / phân loại | Bằng chứng, nguyên nhân và ảnh hưởng | Giải pháp / ưu tiên | Kiểm chứng hiện tại |
+|---|---|---|---|
+| Assistant — design improvement | Browser thật 390/768/1440: Modal side che trang, lịch sử nằm trên transcript, ô nhập trôi theo hội thoại | Trang trong AppShell, lịch sử riêng và transcript cuộn, composer cố định vùng; P0 | Regression mới tái hiện baseline có dialog thay vì trang; đang kiểm tra bản sửa |
+| Điều hướng — confirmed UI bug | App chỉ có useState page, không history; bản nháp mất khi unmount; requested run bị thay nếu ngoài trang lịch sử | URL identifiers + back/forward, restore qua API, bản nháp theo scope trong tab, giữ lượt được yêu cầu; P0 | Tests mới cho page/draft/reload/project switching và lượt ngoài trang lịch sử |
+| Thanh dự án — usability issue | Cảnh báo TEST dài bên ngoài selector, phạm vi nghiệp vụ lặp lại | Bỏ cảnh báo, nhãn TEST nhỏ, refresh icon, giữ filter/owner classification; P0 | Giữ các regression selector trước đó, đổi assertion theo thiết kế mới |
+| Tổng quan — design improvement | Ba thẻ hướng dẫn hiện cả project đang làm việc | Thu gọn khi có dữ liệu, mở sẵn cho project mới; P1 | DTO/next action và recent5 giữ nguyên |
+| Dữ liệu / Mapping — accepted limitation | Bố cục đã có sheet/paging/raw/canonical/errors, review trường và semantics; không cần đổi parser hay mapping | Bảo toàn gates; kiểm lại luồng thực tế và responsive; P1 | Chưa kết luận PASS của nhiệm vụ mới |
+| Đối soát — usability issue | Khóa/chỉ tiêu thiết yếu bị đóng trong details; tiến trình chỉ ghi bốn bước | Mở mặc định khóa/chỉ tiêu, diễn giải năm bước; giữ xác nhận kỳ/timezone/coverage và approval; P1 | Chưa kết luận PASS của nhiệm vụ mới |
+| Ngoại lệ — integration limitation | Case DTO không có key/amount; GET matches có paging khác, không thể ghép hai trang độc lập để đủ 25 cases | Bổ sung summary theo đúng group IDs của trang case, một truy vấn tham số hóa, backend trả số tiền gốc; P1 | Regression PG đối chiếu 12.75/10.00/2.75 và giới hạn một case |
+| Báo cáo / ngoại lệ rỗng — usability issue | Lịch sử và bộ lọc đứng trước kết quả; không run vẫn hiện bảng rỗng | Lịch sử thu gọn; empty CTA thiết lập; selected run giữ khi ngoài trang lịch sử; P1 | Chưa kết luận PASS của nhiệm vụ mới |
+| Cài đặt — accepted limitation | Policy/quotas đọc từ backend, không có quyền sửa secrets; còn thông tin kỹ thuật | Kiểm quyền, quota và trình bày progressive disclosure trong phạm vi hiện có; P2 | Chưa kết luận PASS của nhiệm vụ mới |
+| Cloud / production / trên 100 thành viên — accepted limitation / out of scope | Cloud OFF, caps evidence công bố; chưa có benchmark hoặc off-host DR production | Giữ cap/warnings và ghi NOT VERIFIED, không dựng framework hoặc gọi provider để che giới hạn | Không dùng PASS mock thay PASS live |
+
+Snapshot trước nhiệm vụ: 29 projects, 57 datasets/versions, 55 tables, 114 schemas/mappings, 52 canonical, 27 contracts/runs, 34 plans, 97 cases, 30 conversations/60 messages; 218 foundation artifacts + 27 run artifacts + 47 exports. Hash metadata/bytes đã lưu ngoài Git ở `runtime/product-ux-before.json` để đối chiếu; không xóa fixtures lịch sử. Số liệu cuối và kết quả kiểm thử sẽ ghi sau khi thực thi.

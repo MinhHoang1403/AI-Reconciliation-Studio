@@ -21,12 +21,17 @@ def test_T38_tools_reject_other_project_run_and_dataset(pg):  # noqa: F811
             db, actor, ToolRequest(name="list_datasets", context=AssistantContext(project_id=pid))
         )
         assert result.datasets == []
-        with pytest.raises(DomainError, match="RESOURCE_NOT_FOUND"):
-            read_tool(
-                db,
-                Actor("x", "foreign", "owner"),
-                ToolRequest(name="list_datasets", context=AssistantContext(project_id=other)),
-            )
+        from typing import get_args
+
+        from studio.contracts.assistant import ToolName
+
+        for tool_name in get_args(ToolName):
+            with pytest.raises(DomainError, match="RESOURCE_NOT_FOUND"):
+                read_tool(
+                    db,
+                    Actor("x", "foreign", "owner"),
+                    ToolRequest(name=tool_name, context=AssistantContext(project_id=other)),
+                )
 
 
 def test_T39_T40_verified_facts_independent_delivery_oracle(pg):  # noqa: F811

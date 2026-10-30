@@ -214,6 +214,20 @@ def match_page(
     return [MatchGroup.model_validate_json(row[0]) for row in rows], int(count[0]) if count else 0
 
 
+def match_groups_by_ids(run: RunRow, group_ids: list[str]) -> list[MatchGroup]:
+    """Read a bounded case page in one query; IDs are parameters, never SQL fragments."""
+    if not group_ids:
+        return []
+    if len(group_ids) > 100:
+        raise ValueError("A case page cannot exceed 100 groups")
+    with _connection() as connection:
+        rows = connection.execute(
+            "SELECT group_json FROM read_parquet(?) WHERE group_id IN (SELECT unnest(?))",
+            [str(result_path(run)), group_ids],
+        ).fetchall()
+    return [MatchGroup.model_validate_json(row[0]) for row in rows]
+
+
 def all_match_groups(run: RunRow) -> Iterator[MatchGroup]:
     with _connection() as connection:
         cursor = connection.execute(

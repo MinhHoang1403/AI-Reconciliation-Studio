@@ -229,7 +229,7 @@ test("test visibility and owner classification preserve the current project and 
   const trigger = page.locator("#project-select");
   await expect(trigger).toHaveAttribute("data-project-id", items[2].id);
   await expect(
-    page.getByRole("status").filter({ hasText: "kiểm thử đang ẩn" }),
+    page.locator("#project-select .project-test-badge"),
   ).toBeVisible();
   await page.getByRole("button", { name: "Đối soát", exact: true }).click();
   await page
@@ -309,7 +309,7 @@ test("test visibility and owner classification preserve the current project and 
   await page.reload();
   await expect(trigger).toHaveAttribute("data-project-id", items[2].id);
   await expect(
-    page.getByRole("status").filter({ hasText: "kiểm thử đang ẩn" }),
+    page.locator("#project-select .project-test-badge"),
   ).toBeVisible();
 });
 
@@ -345,9 +345,9 @@ test("confirmed classification remains in app metadata when the picker unmounts 
   await page.getByRole("button", { name: "Cài đặt", exact: true }).click();
   release();
   await page.getByRole("button", { name: "Tổng quan", exact: true }).click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "kiểm thử đang ẩn" }),
-  ).toHaveCount(0);
+  await expect(page.locator("#project-select .project-test-badge")).toHaveCount(
+    0,
+  );
   await expect(page.locator("#project-select")).toHaveAttribute(
     "data-project-id",
     items[0].id,

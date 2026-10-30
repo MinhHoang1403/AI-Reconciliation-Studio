@@ -8,7 +8,7 @@ API bổ sung: `POST /api/assistant/tools`, `POST /api/conversations`, `GET /api
 
 `GET /api/projects/{id}/reconciliation-plans` phân trang các kế hoạch chưa được duyệt do actor tạo, để tiếp tục workflow sau khi đóng panel. `POST /api/reconciliation-contracts/{id}/reuse` giữ contract cũ và thêm Idempotency-Key optional để tương thích client cũ; cùng key/nội dung trả cùng proposal, nội dung khác 409. Kết quả vẫn cần review/approval hiện có. Assistant không có tool approve/run hoặc quyền suy ra năm, coverage, tiền hay rule tài chính.
 
-`AssistantContext` luôn có project; group/case bắt buộc explicit run. Bảy `ToolName` ở kế hoạch §34 là allowlist đóng, input không nhận SQL, code hoặc đường dẫn. Mỗi truy xuất kiểm workspace/project/run, output typed và có giới hạn trang; PostgreSQL statement timeout 2,5 giây, DuckDB evidence query 3 giây, nhóm tối đa 100 nguồn evidence cho Assistant. Nhóm lớn hơn yêu cầu mở evidence phân trang.
+`AssistantContext` luôn có project; group/case bắt buộc explicit run. Bảy `ToolName` ở kế hoạch §34 là allowlist đóng, input không nhận SQL, code hoặc đường dẫn. Mỗi truy xuất kiểm workspace/project/run, output typed và có giới hạn trang; PostgreSQL statement timeout 2,5 giây, DuckDB evidence query 3 giây, nhóm tối đa 100 nguồn evidence cho Assistant. Nhóm lớn hơn bị chặn với EVIDENCE_LIMIT; UI bằng chứng hiển thị tối đa 100 thành viên/20 ô gốc, báo cáo giữ lineage đầy đủ. Chưa có phân trang toàn bộ evidence trong UI.
 
 `AnswerFactSet` có content hash, context, trạng thái verification, nguyên bản MetricSnapshot, rule ID/revision, facts và source references (run/snapshot/group/member/file/table/sheet/row). Facts tiền và tỷ lệ chỉ sao chép từ snapshot/comparison đã verified; không tính lại KPI. ID giả, run khác, snapshot/rule không khớp phải bị từ chối. FactSet cũ giữ nguyên run cũ, không được gắn làm kết quả mới.
 
@@ -106,7 +106,7 @@ Pydantic contracts ở `contracts/reconciliation.py`: ReconciliationPlan/Contrac
 | GET /api/runs/{id}/metrics | Chỉ VERIFIED/PARTIAL_VERIFIED, đúng một immutable snapshot |
 | GET /api/runs/{id}/matches | Server pagination/search/linkage/comparison filters; match groups typed |
 | GET /api/runs/{id}/groups/{group_id}/evidence | Group thuộc đúng run; scoped source records/provenance, filename; `field_evidence` là EvidenceRef theo đúng MappingRevision của canonical lịch sử. Preview mỗi source 100 records, field refs 100 source rows/record |
-| GET /api/runs/{id}/exceptions | Search, state/type filters, type/state sort, pagination; current_open_count riêng |
+| GET /api/runs/{id}/exceptions | Search, state/type filters, type/state sort, pagination; current_open_count riêng; thêm groups gồm id/key/comparisons của đúng các case trong trang, tối đa 100 group, không tính lại tiền và không trả toàn bộ membership |
 | PATCH /api/exceptions/{id}/review | Editor, lý do bắt buộc khi resolve/dismiss, audit actor/time; không đổi monetary result |
 | POST /api/runs/{id}/exports?format=csv hoặc xlsx | Verified only; queue và cached immutable export theo run/revision |
 | GET /api/exports/{id}, /download | Workspace scope, checksum, same-origin auth; metadata revision/review_state_scope/review_state_as_of; không token/path trong URL |

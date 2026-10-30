@@ -265,41 +265,47 @@ export function DataOverview({
         onAction={onAction}
         onResults={onResults}
       />
-      <div className="section-heading">
-        <div>
-          <h2>Quy trình chuẩn bị dữ liệu</h2>
-          <p>Một luồng thống nhất, từ bản gốc đến dữ liệu có thể sử dụng.</p>
+      <details
+        className="preparation-help"
+        open={summary.dataset_count === 0 ? true : undefined}
+      >
+        <summary>Quy trình chuẩn bị dữ liệu · 3 bước</summary>
+        <div className="section-heading">
+          <div>
+            <h2>Quy trình chuẩn bị dữ liệu</h2>
+            <p>Một luồng thống nhất, từ bản gốc đến dữ liệu có thể sử dụng.</p>
+          </div>
+          <span className="subtle">3 bước rõ ràng</span>
         </div>
-        <span className="subtle">3 bước rõ ràng</span>
-      </div>
-      <section className="steps-grid">
-        {[
-          {
-            title: "Tải nguồn dữ liệu",
-            icon: <Upload size={21} />,
-            text: "CSV, Excel nhiều sheet. Tệp gốc được lưu bất biến trong workspace.",
-          },
-          {
-            title: "Kiểm tra ánh xạ",
-            icon: <Sparkles size={21} />,
-            text: "Xem đề xuất AI, dữ liệu mẫu và xác nhận những trường cần sử dụng.",
-          },
-          {
-            title: "Chuẩn hóa & khám phá",
-            icon: <Database size={21} />,
-            text: "Xem kết quả có kiểu dữ liệu, lỗi chuyển đổi và nguồn gốc từng dòng.",
-          },
-        ].map((s, i) => (
-          <article className="step-card" key={s.title}>
-            <div className="step-top">
-              <span>{s.icon}</span>
-              <small>0{i + 1}</small>
-            </div>
-            <h3>{s.title}</h3>
-            <p>{s.text}</p>
-          </article>
-        ))}
-      </section>
+        <section className="steps-grid">
+          {[
+            {
+              title: "Tải nguồn dữ liệu",
+              icon: <Upload size={21} />,
+              text: "CSV, Excel nhiều sheet. Tệp gốc được lưu bất biến trong workspace.",
+            },
+            {
+              title: "Kiểm tra ánh xạ",
+              icon: <Sparkles size={21} />,
+              text: "Xem đề xuất AI, dữ liệu mẫu và xác nhận những trường cần sử dụng.",
+            },
+            {
+              title: "Chuẩn hóa & khám phá",
+              icon: <Database size={21} />,
+              text: "Xem kết quả có kiểu dữ liệu, lỗi chuyển đổi và nguồn gốc từng dòng.",
+            },
+          ].map((s, i) => (
+            <article className="step-card" key={s.title}>
+              <div className="step-top">
+                <span>{s.icon}</span>
+                <small>0{i + 1}</small>
+              </div>
+              <h3>{s.title}</h3>
+              <p>{s.text}</p>
+            </article>
+          ))}
+        </section>
+      </details>
       <section className="panel">
         <div className="panel-heading">
           <div>

@@ -84,7 +84,7 @@ def exact_group(run: RunRow, group_id: str) -> MatchGroup:
         raise DomainError("EVIDENCE_SCOPE_INVALID", "Nguồn không khớp group.")
     if len(group.members) > 100 or sum(len(m.evidence) for m in group.members) > 100:
         raise DomainError(
-            "EVIDENCE_LIMIT", "Nhóm quá lớn; mở evidence có phân trang để kiểm tra.", 409
+            "EVIDENCE_LIMIT", "Nhóm quá lớn; mở bằng chứng hoặc báo cáo đầy đủ để kiểm tra.", 409
         )
     return group
 

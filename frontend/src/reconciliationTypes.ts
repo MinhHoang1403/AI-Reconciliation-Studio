@@ -170,7 +170,7 @@ export type EvidenceRef = {
 export type SourceEvidence = {
   group: Group;
   sources: {
-    canonical: { id: string };
+    canonical: { id: string; mapping_revision_id?: string };
     filename: string;
     records: {
       id: string;

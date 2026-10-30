@@ -189,25 +189,11 @@ export function ProjectSelector({
             {project?.business_scope || "Tìm theo tên hoặc phạm vi nghiệp vụ"}
           </small>
         </span>
+        {project?.classification === "TEST" && (
+          <span className="project-test-badge">TEST</span>
+        )}
         <ChevronDown size={16} />
       </button>
-      {project?.classification === "TEST" && !includeTest && (
-        <div className="project-hidden-hint" role="status">
-          Dự án hiện tại là dự án kiểm thử đang ẩn khỏi danh sách. Dữ liệu vẫn
-          đang mở.
-          <button
-            className="text-button"
-            onClick={() => {
-              invalidate();
-              setIncludeTest(true);
-              setOffset(0);
-              setOpen(true);
-            }}
-          >
-            Hiển thị dự án kiểm thử
-          </button>
-        </div>
-      )}
       <Modal
         title="Chọn dự án"
         open={open}
