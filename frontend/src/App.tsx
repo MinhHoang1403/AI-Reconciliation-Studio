@@ -85,6 +85,7 @@ export function App() {
   const [location, setLocation] = useState(readLocation);
   const { page, context: assistantContext } = location;
   const locationRef = useRef(location);
+  const navigationSequence = useRef(0);
   locationRef.current = location;
   const [restoringLocation, setRestoringLocation] = useState(false);
   function navigate(
@@ -93,6 +94,8 @@ export function App() {
     selectedProject = projectId,
     replace = false,
   ) {
+    navigationSequence.current++;
+    setRestoringLocation(false);
     const nextLocation: Location = {
       page: next,
       projectId: selectedProject,
@@ -106,7 +109,11 @@ export function App() {
     navigate(next);
   }
   function openAssistant(context: AssistantContext) {
-    if (page === "assistant") return;
+    if (page === "assistant") {
+      navigate("assistant", assistantContext);
+      setSidebar(false);
+      return;
+    }
     navigate("assistant", context);
     setSidebar(false);
   }
@@ -668,9 +675,8 @@ export function App() {
   useEffect(() => {
     if (!ready) return;
     const controller = new AbortController();
-    let request = 0;
     const restore = async () => {
-      const current = ++request;
+      const current = ++navigationSequence.current;
       const next = readLocation();
       setRestoringLocation(true);
       setSidebar(false);
@@ -680,22 +686,33 @@ export function App() {
             `/projects/${encodeURIComponent(next.projectId)}`,
             { signal: controller.signal },
           );
-          if (controller.signal.aborted || current !== request) return;
+          if (
+            controller.signal.aborted ||
+            current !== navigationSequence.current
+          )
+            return;
           chooseProject(selected, false);
         }
-        if (controller.signal.aborted || current !== request) return;
+        if (controller.signal.aborted || current !== navigationSequence.current)
+          return;
         if (next.context?.run_id)
           setRunNavigation({ id: next.context.run_id, request: Date.now() });
         setLocation(next);
       } catch (err) {
-        if (!controller.signal.aborted && current === request) {
+        if (
+          !controller.signal.aborted &&
+          current === navigationSequence.current
+        ) {
           setError(
             err instanceof Error ? err.message : "Không khôi phục được trang.",
           );
           writeLocation(locationRef.current, true);
         }
       } finally {
-        if (!controller.signal.aborted && current === request)
+        if (
+          !controller.signal.aborted &&
+          current === navigationSequence.current
+        )
           setRestoringLocation(false);
       }
     };

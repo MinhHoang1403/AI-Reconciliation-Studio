@@ -169,6 +169,45 @@ test("unknown message delivery keeps its idempotency key after reload", async ({
   expect(keys[0]).toBe(keys[1]);
 });
 
+test("navigation cancels a delayed Back restore without leaving the page inert", async ({
+  page,
+}) => {
+  const s = await state();
+  await openAssistant(page, s.project_id);
+  const projects = (
+    await (
+      await page.request.get("/api/projects?include_test=true&limit=100")
+    ).json()
+  ).items;
+  const other = projects.find(
+    (p: { id: string; classification: string }) =>
+      p.id !== s.project_id && p.classification === "TEST",
+  );
+  await selectProject(page, other.id);
+  let release!: () => void;
+  let started!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const pending = new Promise<void>((resolve) => (started = resolve));
+  await page.route(`**/api/projects/${s.project_id}`, async (route) => {
+    const response = await route.fetch();
+    started();
+    await gate;
+    await route.fulfill({ response }).catch(() => {});
+  });
+  await page.goBack();
+  await pending;
+  await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
+  release();
+  await expect(
+    page.getByRole("heading", { name: "Báo cáo đối soát", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("main")).not.toHaveAttribute("inert", "");
+  await expect(page.locator("#project-select")).toHaveAttribute(
+    "data-project-id",
+    other.id,
+  );
+});
+
 for (const name of ["shopee", "tiktok", "delivery"]) {
   test(`T40 ${name}: actual verified evidence and persistent contextual answer`, async ({
     page,

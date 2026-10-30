@@ -55,17 +55,13 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
       name: "Tải nguồn dữ liệu",
       exact: true,
     });
-    await upload
-      .getByLabel("Chọn tệp dữ liệu")
-      .setInputFiles({
-        name: names[i],
-        mimeType: i
-          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          : "text/csv",
-        buffer: await readFile(
-          i ? xlsxPath : "../tests/fixtures/shipments.csv",
-        ),
-      });
+    await upload.getByLabel("Chọn tệp dữ liệu").setInputFiles({
+      name: names[i],
+      mimeType: i
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : "text/csv",
+      buffer: await readFile(i ? xlsxPath : "../tests/fixtures/shipments.csv"),
+    });
     await upload.getByText("Tùy chọn đọc nâng cao", { exact: true }).click();
     await upload.getByLabel("Dùng AI đề xuất ánh xạ trong hạn mức").uncheck();
     await upload
@@ -92,11 +88,9 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
       "currency",
       "description",
     ]) {
-      const row = page
-        .locator(".mapping-row")
-        .filter({
-          has: page.getByLabel(`Trường đích ${field}`, { exact: true }),
-        });
+      const row = page.locator(".mapping-row").filter({
+        has: page.getByLabel(`Trường đích ${field}`, { exact: true }),
+      });
       await row.getByLabel(`Trường đích ${field}`, { exact: true }).fill(field);
       await row
         .getByLabel(`Kiểu ${field}`, { exact: true })
@@ -194,7 +188,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
       .getByLabel("Cuối kỳ nguồn (không gồm)", { exact: true })
       .fill("2026-11-01");
     await scope
-      .getByLabel("Độ đầy đủ", { exact: true })
+      .getByRole("combobox", { name: "Độ đầy đủ", exact: true })
       .selectOption("CONFIRMED");
   }
   await page
