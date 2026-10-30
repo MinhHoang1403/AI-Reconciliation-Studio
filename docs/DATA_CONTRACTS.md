@@ -2,6 +2,12 @@
 
 Định nghĩa thực thi nằm trong `backend/studio/contracts/`. OpenAPI tại `/openapi.json` và `/docs` mô tả request/response; endpoint này không cấp quyền đọc dữ liệu. Error envelope: `code`, `message_vi`, `details` đã redacted, `retryable`, `correlation_id`.
 
+## Assistant: tools và facts
+
+`AssistantContext` luôn có project; group/case bắt buộc explicit run. Bảy `ToolName` ở kế hoạch §34 là allowlist đóng, input không nhận SQL, code hoặc đường dẫn. Mỗi truy xuất kiểm workspace/project/run, output typed và có giới hạn trang; PostgreSQL statement timeout 2,5 giây, DuckDB evidence query 3 giây, nhóm tối đa 100 nguồn evidence cho Assistant. Nhóm lớn hơn yêu cầu mở evidence phân trang.
+
+`AnswerFactSet` có content hash, context, trạng thái verification, nguyên bản MetricSnapshot, rule ID/revision, facts và source references (run/snapshot/group/member/file/table/sheet/row). Facts tiền và tỷ lệ chỉ sao chép từ snapshot/comparison đã verified; không tính lại KPI. ID giả, run khác, snapshot/rule không khớp phải bị từ chối. FactSet cũ giữ nguyên run cũ, không được gắn làm kết quả mới.
+
 ## Handoff
 
 | Đối tượng | Ref/API | Bất biến |

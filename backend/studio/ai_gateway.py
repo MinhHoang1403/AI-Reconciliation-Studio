@@ -238,6 +238,8 @@ class GeminiProvider:
         policy: WorkspacePolicy,
         reserve_request: Callable[[], bool],
         validator: Callable[[str], T],
+        *,
+        max_attempts: Literal[1, 2] = 2,
     ) -> T:
         """Shared bounded transport for registered typed tasks; each attempt reserves first."""
         if (
@@ -249,7 +251,7 @@ class GeminiProvider:
             raise DomainError("GEMINI_KEY_MISSING", "Chưa cấu hình khóa Gemini.")
         if self.config.external_ai_request_budget <= 0:
             raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Ngân sách AI cloud toàn hệ thống bằng 0.")
-        for attempt in range(2):
+        for attempt in range(max_attempts):
             if not reserve_request():
                 raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Đã hết ngân sách request AI cloud.")
             self.usage["ai_calls"] += 1
@@ -283,10 +285,10 @@ class GeminiProvider:
                     raise DomainError("AI_INVALID_JSON", "Phản hồi Gemini sai hợp đồng.") from exc
                 return validator(content)
             except httpx.TransportError as exc:
-                if attempt:
+                if attempt == max_attempts - 1:
                     raise DomainError("GEMINI_UNAVAILABLE", "Gemini không phản hồi.") from exc
             except DomainError as exc:
-                if exc.code != "AI_INVALID_JSON" or attempt:
+                if exc.code != "AI_INVALID_JSON" or attempt == max_attempts - 1:
                     raise
         raise DomainError("GEMINI_UNAVAILABLE", "Gemini không phản hồi.")
 

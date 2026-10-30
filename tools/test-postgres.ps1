@@ -1,4 +1,4 @@
-param([switch]$All)
+param([switch]$All, [switch]$Source)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 # Reuse backend and PostgreSQL containers. No additional Compose project or database server.
@@ -12,5 +12,18 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot prepare temporary test tooling in backe
 $pytestArgs = @('-q', '-c', '/tmp/studio-pyproject.toml', '-o', 'cache_dir=/tmp/studio-pytest-cache')
 if (-not $All) { $pytestArgs += @('-m', 'integration') }
 $pytestArgs += '/tmp/studio-tests'
-docker compose exec -T -e STUDIO_POSTGRES_TESTS=1 -e HYPOTHESIS_STORAGE_DIRECTORY=/tmp/studio-hypothesis -e PYTHONPATH=/app/backend:/tmp/studio-checks backend python -m pytest @pytestArgs
+$taskPythonPath = '/app/backend:/tmp/studio-checks'
+$taskWorkingDirectory = '/app'
+if ($Source) {
+    # Test feature source in temporary files of the existing container; never alter /app.
+    docker compose exec -T --user root backend python -c "from pathlib import Path; import shutil; p=Path('/tmp/studio-source'); assert p.resolve()==Path('/tmp/studio-source'); shutil.rmtree(p) if p.exists() else None; p.mkdir(); shutil.chown(p,user='studio',group='studio')"
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot prepare temporary source directory.' }
+    docker compose cp backend backend:/tmp/studio-source/backend
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot copy backend source.' }
+    docker compose cp alembic.ini backend:/tmp/studio-source/alembic.ini
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot copy migration configuration.' }
+    $taskPythonPath = '/tmp/studio-source/backend:/tmp/studio-checks'
+    $taskWorkingDirectory = '/tmp/studio-source'
+}
+docker compose exec -T -w $taskWorkingDirectory -e STUDIO_POSTGRES_TESTS=1 -e HYPOTHESIS_STORAGE_DIRECTORY=/tmp/studio-hypothesis -e "PYTHONPATH=$taskPythonPath" backend python -m pytest @pytestArgs
 if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL integration failed.' }

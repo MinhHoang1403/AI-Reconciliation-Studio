@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash-lite"
     allow_external_ai: bool = False
     external_ai_request_budget: int = Field(default=0, ge=0)
+    assistant_cloud_enabled: bool = False
+    assistant_request_budget: int = Field(default=0, ge=0)
     llama_cloud_api_key: SecretStr = SecretStr("")
     allow_cloud_parsing: bool = False
     cloud_parser_request_budget: int = Field(default=0, ge=0)

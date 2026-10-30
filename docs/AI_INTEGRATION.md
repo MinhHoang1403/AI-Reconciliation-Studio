@@ -1,5 +1,13 @@
 # AI Gateway và provider contracts
 
+## Assistant có bằng chứng
+
+Task `answer_verified_question`, prompt `assistant-grounded-1`, dùng cùng GeminiProvider/Gateway. Reuse facts trước, câu hỏi facts hỗ trợ được trả bằng backend deterministic; không gọi đây là LLM/live. Model chỉ chọn fact IDs và mã diễn giải allowlist theo `ModelAnswer`, không sinh prose/tiền/citations tùy ý. Backend kiểm FactSet/run/snapshot, claims và render số liệu từ facts; mismatch chỉ chứng minh chênh lệch, chưa chứng minh nguyên nhân/phí. Metric không có phải báo thiếu bằng chứng.
+
+`ASSISTANT_CLOUD_ENABLED=false`, `ASSISTANT_REQUEST_BUDGET=0` là mặc định độc lập với ngân sách mapping/planner đang có. Không bật hai quyền này trong nhiệm vụ; không dùng ba attempts Gemini còn lại. Nếu sau này được cấp quyền, transport hỗ trợ đúng một HTTP attempt cho Assistant, không tự retry khi delivery chưa rõ. Qwen vẫn hoãn, LlamaParse OFF và Argon research only.
+
+Thiết kế quyền và output allowlist áp dụng hướng dẫn [OWASP Prompt Injection Prevention](https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html): user/file/tool output là dữ liệu không tin cậy; kiểm quyền/tham số tại tool boundary, không dựa riêng vào prompt. Đây là giới hạn thiết kế và các regression cụ thể, không là tuyên bố miễn nhiễm prompt injection.
+
 Nghiên cứu ngày 29/10/2026: [phân tuyến Flash-Lite/Argon, contracts, ngân sách và giới hạn](AI_MODEL_ROUTING_RESEARCH.md). **Chỉ nghiên cứu**; Argon chưa tích hợp/chưa live, không có runtime env hoặc quota mới. Gemini mặc định và lịch sử request hiện tại được giữ nguyên.
 
 ## Qwen
