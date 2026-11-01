@@ -15,12 +15,12 @@ test("Assistant is a scoped page; draft survives history, reload and project swi
   const s = await state();
   await openAssistant(page, s.project_id);
   await expect(
-    page.getByRole("heading", { name: "Trợ lý AI", exact: true }),
+    page.getByRole("heading", { name: "AI Assistant", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("dialog", { name: "Trợ lý AI", exact: true }),
+    page.getByRole("dialog", { name: "AI Assistant", exact: true }),
   ).toHaveCount(0);
-  const input = page.getByRole("textbox", { name: "Câu hỏi cho Trợ lý" });
+  const input = page.getByRole("textbox", { name: "Câu hỏi cho AI Assistant" });
   const draft = `Bản nháp chưa gửi ${crypto.randomUUID()}`;
   await input.fill(draft);
   await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
@@ -73,11 +73,11 @@ test("explicit report run outside the bounded history page is never replaced by 
   );
   await expect(page.locator(".result-kpis")).toContainText("2.75");
   await page
-    .getByRole("button", { name: "Hỏi Trợ lý về run này", exact: true })
+    .getByRole("button", { name: "Hỏi AI Assistant về run này", exact: true })
     .click();
   await expect(
-    page.getByLabel("Run làm ngữ cảnh", { exact: true }),
-  ).toHaveValue(target);
+    page.getByRole("button",{name:"Đổi ngữ cảnh phân tích",exact:true}),
+  ).toHaveAttribute("data-run-id",target);
   await page
     .getByRole("button", { name: "← Trở về trang trước", exact: true })
     .click();
@@ -86,16 +86,18 @@ test("explicit report run outside the bounded history page is never replaced by 
   );
 });
 async function openAssistant(page: Page, projectId: string) {
-  await page.goto("/");
+  await page.goto("/#page=data");
   await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
   await selectProject(page, projectId);
   const menu = page.getByRole("button", { name: "Mở điều hướng", exact: true });
   if (await menu.isVisible()) await menu.click();
-  await page.getByRole("button", { name: "Trợ lý AI", exact: true }).click();
-  const dialog = page.getByRole("region", { name: "Trợ lý AI", exact: true });
+  const results=page.getByRole("button",{name:"Kết quả",exact:true});
+  if(await results.getAttribute("aria-expanded")==="false")await results.click();
+  await page.getByRole("button", { name: "AI Assistant", exact: true }).click();
+  const dialog = page.getByRole("region", { name: "AI Assistant", exact: true });
   await expect(dialog).toBeVisible();
   await expect(
-    dialog.getByRole("combobox", { name: "Run làm ngữ cảnh" }),
+    dialog.getByRole("button", { name: "Đổi ngữ cảnh phân tích" }),
   ).toBeEnabled();
   // Giữ regression luồng hỏi facts thủ công; Agent actions có suite riêng.
   await dialog.locator(".assistant-policy summary").click();
@@ -103,11 +105,11 @@ async function openAssistant(page: Page, projectId: string) {
   return dialog;
 }
 async function ask(page: Page, text: string) {
-  const dialog = page.getByRole("region", { name: "Trợ lý AI", exact: true });
+  const dialog = page.getByRole("region", { name: "AI Assistant", exact: true });
   const policy=dialog.locator(".assistant-policy");
   if(!await policy.evaluate(e=>(e as HTMLDetailsElement).open))await policy.locator("summary").click();
   await dialog.getByLabel("Chế độ hội thoại",{exact:true}).selectOption("LEGACY");
-  await dialog.getByRole("textbox", { name: "Câu hỏi cho Trợ lý" }).fill(text);
+  await dialog.getByRole("textbox", { name: "Câu hỏi cho AI Assistant" }).fill(text);
   await dialog
     .getByRole("button", { name: "Gửi câu hỏi", exact: true })
     .click();
@@ -123,7 +125,7 @@ async function ask(page: Page, text: string) {
 test("late report selection cannot rewrite Back navigation to Assistant",async({page})=>{
   const s=await state();
   await openAssistant(page,s.project_id);
-  const input=page.getByLabel("Câu hỏi cho Trợ lý",{exact:true});
+  const input=page.getByLabel("Câu hỏi cho AI Assistant",{exact:true});
   await input.fill("Bản nháp được giữ khi kết quả báo cáo đến muộn");
   let release!:()=>void;let started!:()=>void;
   const gate=new Promise<void>(resolve=>release=resolve),pending=new Promise<void>(resolve=>started=resolve);
@@ -144,9 +146,8 @@ test("unknown message delivery keeps its idempotency key after reload", async ({
 }) => {
   const s = await state();
   const assistant = await openAssistant(page, s.project_id);
-  await assistant
-    .getByLabel("Run làm ngữ cảnh", { exact: true })
-    .selectOption(s.runs.delivery.run_id);
+  await assistant.getByRole("button",{name:"Đổi ngữ cảnh phân tích",exact:true}).click();
+  await page.getByLabel("Chọn kết quả phân tích",{exact:true}).selectOption(s.runs.delivery.run_id);
   await assistant
     .getByRole("button", { name: "Hội thoại mới", exact: true })
     .click();
@@ -165,7 +166,7 @@ test("unknown message delivery keeps its idempotency key after reload", async ({
     } else await route.continue();
   });
   await assistant
-    .getByLabel("Câu hỏi cho Trợ lý", { exact: true })
+    .getByLabel("Câu hỏi cho AI Assistant", { exact: true })
     .fill(question);
   await assistant
     .getByRole("button", { name: "Gửi câu hỏi", exact: true })
@@ -175,7 +176,7 @@ test("unknown message delivery keeps its idempotency key after reload", async ({
   );
   await page.reload();
   await expect(
-    assistant.getByLabel("Câu hỏi cho Trợ lý", { exact: true }),
+    assistant.getByLabel("Câu hỏi cho AI Assistant", { exact: true }),
   ).toHaveValue(question);
   await expect(
     assistant.getByRole("button", { name: "Gửi câu hỏi", exact: true }),
@@ -275,8 +276,8 @@ for (const name of ["shopee", "tiktok", "delivery"]) {
     });
     const dialog = await openAssistant(page, s.project_id);
     await expect(
-      dialog.getByRole("combobox", { name: "Run làm ngữ cảnh" }),
-    ).toHaveValue(runId);
+      dialog.getByRole("button", { name: "Đổi ngữ cảnh phân tích" }),
+    ).toHaveAttribute("data-run-id",runId);
     const answer = await ask(page, "Vì sao lệch?");
     const comparison = group.comparisons[0];
     await expect(answer).toContainText(
@@ -333,9 +334,8 @@ test("T39 missing KPI and untrusted instructions remain bounded", async ({
 }) => {
   const s = await state();
   const dialog = await openAssistant(page, s.project_id);
-  await dialog
-    .getByRole("combobox", { name: "Run làm ngữ cảnh" })
-    .selectOption(s.runs.delivery.run_id);
+  await dialog.getByRole("button",{name:"Đổi ngữ cảnh phân tích",exact:true}).click();
+  await page.getByLabel("Chọn kết quả phân tích",{exact:true}).selectOption(s.runs.delivery.run_id);
   let answer = await ask(page, "Tỷ lệ EBITDA là bao nhiêu?");
   await expect(answer).toContainText("không tự suy ra KPI");
   await dialog
@@ -590,7 +590,7 @@ test("language workflow requires source/period/template confirmation before exis
   await expect(dialog).not.toBeVisible();
   await expect(
     page.getByText(
-      "Đã mở kế hoạch từ Trợ lý; kiểm tra và xác nhận trước khi duyệt.",
+      "Đã mở kế hoạch từ AI Assistant; kiểm tra và xác nhận trước khi duyệt.",
     ),
   ).toBeVisible();
   const approve = page.getByRole("button", {
@@ -635,7 +635,7 @@ test("language workflow requires source/period/template confirmation before exis
   await expect(explanation).toContainText("10.00");
   await expect(explanation).toContainText("chưa chứng minh nguyên nhân");
   await page
-    .getByRole("region", { name: "Trợ lý AI", exact: true })
+    .getByRole("region", { name: "AI Assistant", exact: true })
     .getByRole("button", { name: "← Trở về trang trước", exact: true })
     .click();
   await page.getByRole("button", { name: "Xuất CSV", exact: true }).click();
@@ -648,7 +648,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     const s = await state();
     const dialog = await openAssistant(page, s.project_id);
     await expect(
-      dialog.getByRole("textbox", { name: "Câu hỏi cho Trợ lý" }),
+      dialog.getByRole("textbox", { name: "Câu hỏi cho AI Assistant" }),
     ).toBeVisible();
     const bounds = await dialog.boundingBox();
     expect(bounds).not.toBeNull();
@@ -659,15 +659,15 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
-    await dialog.getByRole("textbox", { name: "Câu hỏi cho Trợ lý" }).focus();
+    await dialog.getByRole("textbox", { name: "Câu hỏi cho AI Assistant" }).focus();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeVisible();
     await expect(
-      page.getByRole("dialog", { name: "Trợ lý AI", exact: true }),
+      page.getByRole("dialog", { name: "AI Assistant", exact: true }),
     ).toHaveCount(0);
     await expect(
       page.getByRole("button", {
-        name: "Trợ lý AI",
+        name: "AI Assistant",
         exact: true,
         includeHidden: true,
       }),
@@ -701,10 +701,10 @@ test("late conversation response cannot reopen under another project", async ({
     await gate;
     await route.continue().catch(() => {});
   });
-  await page.getByRole("button", { name: "Trợ lý AI", exact: true }).click();
+  await page.getByRole("button", { name: "AI Assistant", exact: true }).click();
   await expect.poll(() => held).toBe(true);
   await page
-    .getByRole("region", { name: "Trợ lý AI", exact: true })
+    .getByRole("region", { name: "AI Assistant", exact: true })
     .getByRole("button", { name: "← Trở về trang trước", exact: true })
     .click();
   const projects = (
@@ -720,8 +720,8 @@ test("late conversation response cannot reopen under another project", async ({
   await selectProject(page, other.id);
   release();
   await page.unroute("**/api/conversations/*?limit=20");
-  await page.getByRole("button", { name: "Trợ lý AI", exact: true }).click();
-  const next = page.getByRole("region", { name: "Trợ lý AI", exact: true });
+  await page.getByRole("button", { name: "AI Assistant", exact: true }).click();
+  const next = page.getByRole("region", { name: "AI Assistant", exact: true });
   await expect(next).toBeVisible();
   await expect(next.locator(".assistant-message")).toHaveCount(0);
   await expect(
@@ -755,7 +755,7 @@ test("conversation history failure shows recoverable error", async ({
     .getByRole("button", { name: "Cập nhật hội thoại", exact: true })
     .click();
   await expect(
-    dialog.getByRole("textbox", { name: "Câu hỏi cho Trợ lý" }),
+    dialog.getByRole("textbox", { name: "Câu hỏi cho AI Assistant" }),
   ).toBeEnabled();
 });
 
@@ -783,8 +783,8 @@ test("data screen passes only its current scoped dataset to assistant", async ({
   await expect(
     page.getByRole("heading", { name: dataset.name, exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Trợ lý AI", exact: true }).click();
-  const dialog = page.getByRole("region", { name: "Trợ lý AI", exact: true });
+  await page.getByRole("button", { name: "AI Assistant", exact: true }).click();
+  const dialog = page.getByRole("region", { name: "AI Assistant", exact: true });
   await expect(dialog).toContainText(
     `Nguồn đang xem: ${dataset.id.slice(0, 8)}`,
   );

@@ -71,6 +71,7 @@ export type AgentIntent = {
     questions?: string[];
 };
 export type Review = {
+    resource_label?: string | null;
     id: string;
     kind: "MAPPING" | "RECONCILIATION" | "CLARIFICATION";
     resource_id: string;

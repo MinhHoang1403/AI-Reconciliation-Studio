@@ -200,7 +200,7 @@ export function ReconciliationStudio({
         setReadiness(null);
         setScopeConfirmed(false);
         setMessage(
-          "Đã mở kế hoạch từ Trợ lý; kiểm tra và xác nhận trước khi duyệt.",
+          "Đã mở kế hoạch từ AI Assistant; kiểm tra và xác nhận trước khi duyệt.",
         );
       })
       .catch((err) => {
@@ -591,7 +591,7 @@ export function ReconciliationStudio({
           onClick={() => onAsk({ project_id: projectId, run_id: runId })}
         >
           <Sparkles size={16} />
-          Hỏi Trợ lý về run này
+          Hỏi AI Assistant về run này
         </button>
       )}
       {!canEdit && (
@@ -1573,7 +1573,7 @@ export function ReconciliationStudio({
                 <div className="result-filters">
                   {mode === "exceptions" && selectedCaseId && (
                     <Notice>
-                      Đang xem ngoại lệ từ Trợ lý.
+                      Đang xem ngoại lệ từ AI Assistant.
                       <button
                         className="text-button"
                         onClick={() => {

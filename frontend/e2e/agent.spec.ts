@@ -4,10 +4,10 @@ test("Agent landing without a project does not create metadata or call cloud",as
   await page.addInitScript(()=>{if(!sessionStorage.getItem("agent-test-initialized")){localStorage.clear();sessionStorage.clear();sessionStorage.setItem("agent-test-initialized","1");}});
   const mutations:string[]=[];page.on("request",r=>{if(r.method()==="POST"||r.method()==="PATCH")mutations.push(new URL(r.url()).pathname);});
   await page.goto("/");
-  await expect(page.getByRole("heading",{name:"Bạn muốn làm gì với dữ liệu hôm nay?"})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"Bạn muốn xử lý dữ liệu gì?"})).toBeVisible();
   await expect(page.getByText("Chọn hoặc tạo dự án để xem dữ liệu.",{exact:false})).toHaveCount(0);
   await expect(page.getByRole("button",{name:"Đính kèm CSV hoặc Excel"})).toBeEnabled();
-  await page.getByLabel("Câu hỏi cho Trợ lý",{exact:true}).fill("Đối soát giúp tôi");
+  await page.getByLabel("Câu hỏi cho AI Assistant",{exact:true}).fill("Đối soát giúp tôi");
   await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();
   await expect(page.getByRole("alert")).toContainText("Tải CSV/Excel lên");
   expect(mutations).toEqual([]);
@@ -17,7 +17,7 @@ test("Agent inline upload bootstraps once, profiles real files and reopens witho
   test.setTimeout(90000);
   await page.addInitScript(()=>{if(!sessionStorage.getItem("agent-test-initialized")){localStorage.clear();sessionStorage.clear();sessionStorage.setItem("agent-test-initialized","1");}});
   await page.goto("/");
-  await expect(page.getByRole("heading",{name:"Bạn muốn làm gì với dữ liệu hôm nay?"})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"Bạn muốn xử lý dữ liệu gì?"})).toBeVisible();
   const before=await(await page.request.get("/api/settings")).json();
   const marker=crypto.randomUUID();
   await page.locator('.assistant-composer input[type="file"]').setInputFiles([
@@ -28,7 +28,7 @@ test("Agent inline upload bootstraps once, profiles real files and reopens witho
   await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();
   const receipt=await(await attachment).json();expect(receipt.items).toHaveLength(2);expect(receipt.scope_confirmed).toBe(false);
   const pid=receipt.project_id;
-  await expect(page.getByRole("region",{name:"Công việc của Trợ lý",exact:true})).toContainText("Đã hoàn thành",{timeout:45000});
+  await expect(page.getByRole("region",{name:"Công việc của AI Assistant",exact:true})).toContainText("Đã hoàn thành",{timeout:45000});
   await expect(page.locator(".agent-table")).toHaveCount(2);
   await expect(page.locator(".agent-table").first()).toContainText("000701");
   await expect(page.locator(".agent-table").first()).toContainText("000702");
@@ -50,9 +50,9 @@ for(const width of [390,768,1366,1440,1920]){
     await page.setViewportSize({width,height:900});
     await page.addInitScript(()=>{localStorage.clear();sessionStorage.clear();});
     await page.goto("/");
-    await expect(page.getByLabel("Câu hỏi cho Trợ lý",{exact:true})).toBeVisible();
-    await page.getByLabel("Câu hỏi cho Trợ lý",{exact:true}).focus();
-    await expect(page.getByLabel("Câu hỏi cho Trợ lý",{exact:true})).toBeFocused();
+    await expect(page.getByLabel("Câu hỏi cho AI Assistant",{exact:true})).toBeVisible();
+    await page.getByLabel("Câu hỏi cho AI Assistant",{exact:true}).focus();
+    await expect(page.getByLabel("Câu hỏi cho AI Assistant",{exact:true})).toBeFocused();
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
     await page.locator('.assistant-composer input[type="file"]').setInputFiles({name:"wrong.pdf",mimeType:"application/pdf",buffer:Buffer.from("synthetic only")});
     await expect(page.getByRole("alert")).toContainText("CSV/XLSX");

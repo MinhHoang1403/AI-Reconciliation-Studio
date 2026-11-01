@@ -2,7 +2,7 @@
 
 Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, AI đề xuất ánh xạ, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
 
-**Trạng thái:** Giai đoạn 1–2 và UX đã hợp nhất có lưu lịch sử vào `main`; Docker main được nghiệm thu trước khi mở `codex/assistant-automation`. Nhánh Assistant bổ sung facts có bằng chứng, hội thoại, trang Trợ lý riêng và đề xuất workflow có review, chưa tự merge main. Gemini mặc định; mapping/rule luôn cần duyệt. Nghiệm thu 30/10/2026: Assistant **PASS LIVE**, Planner `reconciliation-planning-2` **FAIL LIVE** do output không đạt Pydantic; merge main và release mới **BLOCKED**. Kết quả Product UX trước đó là local/manual/mock. Qwen live hoãn do IP allowlist; LlamaParse tạo job OFF. Xem [bằng chứng và giới hạn](docs/IMPLEMENTATION_STATUS.md).
+**Trạng thái02/11/2026:** Giai đoạn1–2 đã ở `main`; Agent-first MVP đang triển khai/nghiệm thu trên `codex/assistant-automation`, chưa merge hoặc release main mới. Nhánh đã có upload từ chat, workflow bền, review/resume và typed query/results. Planner đã qua2ca **PASS LIVE** sau sửa contract; Agent NLP/workflow live và nghiệm thu UI mới còn tiếp tục. Backend234PASS; số E2E và phạm vi live/mock xem [báo cáo hiện tại](docs/IMPLEMENTATION_STATUS.md), không coi các mốc cũ là kết quả mới. Qwen live hoãn HTTP403, parser tạo job OFF.
 
 ## Mở ứng dụng trong workspace hiện tại
 
@@ -22,9 +22,13 @@ Script tạo `.env` với credentials local ngẫu nhiên nếu chưa có, build
 
 Máy đã kiểm tra: Windows, Ryzen 5 7535HS (6 cores/12 threads), khoảng 16 GB RAM; Docker Desktop/Linux Engine 29.7.2, Compose 5.5.0. Chỉ cần Docker để chạy ứng dụng; Node/Python local dùng cho phát triển và tests. Cổng `18180` phải còn trống. Backend/worker/PostgreSQL không publish host ports.
 
-## Trợ lý có bằng chứng
+## AI Assistant có bằng chứng
 
-Assistant dùng Backend xác định cho câu hỏi facts, không gọi đó là LLM live. `ASSISTANT_CLOUD_ENABLED=false` và `ASSISTANT_REQUEST_BUDGET=0` mặc định; sau kiểm thử được cấp phép đã dùng 9/10 HTTP attempts, còn 1; không tự gọi thêm hoặc tăng/reset ngân sách. Mở trang “Trợ lý AI” hoặc “Hỏi vì sao lệch” trên run/ngoại lệ; citations mở đúng evidence. Sidebar và ngữ cảnh vẫn hiện, có lịch sử thu gọn và ô nhập riêng. Hội thoại riêng theo người tạo/project và giữ run/snapshot đã hỏi. Đổi run cần hội thoại mới; có lịch sử, phân trang và xóa nội dung theo quyền. Bản nháp chưa gửi lưu trong sessionStorage của tab, tách actor/workspace/project/run/group/case/dataset/hội thoại; chuyển trang hoặc dự án không tự gửi hay xóa bản nháp. Đóng tab có thể mất bản nháp; không coi đây là backup hội thoại. Câu “Đối soát ba file tháng 10” chỉ tạo đề xuất: phải chọn nguồn/mẫu/kỳ/coverage rồi review và duyệt rule bằng API Đối soát hiện có.
+Mở **AI Assistant** → đính kèm1–5CSV/XLSX → giao việc bằng tiếng Việt → kiểm tra điểm cần xác nhận → nhận kết quả và nguồn. Khi chưa chọn project, upload tạo scope `UNCONFIRMED` riêng, không tự dùng quy tắc khác. Mapping/rule mới vẫn cần quyết định người dùng; rule đã duyệt đúng phạm vi có thể chạy lại theo yêu cầu rõ ràng. Kết quả query/raw/canonical và KPI verified được phân biệt, LLM không tính tiền.
+
+UI tối giản đang được tích hợp: lịch sử mở bằng nút **Lịch sử**, ngữ cảnh kết quả mở từ chip, xóa trong menu hội thoại. Reply cho review dùng composer chính và chỉ tạo bản diễn giải trước khi duyệt. Luồng manual/facts cũ vẫn qua các trang chi tiết và chế độ **Chỉ hỏi dữ kiện đã xác minh**. Hội thoại có owner/project và run refs; drafts lưu sessionStorage riêng theo actor/context/conversation, đóng tab có thể mất draft. Dữ liệu persisted không phụ thuộc drafts.
+
+Cloud mặc định OFF/0 cho Agent và Assistant. Snapshot ngân sách sau gate Planner: Gemini15/50(còn35), giữ9reservations cũ, không reset; chưa dùng Agent live ở mốc này. Chỉ gọi Gemini khi policy, key và global/workspace/task allowances đều cho phép; GET/polling/layout không gọi model. Đọc số hiện tại trong Cài đặt và báo cáo trước khi chạy live. Qwen/Argon/LlamaParse không được tự bật.
 
 ## Vận hành và khôi phục
 

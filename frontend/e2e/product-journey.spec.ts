@@ -253,7 +253,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     await page.locator(".assistant-policy summary").click();
     await page.getByLabel("Chế độ hội thoại",{exact:true}).selectOption("LEGACY");
     await page
-      .getByLabel("Câu hỏi cho Trợ lý", { exact: true })
+      .getByLabel("Câu hỏi cho AI Assistant", { exact: true })
     .fill("Vì sao lệch?");
   await page.getByRole("button", { name: "Gửi câu hỏi", exact: true }).click();
   const answer = page.locator(".assistant-message.assistant").last();
@@ -279,7 +279,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     .click();
   await expect(mismatch).toBeVisible();
   await expect(
-    page.getByText("Đang xem ngoại lệ từ Trợ lý.", { exact: false }),
+    page.getByText("Đang xem ngoại lệ từ AI Assistant.", { exact: false }),
   ).toBeVisible();
   await expect(
     page

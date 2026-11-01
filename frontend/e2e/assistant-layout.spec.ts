@@ -1,0 +1,85 @@
+import {test,expect} from "@playwright/test";
+import {mkdir} from "node:fs/promises";
+
+const context={project_id:"visual-project"};
+const conversation={id:"visual-conversation",context,title:"Hội thoại tổng hợp để kiểm tra bố cục",created_at:"2026-11-02T00:00:00Z",archived:false};
+const field=(extra:Record<string,unknown>)=>({source_field:"c1",target_id:"transaction_id",name:"Mã giao dịch",data_type:"string",business_key:true,semantic_metric:null,amount_basis:null,currency:null,unit:null,locale:null,date_format:null,timezone:null,question:"",...extra});
+const review={id:"visual-review",kind:"MAPPING",resource_id:"visual-table",resource_label:"Sổ cái tổng hợp.csv · Sheet1",question:"Xác nhận ý nghĩa số tiền",reason:"Khoản tiền chưa rõ gross/net và định dạng số. Dữ liệu gốc được giữ nguyên.",fingerprint:"a".repeat(64),nonce:"b".repeat(32),expires_at:"2099-01-01T00:00:00Z",state:"OPEN",expected_effects:[],normalization_draft:{table_id:"visual-table",entity_kind:"voucher",grain:"Mỗi dòng là một chứng từ",fields:[field({}),field({source_field:"c2",target_id:"amount",name:"Số tiền",data_type:"decimal",business_key:false,question:"Đây là gross hay net?"})]},plan:null,suggestions:null,planning_request:null,reply_intent:null,reply_questions:[],pending_reply_job_id:null};
+const query={project_id:context.project_id,source_kind:"CANONICAL",source_id:"visual-canonical",select_fields:["transaction_id","amount","description"],filters:[],sort:[],group_by:[],aggregations:[],offset:0,limit:25,null_policy:"PRESERVE",result_scope:"ALL_MATCHING",currency_field:"currency"};
+function table(wide=false){const fields=["transaction_id","amount","description",...(wide?Array.from({length:15},(_,i)=>`Trường kiểm tra dài ${i+1}`):[])];return {type:"table",result:{query:{...query,select_fields:fields},source_id:"visual-canonical",fields,rows:Array.from({length:25},(_,i)=>Object.fromEntries([...fields.map((key,n)=>[key,n===0?`000${701+i}`:n===1?"12.75":"Nội dung tổng hợp có độ dài để kiểm tra hiển thị rõ ràng"]),["source_provenance",[{source_table_id:"visual-table",row:i+2,sheet:"Sheet1"}]]])),total_count:75,input_count:75,offset:0,limit:25,truncated:true,evidence_complete:true,verification_status:"CANONICAL",quality_status:"READY",source_refs:["visual-artifact"],warnings:["Tổng/đếm áp dụng toàn bộ dữ liệu khớp điều kiện, không chỉ trang hiện tại."]}};}
+const chart={type:"chart",title:"Giá trị tổng hợp theo nhóm",unit:"VND",population:3,population_definition:"Toàn bộ dòng khớp điều kiện",completeness:"COMPLETE",points:[{label:"Nhóm A",value:"25.00"},{label:"Nhóm B",value:"12.75"}],source_refs:["visual-artifact"],verification_status:"CANONICAL",period_start:null,period_end:null,timezone:null};
+
+for(const width of [390,768,1366,1440,1920]){
+  test(`[MOCK CONTRACT] Assistant 15 states, focus and layout at ${width}px`,async({page})=>{
+    test.setTimeout(120000);await page.setViewportSize({width,height:900});
+    await mkdir(`../runtime/assistant-layout/${width}`,{recursive:true});
+    const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
+    let scenario="empty";let release:()=>void=()=>{};let gate=Promise.resolve();
+    await page.addInitScript(()=>{localStorage.setItem("studio.project","visual-project");localStorage.setItem("studio.conversation.visual-project","visual-conversation");});
+    await page.route("**/api/**",async route=>{
+      const path=new URL(route.request().url()).pathname;
+      if(path==="/api/session")return route.fulfill({json:{workspace_id:"visual",actor_id:"visual-owner",role:scenario==="permission"?"viewer":"owner"}});
+      if(path==="/api/settings")return route.fulfill({json:{workspace_name:"Visual contract only",assistant_cloud_enabled:false,agent_cloud_enabled:false,mapping_ai_provider:"GEMINI",gemini_requests_used:0,gemini_requests_remaining:0,max_upload_bytes:20971520,max_upload_files:5,max_rows:100000,policy:{allow_external_ai:false}}});
+      if(path==="/api/projects/visual-project")return route.fulfill({json:{id:context.project_id,name:"Dự án tổng hợp kiểm tra giao diện",business_scope:"synthetic visual fixture",workspace_id:"visual",classification:"TEST"}});
+      if(path.endsWith("/summary"))return route.fulfill({json:{dataset_count:2,table_count:2,mapping_review_count:0,ready_canonical_count:2,active_job_count:0}});
+      if(path==="/api/conversations")return route.fulfill({json:{items:[conversation],has_more:false}});
+      if(path==="/api/conversations/visual-conversation"){
+        if(scenario==="loading")await gate;
+        if(scenario==="error")return route.fulfill({status:503,json:{code:"VISUAL_PROVIDER_UNAVAILABLE",message_vi:"Chưa tải được hội thoại. Dữ liệu đã lưu vẫn được giữ."}});
+        const text="Nội dung hội thoại tổng hợp dùng để kiểm tra bố cục và khả năng đọc.";
+        const items=scenario==="empty"||scenario==="upload"||scenario==="multiline"||scenario==="keyboard"||scenario==="sidebar"||scenario==="history"?[]:
+          [...(scenario==="long"?Array.from({length:18},(_,i)=>({id:`old-${i}`,job_id:`job-${i}`,role:i%2?"assistant":"user",text:text.repeat(4),context,answer:null,created_at:conversation.created_at})):[]),
+           {id:"visual-user",job_id:"visual-job",role:"user",text:"Kiểm tra dữ liệu và chỉ hỏi phần cần xác nhận",context,answer:null,created_at:conversation.created_at},
+           {id:"visual-assistant",job_id:"visual-job",role:"assistant",text:"",context,answer:null,workflow_id:"visual-workflow",created_at:conversation.created_at}];
+        return route.fulfill({json:{conversation,items,has_more:false}});
+      }
+      if(path==="/api/agent/workflows/visual-workflow")return route.fulfill({json:{id:"visual-workflow",conversation_id:conversation.id,context,state:scenario==="review"||scenario==="permission"?"WAITING_REVIEW":scenario==="running"?"RUNNING":"COMPLETED",updated_at:conversation.created_at,detail:{intent:{intent:"QUERY_DATA"},model_calls:0,error_code:null,steps:scenario==="running"?[{tool:"run_normalization",resource_id:"visual-table",job_id:"visual-job",status:"RUNNING"}]:[],reviews:scenario==="review"||scenario==="permission"?[review]:[],blocks:scenario==="running"?[{type:"progress",text:"Worker đang xử lý nguồn dữ liệu. Kết quả chưa được công bố."}]:scenario==="table"||scenario==="evidence"?[table(true)]:scenario==="chart"?[chart]:scenario==="completed"?[{type:"dataset_summary",dataset_id:"visual-dataset",table_id:"visual-table",canonical_id:"visual-canonical",name:"Sổ cái tổng hợp.csv",rows:75,invalid_rows:0,status:"READY",transformations:["cast_string_preserve","parse_decimal"]},table(),chart]:[{type:"progress",text:"Đây là dữ liệu tổng hợp kiểm tra UI; không phải nghiệm thu suy luận live."}]}}});
+      if(path==="/api/agent/source-rows")return route.fulfill({json:{rows:[{"Mã giao dịch (c1)":"000701","Số tiền (c2)":"25.00","Nội dung (c3)":"Dòng tổng hợp bất biến"}]}});
+      if(path==="/api/agent/attachments"){await gate;return route.fulfill({status:422,json:{code:"VISUAL_UPLOAD_ERROR",message_vi:"Kiểm tra hiển thị lỗi upload tổng hợp; không có file thật được lưu."}});}
+      if(route.request().method()!=="GET")throw new Error(`Unexpected visual mutation: ${path}`);
+      return route.fulfill({json:{items:[],total:0}});
+    });
+    async function shot(name:string){
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      await page.screenshot({path:`../runtime/assistant-layout/${width}/${name}.png`,fullPage:true});
+    }
+    const input=page.getByLabel("Câu hỏi cho AI Assistant",{exact:true});
+    for(const name of ["empty","short","long","upload","running","review","completed","table","chart","evidence","history","multiline","keyboard","sidebar","error","permission","loading"]){
+      scenario=name;gate=new Promise<void>(resolve=>release=resolve);
+      await page.goto("/");await expect(page.getByText("Hệ thống đã kết nối",{exact:true})).toBeAttached();
+      if(name==="loading"){await shot(name);release();await expect(input).toBeEnabled();continue;}
+      if(name==="error"){await expect(page.getByRole("alert")).toContainText("Chưa tải được hội thoại");await shot(name);continue;}
+      await expect(input).toBeEnabled();
+      if(name==="empty"){
+        await expect(page.getByRole("heading",{name:"Bạn muốn xử lý dữ liệu gì?"})).toBeVisible();
+        await expect(page.getByRole("dialog",{name:"Lịch sử",exact:true})).toHaveCount(0);
+        await expect(page.getByLabel("Chọn kết quả phân tích",{exact:true})).toHaveCount(0);
+        await expect(page.getByRole("button",{name:"← Trở về trang trước",exact:true})).toHaveCount(0);
+      }
+      if(name==="upload"){
+        await page.locator('.assistant-composer input[type="file"]').setInputFiles({name:"Synthetic ledger with a long descriptive filename.csv",mimeType:"text/csv",buffer:Buffer.from("id,amount\n000701,25.00\n")});
+        await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();await expect(input).toBeDisabled();
+        await shot(name);release();await expect(page.getByRole("alert")).toContainText("lỗi upload");continue;
+      }
+      if(name==="history"){
+        await page.getByRole("button",{name:"Lịch sử",exact:true}).click();
+        await expect(page.getByRole("dialog",{name:"Lịch sử",exact:true})).toContainText(conversation.title);
+        await shot(name);await page.keyboard.press("Escape");await expect(page.getByRole("button",{name:"Lịch sử",exact:true})).toBeFocused();continue;
+      }
+      if(name==="multiline"||name==="keyboard"){
+        await input.fill(Array.from({length:12},(_,i)=>`Dòng yêu cầu ${i+1}: giữ nguyên mã và kiểm tra dữ liệu.`).join("\n"));await input.focus();
+        if(name==="keyboard"){await page.setViewportSize({width,height:540});await expect(input).toBeInViewport({ratio:1});await expect(page.getByRole("button",{name:"Gửi câu hỏi",exact:true})).toBeInViewport({ratio:1});}
+      }
+      if(name==="sidebar"){
+        const menu=page.getByRole("button",{name:"Mở điều hướng",exact:true});if(await menu.isVisible())await menu.click();
+        const toggle=page.getByRole("button",{name:"Kết quả",exact:true});await expect(toggle).toHaveAttribute("aria-expanded","false");await toggle.focus();await page.keyboard.press("Enter");await expect(toggle).toHaveAttribute("aria-expanded","true");await expect(page.getByRole("button",{name:"Báo cáo",exact:true})).toBeVisible();
+      }
+      if(name==="evidence"){await page.getByRole("button",{name:"Xem dòng gốc",exact:true}).first().click();await expect(page.getByRole("dialog",{name:"Dòng dữ liệu nguồn",exact:true})).toContainText("000701");}
+      if(name==="permission")await expect(page.getByRole("button",{name:"Đính kèm CSV hoặc Excel",exact:true})).toBeDisabled();
+      if(["short","long","running","review","completed","table","chart","permission"].includes(name))await expect(page.getByRole("region",{name:"Công việc của AI Assistant",exact:true})).toContainText(name==="running"?"Đang thực hiện":name==="review"||name==="permission"?"Cần bạn xác nhận":"Đã hoàn thành");
+      await shot(name);if(name==="keyboard")await page.setViewportSize({width,height:900});
+      release();
+    }
+    expect(errors).toEqual([]);
+  });
+}

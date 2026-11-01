@@ -226,7 +226,7 @@ export const jobKind: Record<string, string> = {
   reconciliation_plan: "AI đề xuất quy tắc đối soát",
   reconcile: "Đối soát và kiểm chứng",
   export: "Xuất báo cáo",
-  assistant: "Trợ lý có bằng chứng",
+  assistant: "AI Assistant có bằng chứng",
 };
 export const errorText: Record<string, string> = {
   PARSER_BUDGET_EXHAUSTED:

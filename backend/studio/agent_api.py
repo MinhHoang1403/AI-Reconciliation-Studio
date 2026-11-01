@@ -37,7 +37,16 @@ from studio.contracts.agent import (
 from studio.contracts.assistant import AssistantContext
 from studio.contracts.data_query import SourceRowRequest, SourceRowResult
 from studio.contracts.reconciliation import PlanProposal
-from studio.database import AuditRow, JobRow, MappingRow, PlanRow, ProjectRow, TableRow, now
+from studio.database import (
+    AuditRow,
+    JobRow,
+    MappingRow,
+    MessageRow,
+    PlanRow,
+    ProjectRow,
+    TableRow,
+    now,
+)
 from studio.errors import DomainError
 from studio.parsing import inspect_upload
 from studio.repository import enqueue_job, get_scoped, project_for_table
@@ -273,7 +282,11 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     def reply(workflow_id: str, body: ReviewReply, db: DB, actor: User, key: Key) -> dict[str, str]:
         row = own_workflow(db, actor, workflow_id, lock=True)
         require_editor(actor, db, row.id)
-        payload = dict(workflow_id=row.id, reply=body.model_dump(mode="json"))
+        payload = dict(
+            workflow_id=row.id,
+            conversation_id=row.conversation_id,
+            reply=body.model_dump(mode="json"),
+        )
         existing = db.scalar(
             select(JobRow).where(
                 JobRow.workspace_id == actor.workspace_id,
@@ -314,6 +327,21 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             payload,
         )
         review.pending_reply_job_id = job.id
+        from studio.assistant_api import own_conversation
+
+        conversation = own_conversation(db, actor, row.conversation_id)
+        message_id = str(uuid5(NAMESPACE_URL, f"agent-review-message:{job.id}"))
+        if db.get(MessageRow, message_id) is None:
+            db.add(
+                MessageRow(
+                    id=message_id,
+                    conversation_id=row.conversation_id,
+                    job_id=job.id,
+                    role="user",
+                    text=body.text,
+                    context=conversation.context,
+                )
+            )
         save(row, state)
         db.commit()
         return dict(job_id=job.id, status=job.status)

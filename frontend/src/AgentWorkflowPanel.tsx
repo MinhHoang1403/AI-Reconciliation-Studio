@@ -76,15 +76,15 @@ function PlanReview({ plan, onChange, disabled }: {
     <details><summary>Thông số quy tắc</summary><p>Khóa, chỉ tiêu, cardinality và sai số ở trên là đề xuất; trả lời bằng tiếng Việt để chỉnh lại trước khi duyệt.</p><p>Bộ lọc trái: {JSON.stringify(plan.left.filters)} · phải: {JSON.stringify(plan.right.filters)}</p></details>
   </div>;
 }
-function ReviewCard({ review, workflow, canEdit, refresh }: {
+function ReviewCard({ review, workflow, canEdit, refresh, onReply }: {
     review: Review;
     workflow: Workflow;
     canEdit: boolean;
     refresh: () => Promise<void>;
+    onReply: (workflowId:string,review:Review)=>void;
 }) {
     const [draft, setDraft] = useState(review.normalization_draft);
     const [plan, setPlan] = useState(review.plan);
-    const [reply, setReply] = useState("");
     const [confirmed, setConfirmed] = useState(false);
     const [extraction, setExtraction] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -109,21 +109,20 @@ function ReviewCard({ review, workflow, canEdit, refresh }: {
         return () => controller.abort();
     }, [review.id, review.nonce]);
     const disabled = busy || !canEdit || !!review.pending_reply_job_id;
-    async function action(kind: "decision" | "reply") {
+    async function action() {
         setBusy(true);
         setError("");
         try {
             const decision = review.kind === "MAPPING" ? { type: "MAPPING", draft, extraction_reviewed: extraction } :
                 review.kind === "RECONCILIATION" ? { type: "RECONCILIATION", plan } : { type: "CLARIFICATION", intent: review.reply_intent };
             const body = JSON.stringify({ review_id: review.id, nonce: review.nonce,
-                fingerprint: review.fingerprint, ...(kind === "reply" ? { text: reply } : { decision }) });
+                fingerprint: review.fingerprint, decision });
             if (pending.current?.body !== body)
                 pending.current = { body, key: crypto.randomUUID() };
-            await api(`/agent/workflows/${workflow.id}/${kind === "reply" ? "replies" : "decisions"}`, { method: "POST",
+            await api(`/agent/workflows/${workflow.id}/decisions`, { method: "POST",
                 headers: { "Idempotency-Key": pending.current.key }, body });
             if (alive.current) {
                 pending.current = null;
-                setReply("");
                 await refresh();
             }
         }
@@ -138,24 +137,25 @@ function ReviewCard({ review, workflow, canEdit, refresh }: {
     }
     const ready = review.kind === "MAPPING" ? !!draft?.fields.every(f => f.data_type === "string" || (f.data_type === "decimal" ? f.locale && f.semantic_metric && f.amount_basis && f.currency && f.unit : f.date_format && f.timezone)) :
         review.kind === "RECONCILIATION" ? !!plan?.period_start && !!plan.period_end && !!plan.timezone && !!plan.effective_from && [plan.left, plan.right].every(s => s.date_field && s.time_basis && s.coverage_start && s.coverage_end && s.snapshot_at && s.completeness) : !!review.reply_intent;
-    return <section className="agent-review card" aria-label="Quyết định cần xác nhận"><h4>{review.question}</h4><p>{review.reason}</p>
+    return <section className="agent-review card" aria-label="Quyết định cần xác nhận">{review.resource_label&&<strong>{review.resource_label}</strong>}<h4>{review.question}</h4><p>{review.reason}</p>
     {error && <Notice tone="error">{error}</Notice>}{review.reply_questions.map(q => <Notice key={q}>{q}</Notice>)}
     {draft && <MappingReview draft={draft} disabled={disabled} onChange={v => { setDraft(v); setConfirmed(false); }}/>}
     {plan && <PlanReview plan={plan} disabled={disabled} onChange={v => { setPlan(v); setConfirmed(false); }}/>}
-    {review.kind === "RECONCILIATION" && !plan && <Notice>Cần bổ sung kỳ, múi giờ và độ đầy đủ bằng câu trả lời bên dưới. Chưa có quy tắc đủ điều kiện chạy.</Notice>}
+    {review.kind === "RECONCILIATION" && !plan && <Notice>Cần bổ sung kỳ, múi giờ và độ đầy đủ. Chưa có quy tắc đủ điều kiện chạy.</Notice>}
     {review.reply_intent && <p>Thao tác sẽ thực hiện: {review.reply_intent.intent}</p>}
-    <div className="agent-reply"><label>Bổ sung hoặc sửa bằng tiếng Việt<textarea value={reply} maxLength={2000} disabled={disabled} onChange={e => setReply(e.target.value)} placeholder="Ví dụ: cột tiền là gross VND, ngày theo UTC; cần xem lại đề xuất trước khi duyệt."/></label><button className="button secondary" disabled={disabled || !reply.trim()} onClick={() => void action("reply")}>Đọc câu trả lời và xem lại</button></div>
+    <button className="text-button" disabled={disabled} onClick={()=>onReply(workflow.id,review)}>Bổ sung bằng tiếng Việt</button>
     {review.pending_reply_job_id && <Spinner />}<p className="muted">Câu trả lời được diễn giải để bạn kiểm tra; hệ thống chưa phê duyệt thay bạn.</p>
     {draft && <label><input type="checkbox" checked={extraction} disabled={disabled} onChange={e => setExtraction(e.target.checked)}/>Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.</label>}
     <label><input type="checkbox" checked={confirmed} disabled={disabled} onChange={e => setConfirmed(e.target.checked)}/>Tôi xác nhận các lựa chọn ở trên và cho phép tiếp tục.</label>
-    <button className="button primary" disabled={disabled || !confirmed || !ready} onClick={() => void action("decision")}>Xác nhận và tiếp tục</button>
+    <button className="button primary" disabled={disabled || !confirmed || !ready} onClick={() => void action()}>Xác nhận và tiếp tục</button>
   </section>;
 }
-export function AgentWorkflowPanel({ id, canEdit, onNavigate, onContext }: {
+export function AgentWorkflowPanel({ id, canEdit, onNavigate, onContext, onReply }: {
     id: string;
     canEdit: boolean;
     onNavigate: (target: Suggestion, context: AssistantContext) => void;
     onContext: (context: AssistantContext) => void;
+    onReply: (workflowId:string,review:Review)=>void;
 }) {
     const [workflow, setWorkflow] = useState<Workflow | null>(null);
     const [error, setError] = useState("");
@@ -196,11 +196,11 @@ export function AgentWorkflowPanel({ id, canEdit, onNavigate, onContext }: {
         if (alive.current)
             setError(String(err));
     } }
-    return <section className="agent-workflow" aria-label="Công việc của Trợ lý">{error && <Notice tone="error">{error}<button className="text-button" onClick={() => void refresh()}>Cập nhật</button></Notice>}
+    return <section className="agent-workflow" aria-label="Công việc của AI Assistant">{error && <Notice tone="error">{error}<button className="text-button" onClick={() => void refresh()}>Cập nhật</button></Notice>}
     {!workflow ? <Spinner /> : <><p className="agent-workflow-state"><strong>{states[workflow.state] || workflow.state}</strong>{["CREATED", "RUNNING", "WAITING_REVIEW"].includes(workflow.state) && <button className="text-button" onClick={() => void cancel()}>Dừng bước tiếp theo</button>}</p>
       {workflow.detail.error_code && <Notice tone="warning">Cần kiểm tra: {workflow.detail.error_code}. Dữ liệu và kết quả đã lưu được giữ.</Notice>}
       <ol className="agent-steps">{workflow.detail.steps.map((s, i) => <li key={i}>{tools[s.tool] || s.tool} · {label(s.status)}</li>)}</ol>
-      {workflow.detail.reviews.filter(r => r.state === "OPEN").map(r => <ReviewCard key={`${r.id}:${r.nonce}`} review={r} workflow={workflow} canEdit={canEdit && workflow.state === "WAITING_REVIEW"} refresh={refresh}/>)}
+      {workflow.detail.reviews.filter(r => r.state === "OPEN").map(r => <ReviewCard key={`${r.id}:${r.nonce}`} review={r} workflow={workflow} canEdit={canEdit && workflow.state === "WAITING_REVIEW"} refresh={refresh} onReply={onReply}/>)}
       <AgentResultBlocks blocks={workflow.detail.blocks} context={workflow.context} onNavigate={onNavigate}/>
     </>}</section>;
 }

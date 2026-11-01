@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquarePlus, Send, Trash2, MessagesSquare, Paperclip, X } from "lucide-react";
+import { MessageSquarePlus, Send, Trash2, MessagesSquare, Paperclip, MoreHorizontal, Sparkles, X } from "lucide-react";
 import { AgentWorkflowPanel } from "./AgentWorkflowPanel";
+import type { Review } from "./agentTypes";
 import { api, ApiError } from "./api";
-import { Notice, Spinner } from "./components";
+import { Modal, Notice, Spinner } from "./components";
 import { ReconciliationEvidence } from "./ReconciliationEvidence";
 import { AssistantWorkflow } from "./AssistantWorkflow";
 import {
@@ -81,6 +82,9 @@ export function AssistantStudio({
   const [files, setFiles] = useState<File[]>([]);
   const [command, setCommand] = useState<string | null>(null);
   const [mode, setMode] = useState<"AGENT" | "LEGACY">("AGENT");
+  type ReplyBinding=Pick<Review,"id"|"nonce"|"fingerprint"|"question">&{workflowId:string};
+  const [reviewReply,setReviewReply]=useState<ReplyBinding|null>(null);
+  const replyKeyFor=(scope:AssistantContext,id:string)=>`studio.review-reply.${draftOwner}.${scope.project_id}.${id}`;
   const uploadKey = useRef(crypto.randomUUID());
   const fileInput = useRef<HTMLInputElement>(null);
   const workflowContext = useRef<AssistantContext | null>(null);
@@ -95,9 +99,12 @@ export function AssistantStudio({
   const [rule, setRule] = useState<(AssistantRule & { run_id: string }) | null>(
     null,
   );
-  const [historyOpen, setHistoryOpen] = useState(
-    () => window.innerWidth > 1100,
-  );
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [contextOpen,setContextOpen]=useState(false);
+  const [historySearch,setHistorySearch]=useState("");
+  const historyTrigger=useRef<HTMLElement|null>(null);
+  const composerInput=useRef<HTMLTextAreaElement>(null);
+  useEffect(()=>{const input=composerInput.current;if(input){input.style.height="auto";input.style.height=`${Math.min(input.scrollHeight,180)}px`;}},[text]);
   const [draftNotice, setDraftNotice] = useState("");
   const draftKeyFor = (scope: AssistantContext, id = "new") =>
     `studio.assistant-draft.${draftOwner}.${JSON.stringify([scope.project_id, scope.run_id || "", scope.dataset_id || "", scope.group_id || "", scope.case_id || "", id])}`;
@@ -105,6 +112,10 @@ export function AssistantStudio({
   function restoreDraft(scope: AssistantContext, id?: string) {
     draftKey.current = draftKeyFor(scope, id);
     setText(sessionStorage.getItem(draftKey.current) || "");
+    setReviewReply(null);
+    if(id){try{const saved=JSON.parse(sessionStorage.getItem(replyKeyFor(scope,id))||"null");
+      if(saved&&typeof saved.id==="string"&&typeof saved.nonce==="string"&&typeof saved.fingerprint==="string"&&typeof saved.workflowId==="string")setReviewReply(saved);
+    }catch{/* Server xác minh lại mọi binding trước khi ghi. */}}
     try {
       const saved=JSON.parse(sessionStorage.getItem(`studio.assistant-request.${draftOwner}.${scope.project_id}`)||"null");
       const body=saved?.body?JSON.parse(saved.body):null;
@@ -203,7 +214,7 @@ export function AssistantStudio({
     setPendingJob("");
     setError("");
     setLoading(true);
-    if (window.innerWidth <= 1100) setHistoryOpen(false);
+    setHistoryOpen(false);
     try {
       const page = await refreshMessages(id, request, cached);
       if (!page) return;
@@ -308,6 +319,21 @@ export function AssistantStudio({
     setError("");
     let bootstrapProject="";
     try {
+      if(reviewReply&&conversation){
+        if(!canEdit)throw new Error("Cần quyền chỉnh sửa để trả lời yêu cầu xác nhận.");
+        const body=JSON.stringify({review_id:reviewReply.id,nonce:reviewReply.nonce,
+          fingerprint:reviewReply.fingerprint,text:text.trim()});
+        const storage=replyKeyFor(context,conversation.id);
+        let previous:{body:string;key:string}|null=null;
+        try{previous=JSON.parse(sessionStorage.getItem(storage+".request")||"null");}catch{/* Invalid cache is not authority. */}
+        const key=previous?.body===body?previous.key:crypto.randomUUID();
+        sessionStorage.setItem(storage+".request",JSON.stringify({body,key}));
+        const accepted=await api<{job_id:string}>(`/agent/workflows/${reviewReply.workflowId}/replies`,{method:"POST",body,headers:{"Idempotency-Key":key}});
+        if(!alive.current||request!==sequence.current)return;
+        sessionStorage.removeItem(storage);sessionStorage.removeItem(storage+".request");
+        sessionStorage.removeItem(draftKey.current);setReviewReply(null);setText("");
+        await refreshMessages(conversation.id,request);await waitForAnswer(accepted.job_id,conversation.id,request);return;
+      }
       if(files.length){
         const body=new FormData();files.forEach(file=>body.append("files",file));
         if(context.project_id)body.append("project_id",context.project_id);
@@ -491,6 +517,7 @@ export function AssistantStudio({
     }catch(err){if(alive.current&&request===evidenceSequence.current)setError(errorText(err));}
   }
   function attach(selected:FileList | File[] | null){
+    if(reviewReply){setError("Hãy gửi hoặc hủy trả lời xác nhận trước khi đính kèm tệp.");return;}
     if(!selected)return;
     const next=[...files,...Array.from(selected)];
     if(next.length>5||next.some(f=>!(/\.(csv|xlsx)$/i).test(f.name)||f.size>20*1024*1024)){
@@ -499,154 +526,42 @@ export function AssistantStudio({
     setError("");setFiles(next);uploadKey.current=crypto.randomUUID();
   }
   return (
-    <section className="assistant-studio" aria-label="Hội thoại có bằng chứng">
+    <section className={`assistant-studio ${messages.length?"has-conversation":"is-welcome"}`} aria-label="Hội thoại AI Assistant">
       <div className="assistant-toolbar">
         <button
           className="button secondary compact"
           aria-expanded={historyOpen}
           aria-controls="assistant-history-panel"
-          onClick={() => setHistoryOpen(!historyOpen)}
+          onClick={(event) => {historyTrigger.current=event.currentTarget;setHistoryOpen(!historyOpen);}}
         >
           <MessagesSquare size={16} />
-          Lịch sử hội thoại
+          Lịch sử
         </button>
+        <div className="assistant-toolbar-actions">
+          {context.project_id&&<button className="context-chip" data-run-id={context.run_id||""} aria-label="Đổi ngữ cảnh phân tích" onClick={()=>setContextOpen(true)}>{context.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:"Dữ liệu dự án"}</button>}
+          {context.project_id&&<button className="icon-button" aria-label="Hội thoại mới" title="Hội thoại mới" disabled={busy||loading} onClick={()=>newConversation()}><MessageSquarePlus size={18}/></button>}
+          {conversation&&<details className="assistant-menu"><summary aria-label="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary><button className="text-button" disabled={busy||!!pendingJob} onClick={()=>setConfirmDelete(true)}><Trash2 size={15}/>Xóa hội thoại</button></details>}
         <details className="assistant-policy">
           <summary>
             {(mode==="AGENT"?agentEnabled:cloudEnabled)
-              ? "AI theo chính sách workspace"
-              : "AI đang tắt · công cụ an toàn vẫn khả dụng"}
+              ? "Gemini theo chính sách"
+              : "Chế độ dữ kiện"}
           </summary>
           <p>
             Dữ kiện lấy từ backend đã xác minh.{" "}
             {(mode==="AGENT"?agentEnabled:cloudEnabled)
               ? "Suy luận cloud cần policy và reservation riêng cho từng request."
-              : "Suy luận cloud của Trợ lý đang tắt; không dùng quota Gemini còn lại."}
+              : "Suy luận cloud của AI Assistant đang tắt; không dùng quota Gemini còn lại."}
           </p>
           <label>Xử lý yêu cầu<select aria-label="Chế độ hội thoại" value={mode} disabled={busy||!!pendingJob} onChange={e=>setMode(e.target.value as "AGENT"|"LEGACY")}><option value="AGENT">Thực hiện tác vụ dữ liệu</option><option value="LEGACY">Chỉ hỏi dữ kiện đã xác minh</option></select></label>
         </details>
+        </div>
       </div>
-      <div className={`assistant-layout ${historyOpen ? "history-open" : ""}`}>
-        <aside
-          id="assistant-history-panel"
-          className="assistant-history"
-          aria-label="Lịch sử hội thoại"
-          hidden={!historyOpen}
-        >
-          <h3>
-            Lịch sử hội thoại ({history.length}
-            {moreHistory ? "+" : ""})
-          </h3>
-          {!history.length && <p>Chưa có hội thoại trong dự án này.</p>}
-          {history.map((item) => (
-            <button
-              key={item.id}
-              className={`history-item ${conversation?.id === item.id ? "selected" : ""}`}
-              aria-current={conversation?.id === item.id ? "true" : undefined}
-              disabled={busy}
-              onClick={() => void openConversation(item.id)}
-            >
-              {item.title} · {new Date(item.created_at).toLocaleString("vi-VN")}{" "}
-              · {item.context.run_id ? "Đối soát" : "Chuẩn bị dữ liệu"}
-            </button>
-          ))}
-          {moreHistory && (
-            <button
-              className="text-button"
-              onClick={() =>
-                void loadHistory(true).catch((err) => setError(errorText(err)))
-              }
-            >
-              Tải thêm hội thoại
-            </button>
-          )}
-        </aside>
+      <div className="assistant-layout">
+
         <div className="assistant-conversation">
           <div className="assistant-scroll">
-            <p className="assistant-project">{projectName}</p>
-            {context.project_id && <div className="assistant-controls">
-              <label>
-                Run làm ngữ cảnh
-                <select
-                  aria-label="Run làm ngữ cảnh"
-                  value={context.run_id || ""}
-                  disabled={loading || busy || !!pendingJob}
-                  onChange={(event) =>
-                    newConversation({
-                      project_id: initialContext.project_id,
-                      run_id: event.target.value || null,
-                    })
-                  }
-                >
-                  <option value="">
-                    Chưa chọn run — chỉ kiểm tra chuẩn bị dữ liệu
-                  </option>
-                  {context.run_id && !selectedRun && (
-                    <option value={context.run_id}>
-                      Run {context.run_id.slice(0, 8)} · ngữ cảnh hội thoại
-                    </option>
-                  )}
-                  {runs
-                    .filter((r) =>
-                      ["VERIFIED", "PARTIAL_VERIFIED"].includes(r.status),
-                    )
-                    .map((run) => (
-                      <option key={run.id} value={run.id}>
-                        Run {run.id.slice(0, 8)} ·{" "}
-                        {run.status === "VERIFIED"
-                          ? "Đã xác minh"
-                          : "Xác minh một phần"}{" "}
-                        · {run.metric_snapshot?.period_start}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              {runs.length < runTotal && (
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    void loadRuns(true).catch((err) => setError(errorText(err)))
-                  }
-                >
-                  Tải thêm runs
-                </button>
-              )}
-              <div className="assistant-actions">
-                <button
-                  className="button secondary"
-                  disabled={busy || loading}
-                  onClick={() => newConversation()}
-                >
-                  <MessageSquarePlus size={16} />
-                  Hội thoại mới
-                </button>
-                <button
-                  className="text-button"
-                  disabled={!conversation || busy || !!pendingJob}
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  <Trash2 size={15} />
-                  Xóa hội thoại
-                </button>
-              </div>
-            </div>}
-            {(context.group_id || context.case_id) && (
-              <details>
-                <summary>Ngữ cảnh ngoại lệ · giữ đúng lượt đối soát</summary>
-                <p className="muted">
-                  Đang xem nhóm {context.group_id?.slice(0, 8)}
-                  {context.case_id
-                    ? ` · ngoại lệ ${context.case_id.slice(0, 8)}`
-                    : ""}
-                  . Câu trả lời giữ đúng run này.
-                </p>
-              </details>
-            )}
-            {context.dataset_id && (
-              <p className="muted">
-                Nguồn đang xem: {context.dataset_id.slice(0, 8)}. Chọn run đã
-                xác minh để hỏi số liệu đối soát.
-              </p>
-            )}
+
             {error && (
               <Notice tone="error">
                 {error}
@@ -680,15 +595,14 @@ export function AssistantStudio({
                 </button>
               )}
               {!loading && !messages.length && (
-                <div className="agent-empty"><h2>Bạn muốn làm gì với dữ liệu hôm nay?</h2><p>Tải CSV/Excel lên hoặc mô tả yêu cầu bằng tiếng Việt.</p>
-                  <div className="agent-prompts">{[["Chuẩn hóa dữ liệu","PREPARE_NORMALIZATION"],["Đối soát hai file",null],["Tìm giao dịch",null],["Phân tích kết quả","SUMMARIZE_RESULTS"]].map(([title,action])=><button className="button secondary" key={title} onClick={()=>{setText(title!);setCommand(action);}}>{title}</button>)}</div></div>
+                <div className="agent-empty"><Sparkles size={25} aria-hidden="true"/><h2>Bạn muốn xử lý dữ liệu gì?</h2><p>Tải file lên hoặc giao việc cho AI bằng tiếng Việt.</p></div>
               )}
               {messages.map((message) => (
                 <article
                   className={`assistant-message ${message.role}`}
                   key={message.id}
                 >
-                  <strong>{message.role === "user" ? "Bạn" : "Trợ lý"}</strong>
+                  <strong>{message.role === "user" ? "Bạn" : "AI Assistant"}</strong>
                   <small>
                     {new Date(message.created_at).toLocaleString("vi-VN")} ·{" "}
                     {message.context.run_id?.slice(0, 8) || "Chuẩn bị dữ liệu"}
@@ -801,7 +715,10 @@ export function AssistantStudio({
                       </>
                     )
                   )}
-                  {message.role==="assistant"&&message.workflow_id&&<AgentWorkflowPanel id={message.workflow_id} canEdit={canEdit} onNavigate={(target,next)=>void agentNavigate(target,next)} onContext={next=>{workflowContext.current=next;}}/>}
+                  {message.role==="assistant"&&message.workflow_id&&<AgentWorkflowPanel id={message.workflow_id} canEdit={canEdit} onNavigate={(target,next)=>void agentNavigate(target,next)} onContext={next=>{workflowContext.current=next;}} onReply={(workflowId,review)=>{if(!conversation)return;
+                    if(files.length){setError("Bỏ tệp đính kèm trước khi bổ sung xác nhận.");return;}
+                    const binding={workflowId,id:review.id,nonce:review.nonce,fingerprint:review.fingerprint,question:review.question};
+                    setReviewReply(binding);sessionStorage.setItem(replyKeyFor(context,conversation.id),JSON.stringify(binding));composerInput.current?.focus();}}/>}
                   {message.role==="assistant"&&!message.answer&&!message.workflow_id&&<p>{message.text}</p>}
                 </article>
               ))}
@@ -888,21 +805,23 @@ export function AssistantStudio({
             </p>
           )}
           <form
-            className="assistant-composer"
+            className={`assistant-composer ${reviewReply?"is-review-reply":""}`}
             onDragOver={event=>{event.preventDefault();}}
-            onDrop={event=>{event.preventDefault();if(canEdit&&!busy)attach(event.dataTransfer.files);}}
+            onDrop={event=>{event.preventDefault();if(canEdit&&!busy&&!reviewReply)attach(event.dataTransfer.files);}}
             onSubmit={(event) => {
               event.preventDefault();
               void send();
             }}
           >
+            {reviewReply&&<div className="review-reply-binding" role="status">Đang bổ sung: {reviewReply.question}<button type="button" className="icon-button" aria-label="Hủy trả lời xác nhận" onClick={()=>{setReviewReply(null);if(conversation)sessionStorage.removeItem(replyKeyFor(context,conversation.id));}}><X size={14}/></button></div>}
             <input ref={fileInput} type="file" accept=".csv,.xlsx" multiple hidden onChange={e=>{attach(e.target.files);e.target.value="";}}/>
-            <button type="button" className="icon-button" aria-label="Đính kèm CSV hoặc Excel" disabled={!canEdit||busy} onClick={()=>fileInput.current?.click()}><Paperclip size={20}/></button>
+            <button type="button" className="icon-button" aria-label="Đính kèm CSV hoặc Excel" disabled={!canEdit||busy||!!reviewReply} onClick={()=>fileInput.current?.click()}><Paperclip size={20}/></button>
             {files.length>0&&<div className="agent-file-chips">{files.map((file,i)=><span key={`${file.name}:${i}`}>{file.name} · {Math.ceil(file.size/1024)}KB<button type="button" className="icon-button" aria-label={`Bỏ ${file.name}`} disabled={busy} onClick={()=>{setFiles(files.filter((_,n)=>n!==i));uploadKey.current=crypto.randomUUID();}}><X size={14}/></button></span>)}</div>}
             <label>
-              Câu hỏi
+              <span className="visually-hidden">Giao việc cho AI Assistant</span>
               <textarea
-                aria-label="Câu hỏi cho Trợ lý"
+                ref={composerInput}
+                aria-label="Câu hỏi cho AI Assistant"
                 value={text}
                 onChange={(event) => {
                   setText(event.target.value);
@@ -911,7 +830,7 @@ export function AssistantStudio({
                 }}
                 maxLength={2000}
                 rows={2}
-                placeholder="Tải file và giao việc: chuẩn hóa, đối soát, tra cứu hoặc giải thích…"
+                placeholder={reviewReply?"Bổ sung thông tin để AI diễn giải; bạn sẽ kiểm tra lại trước khi xác nhận...":"Ví dụ: Chuẩn hóa các file này rồi đối soát giúp tôi..."}
                 disabled={busy}
               />
             </label>
@@ -929,8 +848,113 @@ export function AssistantStudio({
               )}
             </button>
           </form>
+          {!messages.length&&<div className="agent-prompts">{[["Chuẩn hóa dữ liệu","PREPARE_NORMALIZATION"],["Đối soát các file",null],["Tra cứu thông tin",null],["Phân tích kết quả","SUMMARIZE_RESULTS"]].map(([title,action])=><button className="text-button" key={title} onClick={()=>{setText(title!);setCommand(action);composerInput.current?.focus();}}>{title}</button>)}</div>}
         </div>
       </div>
+      <Modal title="Lịch sử" open={historyOpen} onOpenChange={setHistoryOpen} returnFocus={historyTrigger}>
+        <div
+          id="assistant-history-panel"
+          className="assistant-history"
+          aria-label="Lịch sử hội thoại"
+        >
+          <label>Tìm trong hội thoại đã tải<input value={historySearch} onChange={e=>setHistorySearch(e.target.value)}/></label>
+          <button className="button secondary" disabled={busy||!context.project_id} onClick={()=>{newConversation();setHistoryOpen(false);}}>Hội thoại mới</button>
+          <h3>
+            Lịch sử hội thoại ({history.length}
+            {moreHistory ? "+" : ""})
+          </h3>
+          {!history.length && <p>Chưa có hội thoại trong dự án này.</p>}
+          {history.filter(item=>item.title.toLocaleLowerCase().includes(historySearch.toLocaleLowerCase())).map((item) => (
+            <button
+              key={item.id}
+              className={`history-item ${conversation?.id === item.id ? "selected" : ""}`}
+              aria-current={conversation?.id === item.id ? "true" : undefined}
+              disabled={busy}
+              onClick={() => void openConversation(item.id)}
+            >
+              {item.title} · {new Date(item.created_at).toLocaleString("vi-VN")}{" "}
+              · {item.context.run_id ? "Đối soát" : "Chuẩn bị dữ liệu"}
+            </button>
+          ))}
+          {moreHistory && (
+            <button
+              className="text-button"
+              onClick={() =>
+                void loadHistory(true).catch((err) => setError(errorText(err)))
+              }
+            >
+              Tải thêm hội thoại
+            </button>
+          )}
+        </div>      </Modal>
+      <Modal title="Đổi ngữ cảnh phân tích" open={contextOpen} onOpenChange={setContextOpen}>
+        <p>{projectName}. Chỉ chọn kết quả thuộc dự án này.</p>
+            <div className="assistant-controls">
+              <label>
+                Kết quả phân tích
+                <select
+                  aria-label="Chọn kết quả phân tích"
+                  value={context.run_id || ""}
+                  disabled={loading || busy || !!pendingJob}
+                  onChange={(event) => {
+                    newConversation({
+                      project_id: initialContext.project_id,
+                      run_id: event.target.value || null,
+                    });setContextOpen(false);
+                  }}
+                >
+                  <option value="">
+                    Chưa chọn run — chỉ kiểm tra chuẩn bị dữ liệu
+                  </option>
+                  {context.run_id && !selectedRun && (
+                    <option value={context.run_id}>
+                      Run {context.run_id.slice(0, 8)} · ngữ cảnh hội thoại
+                    </option>
+                  )}
+                  {runs
+                    .filter((r) =>
+                      ["VERIFIED", "PARTIAL_VERIFIED"].includes(r.status),
+                    )
+                    .map((run) => (
+                      <option key={run.id} value={run.id}>
+                        Run {run.id.slice(0, 8)} ·{" "}
+                        {run.status === "VERIFIED"
+                          ? "Đã xác minh"
+                          : "Xác minh một phần"}{" "}
+                        · {run.metric_snapshot?.period_start}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {runs.length < runTotal && (
+                <button
+                  className="text-button"
+                  onClick={() =>
+                    void loadRuns(true).catch((err) => setError(errorText(err)))
+                  }
+                >
+                  Tải thêm runs
+                </button>
+              )}
+            </div>            {(context.group_id || context.case_id) && (
+              <details>
+                <summary>Ngữ cảnh ngoại lệ · giữ đúng lượt đối soát</summary>
+                <p className="muted">
+                  Đang xem nhóm {context.group_id?.slice(0, 8)}
+                  {context.case_id
+                    ? ` · ngoại lệ ${context.case_id.slice(0, 8)}`
+                    : ""}
+                  . Câu trả lời giữ đúng run này.
+                </p>
+              </details>
+            )}
+            {context.dataset_id && (
+              <p className="muted">
+                Nguồn đang xem: {context.dataset_id.slice(0, 8)}. Chọn run đã
+                xác minh để hỏi số liệu đối soát.
+              </p>
+            )}
+      </Modal>
       {evidence && (
         <ReconciliationEvidence
           evidence={evidence}

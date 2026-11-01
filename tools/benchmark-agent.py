@@ -51,7 +51,9 @@ def score(gold: dict, intent: AgentIntent, ids: dict) -> dict:
             p and {p.left.canonical_id, p.right.canonical_id} == {ids["CA"], ids["CB"]}
         )
     elif intent.query:
-        source_ok = intent.query.source_id == ids.get(expected)
+        source_ok = intent.query.source_id == ids.get(expected) and (
+            intent.query.source_kind == gold.get("kind", "CANONICAL")
+        )
     else:
         source_ok = expected is None or expected == "RUN" and intent.run_id in {None, ids["RUN"]}
     semantic_ok = True
@@ -76,9 +78,11 @@ def score(gold: dict, intent: AgentIntent, ids: dict) -> dict:
         )
     if gold.get("filter"):
         q = intent.query
-        target = ids[
-            {"paid": "paid_field", "id": "id_field", "amount": "amount_field"}[gold["filter"]]
-        ]
+        target = (
+            ids[{"paid": "paid_field", "id": "id_field", "amount": "amount_field"}[gold["filter"]]]
+            if gold["filter"] in {"paid", "id", "amount"}
+            else ("linkage_state" if gold["filter"] == "missing" else "state")
+        )
         semantic_ok = bool(
             q
             and any(
@@ -100,12 +104,27 @@ def score(gold: dict, intent: AgentIntent, ids: dict) -> dict:
                     if gold["filter"] == "paid"
                     else f.op == "eq" and f.value == "000702"
                     if gold["filter"] == "id"
+                    else f.op in {"eq", "in"}
+                    and bool(f.value)
+                    and set([f.value] if isinstance(f.value, str) else f.value or [])
+                    <= (
+                        {"UNMATCHED"}
+                        if gold["filter"] == "missing"
+                        else {"OPEN"}
+                        if gold["filter"] == "open_cases"
+                        else {"OPEN", "IN_REVIEW"}
+                    )
+                    if gold["filter"] in {"missing", "open_cases", "unresolved_cases"}
                     else f.op == "gt"
                     and isinstance(f.value, str)
                     and Decimal(f.value) == Decimal("10")
                 )
                 for f in q.filters
             )
+        )
+    if gold.get("group"):
+        semantic_ok = semantic_ok and bool(
+            intent.query and ids["paid_field"] in intent.query.group_by
         )
     intent_ok = intent.intent == gold["intent"]
     dispatch = {
@@ -124,7 +143,9 @@ def score(gold: dict, intent: AgentIntent, ids: dict) -> dict:
         id=gold["id"],
         intent_ok=intent_ok,
         source_ok=source_ok,
+        source_applicable=expected is not None,
         semantic_ok=semantic_ok,
+        semantic_applicable=any(gold.get(k) for k in ("key", "aggregate", "filter", "group")),
         tool_ok=dispatch.get(intent.intent) == dispatch.get(gold["intent"]),
         abstention_ok=intent.intent in {"CLARIFY", "UNSUPPORTED"} if gold.get("negative") else None,
         actual=intent.model_dump(mode="json"),
@@ -276,8 +297,10 @@ def main() -> None:
         measured=len(measured),
         blocked=len(results) - len(measured),
         intent_correct=sum(r["intent_ok"] for r in measured),
-        source_correct=sum(r["source_ok"] for r in measured),
-        semantic_correct=sum(r["semantic_ok"] for r in measured),
+        source_measured=sum(r["source_applicable"] for r in measured),
+        source_correct=sum(r["source_applicable"] and r["source_ok"] for r in measured),
+        semantic_measured=sum(r["semantic_applicable"] for r in measured),
+        semantic_correct=sum(r["semantic_applicable"] and r["semantic_ok"] for r in measured),
         tool_correct=sum(r["tool_ok"] for r in measured),
         negative_measured=sum(r["abstention_ok"] is not None for r in measured),
         correct_abstentions=sum(r["abstention_ok"] is True for r in measured),

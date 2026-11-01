@@ -12,6 +12,7 @@ import {
   ArrowRight,
   BellRing,
   ChevronLeft,
+  ChevronDown,
   ChevronRight,
   CircleHelp,
   Database,
@@ -84,6 +85,8 @@ type View = "parsed" | "raw" | "canonical" | "errors";
 export function App() {
   const [location, setLocation] = useState(readLocation);
   const { page, context: assistantContext } = location;
+  const [resultsOpen,setResultsOpen]=useState(()=>["home","reconcile","exceptions","reports"].includes(location.page));
+  useEffect(()=>{if(["home","reconcile","exceptions","reports"].includes(page))setResultsOpen(true);},[page]);
   const locationRef = useRef(location);
   const navigationSequence = useRef(0);
   locationRef.current = location;
@@ -980,18 +983,7 @@ export function App() {
             }
           >
             <Sparkles size={19} />
-            <span>Trợ lý AI</span>
-          </button>
-          <span className="nav-caption">KẾT QUẢ & CÔNG CỤ</span>
-          <button
-            className={page === "home" ? "active" : ""}
-            onClick={() => {
-              setPage("home");
-              setSidebar(false);
-            }}
-          >
-            <LayoutDashboard size={19} />
-            Tổng quan
+            <span>AI Assistant</span>
           </button>
           <button
             className={page === "data" ? "active" : ""}
@@ -1005,6 +997,20 @@ export function App() {
             <span className="nav-count">
               {projectId ? (summary ? datasetTotal : "…") : "—"}
             </span>
+          </button>
+          <button className={`result-nav-toggle ${["home","reconcile","exceptions","reports"].includes(page)?"current-group":""}`} aria-expanded={resultsOpen} aria-controls="result-nav-list" onClick={()=>setResultsOpen(!resultsOpen)}>
+            <LayoutDashboard size={19}/><span>Kết quả</span><ChevronDown size={15} className={resultsOpen?"expanded":""}/>
+          </button>
+          <div id="result-nav-list" className="result-nav-list" hidden={!resultsOpen}>
+          <button
+            className={page === "home" ? "active" : ""}
+            onClick={() => {
+              setPage("home");
+              setSidebar(false);
+            }}
+          >
+            <LayoutDashboard size={19} />
+            Tổng quan
           </button>
           <button
             className={page === "reconcile" ? "active" : ""}
@@ -1037,17 +1043,10 @@ export function App() {
             <span>Báo cáo</span>
           </button>
 
+          </div>
         </nav>
         <div className="sidebar-bottom">
-          <div className="local-card">
-            <ShieldCheck size={20} />
-            <strong>Dữ liệu được kiểm soát</strong>
-            <p>
-              Cloud đang{" "}
-              {workspace?.policy.allow_external_ai ? "được cấp phép" : "tắt"}.
-              AI đề xuất, bạn xác nhận.
-            </p>
-          </div>
+          <div className="system-mini"><ShieldCheck size={14}/><span>{workspace?.policy.allow_external_ai?"Cloud theo chính sách":"Xử lý local"}</span></div>
           <button
             className={`settings-nav ${page === "settings" ? "active" : ""}`}
             onClick={() => {
@@ -1087,7 +1086,7 @@ export function App() {
             </button>
             <span>Không gian làm việc</span>
             <ChevronRight size={14} />
-            <strong>
+            <strong role={page==="assistant"?"heading":undefined} aria-level={page==="assistant"?1:undefined}>
               {page === "home"
                 ? "Tổng quan"
                 : page === "data"
@@ -1099,7 +1098,7 @@ export function App() {
                       : page === "reports"
                         ? "Báo cáo"
                         : page === "assistant"
-                          ? "Trợ lý AI"
+                          ? "AI Assistant"
                           : "Cài đặt"}
             </strong>
           </div>
@@ -1116,7 +1115,7 @@ export function App() {
           className={page === "assistant" ? "assistant-main" : ""}
           inert={restoringLocation || undefined}
         >
-          <div className="page-heading">
+          {page!=="assistant"&&<div className="page-heading">
             <div>
               <span className="eyebrow">AI RECONCILIATION STUDIO</span>
               <h1>
@@ -1130,18 +1129,14 @@ export function App() {
                         ? "Ngoại lệ và bằng chứng"
                         : page === "reports"
                           ? "Báo cáo đối soát"
-                          : page === "assistant"
-                            ? "Trợ lý AI"
-                            : "Cài đặt không gian làm việc"}
+                          : "Cài đặt không gian làm việc"}
               </h1>
               <p>
                 {page === "home"
                   ? "Từ tệp nguồn đến dữ liệu chuẩn hóa — rõ ràng ở từng bước."
                   : page === "data"
                     ? "Khám phá nguồn, kiểm tra đề xuất và chuẩn bị dữ liệu đáng tin cậy."
-                    : page === "assistant"
-                      ? "Hỏi từ dữ kiện, kiểm tra bằng chứng và chọn bước tiếp theo."
-                      : page === "settings"
+                    : page === "settings"
                         ? "Chính sách xử lý và giới hạn đang áp dụng từ backend."
                         : "Quy tắc được duyệt, kết quả bất biến và bằng chứng từ dữ liệu nguồn."}
               </p>
@@ -1158,7 +1153,7 @@ export function App() {
                 </button>
               )}
             </div>
-          </div>
+          </div>}
           {error && (
             <Notice tone="error">
               <div className="notice-content">
@@ -1184,7 +1179,7 @@ export function App() {
           {success && <Notice tone="success">{success}</Notice>}
           {!ready && !error && <Spinner />}
           {ready && page !== "settings" && (
-            <div className="project-bar">
+            <div className={`project-bar ${page==="assistant"?"assistant-project-bar":""}`}>
               <ProjectSelector
                 project={project}
                 onSelect={chooseProject}
@@ -1196,7 +1191,7 @@ export function App() {
                   )
                 }
               />
-              {projectId && (
+              {projectId && page!=="assistant" && (
                 <button
                   className="icon-button"
                   aria-label="Cập nhật dự án"
@@ -1210,13 +1205,13 @@ export function App() {
                   />
                 </button>
               )}
-              <button
+              {page!=="assistant"&&<button
                 className="text-button"
                 disabled={!canEdit}
                 onClick={() => openNewProject()}
               >
                 + Tạo dự án
-              </button>
+              </button>}
             </div>
           )}
           {ready && !projectId && !["settings","assistant"].includes(page) && (
@@ -1303,8 +1298,8 @@ export function App() {
           {ready &&
             page === "assistant" &&
             (!projectId || !assistantContext || assistantContext.project_id === projectId) && (
-              <section className="assistant-page" aria-label="Trợ lý AI">
-                {projectId && <button
+              <section className="assistant-page" aria-label="AI Assistant">
+                {projectId && ["data","exceptions","reports"].includes(location.origin) && <button
                   className="text-button assistant-return"
                   onClick={() => {
                     const current = readLocation().context || assistantContext || {project_id:projectId};
@@ -1847,7 +1842,7 @@ export function App() {
                     {workspace.gemini_requests_remaining} request còn lại ·{" "}
                     {workspace.gemini_requests_used} đã dùng
                   </dd>
-                  <dt>Trợ lý cloud</dt>
+                  <dt>AI Assistant cloud</dt>
                   <dd>
                     {workspace.assistant_cloud_enabled
                       ? "Được cấp phép theo từng tác vụ"

@@ -905,3 +905,11 @@ Không thêm hàng chục Markdown trùng lặp, không xóa audit history hay a
 Không được đánh đổi 1–2 click ít hơn để tạo kết quả tài chính sai. Không thêm hệ thống doanh nghiệp/multi-agent vì mục tiêu nhỏ là chứng minh **AI Agent thật, chính xác, dễ dùng** trong MVP.
 
 **TRẠNG THÁI: SOURCE ĐANG TRIỂN KHAI THEO ỦY QUYỀN01/11/2026 — CHƯA NGHIỆM THU MVP, CHƯA MERGE, CHƯA DEPLOY RELEASE MỚI.**
+
+## 23. Bổ sung chính thức02/11/2026 — tối giản giao diện AI Assistant
+
+Yêu cầu chủ dự án gửi tiếp trong nhiệm vụ thay cách tổ chức UI ở mục3: tên hiển thị thống nhất **AI Assistant** (không đổi endpoint/model/table/module). Sidebar chỉ có AI Assistant, Dữ liệu và nhóm Kết quả mở/đóng gồm Tổng quan/Đối soát/Ngoại lệ/Báo cáo; Cài đặt/tài khoản ở dưới, trạng thái bảo vệ dữ liệu thu gọn. Giữ logo, màu/font/components/AppShell.
+
+Empty chat không có khung chat trống hoặc cột lịch sử thường trực: biểu tượng nhỏ, “Bạn muốn xử lý dữ liệu gì?”, mô tả “Tải file lên hoặc giao việc cho AI bằng tiếng Việt.”, một composer giữa trang, gợi ý bên dưới. Có hội thoại thì composer xuống cuối, transcript cuộn độc lập; table/chart/review/evidence trong chat. Lịch sử mở bằng nút nhỏ/panel, ngữ cảnh run bằng chip và danh sách chỉ mở khi cần; xóa vào menu và giữ confirmation. Origin hợp lệ từ Data/Exceptions/Reports mới có quay lại. Không lặp tên project hoặc bắt chọn trước upload. Cloud/provider status phải từ backend, không suy sẵn sàng chỉ từ kết nốiAPI.
+
+Nghiệm thu bổ sung15trạng thái ở5width390/768/1366/1440/1920: empty/short/long/upload/running/review/completed/wide table/chart/evidence/history/multiline/mobile keyboard/sidebar/loading-error-permission. Chụp và xem trước/sau, giữ regression cũ bằng thao tác phù hợp UI mới, không xóa oracle. Không đổi backend/security/approvals/ledger vì layout. Tệp bổ sung nhận được hiện chỉ chứa văn bản, chưa có hai ảnh phác thảo trong attachment; kiểm chứng bố cục theo mô tả chi tiết và screenshots thực tế, không tuyên bố đã đối chiếu ảnh chưa nhận. Toàn bộ gate Agent/live/release của nhiệm vụ trước vẫn tiếp tục.

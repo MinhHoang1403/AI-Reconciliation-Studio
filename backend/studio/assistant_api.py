@@ -202,7 +202,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             pending = db.scalar(
                 select(JobRow.id)
                 .where(
-                    JobRow.kind.in_(["assistant", "agent"]),
+                    JobRow.kind.in_(["assistant", "agent", "agent_review"]),
                     JobRow.project_id == row.project_id,
                     JobRow.payload["conversation_id"].astext == row.id,
                     JobRow.status.in_(["QUEUED", "RUNNING", "RETRYABLE_FAILURE"]),

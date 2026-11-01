@@ -181,6 +181,7 @@ class ReviewRequest(Contract):
     question: str
     reason: str
     resource_id: str
+    resource_label: str | None = None
     fingerprint: str
     nonce: str
     expires_at: datetime

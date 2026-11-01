@@ -45,12 +45,14 @@ from studio.contracts.reconciliation import PlanningRequest, PlanProposal, Recon
 from studio.database import (
     AgentWorkflowRow,
     CanonicalRow,
+    DatasetRow,
     JobRow,
     MappingRow,
     MembershipRow,
     PlanRow,
     ReconciliationContractRow,
     TableRow,
+    VersionRow,
     identifier,
     now,
 )
@@ -204,10 +206,20 @@ def make_review(
         if kind == "RECONCILIATION" and request
         else []
     )
+    resource_label = None
+    if kind == "MAPPING":
+        table = get_scoped(db, TableRow, resource_id, actor)
+        filename = db.scalar(
+            select(DatasetRow.name)
+            .join(VersionRow, VersionRow.dataset_id == DatasetRow.id)
+            .where(VersionRow.id == table.dataset_version_id)
+        )
+        resource_label = f"{filename or 'Nguồn dữ liệu'} · {table.sheet}"
     review = ReviewRequest(
         id=identifier(),
         kind=kind,
         resource_id=resource_id,
+        resource_label=resource_label,
         fingerprint=review_fingerprint(db, actor, kind, resource_id, source_ids),
         nonce=secrets.token_hex(16),
         expires_at=now() + timedelta(minutes=30),

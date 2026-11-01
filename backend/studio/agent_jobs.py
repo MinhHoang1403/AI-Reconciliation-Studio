@@ -40,6 +40,7 @@ from studio.contracts.assistant import AssistantContext
 from studio.database import (
     AgentWorkflowRow,
     AuditRow,
+    ConversationRow,
     JobRow,
     MembershipRow,
     MessageRow,
@@ -397,6 +398,25 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             current.pending_reply_job_id = None
             current.nonce = secrets.token_hex(16)
             current.expires_at = now() + timedelta(minutes=30)
+            conversation = own_conversation(db, actor, row.conversation_id)
+            db.refresh(conversation, with_for_update=True)
+            if conversation.deleted_at:
+                raise DomainError("RESOURCE_NOT_FOUND", "Hội thoại đã được xóa.", 404)
+            response_id = str(uuid5(NAMESPACE_URL, f"assistant-response:{job.id}"))
+            if db.get(MessageRow, response_id) is None:
+                db.add(
+                    MessageRow(
+                        id=response_id,
+                        conversation_id=row.conversation_id,
+                        job_id=job.id,
+                        role="assistant",
+                        text="Cần bổ sung thêm thông tin trên thẻ xác nhận."
+                        if output.questions
+                        else "Đã cập nhật bản xem trước. Hãy kiểm tra và xác nhận để tiếp tục.",
+                        context=conversation.context,
+                        answer=None,
+                    )
+                )
             save(row, state)
             finish(
                 db,
@@ -454,6 +474,11 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
         assert row is not None
         advance(db, row)
         if kind == "agent":
+            conversation = db.get(
+                ConversationRow, row.conversation_id, with_for_update=True, populate_existing=True
+            )
+            if conversation is None or conversation.deleted_at:
+                raise DomainError("RESOURCE_NOT_FOUND", "Hội thoại đã được xóa.", 404)
             response_id = str(uuid5(NAMESPACE_URL, f"assistant-response:{job.id}"))
             if db.get(MessageRow, response_id) is None:
                 db.add(

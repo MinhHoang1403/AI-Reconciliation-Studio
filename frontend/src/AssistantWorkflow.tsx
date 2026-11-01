@@ -242,7 +242,7 @@ export function AssistantWorkflow({
           {!templates.length && (
             <Notice>
               Chưa có mẫu đã duyệt để tái sử dụng. Mở Đối soát để tạo/review
-              rule; Trợ lý không tự tạo quy tắc tài chính.
+              rule; AI Assistant không tự tạo quy tắc tài chính.
             </Notice>
           )}
           {!canEdit && (

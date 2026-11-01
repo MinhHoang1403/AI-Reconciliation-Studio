@@ -111,6 +111,7 @@ def mapping_fixture(pg, monkeypatch):  # noqa: F811
     wf = workflow_for(client, factory, queued["job_id"])
     assert wf["state"] == "WAITING_REVIEW", wf
     review = wf["detail"]["reviews"][0]
+    assert review["resource_label"].startswith("synthetic.csv")
     body = dict(
         review_id=review["id"],
         nonce=review["nonce"],
@@ -591,6 +592,11 @@ def test_agent_review_natural_reply_is_bound_preview_never_auto_approval(pg, mon
     assert current["state"] == "WAITING_REVIEW"
     review = current["detail"]["reviews"][0]
     assert review["state"] == "OPEN" and review["pending_reply_job_id"] is None
+    messages = client.get(f"/api/conversations/{wf['conversation_id']}").json()["items"]
+    assert messages[-2 if answer != "wrong-source" else -1]["text"] == body["text"]
+    if answer != "wrong-source":
+        assert messages[-1]["role"] == "assistant" and messages[-1]["answer"] is None
+        assert "xác nhận" in messages[-1]["text"]
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 0
         assert (
