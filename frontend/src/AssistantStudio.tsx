@@ -104,6 +104,9 @@ export function AssistantStudio({
   const [historySearch,setHistorySearch]=useState("");
   const historyTrigger=useRef<HTMLElement|null>(null);
   const composerInput=useRef<HTMLTextAreaElement>(null);
+  const transcript=useRef<HTMLDivElement>(null);
+  const lastMessageId=messages.at(-1)?.id;
+  useEffect(()=>{if(transcript.current)transcript.current.scrollTop=transcript.current.scrollHeight;},[lastMessageId]);
   useEffect(()=>{const input=composerInput.current;if(input){input.style.height="auto";input.style.height=`${Math.min(input.scrollHeight,180)}px`;}},[text]);
   const [draftNotice, setDraftNotice] = useState("");
   const draftKeyFor = (scope: AssistantContext, id = "new") =>
@@ -560,7 +563,7 @@ export function AssistantStudio({
       <div className="assistant-layout">
 
         <div className="assistant-conversation">
-          <div className="assistant-scroll">
+          <div className="assistant-scroll" ref={transcript}>
 
             {error && (
               <Notice tone="error">

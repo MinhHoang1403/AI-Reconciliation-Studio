@@ -5,6 +5,7 @@ import { AgentResultBlocks } from "./AgentResultBlocks";
 import type { DraftField, NormalizationDraft, Review, Workflow } from "./agentTypes";
 import type { AssistantContext, Suggestion } from "./assistantTypes";
 import { label, type Plan, type Catalogue, type Slot } from "./reconciliationTypes";
+import {errorText as errors,statusText} from "./types";
 function proposedPlan(review: Review, catalogue: Catalogue[]): Plan | null {
     const request = review.planning_request, s = review.suggestions;
     if (!request || !s || !s.join_keys.length || !s.comparison_metrics.length || !s.cardinality || !s.aggregation || !s.comparison_grain)
@@ -17,7 +18,7 @@ function proposedPlan(review: Review, catalogue: Catalogue[]): Plan | null {
             role: side === "left" ? s.left_role : s.right_role, date_field: "", time_basis: "", currency_field: null,
             filters: {}, coverage_start: "", coverage_end: "", completeness: "", snapshot_at: "", settlement_due_at: null },
         ...request[side] });
-    return { name: "Đối soát đã xác nhận", entity_kind: left.schema_definition.entity_kind,
+    return { name: "Đối soát hai nguồn", entity_kind: left.schema_definition.entity_kind,
         left: slot("left"), right: slot("right"), join_keys: s.join_keys, comparison_metrics: s.comparison_metrics,
         attributes: [], comparison_grain: s.comparison_grain, cardinality: s.cardinality, aggregation: s.aggregation,
         period_start: request.period_start || "", period_end: request.period_end || "", timezone: request.timezone || "",
@@ -139,8 +140,8 @@ function ReviewCard({ review, workflow, canEdit, refresh, onReply }: {
         review.kind === "RECONCILIATION" ? !!plan?.period_start && !!plan.period_end && !!plan.timezone && !!plan.effective_from && [plan.left, plan.right].every(s => s.date_field && s.time_basis && s.coverage_start && s.coverage_end && s.snapshot_at && s.completeness) : !!review.reply_intent;
     return <section className="agent-review card" aria-label="Quyết định cần xác nhận">{review.resource_label&&<strong>{review.resource_label}</strong>}<h4>{review.question}</h4><p>{review.reason}</p>
     {error && <Notice tone="error">{error}</Notice>}{review.reply_questions.map(q => <Notice key={q}>{q}</Notice>)}
-    {draft && <MappingReview draft={draft} disabled={disabled} onChange={v => { setDraft(v); setConfirmed(false); }}/>}
-    {plan && <PlanReview plan={plan} disabled={disabled} onChange={v => { setPlan(v); setConfirmed(false); }}/>}
+    {draft && <><p>{draft.grain}</p><ul className="review-summary">{draft.fields.filter(f=>f.data_type!=="string"||f.business_key||f.question).map(f=><li key={f.source_field}><strong>{f.name}</strong>: {f.data_type==="decimal"?`${f.semantic_metric||"Chưa rõ ý nghĩa"} · ${f.amount_basis||"chưa rõ gross/net"} · ${f.currency||"chưa rõ tiền tệ"} · ${f.locale||"chưa rõ định dạng số"}`:f.data_type==="date"?`${f.date_format||"chưa rõ định dạng ngày"} · ${f.timezone||"chưa rõ múi giờ"}`:"Giữ nguyên mã"}{f.question&&<span className="muted"> · {f.question}</span>}</li>)}</ul><details className="agent-review-editor"><summary>Xem và chỉnh các lựa chọn</summary><MappingReview draft={draft} disabled={disabled} onChange={v => { setDraft(v); setConfirmed(false); }}/></details></>}
+    {plan && <><p>Kỳ {plan.period_start||"chưa chọn"} → {plan.period_end||"chưa chọn"} · {plan.timezone||"chưa rõ múi giờ"}</p><p>Khóa: {plan.join_keys.map(k=>`${k.left} ↔ ${k.right}`).join(", ")}. {label(plan.cardinality)} · {label(plan.aggregation)}</p>{plan.comparison_metrics.map(m=><p key={m.metric_id}>{m.metric_id} · {m.amount_basis} · {m.currency} · sai số {m.absolute_tolerance}</p>)}<details className="agent-review-editor"><summary>Kiểm tra phạm vi và chỉnh quy tắc</summary><PlanReview plan={plan} disabled={disabled} onChange={v => { setPlan(v); setConfirmed(false); }}/></details></>}
     {review.kind === "RECONCILIATION" && !plan && <Notice>Cần bổ sung kỳ, múi giờ và độ đầy đủ. Chưa có quy tắc đủ điều kiện chạy.</Notice>}
     {review.reply_intent && <p>Thao tác sẽ thực hiện: {review.reply_intent.intent}</p>}
     <button className="text-button" disabled={disabled} onClick={()=>onReply(workflow.id,review)}>Bổ sung bằng tiếng Việt</button>
@@ -198,8 +199,8 @@ export function AgentWorkflowPanel({ id, canEdit, onNavigate, onContext, onReply
     } }
     return <section className="agent-workflow" aria-label="Công việc của AI Assistant">{error && <Notice tone="error">{error}<button className="text-button" onClick={() => void refresh()}>Cập nhật</button></Notice>}
     {!workflow ? <Spinner /> : <><p className="agent-workflow-state"><strong>{states[workflow.state] || workflow.state}</strong>{["CREATED", "RUNNING", "WAITING_REVIEW"].includes(workflow.state) && <button className="text-button" onClick={() => void cancel()}>Dừng bước tiếp theo</button>}</p>
-      {workflow.detail.error_code && <Notice tone="warning">Cần kiểm tra: {workflow.detail.error_code}. Dữ liệu và kết quả đã lưu được giữ.</Notice>}
-      <ol className="agent-steps">{workflow.detail.steps.map((s, i) => <li key={i}>{tools[s.tool] || s.tool} · {label(s.status)}</li>)}</ol>
+      {workflow.detail.error_code && <Notice tone="warning">{errors[workflow.detail.error_code]||"Chưa đủ điều kiện để tiếp tục. Dữ liệu và kết quả đã lưu được giữ."}<details><summary>Chi tiết</summary><code>{workflow.detail.error_code}</code></details></Notice>}
+      <ol className="agent-steps">{workflow.detail.steps.map((s, i) => <li key={i}>{tools[s.tool] || s.tool} · {statusText[s.status]||label(s.status)}</li>)}</ol>
       {workflow.detail.reviews.filter(r => r.state === "OPEN").map(r => <ReviewCard key={`${r.id}:${r.nonce}`} review={r} workflow={workflow} canEdit={canEdit && workflow.state === "WAITING_REVIEW"} refresh={refresh} onReply={onReply}/>)}
       <AgentResultBlocks blocks={workflow.detail.blocks} context={workflow.context} onNavigate={onNavigate}/>
     </>}</section>;

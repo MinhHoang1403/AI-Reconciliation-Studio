@@ -76,6 +76,20 @@ for(const width of [390,768,1366,1440,1920]){
       }
       if(name==="evidence"){await page.getByRole("button",{name:"Xem dòng gốc",exact:true}).first().click();await expect(page.getByRole("dialog",{name:"Dòng dữ liệu nguồn",exact:true})).toContainText("000701");}
       if(name==="permission")await expect(page.getByRole("button",{name:"Đính kèm CSV hoặc Excel",exact:true})).toBeDisabled();
+      if(name==="review"){
+        await expect(page.locator("textarea")).toHaveCount(1);
+        await expect(page.getByLabel("Ý nghĩa số tiền",{exact:true})).not.toBeVisible();
+        await page.getByText("Xem và chỉnh các lựa chọn",{exact:true}).click();
+        await expect(page.getByLabel("Ý nghĩa số tiền",{exact:true})).toBeVisible();
+        await page.getByText("Xem và chỉnh các lựa chọn",{exact:true}).click();
+        await page.getByRole("button",{name:"Bổ sung bằng tiếng Việt",exact:true}).click();
+        await expect(input).toBeFocused();
+        await expect(page.getByRole("button",{name:"Đính kèm CSV hoặc Excel",exact:true})).toBeDisabled();
+        await input.fill("Số tiền gross, VND; giữ nguyên mã có số 0 đầu.");
+        await page.getByRole("button",{name:"Hủy trả lời xác nhận",exact:true}).click();
+        await expect(input).toHaveValue("Số tiền gross, VND; giữ nguyên mã có số 0 đầu.");
+        await expect(page.locator("textarea")).toHaveCount(1);
+      }
       if(["short","long","running","review","completed","table","chart","permission"].includes(name))await expect(page.getByRole("region",{name:"Công việc của AI Assistant",exact:true})).toContainText(name==="running"?"Đang thực hiện":name==="review"||name==="permission"?"Cần bạn xác nhận":"Đã hoàn thành");
       await shot(name);if(name==="keyboard")await page.setViewportSize({width,height:900});
       release();
