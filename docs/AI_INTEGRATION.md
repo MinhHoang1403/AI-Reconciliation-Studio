@@ -90,7 +90,7 @@ Durable reservations: Gemini7→9/10 (còn1), Assistant0→1, Planner1→2; khô
 
 ## Agent-first bổ sung02/11/2026 — chưa nghiệm thu live Agent
 
-Source thêm `agent_cloud_enabled=false`, `agent_request_budget=0` mặc định; không tự dùng quota Planner/Assistant. Runtime hiện chưa bật Agent, Gemini vẫn15/50(còn35) theo gate Planner01/11; chưa phát sinh Agent live request ở nhóm code này. Intent (`agent-intent-5`) và normalization draft (`agent-normalization-3`) dùng chung Gemini Gateway, strict typed output, tối đa1attempt/job; không tự retry khi schema/semantic fail hoặc delivery unknown. Reservation global/workspace và `AGENT_REQUEST_RESERVED` được commit trước HTTP; task lifetime cap bổ sung, không reset lịch sử.
+Source thêm `agent_cloud_enabled=false`, `agent_request_budget=0` mặc định; không tự dùng quota Planner/Assistant. Runtime hiện chưa bật Agent, Gemini vẫn15/50(còn35) theo gate Planner01/11; chưa phát sinh Agent live request ở nhóm code này. Intent (`agent-intent-6`) và normalization draft (`agent-normalization-3`) dùng chung Gemini Gateway, strict typed output, tối đa1attempt/job; không tự retry khi schema/semantic fail hoặc delivery unknown. Reservation global/workspace và `AGENT_REQUEST_RESERVED` được commit trước HTTP; task lifetime cap bổ sung, không reset lịch sử.
 
 Giới hạn orchestration [D]:12steps,5tools/turn,3review OPEN; giữ tối đa10review lịch sử. Chọn6model calls/workflow (config0–8) để một lệnh cho5nguồn có thể dùng1intent+5drafts; đây là giới hạn cấu trúc theo số nguồn, chưa phải benchmark tốc độ. Trần tổng50và task allowance vẫn là cổng độc lập, mặc định cloud OFF/0. Các command UI tường minh có thể bỏ intent call; không dùng keyword router giả lập hiểu ngôn ngữ tự nhiên. Queries/GET/polling/layout không gọi model.
 
@@ -107,3 +107,5 @@ Normalization3 làm required tất cảnullableproperties trong provider schema 
 Intent4 phân biệt canonical field IDs với approved metric IDs; DataQuery.metric_id chỉ cho VERIFIED_RUN, các nguồn khácnull. Một paidquerylive đã bịguardabstain vì chọnmetric_idsainguồn; giữtrongbáocáo, chưacoiPASS.
 
 Intent5 ghi rõ canonical paid query phải dùng approved paid_status_fields với eq/in và mãPAID/TRANSFERREDviếthoa, khôngcontains/boolean/dịchgiátrị. Safequery_shapes chỉsourcekind/filterops/cờpaidliteral, khôngfield/value/IDraw. Validator vẫn từchối nếu sai; không sửaoutput.
+
+Intent6 nhắcrowlistingkhônggroup_by, statusenumtừcatalogue, businesskeykhôngphảigroup_id. Goldliveđãđochointent5:68/80intent,53/60source,22/34slots,20/20safeabstention. ToànbộNLPliệuđối vớiprompt6chưađolive; khôngdùngsốliệuprompt5đểtuyênbốprompt6đạt. Gemini49/50trướcbướcvariancecuối; khônggọilạibenchmarktoànbộkhivượttrần.

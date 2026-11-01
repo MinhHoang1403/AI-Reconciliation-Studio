@@ -366,3 +366,50 @@ def test_benchmark_repair_refuses_unknown_delivery_and_preserves_numeric_rubric(
     assert helper["decimal_equal"]("10.00", "10")
     assert not helper["decimal_equal"]("wrong", "10")
     assert not helper["decimal_equal"]("NaN", "10")
+
+
+def test_agent_rejects_listing_with_aggregation_grouping_and_invented_status():
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        validate(
+            dict(
+                intent="QUERY_DATA",
+                query=dict(
+                    project_id="p",
+                    source_kind="CANONICAL",
+                    source_id="canonical",
+                    group_by=["currency"],
+                ),
+            )
+        )
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        validate(
+            dict(
+                intent="QUERY_DATA",
+                query=dict(
+                    project_id="p",
+                    source_kind="VERIFIED_RUN",
+                    source_id="run",
+                    filters=[dict(field_id="comparison_state", op="ne", value="MATCHED")],
+                ),
+            )
+        )
+
+
+def test_agent_transaction_key_is_not_an_invented_technical_group_id():
+    payload = dict(
+        intent="QUERY_DATA",
+        query=dict(
+            project_id="p",
+            source_kind="VERIFIED_RUN",
+            source_id="run",
+            filters=[dict(field_id="group_id", op="eq", value="000702")],
+        ),
+    )
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        validate(payload, "Vì sao giao dịch 000702 không khớp?")
+    cat = catalogue()
+    cat.context.group_id = "known-group"
+    payload["query"]["filters"][0]["value"] = "known-group"
+    assert validate_intents(json.dumps(dict(intents=[payload])), ["Xem nhóm hiện tại"], cat)[
+        0
+    ].query

@@ -92,6 +92,7 @@ class IntentCatalogue(Contract):
     confirmed_plan: ReconciliationPlan | None = None
     verified_run_fields: list[str] = Field(default_factory=list)
     verified_metric_ids: list[str] = Field(default_factory=list)
+    status_values: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
 
 
 class IntentBatch(Contract):

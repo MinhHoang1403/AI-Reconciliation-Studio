@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, get_args
 
 import polars as pl
 from pydantic import JsonValue
@@ -15,7 +15,15 @@ from studio.access import Actor
 from studio.config import settings
 from studio.contracts import CanonicalDataset, SchemaDefinition
 from studio.contracts.data_query import DataQuery, QueryResult
-from studio.contracts.reconciliation import MatchGroup, ReconciliationContract
+from studio.contracts.reconciliation import (
+    ComparisonState,
+    LinkageState,
+    MatchGroup,
+    ReconciliationContract,
+)
+from studio.contracts.reconciliation import (
+    WorkflowState as CaseState,
+)
 from studio.database import (
     ArtifactRow,
     CanonicalRow,
@@ -50,6 +58,28 @@ VERIFIED_FIELDS = [
     "right_member_count",
 ]
 VERIFIED_MONEY_FIELDS = ["left_amount", "right_amount", "delta", "absolute_variance", "tolerance"]
+STATUS_VALUES = {
+    "VERIFIED_RUN": {
+        "linkage_state": list(get_args(LinkageState)),
+        "comparison_state": list(get_args(ComparisonState)),
+    },
+    "EXCEPTIONS": {"state": list(get_args(CaseState))},
+}
+
+
+def validate_status_predicates(query: DataQuery) -> None:
+    """Status dimensions have explicit enums, not invented MATCHED/lexical ranges."""
+    for rule in query.filters:
+        allowed = STATUS_VALUES.get(query.source_kind, {}).get(rule.field_id)
+        if allowed is None:
+            continue
+        values = rule.value if isinstance(rule.value, list) else [rule.value]
+        if rule.op not in {"eq", "ne", "in", "is_null"} or (
+            rule.op != "is_null" and any(value not in allowed for value in values)
+        ):
+            raise DomainError(
+                "QUERY_VALUE_INVALID", "Điều kiện không thuộc trạng thái đã định nghĩa."
+            )
 
 
 def _verified_source(
@@ -318,6 +348,7 @@ def _execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
     """
     deadline = time.monotonic() + settings.agent_query_timeout_seconds
     source = _source(db, actor, query, deadline)
+    validate_status_predicates(query)
 
     def collect(frame: pl.LazyFrame) -> pl.DataFrame:
         return _collect_bounded(frame, deadline)

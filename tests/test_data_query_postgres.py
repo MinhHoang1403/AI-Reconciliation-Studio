@@ -194,6 +194,14 @@ def test_verified_query_missing_members_and_decimal_variance(pg):  # noqa: F811
         catalogue = agent_catalogue(db, actor, AssistantContext(project_id=pid, run_id=run_id), [])
         assert "left_member_count" in catalogue.verified_run_fields
         assert catalogue.verified_metric_ids == ["delivery_charge"]
+        with pytest.raises(DomainError, match="QUERY_VALUE_INVALID"):
+            execute_query(
+                db,
+                actor,
+                DataQuery(
+                    **base, filters=[dict(field_id="comparison_state", op="ne", value="MATCHED")]
+                ),
+            )
         missing = execute_query(
             db,
             actor,

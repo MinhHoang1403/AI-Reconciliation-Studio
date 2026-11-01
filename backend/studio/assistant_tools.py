@@ -66,6 +66,7 @@ def agent_catalogue(
     """Catalogue bounded cho router; chỉ metadata/profile, không raw values/paths/secrets."""
     from studio.contracts import SchemaDefinition
     from studio.contracts.agent import DatasetContext, SourceColumn, TableContext
+    from studio.data_query import STATUS_VALUES
     from studio.database import CanonicalRow, SchemaRow, TableRow, VersionRow
 
     scoped_context(db, actor, context)
@@ -189,6 +190,7 @@ def agent_catalogue(
         verified_metric_ids=[m.metric_id for m in confirmed.comparison_metrics]
         if confirmed
         else [],
+        status_values=STATUS_VALUES if confirmed else {},
     )
 
 

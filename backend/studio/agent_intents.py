@@ -10,9 +10,10 @@ from studio.ai_gateway import GeminiProvider
 from studio.assistant import plain_question
 from studio.contracts import WorkspacePolicy
 from studio.contracts.agent import AgentIntent, IntentBatch, IntentCatalogue
+from studio.data_query import validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-5"
+INTENT_REVISION = "agent-intent-6"
 
 
 def validate_intents(
@@ -75,6 +76,30 @@ def validate_intents(
                     raise DomainError("INPUT_AMBIGUOUS", "Cần xác nhận năm của kỳ đối soát.")
         if intent.query:
             q = intent.query
+            try:
+                validate_status_predicates(q)
+            except DomainError as exc:
+                raise DomainError("QUERY_SEMANTICS_REQUIRED", exc.message_vi) from exc
+            if q.group_by and not q.aggregations:
+                raise DomainError(
+                    "INPUT_AMBIGUOUS", "Cần phân biệt xem từng nhóm và thống kê theo nhóm."
+                )
+            if q.source_kind == "VERIFIED_RUN" and any(
+                f.field_id == "group_id"
+                and (
+                    f.op not in {"eq", "in"}
+                    or not catalogue.context.group_id
+                    or any(
+                        value != catalogue.context.group_id
+                        for value in (f.value if isinstance(f.value, list) else [f.value])
+                    )
+                )
+                for f in q.filters
+            ):
+                raise DomainError(
+                    "INPUT_AMBIGUOUS",
+                    "Mã giao dịch cần tra bằng khóa và bằng chứng, không phải mã nhóm kỹ thuật.",
+                )
             if q.project_id != catalogue.context.project_id:
                 raise DomainError("AI_INVALID_SOURCE", "Query sai project.")
             source = (
@@ -179,6 +204,11 @@ def interpret_requests(
                 "only if requested "
                 "scope is unchanged. Do not choose a newest run by guessing. "
                 "For QUERY_DATA return a typed query, no SQL; contains applies to text, "
+                "Listing verified groups uses filters/select_fields with group_by empty. "
+                "group_by is only for explicit aggregations; never group a row listing. "
+                "Status predicates must use the supplied status_values enum for the selected "
+                "source kind. A transaction key is NOT group_id; use EXPLAIN_RESULT and "
+                "key_value for exact transaction lookup. "
                 "For CANONICAL/RAW_PREVIEW/EXCEPTIONS queries metric_id MUST be null. "
                 "Canonical select/filter/aggregate use schema field IDs such as amount, "
                 "NOT the semantic_metric label. metric_id is ONLY for VERIFIED_RUN "
