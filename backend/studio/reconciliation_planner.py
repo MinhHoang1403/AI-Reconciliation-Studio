@@ -246,7 +246,7 @@ def propose_plan(
                             **{
                                 k: v
                                 for k, v in request.model_dump(
-                                    mode="json", exclude_unset=True
+                                    mode="json", exclude_unset=True, exclude_none=True
                                 ).items()
                                 if k in ReconciliationPlan.model_fields
                             },
@@ -263,7 +263,7 @@ def propose_plan(
                     raise DomainError("AI_INVALID_JSON", "Gợi ý thiếu trường cần thiết.") from exc
         if proposal.plan is not None:
             validate_reconciliation_contract(proposal.plan, catalogue, workspace_id, project_id)
-            confirmed = request.model_dump(mode="json", exclude_unset=True)
+            confirmed = request.model_dump(mode="json", exclude_unset=True, exclude_none=True)
             proposed = proposal.plan.model_dump(mode="json")
             for name, value in confirmed.items():
                 if name == "intent":

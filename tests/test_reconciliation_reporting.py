@@ -157,6 +157,7 @@ def test_planner_typed_contract_bounded_attempts_and_policy(config, kind):
         "changed-period",
         "structured-complete",
         "structured-sparse-complete",
+        "structured-null-complete",
         "structured-partial",
     ],
 )
@@ -181,6 +182,11 @@ def test_planner_partial_request_proposes_keys_without_execution(config, kind):
         sparse = draft.model_dump(mode="json", exclude_unset=True)
         sparse.pop("allow_partial", None)
         sparse["right"].pop("filters", None)
+        draft = PlanningRequest.model_validate(sparse)
+    if kind == "structured-null-complete":
+        sparse = draft.model_dump(mode="json")
+        sparse["left"]["filters"] = sparse["right"]["filters"] = None
+        sparse["allow_partial"] = None
         draft = PlanningRequest.model_validate(sparse)
     if kind in {
         "missing",
@@ -219,6 +225,7 @@ def test_planner_partial_request_proposes_keys_without_execution(config, kind):
             "suggestions",
             "structured-complete",
             "structured-sparse-complete",
+        "structured-null-complete",
             "structured-partial",
             "suggested-fake-field",
             "fake-evidence",
