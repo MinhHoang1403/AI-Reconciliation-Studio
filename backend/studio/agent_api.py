@@ -29,12 +29,13 @@ from studio.contracts.agent import (
     MappingReviewDecision,
     PlanReviewDecision,
     ReviewDecision,
+    ReviewReply,
     WorkflowState,
     WorkflowView,
 )
 from studio.contracts.assistant import AssistantContext
 from studio.contracts.reconciliation import PlanProposal
-from studio.database import AuditRow, MappingRow, PlanRow, ProjectRow, TableRow, now
+from studio.database import AuditRow, JobRow, MappingRow, PlanRow, ProjectRow, TableRow, now
 from studio.errors import DomainError
 from studio.parsing import inspect_upload
 from studio.repository import enqueue_job, get_scoped
@@ -59,6 +60,10 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         if decision_hash != review.decision_sha256:
             raise DomainError("IDEMPOTENCY_CONFLICT", "Quyết định này đã có nội dung khác.", 409)
         return view(row)
+    if review.pending_reply_job_id:
+        raise DomainError(
+            "REVIEW_REPLY_PENDING", "Đang đọc câu trả lời; chờ bản diễn giải để xác nhận.", 409
+        )
     if (
         row.state not in {"WAITING_REVIEW", "RUNNING"}
         or review.state != "OPEN"
@@ -124,7 +129,10 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         context = AssistantContext.model_validate(row.context)
         catalogue = agent_catalogue(db, actor, context, state.dataset_ids)
         validate_intents(
-            IntentBatch(intents=[body.decision.intent]).model_dump_json(), [row.goal], catalogue
+            IntentBatch(intents=[body.decision.intent]).model_dump_json(),
+            [row.goal],
+            catalogue,
+            user_confirmed=True,
         )
         state.intent = body.decision.intent
     review.state, review.decision_sha256 = "DECIDED", decision_hash
@@ -228,6 +236,53 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         result = decide(db, actor, workflow_id, body)
         db.commit()
         return result
+
+    @router.post("/workflows/{workflow_id}/replies", status_code=202)
+    def reply(workflow_id: str, body: ReviewReply, db: DB, actor: User, key: Key) -> dict[str, str]:
+        row = own_workflow(db, actor, workflow_id, lock=True)
+        require_editor(actor, db, row.id)
+        payload = dict(workflow_id=row.id, reply=body.model_dump(mode="json"))
+        existing = db.scalar(
+            select(JobRow).where(
+                JobRow.workspace_id == actor.workspace_id,
+                JobRow.idempotency_key == f"agent-review:{actor.id}:{key}",
+            )
+        )
+        if existing:
+            if existing.kind != "agent_review" or existing.payload != payload:
+                raise DomainError(
+                    "IDEMPOTENCY_CONFLICT", "Mã trả lời đã dùng với nội dung khác.", 409
+                )
+            return dict(job_id=existing.id, status=existing.status)
+        state = WorkflowState.model_validate(row.detail)
+        review = next((r for r in state.reviews if r.id == body.review_id), None)
+        if (
+            review is None
+            or review.state != "OPEN"
+            or row.state != "WAITING_REVIEW"
+            or not secrets.compare_digest(review.nonce, body.nonce)
+            or not secrets.compare_digest(review.fingerprint, body.fingerprint)
+            or review.expires_at <= now()
+            or review.fingerprint
+            != review_fingerprint(db, actor, review.kind, review.resource_id, review.evidence_refs)
+        ):
+            raise DomainError("STALE_CONTEXT", "Thẻ xác nhận không còn phù hợp.", 409)
+        if review.pending_reply_job_id:
+            existing = get_scoped(db, JobRow, review.pending_reply_job_id, actor)
+            if existing.idempotency_key != f"agent-review:{actor.id}:{key}":
+                raise DomainError("REVIEW_REPLY_PENDING", "Câu trả lời trước còn xử lý.", 409)
+        job = enqueue_job(
+            db,
+            actor.workspace_id,
+            row.project_id,
+            "agent_review",
+            f"agent-review:{actor.id}:{key}",
+            payload,
+        )
+        review.pending_reply_job_id = job.id
+        save(row, state)
+        db.commit()
+        return dict(job_id=job.id, status=job.status)
 
     @router.post("/workflows/{workflow_id}/cancel", response_model=WorkflowView)
     def cancel(workflow_id: str, db: DB, actor: User, key: Key) -> WorkflowView:

@@ -1,7 +1,9 @@
 """Agent dùng queue/fence hiện có; từng HTTP attempt được giữ ledger trước khi gửi."""
 
+import secrets
 import time
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -10,15 +12,29 @@ from sqlalchemy.orm import Session
 
 from studio.access import Actor, require_editor
 from studio.agent_intents import INTENT_REVISION, interpret_requests
-from studio.agent_preparation import PREPARATION_REVISION, propose_normalization
+from studio.agent_preparation import (
+    PREPARATION_REVISION,
+    REVIEW_REVISION,
+    interpret_review_reply,
+    propose_normalization,
+    validate_draft,
+)
 from studio.agent_tools import JobReference
-from studio.agent_workflows import advance, digest, own_workflow, owner, save, wait_for
+from studio.agent_workflows import (
+    advance,
+    digest,
+    own_workflow,
+    owner,
+    review_fingerprint,
+    save,
+    wait_for,
+)
 from studio.ai_gateway import GeminiProvider
 from studio.assistant_api import own_conversation
 from studio.assistant_tools import agent_catalogue
 from studio.config import settings
 from studio.contracts import DatasetProfile, WorkspacePolicy
-from studio.contracts.agent import AgentIntent, WorkflowState
+from studio.contracts.agent import AgentIntent, IntentBatch, ReviewReply, WorkflowState
 from studio.contracts.assistant import AssistantContext
 from studio.database import (
     AgentWorkflowRow,
@@ -29,6 +45,7 @@ from studio.database import (
     TableRow,
     TraceRow,
     WorkspaceRow,
+    now,
 )
 from studio.errors import DomainError
 from studio.repository import get_scoped, project_for_table, reserve_gemini_request
@@ -274,6 +291,116 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 advance(db, row)
                 db.commit()
         kind = job.kind
+    if kind == "agent_review":
+        with factory() as db:
+            job = fence(db, job_id, token)
+            row = db.get(AgentWorkflowRow, row_id)
+            assert row is not None
+            actor = owner(db, row)
+            require_editor(actor, db, row.id)
+            reply = ReviewReply.model_validate(job.payload["reply"])
+            state = WorkflowState.model_validate(row.detail)
+            review = next((r for r in state.reviews if r.id == reply.review_id), None)
+            if (
+                row.state != "WAITING_REVIEW"
+                or review is None
+                or review.state != "OPEN"
+                or review.nonce != reply.nonce
+                or review.pending_reply_job_id != job_id
+                or review.expires_at <= now()
+                or review.fingerprint
+                != review_fingerprint(
+                    db, actor, review.kind, review.resource_id, review.evidence_refs
+                )
+            ):
+                raise DomainError("STALE_CONTEXT", "Câu trả lời không còn thuộc thẻ đang chờ.", 409)
+        output = model_call(
+            job_id,
+            token,
+            row_id,
+            "interpret_review_reply",
+            REVIEW_REVISION,
+            factory,
+            fence,
+            lambda provider, policy, reserve: interpret_review_reply(
+                provider, review, reply.text, policy, reserve
+            ),
+        )
+        with factory() as db:
+            job = fence(db, job_id, token)
+            row = db.get(AgentWorkflowRow, row_id, with_for_update=True)
+            assert row is not None
+            actor = owner(db, row)
+            require_editor(actor, db, row.id)
+            state = WorkflowState.model_validate(row.detail)
+            current = next((r for r in state.reviews if r.id == reply.review_id), None)
+            if (
+                row.state != "WAITING_REVIEW"
+                or current is None
+                or current.state != "OPEN"
+                or current.nonce != reply.nonce
+                or current.pending_reply_job_id != job_id
+                or current.expires_at <= now()
+                or current.fingerprint
+                != review_fingerprint(
+                    db, actor, current.kind, current.resource_id, current.evidence_refs
+                )
+            ):
+                raise DomainError(
+                    "STALE_CONTEXT", "Review đã thay đổi; không ghi đè lựa chọn.", 409
+                )
+            if output.draft:
+                table = get_scoped(db, TableRow, current.resource_id, actor)
+                validate_draft(output.draft, table.id, DatasetProfile.model_validate(table.profile))
+                current.normalization_draft = output.draft
+            if output.plan:
+                from studio.reconciliation_contracts import validate_reconciliation_contract
+                from studio.reconciliation_repository import selected_catalogue
+
+                p, expected = output.plan, current.planning_request
+                if not expected or (p.left.canonical_id, p.right.canonical_id) != (
+                    expected.left.canonical_id,
+                    expected.right.canonical_id,
+                ):
+                    raise DomainError("AI_INVALID_SOURCE", "Không được đổi nguồn đang chờ.")
+                cats = selected_catalogue(
+                    db, actor, row.project_id, [p.left.canonical_id, p.right.canonical_id]
+                )
+                validate_reconciliation_contract(p, cats, actor.workspace_id, row.project_id)
+                current.plan = p
+            if output.intent:
+                from studio.agent_intents import validate_intents
+
+                catalogue = agent_catalogue(
+                    db, actor, AssistantContext.model_validate(row.context), state.dataset_ids
+                )
+                validate_intents(
+                    IntentBatch(intents=[output.intent]).model_dump_json(),
+                    [row.goal + "\n" + reply.text],
+                    catalogue,
+                )
+                # Chưa áp dụng intent: chỉ đổi bản preview, đợi human decision.
+                current.reply_intent = output.intent
+            current.reply_questions = output.questions or (
+                []
+                if any([output.draft, output.plan, output.intent])
+                else ["Cần thêm thông tin để tiếp tục."]
+            )
+            current.pending_reply_job_id = None
+            current.nonce = secrets.token_hex(16)
+            current.expires_at = now() + timedelta(minutes=30)
+            save(row, state)
+            finish(
+                db,
+                job,
+                {
+                    "workflow_id": row.id,
+                    "review_id": current.id,
+                    "status": "PREVIEW_REQUIRES_CONFIRMATION",
+                },
+            )
+            db.commit()
+        return
     if kind == "agent_prepare":
         with factory() as db:
             job = fence(db, job_id, token)

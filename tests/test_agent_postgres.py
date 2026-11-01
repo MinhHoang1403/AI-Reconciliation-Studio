@@ -503,3 +503,98 @@ def test_agent_durable_unknown_delivery_reserves_once_and_never_resends(pg, monk
             )
             == 1
         )
+
+
+@pytest.mark.parametrize("answer", ["complete", "ambiguous", "wrong-source"])
+def test_agent_review_natural_reply_is_bound_preview_never_auto_approval(pg, monkeypatch, answer):  # noqa: F811
+    import studio.agent_jobs as agents
+    from studio.contracts.agent import ReviewInterpretation
+
+    client, factory, worker = pg
+    wf, original_decision = mapping_fixture(pg, monkeypatch)
+    original = wf["detail"]["reviews"][0]
+    candidate = NormalizationDraft.model_validate(original["normalization_draft"])
+    candidate.fields[1].amount_basis = "net"
+    if answer == "wrong-source":
+        candidate.table_id = "foreign-table"
+    monkeypatch.setattr(
+        agents,
+        "interpret_review_reply",
+        lambda *args: (
+            ReviewInterpretation(questions=["Bạn muốn gross hay net?"])
+            if answer == "ambiguous"
+            else ReviewInterpretation(draft=candidate)
+        ),
+    )
+    body = dict(
+        review_id=original["id"],
+        nonce=original["nonce"],
+        fingerprint=original["fingerprint"],
+        text="Cột tiền là net, VND; để tôi xem trước.",
+    )
+    path = f"/api/agent/workflows/{wf['id']}"
+    queued = client.post(path + "/replies", json=body, headers={"Idempotency-Key": "reply"})
+    assert queued.status_code == 202, queued.text
+    assert (
+        client.post(path + "/replies", json=body, headers={"Idempotency-Key": "reply"}).json()
+        == queued.json()
+    )
+    assert (
+        client.post(
+            path + "/decisions", json=original_decision, headers={"Idempotency-Key": "too-early"}
+        ).status_code
+        == 409
+    )
+    drain(factory, worker)
+    current = client.get(path).json()
+    assert current["state"] == "WAITING_REVIEW"
+    review = current["detail"]["reviews"][0]
+    assert review["state"] == "OPEN" and review["pending_reply_job_id"] is None
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 0
+        assert (
+            db.scalar(
+                select(func.count()).select_from(MappingRow).where(MappingRow.status == "APPROVED")
+            )
+            == 0
+        )
+    if answer == "wrong-source":
+        assert review["normalization_draft"]["table_id"] == original["resource_id"]
+        assert current["detail"]["error_code"] == "INVALID_SOURCE_FIELD"
+        return
+    assert review["nonce"] != original["nonce"]
+    assert (
+        client.post(path + "/replies", json=body, headers={"Idempotency-Key": "reply"}).json()[
+            "job_id"
+        ]
+        == queued.json()["job_id"]
+    )
+    if answer == "ambiguous":
+        assert review["reply_questions"] == ["Bạn muốn gross hay net?"]
+        assert review["normalization_draft"] == original["normalization_draft"]
+    else:
+        assert review["normalization_draft"]["fields"][1]["amount_basis"] == "net"
+        assert (
+            client.post(
+                path + "/decisions",
+                json=original_decision,
+                headers={"Idempotency-Key": "old-nonce"},
+            ).status_code
+            == 409
+        )
+        decision = dict(
+            review_id=review["id"],
+            nonce=review["nonce"],
+            fingerprint=review["fingerprint"],
+            decision=dict(type="MAPPING", draft=review["normalization_draft"]),
+        )
+        assert (
+            client.post(
+                path + "/decisions",
+                json=decision,
+                headers={"Idempotency-Key": "human-final-decision"},
+            ).status_code
+            == 200
+        )
+        drain(factory, worker)
+        assert client.get(path).json()["state"] == "COMPLETED"

@@ -16,7 +16,7 @@ INTENT_REVISION = "agent-intent-1"
 
 
 def validate_intents(
-    content: str, goals: list[str], catalogue: IntentCatalogue
+    content: str, goals: list[str], catalogue: IntentCatalogue, *, user_confirmed: bool = False
 ) -> list[AgentIntent]:
     """Chặn ID/nguồn/PAID giả; không sửa output sai thành một hành động được phép."""
     try:
@@ -40,7 +40,7 @@ def validate_intents(
             # Guard xác nhận năm; không dùng regex làm cơ chế hiểu intent chính.
             confirmed = catalogue.confirmed_plan
             for value in (p.period_start, p.period_end):
-                if value and str(value.year) not in goal and not confirmed:
+                if value and str(value.year) not in goal and not confirmed and not user_confirmed:
                     raise DomainError("INPUT_AMBIGUOUS", "Cần xác nhận năm của kỳ đối soát.")
         if intent.query:
             q = intent.query
@@ -66,6 +66,7 @@ def validate_intents(
                         and re.match(r"^\d{4}-\d{2}-\d{2}", filter_value)
                         and filter_value[:4] not in goal
                         and catalogue.confirmed_plan is None
+                        and not user_confirmed
                     ):
                         raise DomainError("INPUT_AMBIGUOUS", "Cần xác nhận năm của điều kiện ngày.")
             normalized = plain_question(goal)

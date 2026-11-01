@@ -141,3 +141,5 @@ Assistant live đã chọn comparison/comparison_0 của đúng FactSet/run/snap
 - Result blocks typed: progress/dataset_summary/table/facts/chart/download. Chart points do backend từ query/snapshot; có population definition, unit, source refs, completeness và verification status. Phân bố toàn nhóm kết quả không dùng nhầm eligible denominator của KPI. AssistantAnswer cũ vẫn đọc được; MessageView thêm optionalworkflow_id.
 
 Các contract mới này đã có source/backend tests; chưa phải tuyên bố UI/live Agent/release PASS. Xem tiến độ tại IMPLEMENTATION_STATUS mụcS.
+
+`ReviewReply` thêm text≤2000 vào review_id/nonce/fingerprint hiện hành; `ReviewInterpretation` chỉ một draft/plan/intent hoặc questions. Review giữ pending_reply_job_id/reply_questions/reply_intent; không nhận role/approved metadata. Preview mới đổi nonce, chưa đổi approval/state. Human clarification đã xác nhận có thể bổ sung năm cụ thể; source/paid semantics và toàn bộ business validators vẫn bắt buộc.

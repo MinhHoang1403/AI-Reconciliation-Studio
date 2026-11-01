@@ -191,6 +191,9 @@ class ReviewRequest(Contract):
     planning_request: PlanningRequest | None = None
     decision_sha256: str | None = None
     result_id: str | None = None
+    pending_reply_job_id: str | None = None
+    reply_questions: list[str] = Field(default_factory=list, max_length=5)
+    reply_intent: AgentIntent | None = None
     evidence_refs: list[str] = Field(default_factory=list, max_length=30)
 
 
@@ -248,3 +251,19 @@ class ReviewDecision(Contract):
         MappingReviewDecision | PlanReviewDecision | ClarificationDecision,
         Field(discriminator="type"),
     ]
+
+
+class ReviewReply(Contract):
+    review_id: Identifier
+    nonce: str = Field(min_length=16, max_length=64)
+    fingerprint: str = Field(pattern="^[a-f0-9]{64}$")
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class ReviewInterpretation(Contract):
+    """Chỉ đề xuất để người dùng xem và xác nhận; không phải approval."""
+
+    draft: NormalizationDraft | None = None
+    plan: ReconciliationPlan | None = None
+    intent: AgentIntent | None = None
+    questions: list[str] = Field(default_factory=list, max_length=5)

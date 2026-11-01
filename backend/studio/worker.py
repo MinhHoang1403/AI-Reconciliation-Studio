@@ -614,7 +614,7 @@ def process_job(job_id: str, token: str) -> None:
         handlers: dict[str, Callable[[str, str], None]] = {
             **{
                 name: lambda jid, claim: execute_agent(jid, claim, SessionFactory, _fence, _finish)
-                for name in ("agent", "agent_prepare", "agent_resume")
+                for name in ("agent", "agent_prepare", "agent_resume", "agent_review")
             },
             "assistant": lambda job_id, token: execute_assistant(
                 job_id, token, SessionFactory, _fence, _finish
@@ -678,6 +678,18 @@ def process_job(job_id: str, token: str) -> None:
                 from studio.database import AgentWorkflowRow
 
                 notify_job_finished(db, job)
+                if kind == "agent_review":
+                    row = db.get(AgentWorkflowRow, job.payload["workflow_id"], with_for_update=True)
+                    if row:
+                        state = WorkflowState.model_validate(row.detail)
+                        for review in state.reviews:
+                            if review.pending_reply_job_id == job.id:
+                                review.pending_reply_job_id = None
+                                review.reply_questions = [
+                                    "Chưa đọc được câu trả lời; có thể xác nhận bằng thẻ."
+                                ]
+                        state.error_code = code
+                        save(row, state)
                 if kind in {"agent", "agent_resume"}:
                     row = db.scalar(
                         select(AgentWorkflowRow)
