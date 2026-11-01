@@ -27,7 +27,7 @@ let datasetId = "";
 let tableId = "";
 
 async function openApp(page: Page) {
-  await page.goto("/");
+  await page.goto("/#page=home");
   await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
   await expect(page.locator("#project-select")).toBeVisible();
 }

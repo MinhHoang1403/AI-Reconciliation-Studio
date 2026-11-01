@@ -90,7 +90,7 @@ test("late evidence from a previous run cannot open under the selected run", asy
       await route.fulfill({ response });
     },
   );
-  await page.goto("/");
+  await page.goto("/#page=home");
   await selectProject(page, s.project_id);
   await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
   await selectRun(page, original);
@@ -118,7 +118,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
     if (message.type() === "error") consoleErrors.push(message.text());
   });
   const s = await state();
-  await page.goto("/");
+  await page.goto("/#page=home");
   await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
   await selectProject(page, s.project_id);
   await page.getByRole("button", { name: "Đối soát", exact: true }).click();
@@ -438,7 +438,7 @@ test("Planner UI accepts sources with no common key and presents review-only sug
       },
     }),
   );
-  await page.goto("/");
+  await page.goto("/#page=home");
   await selectProject(page, s.project_id);
   await page.getByRole("button", { name: "Đối soát", exact: true }).click();
   await page.getByLabel("Nguồn tham chiếu", { exact: true }).selectOption(left);
@@ -501,7 +501,7 @@ for (const size of [
   test(`reconciliation results responsive ${size.width}`, async ({ page }) => {
     const s = await state();
     await page.setViewportSize(size);
-    await page.goto("/");
+    await page.goto("/#page=home");
     await selectProject(page, s.project_id);
     if (size.width <= 768)
       await page

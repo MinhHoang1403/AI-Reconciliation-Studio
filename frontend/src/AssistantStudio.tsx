@@ -108,7 +108,7 @@ export function AssistantStudio({
     try {
       const saved=JSON.parse(sessionStorage.getItem(`studio.assistant-request.${draftOwner}.${scope.project_id}`)||"null");
       const body=saved?.body?JSON.parse(saved.body):null;
-      if(body?.mode==="AGENT"||body?.mode==="LEGACY"){setMode(body.mode);setCommand(body.command||null);}
+      if(body?.conversation_id===id&&(body?.mode==="AGENT"||body?.mode==="LEGACY")){setMode(body.mode);setCommand(body.command||null);}
     }catch{/* Chỉ khôi phục bản nháp hợp lệ, server vẫn kiểm lại mọi request. */}
   }
   const alive = useRef(true);
@@ -512,13 +512,13 @@ export function AssistantStudio({
         </button>
         <details className="assistant-policy">
           <summary>
-            {agentEnabled || cloudEnabled
+            {(mode==="AGENT"?agentEnabled:cloudEnabled)
               ? "AI theo chính sách workspace"
-              : "Chế độ dữ kiện · Không gọi AI cloud"}
+              : "AI đang tắt · công cụ an toàn vẫn khả dụng"}
           </summary>
           <p>
             Dữ kiện lấy từ backend đã xác minh.{" "}
-            {agentEnabled || cloudEnabled
+            {(mode==="AGENT"?agentEnabled:cloudEnabled)
               ? "Suy luận cloud cần policy và reservation riêng cho từng request."
               : "Suy luận cloud của Trợ lý đang tắt; không dùng quota Gemini còn lại."}
           </p>

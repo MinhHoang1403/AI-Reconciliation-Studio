@@ -132,7 +132,7 @@ for (const count of [5, 30, 80]) {
         },
       }),
     );
-    await page.goto("/");
+    await page.goto("/#page=home");
     const recent = page.locator("section").filter({
       has: page.getByRole("heading", {
         name: "Dữ liệu gần đây",
@@ -225,7 +225,7 @@ test("test visibility and owner classification preserve the current project and 
     items[2].classification = body.classification;
     return route.fulfill({ json: items[2] });
   });
-  await page.goto("/");
+  await page.goto("/#page=home");
   const trigger = page.locator("#project-select");
   await expect(trigger).toHaveAttribute("data-project-id", items[2].id);
   await expect(
@@ -333,7 +333,7 @@ test("confirmed classification remains in app metadata when the picker unmounts 
     items[0].classification = "WORK";
     return route.fulfill({ json: items[0] });
   });
-  await page.goto("/");
+  await page.goto("/#page=home");
   await page.locator("#project-select").click();
   await page.getByText("Phân loại dự án hiện tại", { exact: true }).click();
   await page.getByLabel("Nhóm dự án", { exact: true }).selectOption("WORK");
@@ -368,7 +368,7 @@ test("viewer can reveal test projects but cannot classify; user creation explici
   await page.route("**/api/session", (route) =>
     route.fulfill({ json: { workspace_id: "synthetic", role: "viewer" } }),
   );
-  await page.goto("/");
+  await page.goto("/#page=home");
   await page.locator("#project-select").click();
   await page
     .getByRole("checkbox", { name: "Hiển thị dự án kiểm thử", exact: true })
@@ -458,7 +458,7 @@ test("recent data reports loading/error/empty and discards delayed results after
     }
     return route.fulfill({ json: { items: [], total: 0 } });
   });
-  await page.goto("/");
+  await page.goto("/#page=home");
   const recent = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Dữ liệu gần đây", exact: true }),
   });
@@ -498,7 +498,7 @@ for (const count of [1, 10, 50, 120]) {
   }) => {
     const items = projects(count);
     await fixture(page, items);
-    await page.goto("/");
+    await page.goto("/#page=home");
     const trigger = page.locator("#project-select");
     await trigger.click();
     const search = page.getByRole("combobox", {
@@ -547,7 +547,7 @@ test("restore saved off-page project; unavailable saved ID never silently select
 }) => {
   const items = projects(120);
   await fixture(page, items, items[119].id);
-  await page.goto("/");
+  await page.goto("/#page=home");
   await expect(page.locator("#project-select")).toHaveAttribute(
     "data-project-id",
     items[119].id,
@@ -592,7 +592,7 @@ test("project search discards delayed results and exposes loading and retry erro
       });
     return route.fallback();
   });
-  await page.goto("/");
+  await page.goto("/#page=home");
   await page.locator("#project-select").click();
   const search = page.getByRole("combobox", { name: "Tìm dự án", exact: true });
   const oldRequest = page.waitForRequest(
@@ -646,7 +646,7 @@ test("project polling runs only while jobs are active and manual refresh remains
     });
   });
   await page.clock.install();
-  await page.goto("/");
+  await page.goto("/#page=home");
   await expect(
     page.getByRole("button", { name: "Cập nhật dự án", exact: true }),
   ).toBeEnabled();
@@ -691,7 +691,7 @@ test("summary API error is visible with retry, not empty data or zero statistics
         })
       : route.fulfill({ json: emptySummary }),
   );
-  await page.goto("/");
+  await page.goto("/#page=home");
   await expect(page.getByRole("alert")).toContainText(
     "Dịch vụ tổng hợp tạm thời lỗi",
   );
@@ -737,7 +737,7 @@ test("viewer role is truthful and write actions are disabled while navigation re
       },
     }),
   );
-  await page.goto("/");
+  await page.goto("/#page=home");
   await expect(page.getByText("Chỉ xem", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Tải dữ liệu", exact: true }),
@@ -764,7 +764,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
   }) => {
     await fixture(page, projects(120));
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("/");
+    await page.goto("/#page=home");
     const trigger = page.locator("#project-select");
     await trigger.focus();
     await trigger.press("Enter");
@@ -981,7 +981,7 @@ test("dashboard uses server totals, distinguishes PARTIAL and opens the exact of
   });
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/");
+  await page.goto("/#page=home");
   await expect(
     page.getByRole("button", { name: /^Dữ liệu\s*80$/ }),
   ).toBeVisible();
@@ -1034,7 +1034,7 @@ test("project switch discards delayed old summary/data/error", async ({
     }
     return route.fulfill({ json: { ...emptySummary, dataset_count: 80 } });
   });
-  await page.goto("/");
+  await page.goto("/#page=home");
   await loading;
   await expect(
     page.getByText("Đang tải dữ liệu dự án…", { exact: false }),
@@ -1107,7 +1107,7 @@ for (const kind of ["REVIEW_MAPPING", "NORMALIZE"] as const) {
         return route.fulfill({ json: { canonical_datasets: [] } });
       return route.fallback();
     });
-    await page.goto("/");
+    await page.goto("/#page=home");
     await page
       .getByRole("button", {
         name:

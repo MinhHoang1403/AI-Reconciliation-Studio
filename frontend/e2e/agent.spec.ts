@@ -1,7 +1,7 @@
 import {test,expect} from "@playwright/test";
 
 test("Agent landing without a project does not create metadata or call cloud",async({page})=>{
-  await page.addInitScript(()=>{localStorage.clear();sessionStorage.clear();});
+  await page.addInitScript(()=>{if(!sessionStorage.getItem("agent-test-initialized")){localStorage.clear();sessionStorage.clear();sessionStorage.setItem("agent-test-initialized","1");}});
   const mutations:string[]=[];page.on("request",r=>{if(r.method()==="POST"||r.method()==="PATCH")mutations.push(new URL(r.url()).pathname);});
   await page.goto("/");
   await expect(page.getByRole("heading",{name:"Bạn muốn làm gì với dữ liệu hôm nay?"})).toBeVisible();
@@ -15,7 +15,7 @@ test("Agent landing without a project does not create metadata or call cloud",as
 
 test("Agent inline upload bootstraps once, profiles real files and reopens without cloud",async({page})=>{
   test.setTimeout(90000);
-  await page.addInitScript(()=>{localStorage.clear();sessionStorage.clear();});
+  await page.addInitScript(()=>{if(!sessionStorage.getItem("agent-test-initialized")){localStorage.clear();sessionStorage.clear();sessionStorage.setItem("agent-test-initialized","1");}});
   await page.goto("/");
   await expect(page.getByRole("heading",{name:"Bạn muốn làm gì với dữ liệu hôm nay?"})).toBeVisible();
   const before=await(await page.request.get("/api/settings")).json();

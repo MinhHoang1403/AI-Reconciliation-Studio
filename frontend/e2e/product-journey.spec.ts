@@ -9,7 +9,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const marker = crypto.randomUUID();
-  await page.goto("/");
+  await page.goto("/#page=home");
   await expect(page.locator("#project-select")).toBeVisible();
   const quota = await (await page.request.get("/api/settings")).json();
   await page.getByRole("button", { name: "+ Tạo dự án", exact: true }).click();
@@ -250,8 +250,10 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   await mismatch
     .getByRole("button", { name: "Hỏi vì sao lệch", exact: true })
     .click();
-  await page
-    .getByLabel("Câu hỏi cho Trợ lý", { exact: true })
+    await page.locator(".assistant-policy summary").click();
+    await page.getByLabel("Chế độ hội thoại",{exact:true}).selectOption("LEGACY");
+    await page
+      .getByLabel("Câu hỏi cho Trợ lý", { exact: true })
     .fill("Vì sao lệch?");
   await page.getByRole("button", { name: "Gửi câu hỏi", exact: true }).click();
   const answer = page.locator(".assistant-message.assistant").last();

@@ -104,6 +104,9 @@ async function openAssistant(page: Page, projectId: string) {
 }
 async function ask(page: Page, text: string) {
   const dialog = page.getByRole("region", { name: "Trợ lý AI", exact: true });
+  const policy=dialog.locator(".assistant-policy");
+  if(!await policy.evaluate(e=>(e as HTMLDetailsElement).open))await policy.locator("summary").click();
+  await dialog.getByLabel("Chế độ hội thoại",{exact:true}).selectOption("LEGACY");
   await dialog.getByRole("textbox", { name: "Câu hỏi cho Trợ lý" }).fill(text);
   await dialog
     .getByRole("button", { name: "Gửi câu hỏi", exact: true })
@@ -116,6 +119,25 @@ async function ask(page: Page, text: string) {
   ).toBeDisabled();
   return dialog.locator(".assistant-message.assistant").last();
 }
+
+test("late report selection cannot rewrite Back navigation to Assistant",async({page})=>{
+  const s=await state();
+  await openAssistant(page,s.project_id);
+  const input=page.getByLabel("Câu hỏi cho Trợ lý",{exact:true});
+  await input.fill("Bản nháp được giữ khi kết quả báo cáo đến muộn");
+  let release!:()=>void;let started!:()=>void;
+  const gate=new Promise<void>(resolve=>release=resolve),pending=new Promise<void>(resolve=>started=resolve);
+  await page.route("**/api/runs/*",async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(!/^\/api\/runs\/[^/]+$/.test(path))return route.continue();
+    const response=await route.fetch();started();await gate;await route.fulfill({response}).catch(()=>{});
+  });
+  await page.getByRole("button",{name:"Báo cáo",exact:true}).click();
+  await pending;
+  await page.goBack();release();
+  await expect(input).toHaveValue("Bản nháp được giữ khi kết quả báo cáo đến muộn");
+  await expect(page).toHaveURL(/page=assistant/);
+});
 
 test("unknown message delivery keeps its idempotency key after reload", async ({
   page,
@@ -334,7 +356,7 @@ test("language workflow requires source/period/template confirmation before exis
 }) => {
   test.setTimeout(180000);
   const s = await state();
-  await page.goto("/");
+  await page.goto("/#page=home");
   await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
   await selectProject(page, s.project_id);
   const filenames = [
@@ -741,7 +763,7 @@ test("data screen passes only its current scoped dataset to assistant", async ({
   page,
 }) => {
   const s = await state();
-  await page.goto("/");
+  await page.goto("/#page=home");
   await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
   await selectProject(page, s.project_id);
   const dataset = (

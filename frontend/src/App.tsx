@@ -102,6 +102,7 @@ export function App() {
       context,
       origin: page === "assistant" ? location.origin : page,
     };
+    locationRef.current = nextLocation;
     writeLocation(nextLocation, replace);
     setLocation(nextLocation);
   }
@@ -1281,7 +1282,9 @@ export function App() {
                     onSetup={() => setPage("reconcile")}
                     onRunSelected={(id, caseId) => {
                       const current = locationRef.current;
-                      if (current.page === "assistant") return;
+                      const actual = readLocation();
+                      if (current.page === "assistant" || actual.page !== current.page ||
+                          actual.projectId !== current.projectId) return;
                       const next = {
                         ...current,
                         context: {
@@ -1301,7 +1304,7 @@ export function App() {
             page === "assistant" &&
             (!projectId || !assistantContext || assistantContext.project_id === projectId) && (
               <section className="assistant-page" aria-label="Trợ lý AI">
-                <button
+                {projectId && <button
                   className="text-button assistant-return"
                   onClick={() => {
                     const current = readLocation().context || assistantContext || {project_id:projectId};
@@ -1315,12 +1318,12 @@ export function App() {
                   }}
                 >
                   ← Trở về trang trước
-                </button>
+                </button>}
                 <Suspense fallback={<Spinner />}>
                   <AssistantStudio
                     key={JSON.stringify(assistantContext)}
                     initialContext={assistantContext || {project_id:projectId}}
-                    projectName={project?.name || "Dự án hiện tại"}
+                    projectName={project?.name || "Chưa chọn dự án · tải file để bắt đầu"}
                     draftOwner={draftOwner}
                     onContextChange={(context) => {
                       const current = readLocation();
