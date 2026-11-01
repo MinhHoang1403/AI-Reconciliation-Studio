@@ -141,7 +141,9 @@ def score(gold: dict, intent: AgentIntent, ids: dict, confirmed_plan=None) -> di
         )
     if gold.get("group"):
         semantic_ok = semantic_ok and bool(
-            intent.query and ids["paid_field"] in intent.query.group_by
+            intent.query
+            and ids["paid_field"] in intent.query.group_by
+            and not any(f.field_id == ids["paid_field"] for f in intent.query.filters)
         )
     if gold.get("scope") == "CONFIRMED_PLAN":
         from studio.contracts.reconciliation import PlanningRequest

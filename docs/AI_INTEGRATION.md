@@ -108,4 +108,4 @@ Intent4 phân biệt canonical field IDs với approved metric IDs; DataQuery.me
 
 Intent5 ghi rõ canonical paid query phải dùng approved paid_status_fields với eq/in và mãPAID/TRANSFERREDviếthoa, khôngcontains/boolean/dịchgiátrị. Safequery_shapes chỉsourcekind/filterops/cờpaidliteral, khôngfield/value/IDraw. Validator vẫn từchối nếu sai; không sửaoutput.
 
-Intent6 nhắcrowlistingkhônggroup_by, statusenumtừcatalogue, businesskeykhôngphảigroup_id. Goldliveđãđochointent5:68/80intent,53/60source,22/34slots,20/20safeabstention. ToànbộNLPliệuđối vớiprompt6chưađolive; khôngdùngsốliệuprompt5đểtuyênbốprompt6đạt. Gemini49/50trướcbướcvariancecuối; khônggọilạibenchmarktoànbộkhivượttrần.
+Intent6 nhắcrowlistingkhônggroup_by, statusenumtừcatalogue, businesskeykhôngphảigroup_id. Goldliveđãđochointent5:68/80intent,53/60source,21/34slots (sau sửa rubric phạm vi biểu đồ),20/20safeabstention. ToànbộNLPliệuđối vớiprompt6chưađolive; khôngdùngsốliệuprompt5đểtuyênbốprompt6đạt. Gemini49/50trướcbướcvariancecuối; khônggọilạibenchmarktoànbộkhivượttrần.

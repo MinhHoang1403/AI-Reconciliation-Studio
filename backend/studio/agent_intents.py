@@ -147,6 +147,13 @@ def validate_intents(
                     for w in ("da thanh toan", "da chuyen tien", "da chuyen khoan", "paid")
                 )
             )
+            if status_grouping and source and any(
+                f.field_id in source.paid_status_fields for f in q.filters
+            ):
+                raise DomainError(
+                    "QUERY_SEMANTICS_REQUIRED",
+                    "Biểu đồ theo toàn bộ trạng thái không được tự giới hạn vào đã thanh toán.",
+                )
             if (
                 paid
                 and not status_grouping

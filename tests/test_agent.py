@@ -339,6 +339,10 @@ def test_grouping_all_approved_payment_states_is_not_a_paid_filter():
     )
     with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
         validate(payload, "Vẽ biểu đồ giao dịch đã thanh toán theo trạng thái thanh toán")
+    payload["query"]["filters"] = [dict(field_id="payment_status", op="eq", value="PAID")]
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        validate(payload, "Vẽ biểu đồ giao dịch theo trạng thái thanh toán")
+    payload["query"]["filters"] = []
     payload["query"]["group_by"] = ["completed"]
     with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
         validate(payload, "Vẽ biểu đồ giao dịch theo trạng thái thanh toán")
@@ -366,6 +370,29 @@ def test_benchmark_repair_refuses_unknown_delivery_and_preserves_numeric_rubric(
     assert helper["decimal_equal"]("10.00", "10")
     assert not helper["decimal_equal"]("wrong", "10")
     assert not helper["decimal_equal"]("NaN", "10")
+    proposed = AgentIntent(
+        intent="CREATE_VISUALIZATION",
+        query=dict(
+            project_id="p",
+            source_kind="CANONICAL",
+            source_id="canonical",
+            group_by=["payment_status"],
+            aggregations=[dict(op="count")],
+            filters=[dict(field_id="payment_status", op="eq", value="PAID")],
+        ),
+    )
+    scored = helper["score"](
+        dict(
+            id="group",
+            intent="CREATE_VISUALIZATION",
+            source="CA",
+            aggregate="count",
+            group="paid_status",
+        ),
+        proposed,
+        dict(A="a", B="b", CA="canonical", paid_field="payment_status"),
+    )
+    assert scored["intent_ok"] and not scored["semantic_ok"]
 
 
 def test_agent_rejects_listing_with_aggregation_grouping_and_invented_status():
