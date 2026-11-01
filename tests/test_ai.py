@@ -405,3 +405,35 @@ def test_default_gemini_never_bypasses_cloud_policy(config):
         )
         == "GEMINI"
     )
+
+
+def test_gemini_schema_error_keeps_only_safe_status_not_provider_message(config):
+    from pydantic import SecretStr
+
+    config.allow_external_ai = True
+    config.external_ai_request_budget = 2
+    config.gemini_api_key = SecretStr("synthetic-key-only")
+    secret_message = "Synthetic-private-marker schema has too many states or branching"
+
+    def handler(request):
+        return httpx.Response(
+            400, json={"error": {"status": "INVALID_ARGUMENT", "message": secret_message}}
+        )
+
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=2
+    )
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provider = GeminiProvider(config, client)
+        with pytest.raises(DomainError, match="GEMINI_HTTP_ERROR"):
+            provider.request_typed(
+                [dict(role="system", content="synthetic"), dict(role="user", content="synthetic")],
+                policy,
+                lambda: True,
+                lambda x: x,
+                max_attempts=1,
+            )
+    assert provider.usage["http_status"] == 400
+    assert provider.usage["provider_error_status"] == "INVALID_ARGUMENT"
+    assert provider.usage["schema_complexity_rejected"] is True
+    assert "Synthetic-private-marker" not in json.dumps(provider.usage)

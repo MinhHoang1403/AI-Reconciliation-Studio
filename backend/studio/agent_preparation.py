@@ -18,7 +18,7 @@ from studio.contracts.agent import NormalizationDraft, ReviewInterpretation, Rev
 from studio.contracts.api import ApprovalInput
 from studio.errors import DomainError
 
-PREPARATION_REVISION = "agent-normalization-2"
+PREPARATION_REVISION = "agent-normalization-3"
 REVIEW_REVISION = "agent-review-1"
 
 
@@ -170,13 +170,20 @@ def propose_normalization(
         validate_draft(draft, table_id, profile)
         return draft
 
+    # Many optional properties repeated in a 40-item constrained array can exceed
+    # Gemini's grammar complexity limit. Require nullable fields in the provider
+    # envelope; keep the full Pydantic/domain constraints after transport.
+    schema = NormalizationDraft.model_json_schema()
+    field_schema = schema["$defs"]["NormalizationField"]
+    field_schema["required"] = list(field_schema["properties"])
+    schema["properties"]["fields"].pop("maxItems", None)
     return provider.request_typed(
         prompt,
         policy,
         reserve,
         validate,
         max_attempts=1,
-        response_schema=NormalizationDraft.model_json_schema(),
+        response_schema=schema,
     )
 
 

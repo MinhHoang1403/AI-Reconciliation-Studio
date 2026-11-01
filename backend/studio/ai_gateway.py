@@ -275,9 +275,27 @@ class GeminiProvider:
                     },
                     timeout=self.config.ai_timeout_seconds,
                 )
+                self.usage["http_status"] = response.status_code
                 if response.status_code in {429, 500, 502, 503, 504}:
                     raise httpx.TransportError("transient")
                 if not response.is_success:
+                    try:
+                        error = response.json().get("error", {})
+                        if error.get("status") in {
+                            "INVALID_ARGUMENT",
+                            "PERMISSION_DENIED",
+                            "NOT_FOUND",
+                            "RESOURCE_EXHAUSTED",
+                            "UNAUTHENTICATED",
+                        }:
+                            self.usage["provider_error_status"] = error["status"]
+                        message = str(error.get("message", "")).lower()
+                        self.usage["schema_complexity_rejected"] = "schema" in message and any(
+                            word in message
+                            for word in ("too many states", "branching", "complexity")
+                        )
+                    except (ValueError, TypeError, AttributeError):
+                        pass
                     raise DomainError("GEMINI_HTTP_ERROR", "Gemini trả lỗi HTTP.")
                 try:
                     body = response.json()

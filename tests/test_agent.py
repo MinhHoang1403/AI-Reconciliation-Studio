@@ -271,7 +271,10 @@ def test_normalization_provider_preserves_exact_source_ids_and_every_column(prof
             "source_field equal to columns[i].id"
             in payload["systemInstruction"]["parts"][0]["text"]
         )
-        assert "responseJsonSchema" in payload["generationConfig"]
+        schema = payload["generationConfig"]["responseJsonSchema"]
+        field = schema["$defs"]["NormalizationField"]
+        assert set(field["required"]) == set(field["properties"])
+        assert "maxItems" not in schema["properties"]["fields"]
         return httpx.Response(
             200,
             json={
