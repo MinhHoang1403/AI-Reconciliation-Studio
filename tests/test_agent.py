@@ -302,3 +302,21 @@ def test_normalization_provider_preserves_exact_source_ids_and_every_column(prof
     assert len(calls) == 1
     assert provider.usage["draft_shape"]["expected_fields"] == len(profile.columns)
     assert "source_field" not in provider.usage["draft_shape"]
+
+
+def test_canonical_query_does_not_take_verified_comparison_metric_id():
+    payload = dict(
+        intent="QUERY_DATA",
+        query=dict(
+            project_id="p",
+            source_kind="CANONICAL",
+            source_id="canonical",
+            select_fields=["payment_status"],
+            filters=[dict(field_id="payment_status", op="eq", value="PAID")],
+            metric_id="delivery_charge",
+        ),
+    )
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        validate(payload, "Liệt kê các giao dịch đã thanh toán")
+    payload["query"]["metric_id"] = None
+    assert validate(payload, "Liệt kê các giao dịch đã thanh toán").query.metric_id is None

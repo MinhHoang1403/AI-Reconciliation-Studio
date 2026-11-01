@@ -12,7 +12,7 @@ from studio.contracts import WorkspacePolicy
 from studio.contracts.agent import AgentIntent, IntentBatch, IntentCatalogue
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-3"
+INTENT_REVISION = "agent-intent-4"
 
 
 def validate_intents(
@@ -162,6 +162,10 @@ def interpret_requests(
                 "only if requested "
                 "scope is unchanged. Do not choose a newest run by guessing. "
                 "For QUERY_DATA return a typed query, no SQL; contains applies to text, "
+                "For CANONICAL/RAW_PREVIEW/EXCEPTIONS queries metric_id MUST be null. "
+                "Canonical select/filter/aggregate use schema field IDs such as amount, "
+                "NOT the semantic_metric label. metric_id is ONLY for VERIFIED_RUN "
+                "comparison values. "
                 "money is decimal "
                 "strings; total/aggregate must apply ALL_MATCHING. paid is never "
                 "equivalent to completed. "
