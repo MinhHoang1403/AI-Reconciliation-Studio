@@ -320,3 +320,49 @@ def test_canonical_query_does_not_take_verified_comparison_metric_id():
         validate(payload, "Liệt kê các giao dịch đã thanh toán")
     payload["query"]["metric_id"] = None
     assert validate(payload, "Liệt kê các giao dịch đã thanh toán").query.metric_id is None
+
+
+def test_grouping_all_approved_payment_states_is_not_a_paid_filter():
+    payload = dict(
+        intent="CREATE_VISUALIZATION",
+        query=dict(
+            project_id="p",
+            source_kind="CANONICAL",
+            source_id="canonical",
+            group_by=["payment_status"],
+            aggregations=[dict(op="count")],
+        ),
+    )
+    assert (
+        validate(payload, "Vẽ biểu đồ giao dịch theo trạng thái thanh toán").intent
+        == "CREATE_VISUALIZATION"
+    )
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        validate(payload, "Vẽ biểu đồ giao dịch đã thanh toán theo trạng thái thanh toán")
+    payload["query"]["group_by"] = ["completed"]
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        validate(payload, "Vẽ biểu đồ giao dịch theo trạng thái thanh toán")
+
+
+def test_benchmark_repair_refuses_unknown_delivery_and_preserves_numeric_rubric():
+    import runpy
+    from pathlib import Path
+
+    candidate = Path(__file__).resolve().parents[1] / "tools/benchmark-agent.py"
+    if not candidate.exists():
+        candidate = Path(__file__).with_name("benchmark-agent.py")
+    helper = runpy.run_path(str(candidate))
+    repairable = helper["repairable_failure"]
+    assert repairable("QUERY_SEMANTICS_REQUIRED", dict(http_status=200, finish_reason="STOP"))
+    assert repairable("AI_INVALID_JSON", dict(http_status=200, finish_reason="STOP"))
+    for code, usage in [
+        ("AI_DELIVERY_UNKNOWN", dict(http_status=200, finish_reason="STOP")),
+        ("GEMINI_UNAVAILABLE", {}),
+        ("AI_INVALID_JSON", dict(http_status=200)),
+        ("AI_INVALID_JSON", dict(http_status=400, finish_reason="STOP")),
+        ("AI_INVALID_JSON", dict(http_status=200, finish_reason="MAX_TOKENS")),
+    ]:
+        assert not repairable(code, usage)
+    assert helper["decimal_equal"]("10.00", "10")
+    assert not helper["decimal_equal"]("wrong", "10")
+    assert not helper["decimal_equal"]("NaN", "10")

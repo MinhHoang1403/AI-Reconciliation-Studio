@@ -12,6 +12,7 @@ import sys
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
@@ -32,6 +33,7 @@ from studio.database import (
     MembershipRow,
     ProjectRow,
     SessionFactory,
+    TraceRow,
     now,
 )
 from studio.errors import DomainError
@@ -45,6 +47,15 @@ def decimal_equal(value: str, expected: str) -> bool:
         return parsed.is_finite() and parsed == Decimal(expected)
     except InvalidOperation:
         return False
+
+
+def repairable_failure(code: str | None, usage: dict[str, Any]) -> bool:
+    """Only a known completed reply may be measured once after an explicit fix."""
+    return (
+        code in {"QUERY_SEMANTICS_REQUIRED", "AI_INVALID_JSON"}
+        and usage.get("http_status") == 200
+        and usage.get("finish_reason") == "STOP"
+    )
 
 
 def score(gold: dict, intent: AgentIntent, ids: dict, confirmed_plan=None) -> dict:
@@ -175,6 +186,7 @@ def main() -> None:
     parser.add_argument("--contexts", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--execute-live", action="store_true")
+    parser.add_argument("--repair-known", choices=["payment-status-grouping"])
     args = parser.parse_args()
     assert args.execute_live and settings.agent_cloud_enabled and settings.agent_request_budget > 0
     gold = json.loads(args.gold.read_text(encoding="utf-8"))
@@ -219,6 +231,31 @@ def main() -> None:
                     ),
                 )
                 job_id = job.id
+                repair_of = None
+                if job.status == "BLOCKED" and args.repair_known:
+                    trace = db.scalar(select(TraceRow).where(TraceRow.job_id == job.id))
+                    # Explicit, one repair round after a reproduced validator fix.
+                    # Never resend unknown delivery or overwrite the failed attempt.
+                    assert trace is not None and repairable_failure(job.error_code, trace.usage), (
+                        "Only known completed semantic/JSON failures may be re-evaluated"
+                    )
+                    repair_of = job.id
+                    key += ":repair:" + args.repair_known
+                    token = str(uuid5(NAMESPACE_URL, key + ":claim"))
+                    job = enqueue_job(
+                        db,
+                        actor.workspace_id,
+                        context.project_id,
+                        "agent_benchmark",
+                        key,
+                        dict(
+                            gold_sha256=version,
+                            context_sha256=context_hash,
+                            cases=[g["id"] for g in subset],
+                            repair_of=repair_of,
+                        ),
+                    )
+                    job_id = job.id
                 if job.status == "SUCCEEDED":
                     parsed = [AgentIntent.model_validate(v) for v in job.result["intents"]]
                     reused = True
@@ -289,7 +326,13 @@ def main() -> None:
                     # Batch không đạt schema/semantic: các ca chưa đo không được chấm PASS.
                     results.extend(dict(id=g["id"], blocked=job.error_code) for g in subset)
                     batches.append(
-                        dict(domain=domain, offset=offset, job_id=job_id, status="BLOCKED")
+                        dict(
+                            domain=domain,
+                            offset=offset,
+                            job_id=job_id,
+                            status="BLOCKED",
+                            repair_of=repair_of,
+                        )
                     )
                     args.output.write_text(
                         json.dumps(dict(results=results, batches=batches), indent=2),
@@ -306,6 +349,7 @@ def main() -> None:
                     offset=offset,
                     job_id=job_id,
                     status="CACHED" if reused else "LIVE",
+                    repair_of=repair_of,
                 )
             )
             args.output.write_text(

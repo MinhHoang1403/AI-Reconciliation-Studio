@@ -108,17 +108,35 @@ def validate_intents(
             paid = any(
                 w in normalized for w in ("thanh toan", "chuyen tien", "chuyen khoan", "paid")
             )
-            if paid and (
-                source is None
-                or not any(
-                    f.field_id in source.paid_status_fields
-                    and f.op in {"eq", "in"}
-                    and (
-                        f.value in {"PAID", "TRANSFERRED"}
-                        if isinstance(f.value, str)
-                        else bool(f.value) and set(f.value or []) <= {"PAID", "TRANSFERRED"}
+            # A chart of ALL payment states is not a request to filter paid rows.
+            # The exemption requires an explicitly requested grouping over approved
+            # status semantics; a chart of already-paid rows still needs the filter.
+            status_grouping = bool(
+                source
+                and intent.intent == "CREATE_VISUALIZATION"
+                and q.group_by
+                and set(q.group_by) <= set(source.paid_status_fields)
+                and "theo trang thai" in normalized
+                and not any(
+                    w in normalized
+                    for w in ("da thanh toan", "da chuyen tien", "da chuyen khoan", "paid")
+                )
+            )
+            if (
+                paid
+                and not status_grouping
+                and (
+                    source is None
+                    or not any(
+                        f.field_id in source.paid_status_fields
+                        and f.op in {"eq", "in"}
+                        and (
+                            f.value in {"PAID", "TRANSFERRED"}
+                            if isinstance(f.value, str)
+                            else bool(f.value) and set(f.value or []) <= {"PAID", "TRANSFERRED"}
+                        )
+                        for f in q.filters
                     )
-                    for f in q.filters
                 )
             ):
                 raise DomainError(
