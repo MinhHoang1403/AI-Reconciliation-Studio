@@ -12,7 +12,7 @@ from studio.contracts import WorkspacePolicy
 from studio.contracts.agent import AgentIntent, IntentBatch, IntentCatalogue
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-4"
+INTENT_REVISION = "agent-intent-5"
 
 
 def validate_intents(
@@ -90,8 +90,7 @@ def validate_intents(
             ):
                 raise DomainError("AI_INVALID_SOURCE", "Query sai nguồn.")
             if q.metric_id and (
-                q.source_kind != "VERIFIED_RUN"
-                or q.metric_id not in catalogue.verified_metric_ids
+                q.source_kind != "VERIFIED_RUN" or q.metric_id not in catalogue.verified_metric_ids
             ):
                 raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ tiêu truy vấn chưa được duyệt.")
             for predicate in q.filters:
@@ -175,14 +174,17 @@ def interpret_requests(
                 "For amount variance use absolute_variance (delta is signed L-R), selecting "
                 "an explicit metric_id from verified_metric_ids; no metric guessing. "
                 "Paid queries require paid_status_fields supplied by approved semantics; "
+                "choose the named dataset, source_kind CANONICAL and its canonical_id, "
+                "then filter an approved paid_status_fields ID with op eq, value PAID "
+                "(uppercase), or op in with PAID/TRANSFERRED uppercase. Do NOT use "
+                "contains, booleans, translated values, or completed status for paid. "
                 "otherwise CLARIFY. "
                 "EXPLAIN_RESULT uses key_value copied EXACTLY from a user-mentioned transaction "
                 "ID, or the existing group/case context. It reads verified facts, never infers "
                 "fees/causes. For "
                 "transfers, raw edits, "
                 "fake matches or unsupported business actions choose UNSUPPORTED. "
-                "Return JSON ONLY matching this schema: "
-                + json.dumps(schema)
+                "Return JSON ONLY matching this schema: " + json.dumps(schema)
             ),
         ),
         dict(
@@ -198,6 +200,7 @@ def interpret_requests(
             ),
         ),
     ]
+
     def validate(content: str) -> list[AgentIntent]:
         # Safe shape diagnostics only; never retain model values or user data.
         try:
@@ -206,6 +209,24 @@ def interpret_requests(
                 provider.usage["intent_count"] = len(envelope["intents"])
                 provider.usage["expected_intent_count"] = len(goals)
         except ValueError:
+            pass
+        try:
+            batch = IntentBatch.model_validate_json(content)
+            provider.usage["query_shapes"] = [
+                dict(
+                    source_kind=i.query.source_kind,
+                    filter_ops=[f.op for f in i.query.filters],
+                    has_paid_literal=any(
+                        f.value in {"PAID", "TRANSFERRED"}
+                        if isinstance(f.value, str)
+                        else bool(f.value) and set(f.value or []) <= {"PAID", "TRANSFERRED"}
+                        for f in i.query.filters
+                    ),
+                )
+                for i in batch.intents
+                if i.query
+            ]
+        except ValidationError:
             pass
         return validate_intents(content, goals, catalogue)
 
