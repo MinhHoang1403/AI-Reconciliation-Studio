@@ -87,7 +87,8 @@ export function AssistantStudio({
   const replyKeyFor=(scope:AssistantContext,id:string)=>`studio.review-reply.${draftOwner}.${scope.project_id}.${id}`;
   const uploadKey = useRef(crypto.randomUUID());
   const fileInput = useRef<HTMLInputElement>(null);
-  const workflowContext = useRef<AssistantContext | null>(null);
+  const [activeWorkflowContext,setActiveWorkflowContext]=useState<AssistantContext|null>(null);
+  const latestWorkflowId=messages.slice().reverse().find(m=>m.workflow_id)?.workflow_id;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -221,6 +222,7 @@ export function AssistantStudio({
     setEvidence(null);
     setRule(null);
     setMessages([]);
+    setActiveWorkflowContext(null);
     setConversation(null);
     setPendingJob("");
     setError("");
@@ -309,6 +311,7 @@ export function AssistantStudio({
     setContext(next);
     setConversation(null);
     setMessages([]);
+    setActiveWorkflowContext(null);
     setMoreMessages(false);
     setPendingJob("");
     setError("");
@@ -519,7 +522,8 @@ export function AssistantStudio({
       if (alive.current) setBusy(false);
     }
   }
-  const selectedRun = runs.find((r) => r.id === context.run_id);
+  const displayContext=activeWorkflowContext||context;
+  const selectedRun = runs.find((r) => r.id === displayContext.run_id);
   async function agentNavigate(target:Suggestion,next:AssistantContext){
     if(target!=="OPEN_EVIDENCE"||!next.run_id||!next.group_id){onNavigate(target,next);return;}
     const request=++evidenceSequence.current;citationTrigger.current=document.activeElement as HTMLElement;
@@ -549,7 +553,7 @@ export function AssistantStudio({
           Lịch sử
         </button>
         <div className="assistant-toolbar-actions">
-          {context.project_id&&<button className="context-chip" data-run-id={context.run_id||""} data-dataset-id={context.dataset_id||""} aria-label="Đổi ngữ cảnh phân tích" title={context.dataset_id&&sourceLabel?.id===context.dataset_id?sourceLabel.name:undefined} onClick={()=>setContextOpen(true)}>{context.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:context.dataset_id?(sourceLabel?.id===context.dataset_id?sourceLabel.name:"Nguồn đang xem"):"Dữ liệu dự án"}</button>}
+          {context.project_id&&<button className="context-chip" data-run-id={displayContext.run_id||""} data-dataset-id={displayContext.dataset_id||""} aria-label="Đổi ngữ cảnh phân tích" title={displayContext.dataset_id&&sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:undefined} onClick={()=>setContextOpen(true)}>{displayContext.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:displayContext.dataset_id?(sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Nguồn đang xem"):"Dữ liệu dự án"}</button>}
           {context.project_id&&<button className="icon-button" aria-label="Hội thoại mới" title="Hội thoại mới" disabled={busy||loading} onClick={()=>newConversation()}><MessageSquarePlus size={18}/></button>}
           {conversation&&<details className="assistant-menu"><summary aria-label="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary><button className="text-button" disabled={busy||!!pendingJob} onClick={()=>setConfirmDelete(true)}><Trash2 size={15}/>Xóa hội thoại</button></details>}
         <details className="assistant-policy">
@@ -726,7 +730,7 @@ export function AssistantStudio({
                       </>
                     )
                   )}
-                  {message.role==="assistant"&&message.workflow_id&&<AgentWorkflowPanel id={message.workflow_id} canEdit={canEdit} onNavigate={(target,next)=>void agentNavigate(target,next)} onContext={next=>{workflowContext.current=next;}} onReply={(workflowId,review)=>{if(!conversation)return;
+                  {message.role==="assistant"&&message.workflow_id&&<AgentWorkflowPanel id={message.workflow_id} canEdit={canEdit} onNavigate={(target,next)=>void agentNavigate(target,next)} onContext={next=>{if(message.workflow_id===latestWorkflowId&&next.project_id===context.project_id)setActiveWorkflowContext(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);}} onReply={(workflowId,review)=>{if(!conversation)return;
                     if(files.length){setError("Bỏ tệp đính kèm trước khi bổ sung xác nhận.");return;}
                     const binding={workflowId,id:review.id,nonce:review.nonce,fingerprint:review.fingerprint,question:review.question};
                     setReviewReply(binding);sessionStorage.setItem(replyKeyFor(context,conversation.id),JSON.stringify(binding));composerInput.current?.focus();}}/>}
@@ -905,7 +909,7 @@ export function AssistantStudio({
                 Kết quả phân tích
                 <select
                   aria-label="Chọn kết quả phân tích"
-                  value={context.run_id || ""}
+                  value={displayContext.run_id || ""}
                   disabled={loading || busy || !!pendingJob}
                   onChange={(event) => {
                     newConversation({
@@ -917,9 +921,9 @@ export function AssistantStudio({
                   <option value="">
                     Chưa chọn run — chỉ kiểm tra chuẩn bị dữ liệu
                   </option>
-                  {context.run_id && !selectedRun && (
-                    <option value={context.run_id}>
-                      Run {context.run_id.slice(0, 8)} · ngữ cảnh hội thoại
+                  {displayContext.run_id && !selectedRun && (
+                    <option value={displayContext.run_id}>
+                      Run {displayContext.run_id.slice(0, 8)} · ngữ cảnh hội thoại
                     </option>
                   )}
                   {runs
