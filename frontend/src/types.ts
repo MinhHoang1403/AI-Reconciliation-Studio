@@ -231,6 +231,8 @@ export const jobKind: Record<string, string> = {
   assistant: "AI Assistant có bằng chứng",
 };
 export const errorText: Record<string, string> = {
+  AI_INVALID_INTENT_COUNT: "AI chưa phân chia yêu cầu đúng cách; hệ thống đã dừng trước khi thực hiện.",
+  INVALID_SOURCE_FIELD: "Đề xuất AI chưa khớp các cột nguồn; hệ thống đã dừng trước khi chuẩn hóa.",
   PARSER_BUDGET_EXHAUSTED:
     "Hết allowance LlamaParse. Không tạo thêm job tính phí.",
   PARSER_CREDITS_NOT_VERIFIED:

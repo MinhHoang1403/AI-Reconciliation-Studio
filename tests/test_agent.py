@@ -240,3 +240,62 @@ def test_multi_source_single_goal_requires_one_intent_without_provider_retry():
         catalogue(),
     )[0]
     assert intent.intent == "PREPARE_NORMALIZATION"
+
+
+@pytest.mark.parametrize("bad", ["header", "omitted", "wrong_table", "duplicate_target", None])
+def test_normalization_provider_preserves_exact_source_ids_and_every_column(profile, bad):
+    from studio.agent_preparation import propose_normalization
+
+    fields = [
+        dict(source_field=c.column_id, target_id=f"field_{i}", name=c.name, data_type="string")
+        for i, c in enumerate(profile.columns)
+    ]
+    if bad == "header":
+        fields[0]["source_field"] = "header_transaction_id"
+    if bad == "omitted":
+        fields.pop()
+    if bad == "duplicate_target":
+        fields[-1]["target_id"] = fields[0]["target_id"]
+    output = dict(
+        table_id="wrong" if bad == "wrong_table" else profile.source_table_id,
+        entity_kind="synthetic",
+        grain="one record per row",
+        fields=fields,
+    )
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        payload = json.loads(request.read())
+        assert (
+            "source_field equal to columns[i].id"
+            in payload["systemInstruction"]["parts"][0]["text"]
+        )
+        assert "responseJsonSchema" in payload["generationConfig"]
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {"finishReason": "STOP", "content": {"parts": [{"text": json.dumps(output)}]}}
+                ]
+            },
+        )
+
+    config = Settings(
+        allow_external_ai=True, external_ai_request_budget=5, gemini_api_key="synthetic-key-only"
+    )
+    provider = GeminiProvider(config, httpx.Client(transport=httpx.MockTransport(handler)))
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=5
+    )
+    if bad:
+        with pytest.raises(DomainError, match="INVALID_SOURCE_FIELD"):
+            propose_normalization(provider, profile.source_table_id, profile, policy, lambda: True)
+    else:
+        draft = propose_normalization(
+            provider, profile.source_table_id, profile, policy, lambda: True
+        )
+        assert {f.source_field for f in draft.fields} == {c.column_id for c in profile.columns}
+    assert len(calls) == 1
+    assert provider.usage["draft_shape"]["expected_fields"] == len(profile.columns)
+    assert "source_field" not in provider.usage["draft_shape"]

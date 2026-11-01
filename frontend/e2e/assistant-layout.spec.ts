@@ -47,7 +47,7 @@ for(const width of [390,768,1366,1440,1920]){
     for(const name of ["empty","short","long","upload","running","review","completed","table","chart","evidence","history","multiline","keyboard","sidebar","error","permission","loading"]){
       scenario=name;gate=new Promise<void>(resolve=>release=resolve);
       await page.goto("/");await expect(page.getByText("Hệ thống đã kết nối",{exact:true})).toBeAttached();
-      if(name==="loading"){await shot(name);release();await expect(input).toBeEnabled();continue;}
+      if(name==="loading"){await expect(input).toBeDisabled();await shot(name);release();await expect(input).toBeEnabled();continue;}
       if(name==="error"){await expect(page.getByRole("alert")).toContainText("Chưa tải được hội thoại");await shot(name);continue;}
       await expect(input).toBeEnabled();
       if(name==="empty"){

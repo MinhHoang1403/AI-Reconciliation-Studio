@@ -11,7 +11,7 @@ import {
   type Run,
   type SourceEvidence,
 } from "./reconciliationTypes";
-import type { Job } from "./types";
+import {errorText as jobErrors, type Job} from "./types";
 import type {
   AssistantAnswer,
   AssistantContext,
@@ -204,7 +204,7 @@ export function AssistantStudio({
         await refreshMessages(id, request);
         if (job.status !== "SUCCEEDED")
           setError(
-            `Câu hỏi chưa có kết quả: ${job.error_code || job.status}. Lịch sử được giữ; không tự gửi lại provider.`,
+            `${jobErrors[job.error_code||""]||"Yêu cầu chưa có kết quả hợp lệ."} Lịch sử được giữ; không tự gửi lại nhà cung cấp AI.`,
           );
         return;
       }
@@ -842,7 +842,7 @@ export function AssistantStudio({
                 maxLength={2000}
                 rows={2}
                 placeholder={reviewReply?"Bổ sung thông tin để AI diễn giải; bạn sẽ kiểm tra lại trước khi xác nhận...":"Ví dụ: Chuẩn hóa các file này rồi đối soát giúp tôi..."}
-                disabled={busy}
+                disabled={busy||loading}
               />
             </label>
             <button
