@@ -23,6 +23,7 @@ from studio.agent_tools import JobReference
 from studio.agent_workflows import (
     advance,
     digest,
+    lock_review_sources,
     own_workflow,
     owner,
     review_fingerprint,
@@ -203,18 +204,23 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
             save(row, state)
             db.commit()
             return
-    intents = model_call(
-        job_id,
-        token,
-        row_id,
-        "interpret_user_request",
-        INTENT_REVISION,
-        factory,
-        fence,
-        lambda provider, policy, reserve: interpret_requests(
-            provider, [goal], catalogue, policy, reserve
-        ),
-    )
+    try:
+        intents = model_call(
+            job_id,
+            token,
+            row_id,
+            "interpret_user_request",
+            INTENT_REVISION,
+            factory,
+            fence,
+            lambda provider, policy, reserve: interpret_requests(
+                provider, [goal], catalogue, policy, reserve
+            ),
+        )
+    except DomainError as exc:
+        if exc.code not in {"INPUT_AMBIGUOUS", "QUERY_SEMANTICS_REQUIRED"}:
+            raise
+        intents = [AgentIntent(intent="CLARIFY", questions=[exc.message_vi])]
     with factory() as db:
         fence(db, job_id, token)
         row = db.get(AgentWorkflowRow, row_id, with_for_update=True)
@@ -334,6 +340,8 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             require_editor(actor, db, row.id)
             state = WorkflowState.model_validate(row.detail)
             current = next((r for r in state.reviews if r.id == reply.review_id), None)
+            if current:
+                lock_review_sources(db, actor, current)
             if (
                 row.state != "WAITING_REVIEW"
                 or current is None

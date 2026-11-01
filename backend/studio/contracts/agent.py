@@ -29,6 +29,7 @@ class AgentIntent(Contract):
     intent: IntentName
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
     run_id: Identifier | None = None
+    key_value: str | None = Field(default=None, min_length=1, max_length=200)
     query: DataQuery | None = None
     planning_request: PlanningRequest | None = None
     questions: list[str] = Field(default_factory=list, max_length=5)

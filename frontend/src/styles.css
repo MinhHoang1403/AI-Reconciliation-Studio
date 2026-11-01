@@ -1954,3 +1954,32 @@ pre {
   .assistant-main .project-bar > .text-button { font-size: 11px; }
   .assistant-main .page-heading { margin-bottom: 8px; }
 }
+.agent-empty {padding: 2rem 0; max-width: 48rem; margin: auto;}
+.agent-empty h2 {font-size: clamp(1.4rem, 2vw, 2rem); line-height: 1.35;}
+.agent-prompts, .agent-pagination, .agent-workflow-state {display:flex; flex-wrap:wrap; gap:.65rem; align-items:center;}
+.agent-workflow {margin-top: .8rem; min-width:0; max-width:100%;}
+.agent-results {display:grid; gap:1rem; min-width:0;}
+.agent-review {display:grid; gap:.8rem; border-color:#93c5fd; min-width:0;}
+.agent-review-fields {display:grid; gap:.8rem;}
+.agent-form-grid {display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr)); gap:.8rem;}
+.agent-form-grid label, .agent-review-fields>label, .agent-reply label {display:grid; gap:.35rem; font-size:.85rem;}
+.agent-field {border:1px solid #e2e8f0; border-radius:.6rem; padding:.75rem;}
+.agent-field summary {cursor:pointer; font-weight:600;}
+.agent-review input:not([type=checkbox]), .agent-review select, .agent-review textarea {width:100%; min-width:0; padding:.6rem; border:1px solid #cbd5e1; border-radius:.5rem; background:white; color:#0f172a;}
+.agent-review fieldset {min-width:0; border:1px solid #e2e8f0; border-radius:.6rem; padding:.75rem;}
+.agent-reply {display:grid; gap:.6rem;}
+.agent-review button {justify-self:start;}
+.agent-review label:has(input[type=checkbox]) {display:flex; gap:.5rem; align-items:flex-start;}
+.agent-table, .agent-chart, .agent-facts {padding:1rem; background:#fff; border:1px solid #e2e8f0; border-radius:.65rem; min-width:0; max-width:100%;}
+.agent-table small, .agent-chart small, .agent-review p {overflow-wrap:anywhere;}
+.agent-table .table-scroll {max-width:100%;}
+.agent-steps {padding-left:1.25rem; color:#475569; font-size:.85rem;}
+.agent-file-chips {display:flex; flex-wrap:wrap; gap:.4rem; grid-column:1 / -1; width:100%;}
+.agent-file-chips>span {display:flex; align-items:center; gap:.25rem; overflow-wrap:anywhere; max-width:100%; padding:.35rem .6rem; background:#eff6ff; border-radius:.5rem; font-size:.8rem;}
+.assistant-composer {grid-template-columns:auto minmax(0,1fr) auto;}
+.assistant-composer>.icon-button {grid-column:1;grid-row:2;}
+.assistant-composer>label {grid-column:2;grid-row:2;}
+.assistant-composer>.button {grid-column:3;grid-row:2;}
+.assistant-composer>.agent-file-chips {grid-row:1;}
+.assistant-message:has(.agent-workflow) {max-width:100%; width:100%; min-width:0;}
+@media(max-width:768px){.agent-review,.agent-table,.agent-chart,.agent-facts {padding:.75rem;}.agent-review button {max-width:100%; white-space:normal;}.agent-form-grid {grid-template-columns:1fr;}}

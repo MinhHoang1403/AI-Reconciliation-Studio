@@ -149,3 +149,28 @@ def test_agent_cloud_off_calls_no_http_or_reservation():
 def test_agent_model_cannot_supply_approval_through_new_contract():
     with pytest.raises(ValidationError):
         AgentIntent(intent="RECONCILE_DATASETS", approved_by="owner", auto_approve=True)
+
+
+def test_query_deadline_cancels_native_handle_and_never_returns_partial(monkeypatch):
+    import studio.data_query as query
+
+    cancelled = []
+
+    class Pending:
+        def fetch(self):
+            return None
+
+        def cancel(self):
+            cancelled.append(True)
+
+    class Lazy:
+        def collect(self, **kwargs):
+            assert kwargs == dict(background=True, engine="in-memory")
+            return Pending()
+
+    clock = iter([0.0, 0.0, 2.0])
+    monkeypatch.setattr(query.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(query.time, "sleep", lambda _: None)
+    with pytest.raises(DomainError, match="QUERY_TIMEOUT"):
+        query._collect_bounded(Lazy(), 1.0)
+    assert cancelled == [True]

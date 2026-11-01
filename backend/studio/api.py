@@ -397,6 +397,24 @@ def workspace_settings(db: DB, actor: CurrentActor) -> dict[str, Any]:
         "qwen_configured": bool(settings.qwen_base_url and settings.qwen_enabled),
         "qwen_model": settings.qwen_model,
         "mapping_ai_provider": settings.mapping_ai_provider,
+        "agent_cloud_enabled": bool(
+            settings.agent_cloud_enabled
+            and settings.agent_request_budget > 0
+            and settings.allow_external_ai
+            and policy.mode == "CLOUD_ALLOWED"
+            and policy.allow_external_ai
+            and global_used < settings.external_ai_request_budget
+            and workspace_used < policy.external_request_budget
+            and (
+                db.scalar(
+                    select(func.count())
+                    .select_from(AuditRow)
+                    .where(AuditRow.action == "AGENT_REQUEST_RESERVED")
+                )
+                or 0
+            )
+            < settings.agent_request_budget
+        ),
         "assistant_cloud_enabled": bool(
             settings.assistant_cloud_enabled
             and settings.assistant_request_budget > 0

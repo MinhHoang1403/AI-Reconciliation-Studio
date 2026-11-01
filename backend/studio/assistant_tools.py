@@ -197,6 +197,39 @@ def exact_group(run: RunRow, group_id: str) -> MatchGroup:
     return group
 
 
+def group_for_key(db: Session, actor: Actor, context: AssistantContext, key_value: str) -> str:
+    """Exact string lookup trong key của run đã verified; không đoán nguồn hoặc fuzzy ID."""
+    row = scoped_context(db, actor, context)
+    if (
+        row is None
+        or row.status not in {"VERIFIED", "PARTIAL_VERIFIED"}
+        or row.metric_snapshot is None
+    ):
+        raise DomainError("INSUFFICIENT_EVIDENCE", "Chọn đúng kết quả đã xác minh để tìm mã.", 409)
+    if not key_value or len(key_value) > 200:
+        raise DomainError("INPUT_AMBIGUOUS", "Mã cần tìm không hợp lệ.")
+    with _connection() as connection:
+        path = result_path(row)
+        timer = Timer(3, connection.interrupt)
+        timer.daemon = True
+        timer.start()
+        try:
+            matches = connection.execute(
+                "SELECT group_id FROM read_parquet(?) "
+                "WHERE list_contains(json_extract_string(group_json, '$.key[*]'), ?) LIMIT 2",
+                [str(path), key_value],
+            ).fetchall()
+        except duckdb.Error as exc:
+            raise DomainError("TOOL_UNAVAILABLE", "Không tìm được mã trong giới hạn.", 503) from exc
+        finally:
+            timer.cancel()
+    if not matches:
+        raise DomainError("INSUFFICIENT_EVIDENCE", "Không có mã chính xác trong run đã chọn.", 409)
+    if len(matches) != 1:
+        raise DomainError("INPUT_AMBIGUOUS", "Mã trùng ở nhiều nhóm; cần thêm khóa phân biệt.")
+    return str(matches[0][0])
+
+
 def read_tool(db: Session, actor: Actor, request: ToolRequest) -> ToolResult:
     """F28: output DTO allowlist; không gọi provider và không ghi database."""
     context = request.context

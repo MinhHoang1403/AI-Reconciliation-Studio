@@ -15,6 +15,7 @@ from studio.agent_preparation import approval_from_draft
 from studio.agent_workflows import (
     advance,
     digest,
+    lock_review_sources,
     own_workflow,
     review_fingerprint,
     save,
@@ -34,11 +35,12 @@ from studio.contracts.agent import (
     WorkflowView,
 )
 from studio.contracts.assistant import AssistantContext
+from studio.contracts.data_query import SourceRowRequest, SourceRowResult
 from studio.contracts.reconciliation import PlanProposal
 from studio.database import AuditRow, JobRow, MappingRow, PlanRow, ProjectRow, TableRow, now
 from studio.errors import DomainError
 from studio.parsing import inspect_upload
-from studio.repository import enqueue_job, get_scoped
+from studio.repository import enqueue_job, get_scoped, project_for_table
 
 
 def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) -> WorkflowView:
@@ -64,6 +66,7 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         raise DomainError(
             "REVIEW_REPLY_PENDING", "Đang đọc câu trả lời; chờ bản diễn giải để xác nhận.", 409
         )
+    lock_review_sources(db, actor, review)
     if (
         row.state not in {"WAITING_REVIEW", "RUNNING"}
         or review.state != "OPEN"
@@ -156,6 +159,35 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     DB = Annotated[Session, Depends(database)]
     User = Annotated[Actor, Depends(current_actor)]
     Key = Annotated[str, Header(min_length=1, max_length=160, alias="Idempotency-Key")]
+
+    @router.post("/source-rows", response_model=SourceRowResult)
+    def source_row(body: SourceRowRequest, db: DB, actor: User) -> SourceRowResult:
+        import time
+
+        import polars as pl
+
+        from studio.data_query import _collect_bounded, json_value
+        from studio.database import ArtifactRow
+        from studio.storage import checksum, storage_path
+
+        table = get_scoped(db, TableRow, body.table_id, actor)
+        if project_for_table(db, table).id != body.project_id:
+            raise DomainError("RESOURCE_NOT_FOUND", "Dòng nguồn không thuộc dự án.", 404)
+        artifact = get_scoped(db, ArtifactRow, table.artifact_id, actor)
+        path = storage_path(settings.storage_root, artifact.storage_key)
+        if checksum(path) != artifact.sha256:
+            raise DomainError("ARTIFACT_CHECKSUM_FAILED", "Nguồn không khớp checksum.")
+        frame = _collect_bounded(
+            pl.scan_parquet(path)
+            .filter(pl.col("_source_row") == body.row)
+            .select([c["id"] for c in table.parsed_contract["columns"]])
+            .head(1),
+            time.monotonic() + settings.agent_query_timeout_seconds,
+        )
+        names = {c["id"]: f"{c['name']} ({c['id']})" for c in table.parsed_contract["columns"]}
+        return SourceRowResult(
+            rows=[{names[k]: json_value(v) for k, v in row.items()} for row in frame.to_dicts()]
+        )
 
     @router.post("/attachments", status_code=202)
     def attachments(
@@ -256,6 +288,8 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             return dict(job_id=existing.id, status=existing.status)
         state = WorkflowState.model_validate(row.detail)
         review = next((r for r in state.reviews if r.id == body.review_id), None)
+        if review:
+            lock_review_sources(db, actor, review)
         if (
             review is None
             or review.state != "OPEN"

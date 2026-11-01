@@ -446,6 +446,47 @@ def test_agent_mock_query_chart_uses_all_matching_not_page(pg, monkeypatch):  # 
     assert chart["verification_status"] == "CANONICAL" and chart["completeness"] == "COMPLETE"
 
 
+def test_agent_mock_exact_key_explanation_preserves_zero_prefix_and_evidence(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+    from studio.agent_tools import GroupLookupAction, execute_tool
+    from studio.contracts.assistant import AssistantContext
+
+    client, factory, worker = pg
+    pid, _, _, queued = create_approved_run(pg)
+    drain(factory, worker)
+    context = dict(project_id=pid, run_id=queued["run_id"])
+    cid = conversation(client, context)
+    monkeypatch.setattr(
+        agents,
+        "interpret_requests",
+        lambda *args: [AgentIntent(intent="EXPLAIN_RESULT", key_value="000702")],
+    )
+    message = ask_agent(client, context, cid, text="Vì sao giao dịch000702có hai phía nhưng lệch?")
+    drain(factory, worker)
+    wf = workflow_for(client, factory, message["job_id"])
+    assert wf["state"] == "COMPLETED" and wf["context"]["group_id"]
+    block = next(b for b in wf["detail"]["blocks"] if b["type"] == "facts")
+    assert any("12.75 / 10.00 / 2.75 / 0 VND" in line["text"] for line in block["answer"]["lines"])
+    refs = block["answer"]["fact_set"]["references"]
+    assert len({r["member_id"] for r in refs if r.get("member_id")}) == 2
+    with factory() as db:
+        actor = Actor("test-owner", "demo", "owner")
+        for key, code in [
+            ("702", "INSUFFICIENT_EVIDENCE"),
+            ("CARRIER-A", "INPUT_AMBIGUOUS"),
+            ("000702' OR 1=1 --", "INSUFFICIENT_EVIDENCE"),
+        ]:
+            with pytest.raises(DomainError, match=code):
+                execute_tool(
+                    db,
+                    actor,
+                    GroupLookupAction(
+                        name="find_match_group", context=AssistantContext(**context), key_value=key
+                    ),
+                    "lookup-negative",
+                )
+
+
 def test_agent_durable_unknown_delivery_reserves_once_and_never_resends(pg, monkeypatch):  # noqa: F811
     import studio.agent_jobs as agents
     from pydantic import SecretStr

@@ -313,7 +313,7 @@ export function App() {
         try {
           restored = savedId
             ? await api<Project>(`/projects/${encodeURIComponent(savedId)}`)
-            : (
+            : locationRef.current.page === "assistant" ? null : (
                 await api<{ items: Project[] }>(
                   "/projects?include_test=false&limit=1",
                 )
@@ -941,7 +941,7 @@ export function App() {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            setPage("home");
+            setPage("assistant");
           }}
         >
           <span className="brand-symbol">
@@ -961,6 +961,27 @@ export function App() {
         </div>
         <span className="nav-caption">KHÔNG GIAN LÀM VIỆC</span>
         <nav aria-label="Điều hướng chính">
+          <button
+            className={page === "assistant" ? "active" : ""}
+            aria-current={page === "assistant" ? "page" : undefined}
+            disabled={!ready}
+            onClick={() =>
+              openAssistant({
+                project_id: projectId,
+                ...(page === "data" && selectedDataset?.project_id === projectId
+                  ? { dataset_id: selectedDataset.id }
+                  : {}),
+                ...(["reconcile", "exceptions", "reports"].includes(page) &&
+                localStorage.getItem(`studio.run.${projectId}`)
+                  ? { run_id: localStorage.getItem(`studio.run.${projectId}`) }
+                  : {}),
+              })
+            }
+          >
+            <Sparkles size={19} />
+            <span>Trợ lý AI</span>
+          </button>
+          <span className="nav-caption">KẾT QUẢ & CÔNG CỤ</span>
           <button
             className={page === "home" ? "active" : ""}
             onClick={() => {
@@ -1014,26 +1035,7 @@ export function App() {
             <ArrowDownToLine size={19} />
             <span>Báo cáo</span>
           </button>
-          <button
-            className={page === "assistant" ? "active" : ""}
-            aria-current={page === "assistant" ? "page" : undefined}
-            disabled={!ready || !projectId}
-            onClick={() =>
-              openAssistant({
-                project_id: projectId,
-                ...(page === "data" && selectedDataset?.project_id === projectId
-                  ? { dataset_id: selectedDataset.id }
-                  : {}),
-                ...(["reconcile", "exceptions", "reports"].includes(page) &&
-                localStorage.getItem(`studio.run.${projectId}`)
-                  ? { run_id: localStorage.getItem(`studio.run.${projectId}`) }
-                  : {}),
-              })
-            }
-          >
-            <Sparkles size={19} />
-            <span>Trợ lý AI</span>
-          </button>
+
         </nav>
         <div className="sidebar-bottom">
           <div className="local-card">
@@ -1216,7 +1218,7 @@ export function App() {
               </button>
             </div>
           )}
-          {ready && !projectId && page !== "settings" && (
+          {ready && !projectId && !["settings","assistant"].includes(page) && (
             <Notice>
               Chọn hoặc tạo dự án để xem dữ liệu. Dự án chưa được chọn; không
               hiển thị số liệu của dự án khác.
@@ -1296,14 +1298,13 @@ export function App() {
               </div>
             )}
           {ready &&
-            projectId &&
             page === "assistant" &&
-            assistantContext?.project_id === projectId && (
+            (!projectId || !assistantContext || assistantContext.project_id === projectId) && (
               <section className="assistant-page" aria-label="Trợ lý AI">
                 <button
                   className="text-button assistant-return"
                   onClick={() => {
-                    const current = readLocation().context || assistantContext;
+                    const current = readLocation().context || assistantContext || {project_id:projectId};
                     if (current.run_id)
                       setRunNavigation({
                         id: current.run_id,
@@ -1318,7 +1319,7 @@ export function App() {
                 <Suspense fallback={<Spinner />}>
                   <AssistantStudio
                     key={JSON.stringify(assistantContext)}
-                    initialContext={assistantContext}
+                    initialContext={assistantContext || {project_id:projectId}}
                     projectName={project?.name || "Dự án hiện tại"}
                     draftOwner={draftOwner}
                     onContextChange={(context) => {
@@ -1330,6 +1331,8 @@ export function App() {
                         writeLocation({ ...current, context }, true);
                     }}
                     cloudEnabled={!!workspace?.assistant_cloud_enabled}
+                    agentEnabled={!!workspace?.agent_cloud_enabled}
+                    onUploadProject={async id=>{const selected=await api<Project>(`/projects/${id}`);chooseProject(selected);}}
                     canEdit={canEdit}
                     onReview={(id) => {
                       setPlanNavigation({ id, projectId, request: Date.now() });

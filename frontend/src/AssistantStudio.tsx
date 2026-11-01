@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquarePlus, Send, Trash2, MessagesSquare } from "lucide-react";
+import { MessageSquarePlus, Send, Trash2, MessagesSquare, Paperclip, X } from "lucide-react";
+import { AgentWorkflowPanel } from "./AgentWorkflowPanel";
 import { api, ApiError } from "./api";
 import { Notice, Spinner } from "./components";
 import { ReconciliationEvidence } from "./ReconciliationEvidence";
@@ -54,6 +55,8 @@ export function AssistantStudio({
   projectName,
   draftOwner,
   onContextChange,
+  onUploadProject,
+  agentEnabled = false,
 }: {
   initialContext: AssistantContext;
   onNavigate: (target: Suggestion, context: AssistantContext) => void;
@@ -63,6 +66,8 @@ export function AssistantStudio({
   projectName: string;
   draftOwner: string;
   onContextChange: (context: AssistantContext) => void;
+  onUploadProject: (id: string) => Promise<void>;
+  agentEnabled?: boolean;
 }) {
   const [context, setContext] = useState(initialContext);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -73,6 +78,12 @@ export function AssistantStudio({
   const [runs, setRuns] = useState<Run[]>([]);
   const [runTotal, setRunTotal] = useState(0);
   const [text, setText] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [command, setCommand] = useState<string | null>(null);
+  const [mode, setMode] = useState<"AGENT" | "LEGACY">("AGENT");
+  const uploadKey = useRef(crypto.randomUUID());
+  const fileInput = useRef<HTMLInputElement>(null);
+  const workflowContext = useRef<AssistantContext | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -94,6 +105,11 @@ export function AssistantStudio({
   function restoreDraft(scope: AssistantContext, id?: string) {
     draftKey.current = draftKeyFor(scope, id);
     setText(sessionStorage.getItem(draftKey.current) || "");
+    try {
+      const saved=JSON.parse(sessionStorage.getItem(`studio.assistant-request.${draftOwner}.${scope.project_id}`)||"null");
+      const body=saved?.body?JSON.parse(saved.body):null;
+      if(body?.mode==="AGENT"||body?.mode==="LEGACY"){setMode(body.mode);setCommand(body.command||null);}
+    }catch{/* Chỉ khôi phục bản nháp hợp lệ, server vẫn kiểm lại mọi request. */}
   }
   const alive = useRef(true);
   const controller = useRef(new AbortController());
@@ -111,6 +127,7 @@ export function AssistantStudio({
   }, [context]);
 
   async function loadHistory(append = false) {
+    if (!initialContext.project_id) return;
     const request = ++historySequence.current;
     const before =
       append && history.length ? `&before_id=${history.at(-1)!.id}` : "";
@@ -123,6 +140,7 @@ export function AssistantStudio({
     setMoreHistory(page.has_more);
   }
   async function loadRuns(append = false) {
+    if (!initialContext.project_id) return;
     const page = await api<{ items: Run[]; total: number }>(
       `/runs?project_id=${initialContext.project_id}&offset=${append ? runs.length : 0}&limit=50`,
       getOptions(),
@@ -284,11 +302,41 @@ export function AssistantStudio({
     localStorage.removeItem(storageKey);
   }
   async function send() {
-    if (!text.trim() || busy || pendingJob) return;
+    if ((!text.trim() && !files.length) || busy || pendingJob) return;
     const request = sequence.current;
     setBusy(true);
     setError("");
+    let bootstrapProject="";
     try {
+      if(files.length){
+        const body=new FormData();files.forEach(file=>body.append("files",file));
+        if(context.project_id)body.append("project_id",context.project_id);
+        const uploaded=await api<{project_id:string}>("/agent/attachments",{method:"POST",body,
+          headers:{"Idempotency-Key":uploadKey.current}});
+        if(!alive.current||request!==sequence.current)return;
+        setFiles([]);uploadKey.current=crypto.randomUUID();
+        if(!context.project_id){
+          bootstrapProject=uploaded.project_id;
+          localStorage.setItem("studio.project",uploaded.project_id);
+          const next={project_id:uploaded.project_id};
+          const created=await api<Conversation>("/conversations",{method:"POST",body:JSON.stringify({context:next}),
+            headers:{"Idempotency-Key":createKey.current}});
+          localStorage.setItem(`studio.conversation.${uploaded.project_id}`,created.id);
+          const question=text.trim()||"Kiểm tra các file vừa tải lên";
+          const body=JSON.stringify({conversation_id:created.id,context:created.context,text:question,
+            mode:"AGENT",command:command||(!text.trim()?"EXPLORE_DATA":null)});
+          const key=createKey.current+"-message";
+          const pendingKey=`studio.assistant-request.${draftOwner}.${uploaded.project_id}`;
+          sessionStorage.setItem(pendingKey,JSON.stringify({body,key}));
+          sessionStorage.setItem(draftKeyFor(next,created.id),question);
+          await api("/assistant/messages",{method:"POST",body,headers:{"Idempotency-Key":key}});
+          sessionStorage.removeItem(pendingKey);sessionStorage.removeItem(draftKeyFor(next,created.id));
+          if(!alive.current||request!==sequence.current)return;
+          await onUploadProject(uploaded.project_id);
+          return;
+        }
+      }
+      if(!context.project_id){setError("Tải CSV/Excel lên để chọn nguồn dữ liệu cho yêu cầu này.");return;}
       let active = conversation;
       if (!active) {
         const savedCreateKey = sessionStorage.getItem(
@@ -313,7 +361,9 @@ export function AssistantStudio({
       const body = JSON.stringify({
         conversation_id: active.id,
         context: active.context,
-        text: text.trim(),
+        text: text.trim() || "Kiểm tra các file vừa tải lên",
+        mode,
+        ...(mode==="AGENT"?{command:command||(!text.trim()?"EXPLORE_DATA":null)}:{}),
       });
       let previous = pendingRequest.current;
       if (!previous) {
@@ -339,11 +389,13 @@ export function AssistantStudio({
       pendingRequest.current = null;
       sessionStorage.removeItem(requestStorageKey);
       setText("");
+      setCommand(null);
       sessionStorage.removeItem(draftKey.current);
       await refreshMessages(active.id, request);
       await loadHistory();
       await waitForAnswer(accepted.job_id, active.id, request);
     } catch (err) {
+      if(bootstrapProject&&alive.current){await onUploadProject(bootstrapProject);return;}
       if (alive.current && request === sequence.current)
         setError(errorText(err));
     } finally {
@@ -431,6 +483,21 @@ export function AssistantStudio({
     }
   }
   const selectedRun = runs.find((r) => r.id === context.run_id);
+  async function agentNavigate(target:Suggestion,next:AssistantContext){
+    if(target!=="OPEN_EVIDENCE"||!next.run_id||!next.group_id){onNavigate(target,next);return;}
+    const request=++evidenceSequence.current;citationTrigger.current=document.activeElement as HTMLElement;
+    try{const result=await api<SourceEvidence>(`/runs/${next.run_id}/groups/${next.group_id}/evidence`,getOptions());
+      if(alive.current&&request===evidenceSequence.current)setEvidence(result);
+    }catch(err){if(alive.current&&request===evidenceSequence.current)setError(errorText(err));}
+  }
+  function attach(selected:FileList | File[] | null){
+    if(!selected)return;
+    const next=[...files,...Array.from(selected)];
+    if(next.length>5||next.some(f=>!(/\.(csv|xlsx)$/i).test(f.name)||f.size>20*1024*1024)){
+      setError("Đính kèm tối đa5file CSV/XLSX, mỗi file tối đa20MB.");return;
+    }
+    setError("");setFiles(next);uploadKey.current=crypto.randomUUID();
+  }
   return (
     <section className="assistant-studio" aria-label="Hội thoại có bằng chứng">
       <div className="assistant-toolbar">
@@ -445,16 +512,17 @@ export function AssistantStudio({
         </button>
         <details className="assistant-policy">
           <summary>
-            {cloudEnabled
+            {agentEnabled || cloudEnabled
               ? "AI theo chính sách workspace"
               : "Chế độ dữ kiện · Không gọi AI cloud"}
           </summary>
           <p>
             Dữ kiện lấy từ backend đã xác minh.{" "}
-            {cloudEnabled
+            {agentEnabled || cloudEnabled
               ? "Suy luận cloud cần policy và reservation riêng cho từng request."
               : "Suy luận cloud của Trợ lý đang tắt; không dùng quota Gemini còn lại."}
           </p>
+          <label>Xử lý yêu cầu<select aria-label="Chế độ hội thoại" value={mode} disabled={busy||!!pendingJob} onChange={e=>setMode(e.target.value as "AGENT"|"LEGACY")}><option value="AGENT">Thực hiện tác vụ dữ liệu</option><option value="LEGACY">Chỉ hỏi dữ kiện đã xác minh</option></select></label>
         </details>
       </div>
       <div className={`assistant-layout ${historyOpen ? "history-open" : ""}`}>
@@ -495,7 +563,7 @@ export function AssistantStudio({
         <div className="assistant-conversation">
           <div className="assistant-scroll">
             <p className="assistant-project">{projectName}</p>
-            <div className="assistant-controls">
+            {context.project_id && <div className="assistant-controls">
               <label>
                 Run làm ngữ cảnh
                 <select
@@ -560,7 +628,7 @@ export function AssistantStudio({
                   Xóa hội thoại
                 </button>
               </div>
-            </div>
+            </div>}
             {(context.group_id || context.case_id) && (
               <details>
                 <summary>Ngữ cảnh ngoại lệ · giữ đúng lượt đối soát</summary>
@@ -612,10 +680,8 @@ export function AssistantStudio({
                 </button>
               )}
               {!loading && !messages.length && (
-                <p>
-                  Chọn run hoặc mở từ một ngoại lệ để hỏi “Vì sao lệch?”. Bạn
-                  cũng có thể yêu cầu kiểm tra chuẩn bị đối soát.
-                </p>
+                <div className="agent-empty"><h2>Bạn muốn làm gì với dữ liệu hôm nay?</h2><p>Tải CSV/Excel lên hoặc mô tả yêu cầu bằng tiếng Việt.</p>
+                  <div className="agent-prompts">{[["Chuẩn hóa dữ liệu","PREPARE_NORMALIZATION"],["Đối soát hai file",null],["Tìm giao dịch",null],["Phân tích kết quả","SUMMARIZE_RESULTS"]].map(([title,action])=><button className="button secondary" key={title} onClick={()=>{setText(title!);setCommand(action);}}>{title}</button>)}</div></div>
               )}
               {messages.map((message) => (
                 <article
@@ -735,6 +801,8 @@ export function AssistantStudio({
                       </>
                     )
                   )}
+                  {message.role==="assistant"&&message.workflow_id&&<AgentWorkflowPanel id={message.workflow_id} canEdit={canEdit} onNavigate={(target,next)=>void agentNavigate(target,next)} onContext={next=>{workflowContext.current=next;}}/>}
+                  {message.role==="assistant"&&!message.answer&&!message.workflow_id&&<p>{message.text}</p>}
                 </article>
               ))}
             </div>
@@ -821,11 +889,16 @@ export function AssistantStudio({
           )}
           <form
             className="assistant-composer"
+            onDragOver={event=>{event.preventDefault();}}
+            onDrop={event=>{event.preventDefault();if(canEdit&&!busy)attach(event.dataTransfer.files);}}
             onSubmit={(event) => {
               event.preventDefault();
               void send();
             }}
           >
+            <input ref={fileInput} type="file" accept=".csv,.xlsx" multiple hidden onChange={e=>{attach(e.target.files);e.target.value="";}}/>
+            <button type="button" className="icon-button" aria-label="Đính kèm CSV hoặc Excel" disabled={!canEdit||busy} onClick={()=>fileInput.current?.click()}><Paperclip size={20}/></button>
+            {files.length>0&&<div className="agent-file-chips">{files.map((file,i)=><span key={`${file.name}:${i}`}>{file.name} · {Math.ceil(file.size/1024)}KB<button type="button" className="icon-button" aria-label={`Bỏ ${file.name}`} disabled={busy} onClick={()=>{setFiles(files.filter((_,n)=>n!==i));uploadKey.current=crypto.randomUUID();}}><X size={14}/></button></span>)}</div>}
             <label>
               Câu hỏi
               <textarea
@@ -833,17 +906,18 @@ export function AssistantStudio({
                 value={text}
                 onChange={(event) => {
                   setText(event.target.value);
+                  setCommand(null);
                   sessionStorage.setItem(draftKey.current, event.target.value);
                 }}
                 maxLength={2000}
                 rows={2}
-                placeholder="Vì sao lệch? / Tóm tắt kết quả đối soát / Đối soát ba file tháng 10"
+                placeholder="Tải file và giao việc: chuẩn hóa, đối soát, tra cứu hoặc giải thích…"
                 disabled={busy}
               />
             </label>
             <button
               className="button primary"
-              disabled={busy || loading || !!pendingJob || !text.trim()}
+              disabled={busy || loading || !!pendingJob || (!text.trim()&&!files.length)}
             >
               {busy ? (
                 <Spinner />

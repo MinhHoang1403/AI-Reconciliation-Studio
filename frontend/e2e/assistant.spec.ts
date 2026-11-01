@@ -97,6 +97,9 @@ async function openAssistant(page: Page, projectId: string) {
   await expect(
     dialog.getByRole("combobox", { name: "Run làm ngữ cảnh" }),
   ).toBeEnabled();
+  // Giữ regression luồng hỏi facts thủ công; Agent actions có suite riêng.
+  await dialog.locator(".assistant-policy summary").click();
+  await dialog.getByLabel("Chế độ hội thoại", {exact:true}).selectOption("LEGACY");
   return dialog;
 }
 async function ask(page: Page, text: string) {

@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from studio.access import Actor, require_editor
 from studio.agent_tools import (
     ExportAction,
+    GroupLookupAction,
+    GroupReference,
     JobReference,
     MappingAction,
     NormalizeAction,
@@ -145,6 +147,37 @@ def review_fingerprint(
                 )
         return digest([plan.proposal, refs])
     return digest(resource_id)
+
+
+def lock_review_sources(db: Session, actor: Actor, review: ReviewRequest) -> None:
+    """Cùng lock nguồn với approval/manual worker trước khi kiểm fingerprint và ghi quyết định."""
+    if review.kind == "MAPPING":
+        table = get_scoped(db, TableRow, review.resource_id, actor)
+        db.refresh(table, with_for_update=True)
+    elif review.kind == "RECONCILIATION":
+        ids = sorted(set(review.evidence_refs))
+        canonicals = list(
+            db.scalars(
+                select(CanonicalRow)
+                .where(
+                    CanonicalRow.workspace_id == actor.workspace_id,
+                    CanonicalRow.id.in_(ids),
+                )
+                .order_by(CanonicalRow.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        )
+        tables = sorted({c.source_table_id for c in canonicals})
+        list(
+            db.scalars(
+                select(TableRow)
+                .where(TableRow.id.in_(tables), TableRow.workspace_id == actor.workspace_id)
+                .order_by(TableRow.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        )
 
 
 def make_review(
@@ -600,6 +633,37 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
         row.state = "COMPLETED"
     elif intent.intent in {"EXPLAIN_RESULT", "SUMMARIZE_RESULTS"}:
         context.run_id = intent.run_id or context.run_id
+        if intent.intent == "EXPLAIN_RESULT" and intent.key_value:
+            try:
+                found = execute_tool(
+                    db,
+                    actor,
+                    GroupLookupAction(
+                        name="find_match_group",
+                        context=context.model_copy(update={"group_id": None, "case_id": None}),
+                        key_value=intent.key_value,
+                    ),
+                    row.id,
+                )
+            except DomainError as exc:
+                if exc.code not in {"INPUT_AMBIGUOUS", "INSUFFICIENT_EVIDENCE"}:
+                    raise
+                state.intent = intent.model_copy(
+                    update={"intent": "CLARIFY", "questions": [exc.message_vi]}
+                )
+                make_review(
+                    db,
+                    row,
+                    state,
+                    kind="CLARIFICATION",
+                    resource_id=row.id,
+                    question=exc.message_vi,
+                    reason="Cần xác định đúng nhóm kết quả.",
+                )
+                save(row, state)
+                return
+            assert isinstance(found, GroupReference)
+            context.group_id, context.case_id = found.group_id, None
         facts(intent.intent == "EXPLAIN_RESULT")
         row.state = "COMPLETED"
     elif intent.intent == "EXPORT_RESULT":

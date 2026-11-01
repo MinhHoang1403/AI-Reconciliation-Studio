@@ -6,7 +6,7 @@ from pydantic import Field
 from sqlalchemy.orm import Session
 
 from studio.access import Actor, require_editor
-from studio.assistant_tools import read_tool, scoped_context
+from studio.assistant_tools import group_for_key, read_tool, scoped_context
 from studio.contracts import Contract, DatasetProfile
 from studio.contracts.assistant import (
     AssistantContext,
@@ -26,6 +26,16 @@ from studio.repository import enqueue_job, get_scoped, project_for_table
 class QueryAction(Contract):
     name: Literal["query_dataset"]
     query: DataQuery
+
+
+class GroupLookupAction(Contract):
+    name: Literal["find_match_group"]
+    context: AssistantContext
+    key_value: str = Field(min_length=1, max_length=200)
+
+
+class GroupReference(Contract):
+    group_id: str
 
 
 class ProfileAction(Contract):
@@ -69,6 +79,7 @@ class ExportAction(Contract):
 AgentAction = Annotated[
     ToolRequest
     | QueryAction
+    | GroupLookupAction
     | ProfileAction
     | NormalizeAction
     | PlanAction
@@ -87,6 +98,7 @@ class JobReference(Contract):
 
 
 TOOL_ACCESS = {name: "READ" for name in get_args(ToolName)} | {
+    "find_match_group": "READ",
     "query_dataset": "READ",
     "get_dataset_profile": "READ",
     "run_normalization": "WRITE_APPROVED",
@@ -102,7 +114,7 @@ def execute_tool(
     actor: Actor,
     action: AgentAction,
     idempotency_key: str,
-) -> ToolResult | QueryResult | DatasetProfile | JobReference:
+) -> ToolResult | QueryResult | DatasetProfile | JobReference | GroupReference:
     """Kiểm quyền mỗi call; không commit để workflow/review/action công bố nguyên tử.
 
     Không có tool approve do model được gọi. Quyết định người dùng xử lý bằng API
@@ -117,6 +129,8 @@ def execute_tool(
         return read_tool(db, actor, action)
     if isinstance(action, QueryAction):
         return execute_query(db, actor, action.query)
+    if isinstance(action, GroupLookupAction):
+        return GroupReference(group_id=group_for_key(db, actor, action.context, action.key_value))
     scoped_context(db, actor, action.context)
     if isinstance(action, ProfileAction):
         table = get_scoped(db, TableRow, action.table_id, actor)

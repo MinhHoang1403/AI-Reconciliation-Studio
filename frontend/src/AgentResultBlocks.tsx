@@ -1,0 +1,139 @@
+import { useEffect, useRef, useState } from "react";
+import * as echarts from "echarts/core";
+import { BarChart } from "echarts/charts";
+import { AriaComponent, GridComponent, TooltipComponent } from "echarts/components";
+import { SVGRenderer } from "echarts/renderers";
+import { api } from "./api";
+import { Badge, DataTable, Modal, Notice, Spinner } from "./components";
+import { label } from "./reconciliationTypes";
+import type { AgentBlock, Chart, QueryResult } from "./agentTypes";
+import type { AssistantContext, Suggestion } from "./assistantTypes";
+import type { ColumnDef } from "@tanstack/react-table";
+echarts.use([BarChart, AriaComponent, GridComponent, TooltipComponent, SVGRenderer]);
+type SourceRef = {source_table_id:string;row:number;sheet:string};
+function QueryTable({ initial }: {
+    initial: QueryResult;
+}) {
+    const [data, setData] = useState(initial);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+    const [source, setSource] = useState<Record<string, unknown>[] | null>(null);
+    const [sourceRefs,setSourceRefs]=useState<SourceRef[]>([]);
+    const [sourceIndex,setSourceIndex]=useState(0);
+    const scope = useRef(0);
+    const alive = useRef(true);
+    useEffect(() => { alive.current = true; return () => { alive.current = false; scope.current++; }; }, []);
+    async function page(offset: number, sort = data.query.sort) {
+        const seq = ++scope.current;
+        setBusy(true);
+        setError("");
+        try {
+            const next = await api<QueryResult>("/agent/queries", { method: "POST",
+                body: JSON.stringify({ ...data.query, offset, sort }) });
+            if (alive.current && seq === scope.current)
+                setData(next);
+        }
+        catch (err) {
+            if (alive.current && seq === scope.current)
+                setError(String(err));
+        }
+        finally {
+            if (alive.current && seq === scope.current)
+                setBusy(false);
+        }
+    }
+    async function evidence(record: Record<string, unknown>, index=0) {
+        const refs = record.source_provenance as SourceRef[] | undefined;
+        const ref = refs?.[index];
+        if (!ref)
+            return;
+        const seq = ++scope.current;
+        setBusy(true);
+        setError("");
+        try {
+            const result = await api<{
+                rows: Record<string, unknown>[];
+            }>("/agent/source-rows", { method: "POST",
+                body: JSON.stringify({ project_id: data.query.project_id, table_id: ref.source_table_id, row: ref.row }) });
+            if (alive.current && seq === scope.current)
+                {setSource(result.rows);setSourceRefs(refs||[]);setSourceIndex(index);}
+        }
+        catch (err) {
+            if (alive.current && seq === scope.current)
+                setError(String(err));
+        }
+        finally {
+            if (alive.current && seq === scope.current)
+                setBusy(false);
+        }
+    }
+    return <section className="agent-table" aria-label="Kết quả truy vấn">
+    <p><strong>{data.total_count} kết quả</strong> · {data.input_count} dòng khớp điều kiện · <Badge status={data.verification_status}/></p>
+    {data.warnings.map(w => <p className="muted" key={w}>{w}</p>)}
+    {!data.evidence_complete && <Notice tone="warning">Bằng chứng hiển thị bị giới hạn; lineage gốc vẫn được lưu.</Notice>}
+    {error && <Notice tone="error">{error}</Notice>}
+    <DataTable rows={data.rows} columns={[...data.fields.map<ColumnDef<Record<string, unknown>>>(field => ({ id: field, accessorKey: field,
+                header: () => <button className="text-button" disabled={busy} onClick={() => void page(0, [{ field_id: field, descending: !data.query.sort.find(s => s.field_id === field)?.descending }])}>{field} ↕</button>,
+                cell: info => info.getValue() == null ? "—" : String(info.getValue()) })), {
+                id: "evidence", header: () => <span>Nguồn</span>, cell: info => <button className="text-button" disabled={busy || !Array.isArray(info.row.original.source_provenance)} onClick={() => void evidence(info.row.original)}>Xem dòng gốc</button>,
+            }]}/>
+    <div className="agent-pagination"><button className="button secondary" disabled={busy || !data.offset} onClick={() => void page(Math.max(0, data.offset - data.limit))}>Trước</button>
+      <span>Trang {Math.floor(data.offset / data.limit) + 1} · {data.rows.length} dòng hiển thị</span>
+      <button className="button secondary" disabled={busy || !data.truncated} onClick={() => void page(data.offset + data.limit)}>Tiếp</button>{busy && <Spinner />}</div>
+    <details><summary>Điều kiện và nguồn</summary><p>{data.query.filters.map(f => `${f.field_id} ${f.op} ${JSON.stringify(f.value)}`).join("; ") || "Toàn bộ nguồn"}</p><p>Tổng/đếm: toàn bộ dữ liệu khớp điều kiện.</p><small>{data.source_refs.join(" · ")}</small></details>
+    <Modal title="Dòng dữ liệu nguồn" open={source !== null} onOpenChange={open => {if(!open){scope.current++;setBusy(false);setSource(null);}}}>
+      <p>{sourceRefs.length} dòng nguồn trong bằng chứng hiển thị. Chọn từng dòng để xem chính xác.</p>
+      <div className="agent-pagination">{sourceRefs.map((ref,i)=><button className="button secondary" key={`${ref.source_table_id}:${ref.row}:${i}`} disabled={busy||i===sourceIndex} onClick={()=>void evidence({source_provenance:sourceRefs},i)}>{ref.sheet} · dòng {ref.row}</button>)}</div>
+      {source && <DataTable rows={source} columns={Object.keys(source[0] || {}).map(k => ({ accessorKey: k, header: k, cell: i => String(i.getValue() ?? "—") }))}/>}</Modal>
+  </section>;
+}
+function ResultChart({ data }: {
+    data: Chart;
+}) {
+    const root = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!root.current)
+            return;
+        const chart = echarts.init(root.current, undefined, { renderer: "svg" });
+        chart.setOption({ aria: { enabled: true }, grid: { left: 80, right: 20, bottom: 70, top: 20 },
+            tooltip: { trigger: "axis", renderMode: "richText", formatter: (params: unknown) => {
+                    const first = (params as {
+                        dataIndex: number;
+                    }[])[0];
+                    const point = data.points[first?.dataIndex];
+                    return point ? `${label(point.label)}: ${point.value} ${data.unit}` : "";
+                } }, xAxis: { type: "category", data: data.points.map(p => label(p.label)), axisLabel: { rotate: 20 } },
+            yAxis: { type: "value" }, series: [{ type: "bar", color: "#2563eb", data: data.points.map(p => ({ value: Number(p.value), name: p.value })) }] });
+        const observer = new ResizeObserver(() => chart.resize());
+        observer.observe(root.current);
+        return () => { observer.disconnect(); chart.dispose(); };
+    }, [data]);
+    return <section className="agent-chart"><h4>{data.title}</h4><p>{data.unit} · {data.population_definition} ({data.population}) · {data.verification_status}</p>
+    {data.period_start && <p>{data.period_start} → {data.period_end} · {data.timezone}</p>}
+    {data.completeness !== "COMPLETE" && <Notice tone="warning">Biểu đồ chỉ hiển thị các nhóm đã tải.</Notice>}
+    <div className="result-chart" ref={root} role="img" aria-label={data.title}/>
+    <details><summary>Giá trị chính xác và nguồn</summary><ul>{data.points.map(p => <li key={p.label}>{label(p.label)}: {p.value} {data.unit}</li>)}</ul><small>{data.source_refs.join(" · ")}</small></details></section>;
+}
+export function AgentResultBlocks({ blocks, context, onNavigate }: {
+    blocks: AgentBlock[];
+    context: AssistantContext;
+    onNavigate: (target: Suggestion, context: AssistantContext) => void;
+}) {
+    return <div className="agent-results">{blocks.map((block, i) => {
+            if (block.type === "progress")
+                return <p key={i}>{block.text}</p>;
+            if (block.type === "table")
+                return <QueryTable key={i} initial={block.result}/>;
+            if (block.type === "chart")
+                return <ResultChart key={i} data={block}/>;
+            if (block.type === "download")
+                return <a className="button secondary" key={i} href={`/api/exports/${block.export_id}/download`}>Tải {block.format.toUpperCase()}</a>;
+            if (block.type === "dataset_summary")
+                return <section className="card" key={i}><h4>{block.name}</h4><Badge status={block.status}/><p>{block.rows} dòng · {block.invalid_rows} dòng lỗi</p><p>Phép biến đổi đã duyệt: {Array.from(new Set(block.transformations)).join(", ")}</p><button className="text-button" onClick={() => onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}>Kiểm tra dữ liệu trước/sau</button></section>;
+            const snapshot = block.result.snapshot || block.result.run?.metric_snapshot;
+            return <section className="agent-facts" key={i}>{snapshot && <><h4>Kết quả đã xác minh</h4><p>Kỳ {snapshot.period_start} → {snapshot.period_end} · {snapshot.timezone}</p><p>{snapshot.eligible_definition}</p><p>Tỷ lệ khớp: {snapshot.full_match_rate.percent ?? "N/A"}{snapshot.full_match_rate.percent !== null ? "%" : ""} ({snapshot.full_match_rate.numerator}/{snapshot.full_match_rate.denominator})</p>{snapshot.monetary.map(m => <p key={m.metric_id}>{m.metric_id}: lệch có dấu {m.signed_variance} · lệch tuyệt đối {m.absolute_variance} {m.currency}</p>)}</>}
+      {block.answer?.lines.map((line, j) => <p key={j}>{line.text}</p>)}
+      {block.result.group && <><p>{label(block.result.group.linkage_state)} · {label(block.result.group.comparison_state)}</p><p>Nguyên nhân nghiệp vụ chưa được chứng minh nếu thiếu chứng từ hoặc quy định.</p></>}
+      <button className="text-button" onClick={() => onNavigate(block.result.group ? "OPEN_EVIDENCE" : "OPEN_REPORT", context)}>Mở kết quả và bằng chứng</button></section>;
+        })}</div>;
+}

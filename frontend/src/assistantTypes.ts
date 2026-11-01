@@ -62,6 +62,7 @@ export type Conversation = {
   archived: boolean;
 };
 export type AssistantMessage = {
+  workflow_id?: string | null;
   id: string;
   job_id: string;
   role: "user" | "assistant";

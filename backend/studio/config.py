@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     agent_max_steps: int = Field(default=12, ge=1, le=12)
     agent_max_model_calls: int = Field(default=6, ge=0, le=8)
     agent_max_tool_calls: int = Field(default=5, ge=1, le=5)
+    agent_query_timeout_seconds: float = Field(default=5.0, ge=0.1, le=30.0)
     llama_cloud_api_key: SecretStr = SecretStr("")
     allow_cloud_parsing: bool = False
     cloud_parser_request_budget: int = Field(default=0, ge=0)

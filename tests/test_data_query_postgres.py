@@ -162,5 +162,17 @@ def test_agent_tool_registry_reuses_transactions_and_denies_viewer_write(pg):  #
             ),
         )
         assert response.status_code == 200 and response.json()["total_count"] == 3
+        source = client.post(
+            "/api/agent/source-rows", json=dict(project_id=pid, table_id=table.id, row=3)
+        )
+        assert source.status_code == 200
+        assert "000702" in source.text and "000701" not in source.text
+        assert (
+            client.post(
+                "/api/agent/source-rows",
+                json=dict(project_id="foreign-project", table_id=table.id, row=3),
+            ).status_code
+            == 404
+        )
     with pytest.raises(ValidationError):
         TypeAdapter(AgentAction).validate_python(dict(name="approve_mapping", actor_id="owner"))

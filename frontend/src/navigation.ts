@@ -27,7 +27,7 @@ const pages: Page[] = [
 /** URLs contain identifiers only. The API still authorizes every restored resource. */
 export function readLocation(): Location {
   const query = new URLSearchParams(window.location.hash.slice(1));
-  const page = pages.find((p) => p === query.get("page")) || "home";
+  const page = pages.find((p) => p === query.get("page")) || "assistant";
   const id = (key: string) => {
     const value = query.get(key) || "";
     return /^[a-zA-Z0-9_-]{1,64}$/.test(value) ? value : "";

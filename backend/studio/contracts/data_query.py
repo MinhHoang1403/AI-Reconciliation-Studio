@@ -56,5 +56,16 @@ class QueryResult(Contract):
     verification_status: Literal["RAW_UNVERIFIED", "CANONICAL", "VERIFIED", "PARTIAL_VERIFIED"]
     source_refs: list[str]
     measure_units: dict[str, str] = Field(default_factory=dict)
+    quality_status: str | None = None
     evidence_complete: bool = True
     warnings: list[str] = Field(default_factory=list)
+
+
+class SourceRowRequest(Contract):
+    project_id: Identifier
+    table_id: Identifier
+    row: int = Field(ge=1, le=1000000)
+
+
+class SourceRowResult(Contract):
+    rows: list[dict[str, JsonValue]] = Field(max_length=1)

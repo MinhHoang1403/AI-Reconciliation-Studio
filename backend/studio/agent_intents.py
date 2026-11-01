@@ -33,12 +33,43 @@ def validate_intents(
             raise DomainError("AI_INVALID_SOURCE", "AI chọn nguồn không có trong context.")
         if intent.run_id and intent.run_id not in catalogue.run_ids:
             raise DomainError("AI_INVALID_SOURCE", "AI chọn run ngoài context.")
+        if intent.key_value and intent.key_value not in goal and not user_confirmed:
+            raise DomainError("INPUT_AMBIGUOUS", "Mã cần giải thích chưa có trong yêu cầu.")
         if intent.planning_request:
             p = intent.planning_request
             if {p.left.canonical_id, p.right.canonical_id} - canonical.keys():
                 raise DomainError("AI_INVALID_SOURCE", "Nguồn Planner không thuộc context.")
             # Guard xác nhận năm; không dùng regex làm cơ chế hiểu intent chính.
             confirmed = catalogue.confirmed_plan
+            if (
+                p.timezone
+                and p.timezone not in goal
+                and not user_confirmed
+                and (confirmed is None or p.timezone != confirmed.timezone)
+            ):
+                raise DomainError("INPUT_AMBIGUOUS", "Cần xác nhận múi giờ của kỳ đối soát.")
+            for side in ("left", "right"):
+                source = getattr(p, side)
+                old = getattr(confirmed, side) if confirmed else None
+                for field in ("coverage_start", "coverage_end", "snapshot_at", "settlement_due_at"):
+                    value_at = getattr(source, field)
+                    if (
+                        value_at is not None
+                        and not user_confirmed
+                        and not (old and value_at == getattr(old, field))
+                        and value_at.isoformat() not in goal
+                        and value_at.isoformat().replace("+00:00", "Z") not in goal
+                    ):
+                        raise DomainError(
+                            "INPUT_AMBIGUOUS", "Cần xác nhận coverage và thời điểm chốt nguồn."
+                        )
+                if (
+                    source.completeness == "CONFIRMED"
+                    and not user_confirmed
+                    and not (old and old.completeness == source.completeness)
+                    and "day du" not in plain_question(goal)
+                ):
+                    raise DomainError("INPUT_AMBIGUOUS", "Cần xác nhận dữ liệu nguồn đầy đủ.")
             for value in (p.period_start, p.period_end):
                 if value and str(value.year) not in goal and not confirmed and not user_confirmed:
                     raise DomainError("INPUT_AMBIGUOUS", "Cần xác nhận năm của kỳ đối soát.")
@@ -125,7 +156,9 @@ def interpret_requests(
                 "equivalent to completed. "
                 "Paid queries require paid_status_fields supplied by approved semantics; "
                 "otherwise CLARIFY. "
-                "EXPLAIN_RESULT reads verified facts, never infers fees/causes. For "
+                "EXPLAIN_RESULT uses key_value copied EXACTLY from a user-mentioned transaction "
+                "ID, or the existing group/case context. It reads verified facts, never infers "
+                "fees/causes. For "
                 "transfers, raw edits, "
                 "fake matches or unsupported business actions choose UNSUPPORTED. "
                 "Return JSON ONLY matching this schema: "

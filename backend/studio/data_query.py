@@ -1,5 +1,6 @@
 """Compile truy vấn allowlist trên artifact đã kiểm quyền; không nhận SQL hoặc path."""
 
+import time
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -36,6 +37,7 @@ class QuerySource:
     evidence: list[str]
     status: str
     money: dict[str, tuple[str, str]]
+    quality_status: str | None = None
 
 
 def _source(db: Session, actor: Actor, query: DataQuery) -> QuerySource:
@@ -74,12 +76,23 @@ def _source(db: Session, actor: Actor, query: DataQuery) -> QuerySource:
             frame = frame.unnest("record_payload")
         else:
             fields = [c["id"] for c in table.parsed_contract["columns"]]
+            frame = frame.with_columns(
+                pl.concat_list(
+                    pl.struct(
+                        pl.lit(table.id).alias("source_table_id"),
+                        pl.col("_source_row").alias("row"),
+                        pl.col("_source_row_id").alias("source_row_id"),
+                        pl.lit(table.sheet).alias("sheet"),
+                    )
+                ).alias("source_provenance")
+            )
         return QuerySource(
             frame,
             fields,
             [artifact.id, table.id],
             "CANONICAL" if canonical else "RAW_UNVERIFIED",
             money,
+            canonical.quality_status if canonical else None,
         )
     run = get_scoped(db, RunRow, query.source_id, actor)
     if run.project_id != query.project_id:
@@ -99,7 +112,7 @@ def _source(db: Session, actor: Actor, query: DataQuery) -> QuerySource:
                     ExceptionRow.project_id == query.project_id,
                 )
                 .order_by(ExceptionRow.id)
-                .limit(settings.max_rows + 1)
+                .limit(min(settings.max_rows, 100000) + 1)
             )
         )
         frame = pl.DataFrame(
@@ -161,15 +174,50 @@ def json_value(value: Any) -> JsonValue:
     raise DomainError("QUERY_TYPE_UNSUPPORTED", "Kết quả có kiểu chưa được hỗ trợ an toàn.")
 
 
+def _collect_bounded(frame: pl.LazyFrame, deadline: float) -> pl.DataFrame:
+    """Native cancellable query trên Polars đã pin; deadline chung cho mọi collect/query.
+
+    cancel là cooperative của engine, không phải kill thread/process. Row/column/operation
+    caps vẫn bắt buộc; không dùng deadline thay giới hạn bộ nhớ/đầu vào.
+    """
+    if time.monotonic() >= deadline:
+        raise DomainError("QUERY_TIMEOUT", "Truy vấn vượt thời gian; chưa trả kết quả đầy đủ.", 409)
+    query = frame.collect(background=True, engine="in-memory")
+    try:
+        while time.monotonic() < deadline:
+            result = query.fetch()
+            if result is not None:
+                return result
+            time.sleep(0.01)
+        raise DomainError("QUERY_TIMEOUT", "Truy vấn vượt thời gian; chưa trả kết quả đầy đủ.", 409)
+    finally:
+        query.cancel()
+
+
 def execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
+    """Fail closed với lỗi tính toán/precision, không công bố một phần như tổng đầy đủ."""
+    try:
+        return _execute_query(db, actor, query)
+    except pl.exceptions.PolarsError as exc:
+        raise DomainError(
+            "QUERY_EXECUTION_FAILED", "Truy vấn không thực hiện được an toàn."
+        ) from exc
+
+
+def _execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
     """Đếm/aggregate ALL_MATCHING trước paging; raw không được báo KPI verified.
 
     Tối đa100k input,50 output/page,8predicates,5aggregates. Chỉ field catalogue
     và phép toán xác định; không join tự do, không suy PAID từ COMPLETED.
     """
+    deadline = time.monotonic() + settings.agent_query_timeout_seconds
     source = _source(db, actor, query)
+
+    def collect(frame: pl.LazyFrame) -> pl.DataFrame:
+        return _collect_bounded(frame, deadline)
+
     frame = source.frame
-    count = frame.select(pl.len()).collect().item()
+    count = collect(frame.select(pl.len())).item()
     if count > min(settings.max_rows, 100000):
         raise DomainError(
             "QUERY_ROW_LIMIT", "Nguồn vượt giới hạn truy vấn; chưa trả kết quả đầy đủ."
@@ -231,7 +279,7 @@ def execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
                     "lte": col <= value,
                 }[rule.op]
         frame = frame.filter(expr.fill_null(False))
-    matching = frame.select(pl.len()).collect().item()
+    matching = collect(frame.select(pl.len())).item()
     fields = query.select_fields or source.fields[:20]
     units = {}
     if query.aggregations:
@@ -259,8 +307,7 @@ def execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
                         "QUERY_CURRENCY_REQUIRED", "Chọn cột currency để kiểm tra tổng tiền."
                     )
                 currencies = (
-                    frame.select(pl.col(query.currency_field).unique())
-                    .collect()
+                    collect(frame.select(pl.col(query.currency_field).unique()))
                     .to_series()
                     .to_list()
                 )
@@ -286,7 +333,7 @@ def execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
             else frame.select(expressions)
         )
         fields = [f for f in frame.collect_schema().names() if f != "source_provenance"]
-        total = frame.select(pl.len()).collect().item()
+        total = collect(frame.select(pl.len())).item()
     else:
         if query.group_by:
             raise DomainError("QUERY_AGGREGATION_REQUIRED", "group_by cần aggregate rõ ràng.")
@@ -313,9 +360,9 @@ def execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
         )
         if f in frame.collect_schema() and f not in fields
     ]
-    records = (
-        frame.select(fields + evidence_fields).slice(query.offset, query.limit).collect().to_dicts()
-    )
+    records = collect(
+        frame.select(fields + evidence_fields).slice(query.offset, query.limit)
+    ).to_dicts()
     evidence_complete = True
     for row in records:
         lineage = row.get("source_provenance")
@@ -339,11 +386,17 @@ def execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
         verification_status=source.status,
         source_refs=source.evidence,
         measure_units=units,
+        quality_status=source.quality_status,
         evidence_complete=evidence_complete,
         warnings=["Tổng/đếm áp dụng toàn bộ dữ liệu khớp điều kiện, không chỉ trang hiện tại."]
         + (
             ["Dữ liệu raw chưa được xác nhận ngữ nghĩa."]
             if source.status == "RAW_UNVERIFIED"
+            else []
+        )
+        + (
+            ["Nguồn canonical còn lỗi/thiếu dữ liệu; đây chưa phải KPI đối soát đã xác minh."]
+            if source.quality_status and source.quality_status != "READY"
             else []
         ),
     )
