@@ -12,7 +12,7 @@ from studio.contracts import WorkspacePolicy
 from studio.contracts.agent import AgentIntent, IntentBatch, IntentCatalogue
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-1"
+INTENT_REVISION = "agent-intent-2"
 
 
 def validate_intents(
@@ -89,6 +89,11 @@ def validate_intents(
                 and q.source_id not in catalogue.run_ids
             ):
                 raise DomainError("AI_INVALID_SOURCE", "Query sai nguồn.")
+            if q.metric_id and (
+                q.source_kind != "VERIFIED_RUN"
+                or q.metric_id not in catalogue.verified_metric_ids
+            ):
+                raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ tiêu truy vấn chưa được duyệt.")
             for predicate in q.filters:
                 values = predicate.value if isinstance(predicate.value, list) else [predicate.value]
                 for filter_value in values:
@@ -154,6 +159,11 @@ def interpret_requests(
                 "money is decimal "
                 "strings; total/aggregate must apply ALL_MATCHING. paid is never "
                 "equivalent to completed. "
+                "For verified group queries use verified_run_fields. Missing on left A but "
+                "present on right B means left_member_count eq 0 AND right_member_count gt 0 "
+                "AND linkage_state eq UNMATCHED; pending/invalid are not confirmed missing. "
+                "For amount variance use absolute_variance (delta is signed L-R), selecting "
+                "an explicit metric_id from verified_metric_ids; no metric guessing. "
                 "Paid queries require paid_status_fields supplied by approved semantics; "
                 "otherwise CLARIFY. "
                 "EXPLAIN_RESULT uses key_value copied EXACTLY from a user-mentioned transaction "

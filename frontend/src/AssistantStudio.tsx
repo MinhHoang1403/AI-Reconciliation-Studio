@@ -101,6 +101,14 @@ export function AssistantStudio({
   );
   const [historyOpen, setHistoryOpen] = useState(false);
   const [contextOpen,setContextOpen]=useState(false);
+  const [sourceLabel,setSourceLabel]=useState<{id:string;name:string}|null>(null);
+  useEffect(()=>{
+    const controller=new AbortController();
+    if(context.dataset_id)void api<{id:string;name:string}>(`/datasets/${context.dataset_id}`,{signal:controller.signal})
+      .then(data=>{if(!controller.signal.aborted)setSourceLabel(data);})
+      .catch(()=>{});
+    return()=>controller.abort();
+  },[context.project_id,context.dataset_id]);
   const [historySearch,setHistorySearch]=useState("");
   const historyTrigger=useRef<HTMLElement|null>(null);
   const composerInput=useRef<HTMLTextAreaElement>(null);
@@ -541,7 +549,7 @@ export function AssistantStudio({
           Lịch sử
         </button>
         <div className="assistant-toolbar-actions">
-          {context.project_id&&<button className="context-chip" data-run-id={context.run_id||""} aria-label="Đổi ngữ cảnh phân tích" onClick={()=>setContextOpen(true)}>{context.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:"Dữ liệu dự án"}</button>}
+          {context.project_id&&<button className="context-chip" data-run-id={context.run_id||""} data-dataset-id={context.dataset_id||""} aria-label="Đổi ngữ cảnh phân tích" title={context.dataset_id&&sourceLabel?.id===context.dataset_id?sourceLabel.name:undefined} onClick={()=>setContextOpen(true)}>{context.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:context.dataset_id?(sourceLabel?.id===context.dataset_id?sourceLabel.name:"Nguồn đang xem"):"Dữ liệu dự án"}</button>}
           {context.project_id&&<button className="icon-button" aria-label="Hội thoại mới" title="Hội thoại mới" disabled={busy||loading} onClick={()=>newConversation()}><MessageSquarePlus size={18}/></button>}
           {conversation&&<details className="assistant-menu"><summary aria-label="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary><button className="text-button" disabled={busy||!!pendingJob} onClick={()=>setConfirmDelete(true)}><Trash2 size={15}/>Xóa hội thoại</button></details>}
         <details className="assistant-policy">

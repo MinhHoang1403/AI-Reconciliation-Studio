@@ -38,6 +38,7 @@ class DataQuery(Contract):
     null_policy: Literal["PRESERVE"] = "PRESERVE"
     result_scope: Literal["ALL_MATCHING"] = "ALL_MATCHING"
     currency_field: Identifier | None = None
+    metric_id: Identifier | None = None
 
 
 class QueryResult(Contract):

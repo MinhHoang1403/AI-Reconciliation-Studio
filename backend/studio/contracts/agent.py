@@ -90,6 +90,8 @@ class IntentCatalogue(Contract):
     datasets: list[DatasetContext] = Field(max_length=5)
     run_ids: list[str] = Field(default_factory=list, max_length=20)
     confirmed_plan: ReconciliationPlan | None = None
+    verified_run_fields: list[str] = Field(default_factory=list)
+    verified_metric_ids: list[str] = Field(default_factory=list)
 
 
 class IntentBatch(Contract):

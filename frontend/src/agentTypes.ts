@@ -45,6 +45,7 @@ export type Query = {
     null_policy: "PRESERVE";
     result_scope: "ALL_MATCHING";
     currency_field: string | null;
+    metric_id?: string | null;
 };
 export type QueryResult = {
     query: Query;

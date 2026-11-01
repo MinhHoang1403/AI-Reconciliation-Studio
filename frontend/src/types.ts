@@ -191,6 +191,8 @@ export interface WorkspaceSettings {
 }
 
 export const statusText: Record<string, string> = {
+  RAW_UNVERIFIED: "Nguồn gốc chưa xác nhận",
+  CANONICAL: "Dữ liệu đã chuẩn hóa",
   UPLOADED: "Đã tải lên",
   PARSING: "Đang đọc",
   PARSED: "Đã đọc",

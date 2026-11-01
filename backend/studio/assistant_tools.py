@@ -163,7 +163,32 @@ def agent_catalogue(
         rule = get_scoped(db, ReconciliationContractRow, run.contract_id, actor)
         confirmed = ReconciliationContract.model_validate(rule.definition).plan
     return IntentCatalogue(
-        context=context, datasets=sources, run_ids=runs, confirmed_plan=confirmed
+        context=context,
+        datasets=sources,
+        run_ids=runs,
+        confirmed_plan=confirmed,
+        verified_run_fields=(
+            [
+                "group_id",
+                "linkage_state",
+                "comparison_state",
+                "left_member_count",
+                "right_member_count",
+                "metric_id",
+                "currency",
+                "unit",
+                "left_amount",
+                "right_amount",
+                "delta",
+                "absolute_variance",
+                "tolerance",
+            ]
+            if confirmed
+            else []
+        ),
+        verified_metric_ids=[m.metric_id for m in confirmed.comparison_metrics]
+        if confirmed
+        else [],
     )
 
 

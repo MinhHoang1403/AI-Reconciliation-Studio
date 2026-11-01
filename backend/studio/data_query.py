@@ -15,11 +15,13 @@ from studio.access import Actor
 from studio.config import settings
 from studio.contracts import CanonicalDataset, SchemaDefinition
 from studio.contracts.data_query import DataQuery, QueryResult
+from studio.contracts.reconciliation import MatchGroup, ReconciliationContract
 from studio.database import (
     ArtifactRow,
     CanonicalRow,
     ExceptionRow,
     MembershipRow,
+    ReconciliationContractRow,
     RunRow,
     SchemaRow,
     TableRow,
@@ -40,10 +42,115 @@ class QuerySource:
     quality_status: str | None = None
 
 
-def _source(db: Session, actor: Actor, query: DataQuery) -> QuerySource:
+VERIFIED_FIELDS = [
+    "group_id",
+    "linkage_state",
+    "comparison_state",
+    "left_member_count",
+    "right_member_count",
+]
+VERIFIED_MONEY_FIELDS = ["left_amount", "right_amount", "delta", "absolute_variance", "tolerance"]
+
+
+def _verified_source(
+    db: Session, actor: Actor, run: RunRow, query: DataQuery, deadline: float
+) -> QuerySource:
+    """Read immutable verified members/comparisons, never recompute a match or amount.
+
+    One output row per group. A selected approved metric is mandatory for money;
+    missing comparisons remain null. Decode only a bounded artifact with a common
+    deadline, infer exact Decimal scale from every value (no sampling/float/rounding).
+    """
+    rule = get_scoped(db, ReconciliationContractRow, run.contract_id, actor)
+    plan = ReconciliationContract.model_validate(rule.definition).plan
+    assert run.metric_snapshot is not None
+    metric = next((m for m in plan.comparison_metrics if m.metric_id == query.metric_id), None)
+    if query.metric_id and metric is None:
+        raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ tiêu không thuộc quy tắc đã duyệt.")
+    frame = pl.scan_parquet(result_path(run))
+    cap = min(settings.max_rows, 100000)
+    encoded = _collect_bounded(frame.select("group_json").limit(cap + 1), deadline)
+    if encoded.height > cap:
+        raise DomainError("QUERY_ROW_LIMIT", "Run vượt giới hạn truy vấn an toàn.")
+    records = []
+    for value in encoded.get_column("group_json"):
+        if time.monotonic() >= deadline:
+            raise DomainError("QUERY_TIMEOUT", "Truy vấn vượt thời gian; chưa trả kết quả.", 409)
+        group = MatchGroup.model_validate_json(value)
+        row: dict[str, Any] = dict(
+            group_id=group.id,
+            linkage_state=group.linkage_state,
+            comparison_state=group.comparison_state,
+            left_member_count=sum(m.side == "left" for m in group.members),
+            right_member_count=sum(m.side == "right" for m in group.members),
+            source_provenance=[
+                {
+                    **e.model_dump(),
+                    "canonical_id": m.canonical_id,
+                    "record_id": m.record_id,
+                    "side": m.side,
+                }
+                for m in group.members
+                for e in m.evidence
+            ],
+        )
+        if metric:
+            matches = [c for c in group.comparisons if c.metric_id == metric.metric_id]
+            if len(matches) > 1 or any(
+                c.currency != metric.currency or c.unit != metric.unit for c in matches
+            ):
+                raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ tiêu kết quả không nhất quán.")
+            comparison = matches[0] if matches else None
+            row.update(metric_id=metric.metric_id, currency=metric.currency, unit=metric.unit)
+            row.update(
+                {f: getattr(comparison, f) if comparison else None for f in VERIFIED_MONEY_FIELDS}
+            )
+        records.append(row)
+    schema: dict[str, Any] = {f: pl.String for f in VERIFIED_FIELDS[:3]}
+    schema.update(
+        left_member_count=pl.UInt32,
+        right_member_count=pl.UInt32,
+        source_provenance=pl.List(
+            pl.Struct(
+                {
+                    "source_table_id": pl.String,
+                    "source_row_id": pl.String,
+                    "sheet": pl.String,
+                    "row": pl.Int64,
+                    "canonical_id": pl.String,
+                    "record_id": pl.String,
+                    "side": pl.String,
+                }
+            )
+        ),
+    )
+    fields = VERIFIED_FIELDS.copy()
+    money = {}
+    if metric:
+        for field in VERIFIED_MONEY_FIELDS:
+            values = [r[field] for r in records if r[field] is not None]
+            scale = max((max(0, -v.as_tuple().exponent) for v in values), default=0)
+            if scale > 38 or any(v.adjusted() + 1 + scale > 38 for v in values):
+                raise DomainError("QUERY_PRECISION_LIMIT", "Không thể giữ chính xác số tiền.")
+            schema[field] = pl.Decimal(38, scale)
+            money[field] = (metric.currency, metric.unit)
+        schema.update(metric_id=pl.String, currency=pl.String, unit=pl.String)
+        fields += ["metric_id", "currency", "unit", *VERIFIED_MONEY_FIELDS]
+    return QuerySource(
+        pl.DataFrame(records, schema=schema).lazy(),
+        fields,
+        [run.id, run.metric_snapshot["id"]],
+        run.status,
+        money,
+    )
+
+
+def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> QuerySource:
     """Mỗi truy vấn kiểm lại actor/project/artifact/checksum, không tin IDs model chọn."""
     if db.get(MembershipRow, (actor.workspace_id, actor.id)) is None:
         raise DomainError("RESOURCE_NOT_FOUND", "Quyền truy cập không còn hợp lệ.", 404)
+    if query.metric_id and query.source_kind != "VERIFIED_RUN":
+        raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ chọn metric cho kết quả đã xác minh.")
     if query.source_kind in {"RAW_PREVIEW", "CANONICAL"}:
         canonical = None
         if query.source_kind == "CANONICAL":
@@ -100,8 +207,7 @@ def _source(db: Session, actor: Actor, query: DataQuery) -> QuerySource:
     if run.status not in {"VERIFIED", "PARTIAL_VERIFIED"} or run.metric_snapshot is None:
         raise DomainError("INSUFFICIENT_EVIDENCE", "Run chưa được xác minh.", 409)
     if query.source_kind == "VERIFIED_RUN":
-        frame = pl.scan_parquet(result_path(run))
-        fields = ["group_id", "linkage_state", "comparison_state"]
+        return _verified_source(db, actor, run, query, deadline)
     else:
         cases = list(
             db.scalars(
@@ -211,7 +317,7 @@ def _execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
     và phép toán xác định; không join tự do, không suy PAID từ COMPLETED.
     """
     deadline = time.monotonic() + settings.agent_query_timeout_seconds
-    source = _source(db, actor, query)
+    source = _source(db, actor, query, deadline)
 
     def collect(frame: pl.LazyFrame) -> pl.DataFrame:
         return _collect_bounded(frame, deadline)

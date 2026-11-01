@@ -176,3 +176,100 @@ def test_agent_tool_registry_reuses_transactions_and_denies_viewer_write(pg):  #
         )
     with pytest.raises(ValidationError):
         TypeAdapter(AgentAction).validate_python(dict(name="approve_mapping", actor_id="owner"))
+
+
+def test_verified_query_missing_members_and_decimal_variance(pg):  # noqa: F811
+    from studio.assistant_tools import agent_catalogue
+    from studio.contracts.assistant import AssistantContext
+    from test_postgres import drain
+    from test_reconciliation_postgres import create_approved_run
+
+    client, factory, worker = pg
+    pid, plan, _, queued = create_approved_run(pg)
+    drain(factory, worker)
+    run_id = queued["run_id"]
+    actor = Actor("test-owner", "demo", "owner")
+    base = dict(project_id=pid, source_kind="VERIFIED_RUN", source_id=run_id)
+    with factory() as db:
+        catalogue = agent_catalogue(db, actor, AssistantContext(project_id=pid, run_id=run_id), [])
+        assert "left_member_count" in catalogue.verified_run_fields
+        assert catalogue.verified_metric_ids == ["delivery_charge"]
+        missing = execute_query(
+            db,
+            actor,
+            DataQuery(
+                **base,
+                filters=[
+                    dict(field_id="left_member_count", op="eq", value="0"),
+                    dict(field_id="right_member_count", op="gt", value="0"),
+                    dict(field_id="linkage_state", op="eq", value="UNMATCHED"),
+                ],
+            ),
+        )
+        assert missing.total_count == 1
+        assert missing.rows[0]["left_member_count"] == 0
+        assert missing.rows[0]["right_member_count"] == 1
+        assert {e["side"] for e in missing.rows[0]["source_provenance"]} == {"right"}
+        variance = execute_query(
+            db,
+            actor,
+            DataQuery(
+                **base,
+                metric_id="delivery_charge",
+                filters=[dict(field_id="absolute_variance", op="gt", value="2.50")],
+            ),
+        )
+        assert variance.total_count == 1
+        row = variance.rows[0]
+        assert Decimal(row["left_amount"]) == Decimal("12.75")
+        assert Decimal(row["right_amount"]) == Decimal("10.00")
+        assert Decimal(row["delta"]) == Decimal("2.75")
+        assert (
+            row["currency"] == "VND" and row["left_member_count"] == row["right_member_count"] == 1
+        )
+        assert {e["side"] for e in row["source_provenance"]} == {"left", "right"}
+        assert {e["row"] for e in row["source_provenance"]} == {3}
+        unmatched = execute_query(
+            db,
+            actor,
+            DataQuery(
+                **base,
+                metric_id="delivery_charge",
+                filters=[dict(field_id="linkage_state", op="eq", value="UNMATCHED")],
+            ),
+        )
+        assert unmatched.total_count == 2
+        assert all(
+            r["left_amount"] is None and r["right_amount"] is None and r["delta"] is None
+            for r in unmatched.rows
+        )
+        summed = execute_query(
+            db,
+            actor,
+            DataQuery(
+                **base,
+                metric_id="delivery_charge",
+                currency_field="currency",
+                aggregations=[dict(op="sum_decimal", field_id="absolute_variance")],
+            ),
+        )
+        assert Decimal(summed.rows[0]["sum_decimal_absolute_variance_0"]) == Decimal("2.75")
+        assert summed.rows[0]["null_count_0"] == 2
+        assert len(summed.rows[0]["source_provenance"]) == 6
+        for update in (
+            dict(metric_id="invented"),
+            dict(select_fields=["delta"]),
+            dict(project_id="foreign"),
+        ):
+            with pytest.raises(DomainError):
+                execute_query(db, actor, DataQuery.model_validate(base | update))
+        with pytest.raises(DomainError, match="QUERY_CURRENCY_REQUIRED"):
+            execute_query(
+                db,
+                actor,
+                DataQuery(
+                    **base,
+                    metric_id="delivery_charge",
+                    aggregations=[dict(op="sum_decimal", field_id="delta")],
+                ),
+            )

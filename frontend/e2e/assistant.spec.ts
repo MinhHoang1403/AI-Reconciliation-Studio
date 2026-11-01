@@ -84,6 +84,7 @@ test("explicit report run outside the bounded history page is never replaced by 
   await expect(page.getByLabel("Lần đối soát", { exact: true })).toHaveValue(
     target,
   );
+  await page.unrouteAll({behavior:"wait"});
 });
 async function openAssistant(page: Page, projectId: string) {
   await page.goto("/#page=data");
@@ -634,10 +635,10 @@ test("language workflow requires source/period/template confirmation before exis
   const explanation = await ask(page, "Vì sao lệch?");
   await expect(explanation).toContainText("10.00");
   await expect(explanation).toContainText("chưa chứng minh nguyên nhân");
-  await page
-    .getByRole("region", { name: "AI Assistant", exact: true })
-    .getByRole("button", { name: "← Trở về trang trước", exact: true })
-    .click();
+  // Origin here is Reconciliation; the new UX only offers Back for Data/Exceptions/Reports.
+  const results=page.getByRole("button",{name:"Kết quả",exact:true});
+  if(await results.getAttribute("aria-expanded")==="false")await results.click();
+  await page.getByRole("button",{name:"Báo cáo",exact:true}).click();
   await page.getByRole("button", { name: "Xuất CSV", exact: true }).click();
   await expect(page.getByRole("link", { name: /Tải báo cáo/ })).toBeVisible();
 });
@@ -785,9 +786,9 @@ test("data screen passes only its current scoped dataset to assistant", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "AI Assistant", exact: true }).click();
   const dialog = page.getByRole("region", { name: "AI Assistant", exact: true });
-  await expect(dialog).toContainText(
-    `Nguồn đang xem: ${dataset.id.slice(0, 8)}`,
-  );
+  const sourceChip=dialog.getByRole("button",{name:"Đổi ngữ cảnh phân tích",exact:true});
+  await expect(sourceChip).toHaveAttribute("data-dataset-id",dataset.id);
+  await expect(sourceChip).toContainText(dataset.name);
   const answer = await ask(page, "Tóm tắt kết quả đối soát");
   await expect(answer).toContainText("Chưa đủ bằng chứng");
 });

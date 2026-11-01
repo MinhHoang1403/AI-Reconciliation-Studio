@@ -6,11 +6,13 @@ import { SVGRenderer } from "echarts/renderers";
 import { api } from "./api";
 import { Badge, DataTable, Modal, Notice, Spinner } from "./components";
 import { label } from "./reconciliationTypes";
+import {statusText} from "./types";
 import type { AgentBlock, Chart, QueryResult } from "./agentTypes";
 import type { AssistantContext, Suggestion } from "./assistantTypes";
 import type { ColumnDef } from "@tanstack/react-table";
 echarts.use([BarChart, AriaComponent, GridComponent, TooltipComponent, SVGRenderer]);
 type SourceRef = {source_table_id:string;row:number;sheet:string};
+const transformLabels:Record<string,string>={cast_string_preserve:"Giữ nguyên văn bản và mã",parse_decimal:"Đọc số tiền theo định dạng đã duyệt",parse_date:"Đọc ngày theo định dạng và múi giờ đã duyệt",trim_if_approved:"Bỏ khoảng trắng theo quy tắc đã duyệt",normalize_enum:"Chuẩn hóa trạng thái theo quy tắc đã duyệt",coalesce_with_rule:"Chọn giá trị theo quy tắc đã duyệt",add_fields:"Cộng trường theo quy tắc đã duyệt",subtract_fields:"Trừ trường theo quy tắc đã duyệt",aggregate_by:"Gom nhóm theo quy tắc đã duyệt"};
 function QueryTable({ initial }: {
     initial: QueryResult;
 }) {
@@ -108,7 +110,7 @@ function ResultChart({ data }: {
         observer.observe(root.current);
         return () => { observer.disconnect(); chart.dispose(); };
     }, [data]);
-    return <section className="agent-chart"><h4>{data.title}</h4><p>{data.unit} · {data.population_definition} ({data.population}) · {data.verification_status}</p>
+    return <section className="agent-chart"><h4>{data.title}</h4><p>{data.unit} · {data.population_definition} ({data.population}) · {statusText[data.verification_status]||label(data.verification_status)}</p>
     {data.period_start && <p>{data.period_start} → {data.period_end} · {data.timezone}</p>}
     {data.completeness !== "COMPLETE" && <Notice tone="warning">Biểu đồ chỉ hiển thị các nhóm đã tải.</Notice>}
     <div className="result-chart" ref={root} role="img" aria-label={data.title}/>
@@ -129,7 +131,7 @@ export function AgentResultBlocks({ blocks, context, onNavigate }: {
             if (block.type === "download")
                 return <a className="button secondary" key={i} href={`/api/exports/${block.export_id}/download`}>Tải {block.format.toUpperCase()}</a>;
             if (block.type === "dataset_summary")
-                return <section className="card" key={i}><h4>{block.name}</h4><Badge status={block.status}/><p>{block.rows} dòng · {block.invalid_rows} dòng lỗi</p><p>Phép biến đổi đã duyệt: {Array.from(new Set(block.transformations)).join(", ")}</p><button className="text-button" onClick={() => onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}>Kiểm tra dữ liệu trước/sau</button></section>;
+                return <section className="card" key={i}><h4>{block.name}</h4><Badge status={block.status}/><p>{block.rows} dòng · {block.invalid_rows} dòng lỗi</p><p>Phép biến đổi đã duyệt: {Array.from(new Set(block.transformations)).map(t=>transformLabels[t]||t).join("; ")}</p><button className="text-button" onClick={() => onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}>Kiểm tra dữ liệu trước/sau</button></section>;
             const snapshot = block.result.snapshot || block.result.run?.metric_snapshot;
             return <section className="agent-facts" key={i}>{snapshot && <><h4>Kết quả đã xác minh</h4><p>Kỳ {snapshot.period_start} → {snapshot.period_end} · {snapshot.timezone}</p><p>{snapshot.eligible_definition}</p><p>Tỷ lệ khớp: {snapshot.full_match_rate.percent ?? "N/A"}{snapshot.full_match_rate.percent !== null ? "%" : ""} ({snapshot.full_match_rate.numerator}/{snapshot.full_match_rate.denominator})</p>{snapshot.monetary.map(m => <p key={m.metric_id}>{m.metric_id}: lệch có dấu {m.signed_variance} · lệch tuyệt đối {m.absolute_variance} {m.currency}</p>)}</>}
       {block.answer?.lines.map((line, j) => <p key={j}>{line.text}</p>)}

@@ -10,7 +10,7 @@ import hashlib
 import json
 import sys
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
@@ -39,7 +39,15 @@ from studio.repository import enqueue_job, project_classification_expression
 from studio.worker import _fence, _finish
 
 
-def score(gold: dict, intent: AgentIntent, ids: dict) -> dict:
+def decimal_equal(value: str, expected: str) -> bool:
+    try:
+        parsed = Decimal(value)
+        return parsed.is_finite() and parsed == Decimal(expected)
+    except InvalidOperation:
+        return False
+
+
+def score(gold: dict, intent: AgentIntent, ids: dict, confirmed_plan=None) -> dict:
     expected = gold.get("source")
     dataset_ids = set(intent.dataset_ids)
     requested = {ids["A"], ids["B"]} if expected == "BOTH" else {ids.get(expected)}
@@ -115,9 +123,7 @@ def score(gold: dict, intent: AgentIntent, ids: dict) -> dict:
                         else {"OPEN", "IN_REVIEW"}
                     )
                     if gold["filter"] in {"missing", "open_cases", "unresolved_cases"}
-                    else f.op == "gt"
-                    and isinstance(f.value, str)
-                    and Decimal(f.value) == Decimal("10")
+                    else f.op == "gt" and isinstance(f.value, str) and decimal_equal(f.value, "10")
                 )
                 for f in q.filters
             )
@@ -125,6 +131,15 @@ def score(gold: dict, intent: AgentIntent, ids: dict) -> dict:
     if gold.get("group"):
         semantic_ok = semantic_ok and bool(
             intent.query and ids["paid_field"] in intent.query.group_by
+        )
+    if gold.get("scope") == "CONFIRMED_PLAN":
+        from studio.contracts.reconciliation import PlanningRequest
+
+        semantic_ok = semantic_ok and bool(
+            confirmed_plan
+            and intent.planning_request
+            and intent.planning_request.model_dump(exclude={"intent"})
+            == PlanningRequest.from_plan(confirmed_plan).model_dump(exclude={"intent"})
         )
     intent_ok = intent.intent == gold["intent"]
     dispatch = {
@@ -145,7 +160,9 @@ def score(gold: dict, intent: AgentIntent, ids: dict) -> dict:
         source_ok=source_ok,
         source_applicable=expected is not None,
         semantic_ok=semantic_ok,
-        semantic_applicable=any(gold.get(k) for k in ("key", "aggregate", "filter", "group")),
+        semantic_applicable=any(
+            gold.get(k) for k in ("key", "aggregate", "filter", "group", "scope")
+        ),
         tool_ok=dispatch.get(intent.intent) == dispatch.get(gold["intent"]),
         abstention_ok=intent.intent in {"CLARIFY", "UNSUPPORTED"} if gold.get("negative") else None,
         actual=intent.model_dump(mode="json"),
@@ -279,7 +296,10 @@ def main() -> None:
                         encoding="utf-8",
                     )
                     continue
-            results.extend(score(g, i, config["ids"]) for g, i in zip(subset, parsed, strict=True))
+            results.extend(
+                score(g, i, config["ids"], catalogue.confirmed_plan)
+                for g, i in zip(subset, parsed, strict=True)
+            )
             batches.append(
                 dict(
                     domain=domain,
