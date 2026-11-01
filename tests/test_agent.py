@@ -174,3 +174,69 @@ def test_query_deadline_cancels_native_handle_and_never_returns_partial(monkeypa
     with pytest.raises(DomainError, match="QUERY_TIMEOUT"):
         query._collect_bounded(Lazy(), 1.0)
     assert cancelled == [True]
+
+
+def test_multi_source_single_goal_requires_one_intent_without_provider_retry():
+    received = []
+
+    def handler(request):
+        received.append(request)
+        prompt = request.read().decode()
+        assert "exactly 1 input goals" in prompt
+        assert "NOT per file" in prompt
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "finishReason": "STOP",
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": json.dumps(
+                                        {
+                                            "intents": [
+                                                {
+                                                    "intent": "PREPARE_NORMALIZATION",
+                                                    "dataset_ids": ["dataset"],
+                                                },
+                                                {
+                                                    "intent": "PREPARE_NORMALIZATION",
+                                                    "dataset_ids": ["dataset"],
+                                                },
+                                            ]
+                                        }
+                                    )
+                                }
+                            ]
+                        },
+                    }
+                ]
+            },
+        )
+
+    config = Settings(
+        allow_external_ai=True, external_ai_request_budget=5, gemini_api_key="synthetic-key-only"
+    )
+    provider = GeminiProvider(config, httpx.Client(transport=httpx.MockTransport(handler)))
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=5
+    )
+    reserved = []
+    with pytest.raises(DomainError, match="AI_INVALID_INTENT_COUNT"):
+        interpret_requests(
+            provider,
+            ["Chuẩn hóa hai nguồn trong một yêu cầu"],
+            catalogue(),
+            policy,
+            lambda: reserved.append(True) or True,
+        )
+    assert len(received) == len(reserved) == 1
+    assert provider.usage["intent_count"] == 2
+    assert provider.usage["expected_intent_count"] == 1
+    intent = validate_intents(
+        json.dumps({"intents": [{"intent": "PREPARE_NORMALIZATION", "dataset_ids": ["dataset"]}]}),
+        ["Chuẩn hóa hai nguồn"],
+        catalogue(),
+    )[0]
+    assert intent.intent == "PREPARE_NORMALIZATION"
