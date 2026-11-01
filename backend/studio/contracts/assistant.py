@@ -181,6 +181,9 @@ class MessageInput(Contract):
     conversation_id: Identifier
     text: str = Field(min_length=1, max_length=2000)
     context: AssistantContext
+    mode: Literal["LEGACY", "AGENT"] = "LEGACY"
+    dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
+    command: Literal["PREPARE_NORMALIZATION", "EXPLORE_DATA", "SUMMARIZE_RESULTS"] | None = None
 
 
 class ConversationInput(Contract):
@@ -203,4 +206,5 @@ class MessageView(Contract):
     text: str
     context: AssistantContext
     answer: AssistantAnswer | None = None
+    workflow_id: str | None = None
     created_at: datetime

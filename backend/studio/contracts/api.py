@@ -5,11 +5,13 @@ from typing import Any, Literal
 from pydantic import Field, JsonValue
 
 from studio.contracts import (
+    ApprovedTransformRule,
     ArtifactRef,
     CanonicalDataset,
     Contract,
     Dataset,
     JobStatus,
+    MappingDecision,
     MappingRevision,
     MappingStatus,
     ParsedTableArtifact,
@@ -17,6 +19,13 @@ from studio.contracts import (
     SchemaDefinition,
     SchemaProposal,
 )
+
+
+class ApprovalInput(Contract):
+    schema_definition: SchemaDefinition
+    decisions: list[MappingDecision]
+    rules: list[ApprovedTransformRule] = Field(default_factory=list)
+    extraction_reviewed: bool = False
 
 
 class ProjectList(Contract):

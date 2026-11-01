@@ -299,5 +299,23 @@ class MessageRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class AgentWorkflowRow(Base):
+    __tablename__ = "agent_workflows"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    actor_id: Mapped[str] = mapped_column(String(64), index=True)
+    parent_job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), unique=True)
+    waiting_job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id"), index=True)
+    goal: Mapped[str] = mapped_column(String(2000))
+    context: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(40), default="CREATED", index=True)
+    detail: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 engine = create_engine(settings.database_url, pool_pre_ping=True, pool_size=5, max_overflow=2)
 SessionFactory = sessionmaker(engine, expire_on_commit=False)

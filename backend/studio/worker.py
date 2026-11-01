@@ -127,6 +127,9 @@ def _finish(db: Session, job: JobRow, result: dict[str, Any]) -> None:
     )
     assert attempt is not None
     attempt.status, attempt.finished_at = "SUCCEEDED", now()
+    from studio.agent_workflows import notify_job_finished
+
+    notify_job_finished(db, job)
 
 
 def _parse(job_id: str, token: str) -> None:
@@ -598,6 +601,7 @@ def _normalize(job_id: str, token: str) -> None:
 
 
 def process_job(job_id: str, token: str) -> None:
+    from studio.agent_jobs import execute_agent
     from studio.assistant_jobs import execute_assistant
     from studio.reconciliation_exports import execute_export
     from studio.reconciliation_jobs import execute_planning, execute_reconciliation
@@ -608,6 +612,10 @@ def process_job(job_id: str, token: str) -> None:
             assert job is not None
             kind = job.kind
         handlers: dict[str, Callable[[str, str], None]] = {
+            **{
+                name: lambda jid, claim: execute_agent(jid, claim, SessionFactory, _fence, _finish)
+                for name in ("agent", "agent_prepare", "agent_resume")
+            },
             "assistant": lambda job_id, token: execute_assistant(
                 job_id, token, SessionFactory, _fence, _finish
             ),
@@ -664,6 +672,27 @@ def process_job(job_id: str, token: str) -> None:
                 run = db.get(RunRow, job.payload["run_id"])
                 if run is not None and run.metric_snapshot is None:
                     run.status = "BLOCKED"
+            if job.status in {"FAILED", "BLOCKED"}:
+                from studio.agent_workflows import notify_job_finished, save
+                from studio.contracts.agent import WorkflowState
+                from studio.database import AgentWorkflowRow
+
+                notify_job_finished(db, job)
+                if kind in {"agent", "agent_resume"}:
+                    row = db.scalar(
+                        select(AgentWorkflowRow)
+                        .where(
+                            AgentWorkflowRow.parent_job_id == job.id
+                            if kind == "agent"
+                            else AgentWorkflowRow.id == job.payload["workflow_id"]
+                        )
+                        .with_for_update()
+                    )
+                    if row and row.state != "CANCELLED_BEFORE_NEXT_STEP":
+                        state = WorkflowState.model_validate(row.detail)
+                        state.error_code = code
+                        row.state = "BLOCKED"
+                        save(row, state)
             db.commit()
 
 

@@ -20,12 +20,10 @@ from sqlalchemy.orm import Session
 from studio.access import Actor, authenticate, bootstrap_session, require_editor, require_owner
 from studio.config import settings
 from studio.contracts import (
-    ApprovedTransformRule,
     CanonicalDataset,
     Contract,
     DatasetProfile,
     ErrorEnvelope,
-    MappingDecision,
     MappingRevision,
     MappingStatus,
     ParsedTableArtifact,
@@ -36,6 +34,7 @@ from studio.contracts import (
     WorkspacePolicy,
 )
 from studio.contracts.api import (
+    ApprovalInput,
     ArtifactList,
     DatasetList,
     JobAccepted,
@@ -49,6 +48,7 @@ from studio.contracts.api import (
     TableList,
     UploadResponse,
 )
+from studio.contracts.data_query import DataQuery, QueryResult
 from studio.database import (
     ArtifactRow,
     AuditRow,
@@ -116,6 +116,9 @@ app.include_router(build_router(database, current_actor))
 from studio.assistant_api import build_router as build_assistant_router  # noqa: E402
 
 app.include_router(build_assistant_router(database, current_actor))
+from studio.agent_api import build_router as build_agent_router  # noqa: E402
+
+app.include_router(build_agent_router(database, current_actor))
 
 
 @app.exception_handler(DomainError)
@@ -478,6 +481,20 @@ def upload(
     parse_options: Annotated[str, Form()] = "{}",
     request_ai_mapping: Annotated[bool, Form()] = True,
 ) -> dict[str, Any]:
+    result = persist_uploads(db, actor, project_id, files, parse_options, request_ai_mapping)
+    db.commit()
+    return result
+
+
+def persist_uploads(
+    db: Session,
+    actor: Actor,
+    project_id: str,
+    files: list[UploadFile],
+    parse_options: str = "{}",
+    request_ai_mapping: bool = True,
+) -> dict[str, Any]:
+    """Giữ cùng validation/raw/dedup; caller công bố metadata và queue trong transaction."""
     require_editor(actor, db)
     get_scoped(db, ProjectRow, project_id, actor)
     if len(files) > settings.max_upload_files:
@@ -596,7 +613,6 @@ def upload(
             )
         )
         result.append({**_dataset_dto(dataset), "reused": False, "job_id": job.id})
-    db.commit()
     return {"items": result}
 
 
@@ -816,87 +832,13 @@ def propose(
     return {"job_id": job.id, "status": job.status}
 
 
-class ApprovalInput(Contract):
-    schema_definition: SchemaDefinition
-    decisions: list[MappingDecision]
-    rules: list[ApprovedTransformRule] = Field(default_factory=list)
-    extraction_reviewed: bool = False
-
-
 @app.post("/api/mappings/{mapping_id}/approve", response_model=MappingRevision)
 def approve_mapping(
     mapping_id: str, body: ApprovalInput, db: DB, actor: CurrentActor
 ) -> MappingRevision:
-    """F09: authorize, validate, create immutable approval; old canonical refs become stale."""
-    require_editor(actor, db, mapping_id)
-    original = get_scoped(db, MappingRow, mapping_id, actor)
-    table = get_scoped(db, TableRow, original.source_table_id, actor)
-    db.refresh(table, with_for_update=True)
-    if original.status in {"REJECTED", "SUPERSEDED"}:
-        raise DomainError("MAPPING_SUPERSEDED", "Ánh xạ đã bị thay thế hoặc từ chối.", 409)
-    if table.parsed_contract["warnings"] and not body.extraction_reviewed:
-        raise DomainError(
-            "EXTRACTION_REVIEW_REQUIRED", "Cần kiểm tra cảnh báo và xác nhận vùng dữ liệu nguồn."
-        )
-    schema = body.schema_definition.model_copy(update={"workspace_id": actor.workspace_id})
-    for decision in body.decisions:
-        if decision.candidate_target is not None:
-            decision.decision = MappingStatus.APPROVED
-            decision.grain_assumption = schema.grain
-    proposal = SchemaProposal(
-        entity_kind=schema.entity_kind,
-        grain=schema.grain,
-        status="PROPOSED",
-        decisions=body.decisions,
-    )
-    profile = DatasetProfile.model_validate(table.profile)
-    validate_mapping(proposal, profile, schema, for_approval=True)
-    # Every edit is a new schema/mapping row, including editing an approved revision.
-    mapping = create_mapping(db, table, proposal.model_dump(mode="json"), schema)
-    persisted_schema = db.get(SchemaRow, mapping.schema_id)
-    assert persisted_schema is not None
-    schema = SchemaDefinition.model_validate(persisted_schema.definition)
-    rules = [r.model_copy(update={"approved_by": actor.id}) for r in body.rules]
-    contract = MappingRevision(
-        id=mapping.id,
-        workspace_id=actor.workspace_id,
-        source_table_id=table.id,
-        source_signature=mapping.signature,
-        schema_id=schema.id,
-        schema_revision=schema.revision,
-        business_scope=mapping.business_scope,
-        revision=mapping.revision,
-        status=MappingStatus.APPROVED,
-        decisions=body.decisions,
-        approved_by=actor.id,
-        approved_at=now(),
-        rules=rules,
-    )
-    compile_transform_plan(contract, schema, profile)
-    if table.active_mapping_id:
-        old = db.get(MappingRow, table.active_mapping_id)
-        if old:
-            old.status = "SUPERSEDED"
-        for row in db.scalars(select(CanonicalRow).where(CanonicalRow.source_table_id == table.id)):
-            row.stale = True
-    mapping.status = "APPROVED"
-    mapping.decision = contract.model_dump(mode="json")
-    table.active_mapping_id = mapping.id
-    version = db.get(VersionRow, table.dataset_version_id)
-    assert version is not None
-    dataset = db.get(DatasetRow, version.dataset_id)
-    assert dataset is not None
-    dataset.status = "MAPPED"
-    db.add(
-        AuditRow(
-            workspace_id=actor.workspace_id,
-            actor_id=actor.id,
-            action="APPROVE_MAPPING",
-            resource_id=mapping.id,
-        )
-    )
+    result = apply_mapping_approval(mapping_id, body, db, actor)
     db.commit()
-    return contract
+    return result
 
 
 @app.post("/api/mappings/{mapping_id}/reject")
@@ -924,6 +866,13 @@ class NormalizeInput(Contract):
     mapping_id: str
 
 
+@app.post("/api/agent/queries", response_model=QueryResult)
+def data_query(body: DataQuery, db: DB, actor: CurrentActor) -> QueryResult:
+    from studio.data_query import execute_query
+
+    return execute_query(db, actor, body)
+
+
 @app.post("/api/datasets/{dataset_id}/normalize", status_code=202, response_model=JobAccepted)
 def normalize(
     dataset_id: str,
@@ -932,38 +881,9 @@ def normalize(
     actor: CurrentActor,
     idempotency_key: Annotated[str, Header(min_length=1, max_length=160)],
 ) -> dict[str, str]:
-    require_editor(actor, db, dataset_id)
-    dataset = get_scoped(db, DatasetRow, dataset_id, actor)
-    mapping = get_scoped(db, MappingRow, body.mapping_id, actor)
-    table = get_scoped(db, TableRow, mapping.source_table_id, actor)
-    version = db.get(VersionRow, table.dataset_version_id)
-    if version is None or version.dataset_id != dataset.id or table.active_mapping_id != mapping.id:
-        raise DomainError(
-            "STALE_MAPPING", "Ánh xạ không phải revision hiện hành của dữ liệu này.", 409
-        )
-    contract = mapping_contract(mapping)
-    schema = db.get(SchemaRow, mapping.schema_id)
-    assert schema is not None
-    compile_transform_plan(
-        contract,
-        SchemaDefinition.model_validate(schema.definition),
-        DatasetProfile.model_validate(table.profile),
-    )
-    job = enqueue_job(
-        db,
-        actor.workspace_id,
-        dataset.project_id,
-        "normalize",
-        "normalize:" + idempotency_key,
-        {
-            "dataset_id": dataset_id,
-            "table_id": table.id,
-            "mapping_id": mapping.id,
-            "normalization_revision": NORMALIZATION_REVISION,
-        },
-    )
+    result = enqueue_normalization(dataset_id, body.mapping_id, db, actor, idempotency_key)
     db.commit()
-    return {"job_id": job.id, "status": job.status}
+    return result
 
 
 @app.get("/api/datasets/{dataset_id}/artifacts", response_model=ArtifactList)
@@ -1054,3 +974,115 @@ def job(job_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
         "error_code": row.error_code,
         "result": row.result,
     }
+
+
+def apply_mapping_approval(
+    mapping_id: str, body: ApprovalInput, db: Session, actor: Actor
+) -> MappingRevision:
+    """F09: authorize, validate, create immutable approval; old canonical refs become stale."""
+    require_editor(actor, db, mapping_id)
+    original = get_scoped(db, MappingRow, mapping_id, actor)
+    table = get_scoped(db, TableRow, original.source_table_id, actor)
+    db.refresh(table, with_for_update=True)
+    if original.status in {"REJECTED", "SUPERSEDED"}:
+        raise DomainError("MAPPING_SUPERSEDED", "Ánh xạ đã bị thay thế hoặc từ chối.", 409)
+    if table.parsed_contract["warnings"] and not body.extraction_reviewed:
+        raise DomainError(
+            "EXTRACTION_REVIEW_REQUIRED", "Cần kiểm tra cảnh báo và xác nhận vùng dữ liệu nguồn."
+        )
+    schema = body.schema_definition.model_copy(update={"workspace_id": actor.workspace_id})
+    for decision in body.decisions:
+        if decision.candidate_target is not None:
+            decision.decision = MappingStatus.APPROVED
+            decision.grain_assumption = schema.grain
+    proposal = SchemaProposal(
+        entity_kind=schema.entity_kind,
+        grain=schema.grain,
+        status="PROPOSED",
+        decisions=body.decisions,
+    )
+    profile = DatasetProfile.model_validate(table.profile)
+    validate_mapping(proposal, profile, schema, for_approval=True)
+    # Every edit is a new schema/mapping row, including editing an approved revision.
+    mapping = create_mapping(db, table, proposal.model_dump(mode="json"), schema)
+    persisted_schema = db.get(SchemaRow, mapping.schema_id)
+    assert persisted_schema is not None
+    schema = SchemaDefinition.model_validate(persisted_schema.definition)
+    rules = [r.model_copy(update={"approved_by": actor.id}) for r in body.rules]
+    contract = MappingRevision(
+        id=mapping.id,
+        workspace_id=actor.workspace_id,
+        source_table_id=table.id,
+        source_signature=mapping.signature,
+        schema_id=schema.id,
+        schema_revision=schema.revision,
+        business_scope=mapping.business_scope,
+        revision=mapping.revision,
+        status=MappingStatus.APPROVED,
+        decisions=body.decisions,
+        approved_by=actor.id,
+        approved_at=now(),
+        rules=rules,
+    )
+    compile_transform_plan(contract, schema, profile)
+    if table.active_mapping_id:
+        old = db.get(MappingRow, table.active_mapping_id)
+        if old:
+            old.status = "SUPERSEDED"
+        for row in db.scalars(select(CanonicalRow).where(CanonicalRow.source_table_id == table.id)):
+            row.stale = True
+    mapping.status = "APPROVED"
+    mapping.decision = contract.model_dump(mode="json")
+    table.active_mapping_id = mapping.id
+    version = db.get(VersionRow, table.dataset_version_id)
+    assert version is not None
+    dataset = db.get(DatasetRow, version.dataset_id)
+    assert dataset is not None
+    dataset.status = "MAPPED"
+    db.add(
+        AuditRow(
+            workspace_id=actor.workspace_id,
+            actor_id=actor.id,
+            action="APPROVE_MAPPING",
+            resource_id=mapping.id,
+        )
+    )
+    db.flush()
+    return contract
+
+
+def enqueue_normalization(
+    dataset_id: str, mapping_id: str, db: Session, actor: Actor, idempotency_key: str
+) -> dict[str, str]:
+    require_editor(actor, db, dataset_id)
+    dataset = get_scoped(db, DatasetRow, dataset_id, actor)
+    mapping = get_scoped(db, MappingRow, mapping_id, actor)
+    table = get_scoped(db, TableRow, mapping.source_table_id, actor)
+    version = db.get(VersionRow, table.dataset_version_id)
+    if version is None or version.dataset_id != dataset.id or table.active_mapping_id != mapping.id:
+        raise DomainError(
+            "STALE_MAPPING", "Ánh xạ không phải revision hiện hành của dữ liệu này.", 409
+        )
+    contract = mapping_contract(mapping)
+    schema = db.get(SchemaRow, mapping.schema_id)
+    assert schema is not None
+    compile_transform_plan(
+        contract,
+        SchemaDefinition.model_validate(schema.definition),
+        DatasetProfile.model_validate(table.profile),
+    )
+    job = enqueue_job(
+        db,
+        actor.workspace_id,
+        dataset.project_id,
+        "normalize",
+        "normalize:" + idempotency_key,
+        {
+            "dataset_id": dataset_id,
+            "table_id": table.id,
+            "mapping_id": mapping.id,
+            "normalization_revision": NORMALIZATION_REVISION,
+        },
+    )
+    db.flush()
+    return {"job_id": job.id, "status": job.status}

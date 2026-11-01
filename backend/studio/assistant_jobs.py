@@ -70,6 +70,8 @@ def execute_assistant(
         )
         cached = None
         for previous_message in previous:
+            if previous_message.answer is None:
+                continue
             old = AssistantAnswer.model_validate(previous_message.answer)
             old_question = db.scalar(
                 select(MessageRow.text).where(

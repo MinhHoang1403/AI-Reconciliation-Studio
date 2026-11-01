@@ -245,7 +245,9 @@ def propose_plan(
                         {
                             **{
                                 k: v
-                            for k, v in request.model_dump(mode="json", exclude_unset=True).items()
+                                for k, v in request.model_dump(
+                                    mode="json", exclude_unset=True
+                                ).items()
                                 if k in ReconciliationPlan.model_fields
                             },
                             **{

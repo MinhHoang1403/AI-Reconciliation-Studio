@@ -22,7 +22,7 @@ from studio.contracts.assistant import (
     ToolRequest,
     ToolResult,
 )
-from studio.database import AuditRow, ConversationRow, JobRow, MessageRow, now
+from studio.database import AgentWorkflowRow, AuditRow, ConversationRow, JobRow, MessageRow, now
 from studio.errors import DomainError
 from studio.repository import enqueue_job, get_scoped
 
@@ -158,6 +158,12 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                     text=r.text,
                     context=AssistantContext.model_validate(r.context),
                     answer=AssistantAnswer.model_validate(r.answer) if r.answer else None,
+                    workflow_id=db.scalar(
+                        select(AgentWorkflowRow.id).where(
+                            AgentWorkflowRow.parent_job_id == r.job_id,
+                            AgentWorkflowRow.actor_id == actor.id,
+                        )
+                    ),
                     created_at=r.created_at,
                 )
                 for r in reversed(rows[:limit])
@@ -196,7 +202,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             pending = db.scalar(
                 select(JobRow.id)
                 .where(
-                    JobRow.kind == "assistant",
+                    JobRow.kind.in_(["assistant", "agent"]),
                     JobRow.project_id == row.project_id,
                     JobRow.payload["conversation_id"].astext == row.id,
                     JobRow.status.in_(["QUEUED", "RUNNING", "RETRYABLE_FAILURE"]),
@@ -211,7 +217,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             db,
             actor.workspace_id,
             row.project_id,
-            "assistant",
+            "agent" if body.mode == "AGENT" else "assistant",
             f"assistant:{actor.id}:{key}",
             dict(
                 conversation_id=row.id,
@@ -219,6 +225,11 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                 actor_id=actor.id,
                 context=body.context.model_dump(),
                 question_sha256=hashlib.sha256(body.text.encode()).hexdigest(),
+            )
+            | (
+                dict(dataset_ids=body.dataset_ids, command=body.command)
+                if body.mode == "AGENT"
+                else {}
             ),
         )
         if existing is None:

@@ -10,6 +10,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from studio.access import Actor
+from studio.contracts.agent import IntentCatalogue
 from studio.contracts.assistant import (
     AnswerFactSet,
     AssistantContext,
@@ -57,6 +58,113 @@ def scoped_context(db: Session, actor: Actor, context: AssistantContext) -> RunR
             raise DomainError("INSUFFICIENT_EVIDENCE", "Run chưa có evidence đã xác minh.", 409)
         exact_group(run, context.group_id)
     return run
+
+
+def agent_catalogue(
+    db: Session, actor: Actor, context: AssistantContext, dataset_ids: list[str]
+) -> "IntentCatalogue":
+    """Catalogue bounded cho router; chỉ metadata/profile, không raw values/paths/secrets."""
+    from studio.contracts import SchemaDefinition
+    from studio.contracts.agent import DatasetContext, SourceColumn, TableContext
+    from studio.database import CanonicalRow, SchemaRow, TableRow, VersionRow
+
+    scoped_context(db, actor, context)
+    if not dataset_ids and context.dataset_id:
+        dataset_ids = [context.dataset_id]
+    if not dataset_ids and context.run_id:
+        run = get_scoped(db, RunRow, context.run_id, actor)
+        rule = get_scoped(db, ReconciliationContractRow, run.contract_id, actor)
+        plan = ReconciliationContract.model_validate(rule.definition).plan
+        dataset_ids = list(
+            db.scalars(
+                select(VersionRow.dataset_id)
+                .join(TableRow, TableRow.dataset_version_id == VersionRow.id)
+                .join(CanonicalRow, CanonicalRow.source_table_id == TableRow.id)
+                .where(CanonicalRow.id.in_([plan.left.canonical_id, plan.right.canonical_id]))
+                .distinct()
+            )
+        )
+    query = select(DatasetRow).where(
+        DatasetRow.workspace_id == actor.workspace_id, DatasetRow.project_id == context.project_id
+    )
+    if dataset_ids:
+        query = query.where(DatasetRow.id.in_(dataset_ids))
+    datasets = list(db.scalars(query.order_by(DatasetRow.created_at, DatasetRow.id).limit(6)))
+    if len(datasets) > 5 or (dataset_ids and {d.id for d in datasets} != set(dataset_ids)):
+        raise DomainError("INPUT_AMBIGUOUS", "Chọn tối đa năm nguồn đúng dự án cần xử lý.")
+    sources = []
+    for dataset in datasets:
+        tables = list(
+            db.scalars(
+                select(TableRow)
+                .join(VersionRow)
+                .where(
+                    TableRow.workspace_id == actor.workspace_id,
+                    VersionRow.dataset_id == dataset.id,
+                )
+                .order_by(TableRow.id)
+                .limit(6)
+            )
+        )
+        if len(tables) > 5:
+            raise DomainError("INPUT_AMBIGUOUS", "Nguồn có nhiều bảng; chọn bảng cần xử lý.")
+        items = []
+        for table in tables:
+            if len(table.profile["columns"]) > 40:
+                raise DomainError("AGENT_CONTEXT_LIMIT", "Bảng vượt giới hạn40cột của tác vụ AI.")
+            canonical = (
+                db.scalar(
+                    select(CanonicalRow).where(
+                        CanonicalRow.source_table_id == table.id,
+                        CanonicalRow.workspace_id == actor.workspace_id,
+                        CanonicalRow.mapping_id == table.active_mapping_id,
+                        CanonicalRow.stale.is_(False),
+                    )
+                )
+                if table.active_mapping_id
+                else None
+            )
+            definition = None
+            if canonical:
+                schema = get_scoped(db, SchemaRow, canonical.contract["schema_id"], actor)
+                definition = SchemaDefinition.model_validate(schema.definition)
+            items.append(
+                TableContext(
+                    table_id=table.id,
+                    sheet=table.sheet,
+                    row_count=table.row_count,
+                    columns=[
+                        SourceColumn(
+                            id=c["column_id"],
+                            name=c["name"],
+                            type_candidates=c["type_candidates"],
+                            null_count=c["null_count"],
+                            distinct_count=c["distinct_count"],
+                        )
+                        for c in table.profile["columns"]
+                    ],
+                    canonical_id=canonical.id if canonical else None,
+                    schema_definition=definition,
+                    mapping_id=table.active_mapping_id,
+                    paid_status_fields=[
+                        f.id for f in definition.fields if f.semantic_metric == "payment_status"
+                    ]
+                    if definition
+                    else [],
+                )
+            )
+        sources.append(
+            DatasetContext(id=dataset.id, name=dataset.name, status=dataset.status, tables=items)
+        )
+    runs = [context.run_id] if context.run_id else []
+    confirmed = None
+    if context.run_id:
+        run = get_scoped(db, RunRow, context.run_id, actor)
+        rule = get_scoped(db, ReconciliationContractRow, run.contract_id, actor)
+        confirmed = ReconciliationContract.model_validate(rule.definition).plan
+    return IntentCatalogue(
+        context=context, datasets=sources, run_ids=runs, confirmed_plan=confirmed
+    )
 
 
 def exact_group(run: RunRow, group_id: str) -> MatchGroup:

@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     assistant_cloud_enabled: bool = False
     assistant_request_budget: int = Field(default=0, ge=0)
     planner_request_budget: int = Field(default=2, ge=0, le=50)
+    agent_cloud_enabled: bool = False
+    agent_request_budget: int = Field(default=0, ge=0, le=50)
+    agent_max_steps: int = Field(default=12, ge=1, le=12)
+    agent_max_model_calls: int = Field(default=6, ge=0, le=8)
+    agent_max_tool_calls: int = Field(default=5, ge=1, le=5)
     llama_cloud_api_key: SecretStr = SecretStr("")
     allow_cloud_parsing: bool = False
     cloud_parser_request_budget: int = Field(default=0, ge=0)

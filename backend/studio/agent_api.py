@@ -1,0 +1,255 @@
+"""Review API buộc quyết định con người vào owner, nonce, expiry và source revision."""
+
+import secrets
+from collections.abc import Callable
+from typing import Annotated, Any
+from uuid import NAMESPACE_URL, uuid5
+
+from fastapi import APIRouter, Depends, File, Form, Header, UploadFile
+from sqlalchemy import select, text
+from sqlalchemy.orm import Session
+
+from studio.access import Actor, require_editor
+from studio.agent_intents import validate_intents
+from studio.agent_preparation import approval_from_draft
+from studio.agent_workflows import (
+    advance,
+    digest,
+    own_workflow,
+    review_fingerprint,
+    save,
+    view,
+)
+from studio.assistant_tools import agent_catalogue
+from studio.config import settings
+from studio.contracts import DatasetProfile
+from studio.contracts.agent import (
+    ClarificationDecision,
+    IntentBatch,
+    MappingReviewDecision,
+    PlanReviewDecision,
+    ReviewDecision,
+    WorkflowState,
+    WorkflowView,
+)
+from studio.contracts.assistant import AssistantContext
+from studio.contracts.reconciliation import PlanProposal
+from studio.database import AuditRow, MappingRow, PlanRow, ProjectRow, TableRow, now
+from studio.errors import DomainError
+from studio.parsing import inspect_upload
+from studio.repository import enqueue_job, get_scoped
+
+
+def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) -> WorkflowView:
+    """Một transaction duy nhất: reauthorize → approval → state → next-job enqueue."""
+    row = own_workflow(db, actor, workflow_id, lock=True)
+    require_editor(actor, db, row.id)
+    state = WorkflowState.model_validate(row.detail)
+    review = next((r for r in state.reviews if r.id == body.review_id), None)
+    if review is None:
+        raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy yêu cầu xác nhận.", 404)
+    if (
+        not secrets.compare_digest(review.nonce, body.nonce)
+        or not secrets.compare_digest(review.fingerprint, body.fingerprint)
+        or body.decision.type != review.kind
+    ):
+        raise DomainError("STALE_CONTEXT", "Xác nhận không còn phù hợp; hãy mở lại thẻ.", 409)
+    decision_hash = digest(body.decision.model_dump(mode="json"))
+    if review.state == "DECIDED":
+        if decision_hash != review.decision_sha256:
+            raise DomainError("IDEMPOTENCY_CONFLICT", "Quyết định này đã có nội dung khác.", 409)
+        return view(row)
+    if (
+        row.state not in {"WAITING_REVIEW", "RUNNING"}
+        or review.state != "OPEN"
+        or review.expires_at <= now()
+        or review.fingerprint
+        != review_fingerprint(db, actor, review.kind, review.resource_id, review.evidence_refs)
+    ):
+        raise DomainError("STALE_CONTEXT", "Nguồn hoặc thời hạn xác nhận đã thay đổi.", 409)
+    if isinstance(body.decision, MappingReviewDecision):
+        from studio.api import apply_mapping_approval
+
+        draft = body.decision.draft
+        if draft.table_id != review.resource_id:
+            raise DomainError("STALE_CONTEXT", "Quyết định không thuộc bảng đang chờ.", 409)
+        table = get_scoped(db, TableRow, draft.table_id, actor)
+        mapping_id = db.scalar(
+            select(MappingRow.id)
+            .where(
+                MappingRow.source_table_id == table.id,
+                MappingRow.workspace_id == actor.workspace_id,
+            )
+            .order_by(MappingRow.revision.desc())
+            .limit(1)
+        )
+        if not mapping_id:
+            raise DomainError("REVIEW_REQUIRED", "Chưa có proposal cho bảng này.")
+        approval = approval_from_draft(
+            draft, DatasetProfile.model_validate(table.profile), body.decision.extraction_reviewed
+        )
+        approved = apply_mapping_approval(mapping_id, approval, db, actor)
+        state.confirmed_mapping_ids.append(approved.id)
+        review.result_id = approved.id
+    elif isinstance(body.decision, PlanReviewDecision):
+        from studio.reconciliation_api import approve_plan
+        from studio.reconciliation_contracts import validate_reconciliation_contract
+        from studio.reconciliation_repository import selected_catalogue
+
+        plan = body.decision.plan
+        expected = review.planning_request
+        if not expected or (plan.left.canonical_id, plan.right.canonical_id) != (
+            expected.left.canonical_id,
+            expected.right.canonical_id,
+        ):
+            raise DomainError("STALE_CONTEXT", "Nguồn đối soát khác yêu cầu đang chờ.", 409)
+        cats = selected_catalogue(
+            db, actor, row.project_id, [plan.left.canonical_id, plan.right.canonical_id]
+        )
+        validate_reconciliation_contract(plan, cats, actor.workspace_id, row.project_id)
+        # Giữ nguyên proposal AI; quyết định sửa rule là một bản có nguồn HUMAN_REVIEW.
+        proposal = PlanRow(
+            workspace_id=actor.workspace_id,
+            project_id=row.project_id,
+            origin="HUMAN_REVIEW",
+            created_by=actor.id,
+            proposal=PlanProposal(status="PROPOSED", plan=plan).model_dump(mode="json"),
+        )
+        db.add(proposal)
+        db.flush()
+        contract = approve_plan(proposal.id, db, actor)
+        state.confirmed_contract_id = contract.id
+        review.result_id = contract.id
+    elif isinstance(body.decision, ClarificationDecision):
+        context = AssistantContext.model_validate(row.context)
+        catalogue = agent_catalogue(db, actor, context, state.dataset_ids)
+        validate_intents(
+            IntentBatch(intents=[body.decision.intent]).model_dump_json(), [row.goal], catalogue
+        )
+        state.intent = body.decision.intent
+    review.state, review.decision_sha256 = "DECIDED", decision_hash
+    db.add(
+        AuditRow(
+            workspace_id=actor.workspace_id,
+            actor_id=actor.id,
+            action="AGENT_REVIEW_DECIDED",
+            resource_id=review.id,
+        )
+    )
+    row.state = "RUNNING"
+    save(row, state)
+    advance(db, row)
+    db.flush()
+    return view(row)
+
+
+def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]) -> APIRouter:
+    router = APIRouter(prefix="/api/agent", tags=["Agent"])
+    DB = Annotated[Session, Depends(database)]
+    User = Annotated[Actor, Depends(current_actor)]
+    Key = Annotated[str, Header(min_length=1, max_length=160, alias="Idempotency-Key")]
+
+    @router.post("/attachments", status_code=202)
+    def attachments(
+        db: DB,
+        actor: User,
+        key: Key,
+        files: Annotated[list[UploadFile], File()],
+        project_id: Annotated[str | None, Form()] = None,
+    ) -> dict[str, Any]:
+        from studio.api import persist_uploads
+
+        require_editor(actor, db)
+        if not 1 <= len(files) <= min(settings.max_upload_files, 5):
+            raise DomainError("TOO_MANY_FILES", "Mỗi lần đính kèm cần từ1đến5tệp CSV/XLSX.")
+        inspections = [
+            inspect_upload(f.file, f.filename or "", f.content_type or "", settings) for f in files
+        ]
+        if any(i.extension not in {".csv", ".xlsx"} for i in inspections):
+            raise DomainError("AGENT_FILE_TYPE_UNSUPPORTED", "Chat hiện nhận CSV và XLSX.")
+        request_hash = digest([project_id, [(i.sha256, i.filename) for i in inspections]])
+        identity = f"agent-attachments:{actor.workspace_id}:{actor.id}:{key}"
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"), {"key": identity}
+        )
+        bootstrap_id = str(uuid5(NAMESPACE_URL, identity))
+        project: ProjectRow | None
+        if project_id:
+            project = get_scoped(db, ProjectRow, project_id, actor)
+        else:
+            project = db.get(ProjectRow, bootstrap_id)
+            if project is None:
+                project = ProjectRow(
+                    id=bootstrap_id,
+                    workspace_id=actor.workspace_id,
+                    name="Dữ liệu mới",
+                    business_scope=f"UNCONFIRMED:{bootstrap_id}",
+                )
+                db.add(project)
+                db.flush()
+                db.add(
+                    AuditRow(
+                        workspace_id=actor.workspace_id,
+                        actor_id=actor.id,
+                        action="PROJECT_SCOPE_UNCONFIRMED",
+                        resource_id=project.id,
+                    )
+                )
+        receipt = enqueue_job(
+            db,
+            actor.workspace_id,
+            project.id,
+            "attachment_receipt",
+            identity,
+            dict(actor_id=actor.id, request_sha256=request_hash),
+        )
+        if receipt.status == "SUCCEEDED":
+            assert receipt.result is not None
+            return receipt.result
+        uploaded = persist_uploads(db, actor, project.id, files, request_ai_mapping=False)
+        result = dict(
+            project_id=project.id,
+            project_name=project.name,
+            scope_confirmed=not project.business_scope.startswith("UNCONFIRMED:"),
+            **uploaded,
+        )
+        receipt.status, receipt.result = "SUCCEEDED", result
+        db.commit()
+        return result
+
+    @router.get("/workflows/{workflow_id}", response_model=WorkflowView)
+    def workflow(workflow_id: str, db: DB, actor: User) -> WorkflowView:
+        return view(own_workflow(db, actor, workflow_id))
+
+    @router.post("/workflows/{workflow_id}/decisions", response_model=WorkflowView)
+    def decision(
+        workflow_id: str, body: ReviewDecision, db: DB, actor: User, key: Key
+    ) -> WorkflowView:
+        result = decide(db, actor, workflow_id, body)
+        db.commit()
+        return result
+
+    @router.post("/workflows/{workflow_id}/cancel", response_model=WorkflowView)
+    def cancel(workflow_id: str, db: DB, actor: User, key: Key) -> WorkflowView:
+        row = own_workflow(db, actor, workflow_id, lock=True)
+        if row.state not in {
+            "COMPLETED",
+            "FAILED",
+            "BLOCKED",
+            "PARTIAL",
+            "CANCELLED_BEFORE_NEXT_STEP",
+        }:
+            row.state = "CANCELLED_BEFORE_NEXT_STEP"
+            row.updated_at = now()
+            db.add(
+                AuditRow(
+                    workspace_id=actor.workspace_id,
+                    actor_id=actor.id,
+                    action="AGENT_CANCELLED_BEFORE_NEXT_STEP",
+                    resource_id=row.id,
+                )
+            )
+        db.commit()
+        return view(row)
+
+    return router

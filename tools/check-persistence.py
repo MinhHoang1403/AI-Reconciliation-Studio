@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import select
 from studio.config import settings
 from studio.database import (
+    AgentWorkflowRow,
     ArtifactRow,
     AttemptRow,
     AuditRow,
@@ -68,6 +69,7 @@ def capture() -> dict[str, Any]:
             ExportRow,
             ConversationRow,
             MessageRow,
+            AgentWorkflowRow,
         ):
             records = []
             for row in db.scalars(select(model)):

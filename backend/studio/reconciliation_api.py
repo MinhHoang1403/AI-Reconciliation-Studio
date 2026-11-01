@@ -327,53 +327,9 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         "/reconciliation-contracts/{plan_id}/approve", response_model=ReconciliationContract
     )
     def approve(plan_id: str, db: DB, actor: User) -> ReconciliationContract:
-        require_editor(actor, db, plan_id)
-        row = get_scoped(db, PlanRow, plan_id, actor)
-        db.refresh(row, with_for_update=True)
-        existing = db.scalar(
-            select(ReconciliationContractRow).where(ReconciliationContractRow.plan_id == row.id)
-        )
-        if existing:
-            return ReconciliationContract.model_validate(existing.definition)
-        proposal = PlanProposal.model_validate(row.proposal)
-        if proposal.plan is None or proposal.status != "PROPOSED" or proposal.missing_requirements:
-            raise DomainError("PLAN_NEEDS_REVIEW", "Kế hoạch chưa đủ bằng chứng để duyệt.", 422)
-        cats = selected_catalogue(
-            db,
-            actor,
-            row.project_id,
-            [proposal.plan.left.canonical_id, proposal.plan.right.canonical_id],
-        )
-        validate_reconciliation_contract(proposal.plan, cats, actor.workspace_id, row.project_id)
-        contract = ReconciliationContract(
-            id=identifier(),
-            workspace_id=actor.workspace_id,
-            project_id=row.project_id,
-            revision=1,
-            plan=proposal.plan,
-            approved_by=actor.id,
-            approved_at=now(),
-        )
-        db.add(
-            ReconciliationContractRow(
-                id=contract.id,
-                workspace_id=actor.workspace_id,
-                project_id=row.project_id,
-                plan_id=row.id,
-                definition=contract.model_dump(mode="json"),
-                source_signatures=template_signatures(cats),
-            )
-        )
-        db.add(
-            AuditRow(
-                workspace_id=actor.workspace_id,
-                actor_id=actor.id,
-                action="RECONCILIATION_RULE_APPROVED",
-                resource_id=contract.id,
-            )
-        )
+        result = approve_plan(plan_id, db, actor)
         db.commit()
-        return contract
+        return result
 
     @router.get("/projects/{project_id}/reconciliation-templates")
     def templates(project_id: str, db: DB, actor: User) -> dict[str, Any]:
@@ -483,57 +439,9 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
 
     @router.post("/reconciliation-runs", status_code=202)
     def run(body: RunInput, db: DB, actor: User, key: Key) -> dict[str, Any]:
-        require_editor(actor, db, body.contract_id)
-        rule = get_scoped(db, ReconciliationContractRow, body.contract_id, actor)
-        contract = ReconciliationContract.model_validate(rule.definition)
-        cats = selected_catalogue(
-            db,
-            actor,
-            rule.project_id,
-            [contract.plan.left.canonical_id, contract.plan.right.canonical_id],
-        )
-        validate_reconciliation_contract(contract.plan, cats, actor.workspace_id, rule.project_id)
-        signature = hashlib.sha256(
-            json.dumps(
-                dict(
-                    contract=contract.model_dump(mode="json"),
-                    sources=[c.canonical.model_dump(mode="json") for c in cats],
-                    engine=ENGINE_REVISION,
-                ),
-                sort_keys=True,
-            ).encode()
-        ).hexdigest()
-        db.execute(
-            text("SELECT pg_advisory_xact_lock(:key)"),
-            {"key": int.from_bytes(bytes.fromhex(signature[:16]), "big", signed=True)},
-        )
-        existing = db.scalar(
-            select(RunRow).where(
-                RunRow.project_id == rule.project_id, RunRow.input_signature == signature
-            )
-        )
-        if existing is None:
-            existing = RunRow(
-                id=identifier(),
-                workspace_id=actor.workspace_id,
-                project_id=rule.project_id,
-                contract_id=rule.id,
-                input_signature=signature,
-                engine_revision=ENGINE_REVISION,
-                source_refs=[c.canonical.model_dump(mode="json") for c in cats],
-            )
-            db.add(existing)
-            db.flush()
-        job = enqueue_job(
-            db,
-            actor.workspace_id,
-            rule.project_id,
-            "reconcile",
-            "run:" + existing.id,
-            {"run_id": existing.id},
-        )
+        result = enqueue_approved_run(body.contract_id, db, actor)
         db.commit()
-        return {"run_id": existing.id, "job_id": job.id, "status": existing.status}
+        return result
 
     @router.get("/runs", response_model=RunList)
     def runs(
@@ -761,38 +669,9 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     def export(
         run_id: str, db: DB, actor: User, key: Key, format: Literal["csv", "xlsx"] = "xlsx"
     ) -> dict[str, str]:
-        require_editor(actor, db, run_id)
-        row = get_scoped(db, RunRow, run_id, actor)
-        require_verified(row)
-        db.refresh(row, with_for_update=True)
-        artifact = db.scalar(
-            select(ExportRow).where(
-                ExportRow.run_id == run_id,
-                ExportRow.format == format,
-                ExportRow.revision == REPORT_REVISION,
-            )
-        )
-        if artifact is None:
-            artifact = ExportRow(
-                id=identifier(),
-                workspace_id=actor.workspace_id,
-                project_id=row.project_id,
-                run_id=run_id,
-                format=format,
-                revision=REPORT_REVISION,
-            )
-            db.add(artifact)
-            db.flush()
-        job = enqueue_job(
-            db,
-            actor.workspace_id,
-            row.project_id,
-            "export",
-            "export:" + artifact.id,
-            {"export_id": artifact.id},
-        )
+        result = enqueue_export(run_id, format, db, actor)
         db.commit()
-        return {"export_id": artifact.id, "job_id": job.id, "status": artifact.status}
+        return result
 
     @router.get("/exports/{export_id}")
     def export_info(export_id: str, db: DB, actor: User) -> dict[str, Any]:
@@ -836,3 +715,144 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         )
 
     return router
+
+
+def approve_plan(plan_id: str, db: Session, actor: Actor) -> ReconciliationContract:
+    require_editor(actor, db, plan_id)
+    row = get_scoped(db, PlanRow, plan_id, actor)
+    db.refresh(row, with_for_update=True)
+    existing = db.scalar(
+        select(ReconciliationContractRow).where(ReconciliationContractRow.plan_id == row.id)
+    )
+    if existing:
+        return ReconciliationContract.model_validate(existing.definition)
+    proposal = PlanProposal.model_validate(row.proposal)
+    if proposal.plan is None or proposal.status != "PROPOSED" or proposal.missing_requirements:
+        raise DomainError("PLAN_NEEDS_REVIEW", "Kế hoạch chưa đủ bằng chứng để duyệt.", 422)
+    cats = selected_catalogue(
+        db,
+        actor,
+        row.project_id,
+        [proposal.plan.left.canonical_id, proposal.plan.right.canonical_id],
+    )
+    validate_reconciliation_contract(proposal.plan, cats, actor.workspace_id, row.project_id)
+    contract = ReconciliationContract(
+        id=identifier(),
+        workspace_id=actor.workspace_id,
+        project_id=row.project_id,
+        revision=1,
+        plan=proposal.plan,
+        approved_by=actor.id,
+        approved_at=now(),
+    )
+    db.add(
+        ReconciliationContractRow(
+            id=contract.id,
+            workspace_id=actor.workspace_id,
+            project_id=row.project_id,
+            plan_id=row.id,
+            definition=contract.model_dump(mode="json"),
+            source_signatures=template_signatures(cats),
+        )
+    )
+    db.add(
+        AuditRow(
+            workspace_id=actor.workspace_id,
+            actor_id=actor.id,
+            action="RECONCILIATION_RULE_APPROVED",
+            resource_id=contract.id,
+        )
+    )
+    db.flush()
+    return contract
+
+
+def enqueue_approved_run(contract_id: str, db: Session, actor: Actor) -> dict[str, Any]:
+    require_editor(actor, db, contract_id)
+    rule = get_scoped(db, ReconciliationContractRow, contract_id, actor)
+    contract = ReconciliationContract.model_validate(rule.definition)
+    cats = selected_catalogue(
+        db,
+        actor,
+        rule.project_id,
+        [contract.plan.left.canonical_id, contract.plan.right.canonical_id],
+    )
+    validate_reconciliation_contract(contract.plan, cats, actor.workspace_id, rule.project_id)
+    signature = hashlib.sha256(
+        json.dumps(
+            dict(
+                contract=contract.model_dump(mode="json"),
+                sources=[c.canonical.model_dump(mode="json") for c in cats],
+                engine=ENGINE_REVISION,
+            ),
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(:key)"),
+        {"key": int.from_bytes(bytes.fromhex(signature[:16]), "big", signed=True)},
+    )
+    existing = db.scalar(
+        select(RunRow).where(
+            RunRow.project_id == rule.project_id, RunRow.input_signature == signature
+        )
+    )
+    if existing is None:
+        existing = RunRow(
+            id=identifier(),
+            workspace_id=actor.workspace_id,
+            project_id=rule.project_id,
+            contract_id=rule.id,
+            input_signature=signature,
+            engine_revision=ENGINE_REVISION,
+            source_refs=[c.canonical.model_dump(mode="json") for c in cats],
+        )
+        db.add(existing)
+        db.flush()
+    job = enqueue_job(
+        db,
+        actor.workspace_id,
+        rule.project_id,
+        "reconcile",
+        "run:" + existing.id,
+        {"run_id": existing.id},
+    )
+    db.flush()
+    return {"run_id": existing.id, "job_id": job.id, "status": existing.status}
+
+
+def enqueue_export(
+    run_id: str, format: Literal["csv", "xlsx"], db: Session, actor: Actor
+) -> dict[str, str]:
+    require_editor(actor, db, run_id)
+    row = get_scoped(db, RunRow, run_id, actor)
+    require_verified(row)
+    db.refresh(row, with_for_update=True)
+    artifact = db.scalar(
+        select(ExportRow).where(
+            ExportRow.run_id == run_id,
+            ExportRow.format == format,
+            ExportRow.revision == REPORT_REVISION,
+        )
+    )
+    if artifact is None:
+        artifact = ExportRow(
+            id=identifier(),
+            workspace_id=actor.workspace_id,
+            project_id=row.project_id,
+            run_id=run_id,
+            format=format,
+            revision=REPORT_REVISION,
+        )
+        db.add(artifact)
+        db.flush()
+    job = enqueue_job(
+        db,
+        actor.workspace_id,
+        row.project_id,
+        "export",
+        "export:" + artifact.id,
+        {"export_id": artifact.id},
+    )
+    db.flush()
+    return {"export_id": artifact.id, "job_id": job.id, "status": artifact.status}
