@@ -1,5 +1,9 @@
 # AI Gateway và provider contracts
 
+**Ủy quyền mới01/11/2026:** triển khai Agent-first, lifetime global/demo workspace ceiling50 gồm lịch sử, Planner ceiling10 (8lượt mới cho vòng sửa đầu), không reset reservations. Cổng Planner mới có hai ca cuối NEEDS_REVIEW/PROPOSED **PASS LIVE**, prompt `reconciliation-planning-5`, dùng6attempts mới gồm4lỗi chẩn đoán; Gemini15/50, còn35. Lịch sử30/10 bên dưới giữ nguyên FAIL. Model vẫn `gemini-3.5-flash-lite`; không gọi Qwen/Argon/parser. Chi tiết trạng thái đang triển khai ở [mục S](IMPLEMENTATION_STATUS.md), chưa nghiệm thu toàn MVP hoặc merge/deploy.
+
+Planner gửi DTO nhỏ `PlannerReply` bằng GenerateContent `responseJsonSchema` (serialization schema, Decimal chuỗi); server giữ source/scope đã xác nhận, ghép domain plan rồi chạy lại validator. `allowed_rule_evidence_ids` tách canonical/schema/artifact khỏi field-level evidence trong catalogue. Model chọn field evidence không đúng tầng bị từ chối, không lọc/sửa IDs để qua gate. Optional chưa gửi dùng exclude_unset, không épnull vào domain defaults. Mỗi Planner job1HTTP attempt; trace hash/status/loc/type không chứa input/secret. Google schema subset/complexity có giới hạn; UUID enum trong nested evidence array đã bị400 ở live, không dùng constraint đó để ép provider.
+
 ## Assistant có bằng chứng
 
 Task `answer_verified_question`, prompt `assistant-grounded-1`, dùng cùng GeminiProvider/Gateway. Reuse facts trước, câu hỏi facts hỗ trợ được trả bằng backend deterministic; không gọi đây là LLM/live. Model chỉ chọn fact IDs và mã diễn giải allowlist theo `ModelAnswer`, không sinh prose/tiền/citations tùy ý. Backend kiểm FactSet/run/snapshot, claims và render số liệu từ facts; mismatch chỉ chứng minh chênh lệch, chưa chứng minh nguyên nhân/phí. Metric không có phải báo thiếu bằng chứng.

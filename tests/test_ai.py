@@ -149,6 +149,67 @@ def test_gemini_source_names_never_repaired_into_ids(config, profile, schema):
     assert len(calls) == 1  # semantic failure is not retried, guessed or silently repaired
 
 
+def test_gemini_structured_schema_diagnostics_redact_values_and_ignore_thoughts(config):
+    from pydantic import BaseModel, SecretStr, ValidationError
+
+    class Output(BaseModel):
+        status: str
+
+    config.allow_external_ai = True
+    config.external_ai_request_budget = 1
+    config.gemini_api_key = SecretStr("synthetic-test-key")
+    schema = Output.model_json_schema()
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        assert json.loads(request.content)["generationConfig"]["responseJsonSchema"] == schema
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "finishReason": "STOP",
+                        "content": {
+                            "parts": [
+                                {"thought": True, "text": "PRIVATE THOUGHT"},
+                                {"text": '{"status":'},
+                                {"text": '["PRIVATE INPUT"]}'},
+                            ]
+                        },
+                    }
+                ]
+            },
+        )
+
+    def validate(content):
+        try:
+            return Output.model_validate_json(content)
+        except ValidationError as exc:
+            raise DomainError("AI_INVALID_JSON", "Sai hợp đồng.") from exc
+
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=1
+    )
+    provider = GeminiProvider(config, httpx.Client(transport=httpx.MockTransport(transport)))
+    try:
+        with pytest.raises(DomainError, match="AI_INVALID_JSON"):
+            provider.request_typed(
+                [dict(content="test"), dict(content="synthetic")],
+                policy,
+                lambda: True,
+                validate,
+                max_attempts=1,
+                response_schema=schema,
+            )
+        assert len(calls) == 1
+        assert provider.usage["validation_errors"] == [dict(type="string_type", loc=["status"])]
+        assert len(provider.usage["response_sha256"]) == 64
+        assert "PRIVATE" not in json.dumps(provider.usage)
+    finally:
+        provider.close()
+
+
 def test_T11_unknown_transform_rejected(profile, schema):
     proposal = unknown_proposal()
     proposal["decisions"] = [

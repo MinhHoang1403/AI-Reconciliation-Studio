@@ -2,12 +2,13 @@
 
 import json
 from collections.abc import Callable
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from studio.ai_gateway import GeminiProvider, build_evidence_context
-from studio.contracts import WorkspacePolicy
+from studio.contracts import Contract, WorkspacePolicy
 from studio.contracts.reconciliation import (
     PlanningRequest,
     PlanningSuggestions,
@@ -21,7 +22,16 @@ from studio.reconciliation_contracts import (
     validate_reconciliation_contract,
 )
 
-PLANNER_REVISION = "reconciliation-planning-2"
+PLANNER_REVISION = "reconciliation-planning-5"
+
+
+class PlannerReply(Contract):
+    """Provider chỉ chọn quan hệ/ngữ nghĩa; server giữ nguyên nguồn và scope đã xác nhận."""
+
+    status: Literal["PROPOSED", "UNKNOWN", "NEEDS_REVIEW"]
+    suggestions: PlanningSuggestions | None = None
+    missing_requirements: list[str] = Field(default_factory=list, max_length=30)
+    reasoning: str = Field(default="", max_length=2000)
 
 
 def validate_planning_request(
@@ -115,6 +125,8 @@ def missing_confirmations(request: PlanningRequest) -> list[str]:
         missing.extend(
             f"{side}.{name}"
             for name in (
+                "role",
+                "date_field",
                 "time_basis",
                 "coverage_start",
                 "coverage_end",
@@ -142,6 +154,19 @@ def propose_plan(
     """
     request = PlanningRequest.from_plan(draft) if isinstance(draft, ReconciliationPlan) else draft
     validate_planning_request(request, catalogue, workspace_id, project_id)
+    evidence_ids = sorted(
+        {
+            ident
+            for cat in catalogue
+            for ident in (cat.canonical.id, cat.canonical.artifact.id, cat.canonical.schema_id)
+        }
+    )
+    response_schema = PlannerReply.model_json_schema(mode="serialization")
+    # Enum UUID trong mảng nested làm upstream reject400; giữ allowlist trong prompt
+    # và validator server, không lọc/sửa IDs sai từ model để hợp thức hóa kết quả.
+    response_schema["$defs"]["PlanningSuggestions"]["properties"]["evidence_ids"]["description"] = (
+        "Only canonical/schema/artifact IDs from the explicit allowed_rule_evidence_ids list."
+    )
     sources = []
     for cat in catalogue:
         sources.append(
@@ -166,13 +191,15 @@ def propose_plan(
                 "Preserve every supplied user-confirmed fact; absent facts are unknown. "
                 "Propose source roles, join field pairs, comparison fields, cardinality, grain "
                 "and aggregation from the catalogue. Never invent coverage/period/timezone. "
-                "If scope is missing, return plan=null, status=NEEDS_REVIEW, typed suggestions "
+                "If scope is missing, return status=NEEDS_REVIEW, typed suggestions "
                 "and missing_requirements; candidates are not an executable plan. "
                 "Use UNKNOWN/NEEDS_REVIEW and missing_requirements if evidence is insufficient. "
-                "IDs must exist in catalogue; evidence_ids cite canonical/schema/artifact IDs. "
+                "evidence_ids MUST use ONLY these canonical/schema/artifact IDs: "
+                + json.dumps(evidence_ids)
+                + ". Column/profile/mapping evidence IDs are NOT valid rule evidence IDs. "
                 "Return JSON ONLY matching this schema: "
-                + json.dumps(PlanProposal.model_json_schema())
-                + ' Example: {"status":"UNKNOWN","plan":null,"missing_requirements":'
+                + json.dumps(PlannerReply.model_json_schema(mode="serialization"))
+                + ' Example: {"status":"UNKNOWN","suggestions":null,"missing_requirements":'
                 '["Confirm matching keys"],"reasoning":"Insufficient evidence"}'
             ),
         ),
@@ -181,6 +208,7 @@ def propose_plan(
             content=json.dumps(
                 dict(
                     untrusted_catalogue=sources,
+                    allowed_rule_evidence_ids=evidence_ids,
                     user_confirmed=request.model_dump(mode="json", exclude_unset=True),
                 )
             ),
@@ -199,6 +227,38 @@ def propose_plan(
                     request, side
                 ).role != getattr(proposal.suggestions, side + "_role"):
                     raise DomainError("AI_UNSUPPORTED_ASSUMPTION", "AI đổi vai trò đã xác nhận.")
+            if proposal.plan is None and proposal.status == "PROPOSED":
+                missing = missing_confirmations(request)
+                if missing:
+                    return proposal.model_copy(
+                        update={
+                            "status": "NEEDS_REVIEW",
+                            "missing_requirements": list(
+                                dict.fromkeys(missing + proposal.missing_requirements)
+                            ),
+                        }
+                    )
+                # Ghép facts đã xác nhận với gợi ý typed; không tạo approval hoặc đoán thời gian.
+                selection = proposal.suggestions.model_dump(mode="json")
+                try:
+                    proposal.plan = ReconciliationPlan.model_validate(
+                        {
+                            **{
+                                k: v
+                            for k, v in request.model_dump(mode="json", exclude_unset=True).items()
+                                if k in ReconciliationPlan.model_fields
+                            },
+                            **{
+                                k: v
+                                for k, v in selection.items()
+                                if k in ReconciliationPlan.model_fields
+                            },
+                            "name": "Đề xuất đối soát cần duyệt",
+                            "entity_kind": catalogue[0].canonical.entity_kind,
+                        }
+                    )
+                except ValidationError as exc:
+                    raise DomainError("AI_INVALID_JSON", "Gợi ý thiếu trường cần thiết.") from exc
         if proposal.plan is not None:
             validate_reconciliation_contract(proposal.plan, catalogue, workspace_id, project_id)
             confirmed = request.model_dump(mode="json", exclude_unset=True)
@@ -236,4 +296,11 @@ def propose_plan(
             raise DomainError("AI_PLAN_MISSING", "AI thiếu kế hoạch được đề xuất.")
         return proposal
 
-    return provider.request_typed(prompt, policy, reserve, validate)
+    return provider.request_typed(
+        prompt,
+        policy,
+        reserve,
+        validate,
+        max_attempts=1,
+        response_schema=response_schema,
+    )

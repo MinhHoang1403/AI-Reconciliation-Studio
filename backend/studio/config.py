@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     external_ai_request_budget: int = Field(default=0, ge=0)
     assistant_cloud_enabled: bool = False
     assistant_request_budget: int = Field(default=0, ge=0)
+    planner_request_budget: int = Field(default=2, ge=0, le=50)
     llama_cloud_api_key: SecretStr = SecretStr("")
     allow_cloud_parsing: bool = False
     cloud_parser_request_budget: int = Field(default=0, ge=0)

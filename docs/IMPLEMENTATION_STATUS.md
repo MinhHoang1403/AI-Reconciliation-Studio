@@ -1,6 +1,6 @@
 # Trạng thái triển khai và nghiệm thu
 
-**Hiện tại — 30/10/2026:** Nghiệm thu mới tại **mục R**: **191 backend / 59 E2E PASS**, Assistant **PASS LIVE**, Planner `reconciliation-planning-2` **FAIL LIVE** (`AI_INVALID_JSON`). **CHƯA ĐẠT GATE RELEASE**: merge main, dọn feature branch và Docker release/image cleanup mới **BLOCKED** theo prompt. Gemini **9/10**, còn1; không retry hoặc tăng/reset ngân sách. Runtime vẫn source `446d031`, bốn dịch vụ healthy, dữ liệu/persistence/backup đã kiểm tra lại. Các mục A–Q là lịch sử, không thay cho kết quả mới.
+**Hiện tại — nhiệm vụ01/11/2026:** đang triển khai [Agent-first MVP](AI_AGENT_MVP_IMPLEMENTATION_PLAN.md) theo ủy quyền mới; tiến độ ở mục S. Chưa nghiệm thu toàn bộ hoặc merge/release. Mục R giữ nguyên bằng chứng FAIL LIVE ngày30/10; prompt Planner mới đang được kiểm tra riêng. Không dùng trạng thái lịch sử thay số đo hiện tại.
 
 Bối cảnh lịch sử: Quality Hardening + UX Refinement trước đây nằm trên `codex/interface-quality`, từ main `0b9421e`. Các nhiệm vụ P/Q triển khai Assistant trên `codex/assistant-automation` và dừng trước merge. Mục R ghi ủy quyền hợp nhất mới cùng gate live đang BLOCKED; không thay đổi kết luận lịch sử ở mục N.
 
@@ -1025,3 +1025,32 @@ Một Starlette TestClient/httpx deprecation warning còn lại. Tool runner sau
 Cần nhiệm vụ riêng chẩn đoán Planner typed output (hiện không có raw response/chi tiết lỗi theo trường) và quyết định allowance nghiệm thu mới; nhiệm vụ hiện đã hết2attempts, global còn1 nhưng Planner lifetime cap2 đã đầy. Không tự tăng/reset cap, sửa validator hoặc retry. Giữ công khai các giới hạn Q: intents/claim allowlist, caps100evidence/20source cells/catalogue/templates, chưa conversation server search, mobile keyboard/screen-reader/full WCAG, representative model quality/precision/recall, production load/HA, retention và off-host DR chưa verified. Qwen DEFERRED, Argon research-only, không triển khai phase/tính năng khác.
 
 **DỪNG sau kiểm chứng và commit/push báo cáo trên feature branch. Không tự merge hoặc gọi thêm Gemini.**
+
+## S. Agent-first MVP — triển khai theo ủy quyền01/11/2026
+
+### Cổng0 — baseline và bảo vệ dữ liệu
+
+Đã đọc toàn bộ kế hoạch Agent-first mục0–22, Rules/AGENTS và các hợp đồng liên quan. Giữ source project/Compose hiện có; tiếp tục feature `codex/assistant-automation` từ8044b47, main/origin vẫn eefdd44. File kế hoạch mới do chủ dự án cung cấp được đưa vào Git; amendment ở PROJECT_PLAN ghi quyền mới, bảo toàn lịch sử. Không tạo agent framework, worktree hay môi trường test khác.
+
+Baseline chạy mới: **191backend/PostgreSQL PASS / 68,88s**, **59E2E MANUAL PASS / 206,12s**,0FAIL/SKIP/flaky. Snapshot toàn metadata/artifact hashes ở `runtime/agent-baseline.json`. Backup/restore mới `backup_28a18b50e09447ae947a403fcffa35e9`,23bảng, metadata SHA256 `0ed13893d60215be838fe7e1f9eecc58589c18fe79886253cf51b27a0950975b`; restore UUID schema/checksums/path traversal PASS, không overwrite public. Bốn dịch vụ healthy, loopback proof đã verify. Thời gian UTC trong receipt không thay ngày ủy quyền của chủ dự án.
+
+### Cổng1 — Planner/Gateway, bằng chứng ban đầu
+
+Theo prompt mới, global/demo workspace ceiling10→**50**, giữ đủ9reservations lịch sử; audit `GEMINI_CEILING_AUTHORIZED_50` ghi thay đổi, không nới workspace khác hoặc reset used. Planner task ceiling2→10 để giới hạn **8attempts mới tối đa**; default cài mới vẫn2, global cloud mặc định OFF/0. Assistant vẫn OFF/budget0; parser OFF; không gọi Qwen/Argon/LlamaParse.
+
+Gateway thêm optional REST `responseJsonSchema`, đọc các text parts không phải thought, chặn finish reason chưa hoàn chỉnh, lưu HTTP status/response hash/validation locations và type đã redacted. Không log input/error message/raw thoughts. Planner tối đa1HTTP attempt/job, lỗi giữ reservation, không tự retry. Contract nguồn: [Google GenerateContent](https://ai.google.dev/api/generate-content), [schema subset/complexity](https://ai.google.dev/gemini-api/docs/structured-output), [Pydantic errors](https://docs.pydantic.dev/latest/errors/validation_errors/), đối chiếu trong nhiệm vụ.
+
+Chẩn đoán: receipt cũ không giữ raw response nên không thể chứng minh field lỗi của attempt30/10. Lượt mới với schema domain đầy đủ bị HTTP error; schema nhỏ `PlannerReply` đã nhận200. Một response mới bị **INVALID_EVIDENCE** vì model đưa evidence cấp cột từ profile/mapping vào rule chỉ nhận canonical/schema/artifact IDs. Sửa ranh giới prompt bằng danh sách `allowed_rule_evidence_ids` riêng, giữ validator cũ; không lọc/đổi ID sai trong output. Thử UUID enum trong array schema bị400 INVALID_ARGUMENT (receipt local), đã bỏ constraint phía provider này và giữ allowlist bằng prompt + strict backend checks. Không suy lỗi400 đầu giống lỗi400 sau khi không có body đầu.
+
+Provider chỉ đề xuất typed keys/metrics/grain/cardinality. Server ghép với facts đã xác nhận, không cho model chọn source/scope hoặc approval. Phát hiện lỗi ghép `PlanningRequest.model_dump()` đưa optional chưa gửi thànhnull (right.filters/allow_partial) làm domain DTO fail; sửa `exclude_unset=True`, regression sparse complete request. Không điền evidence/tiền giả hoặc giảm validation.
+
+Prompt hiện **reconciliation-planning-5**. Hai ca cuối qua production API/queue/Gateway và source worker handlers trong thư mục `/tmp` của backend hiện có, không server/image thứ hai:
+
+| Ca | Kết quả | Attempt/usage/latency |
+|---|---|---|
+| Partial scope, không keys/full rule | **PASS LIVE transport/schema/semantics/oracle**: NEEDS_REVIEW, đúng carrier+tracking_id/delivery_charge/VND/gross/ONE_TO_ONE; missing effective date/date field/time basis/snapshot, không approved contract |1;7407input/514output/7921total tokens;2859ms|
+| Complete confirmed scope, không keys/full rule | **PASS LIVE transport/schema/semantics/oracle**: PROPOSED, source IDs và mọi facts period/timezone/coverage giữ nguyên; same literal keys/metric/tolerance0; chưa approve/run |1;7547input/455output/8002total tokens;2566ms|
+
+Jobs cuối `045b6bbf-a2b2-40e6-9e16-db0477438ae5`, `c2b0343f-2e7a-4277-99b6-b5e699db8770`; proposals `4781b323-af68-44f5-b49d-35a7154d5e62`, `046ed767-d0d1-41cb-b1d2-9bce31abddf1`. Tổng vòng này **6attempts mới**, gồm4attempts không đạt và2PASS, **Gemini15/50, còn35; Planner8/10**, không retry tự động. Giữ đầy đủ receipts dưới runtime/agent-planner-* ngoài Git; synthetic HTTP responses được lưu local cho chẩn đoán, không mở chế độ log raw cho dữ liệu người dùng. Không cộng số lần replay thành số tests hoặc tuyên bố precision/recall tổng quát. Schema syntax/semantics được kiểm riêng; final MVP gates vẫn đang triển khai.
+
+Targeted regression55cases AI/reporting PASS trước bổ sung sparse case,27reporting PASS sau bổ sung; Ruff/mypy33modules PASS. **Full source suite trên backend/PostgreSQL hiện có:195PASS,0FAIL/SKIP,35,55s** (157offline+38PG). Một replay source bị ngắt do recreate config trong lúc chạy đã được bỏ khỏi bằng chứng, chạy lại đầy đủ trước live; không dùng lượt ngắt làmPASS. Các cổng tiếp theo tiếp tục trong cùng nhiệm vụ theo quyền mới, không dừng ở báo cáo này.

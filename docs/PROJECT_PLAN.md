@@ -12,6 +12,12 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Amendment được chủ dự án ủy quyền — 01/11/2026
+
+[Kế hoạch Agent-first](AI_AGENT_MVP_IMPLEMENTATION_PLAN.md) là đặc tả triển khai mới cho MVP local: giữ App Shell, parser/mapping/normalization/matcher/verifier/Decimal và lịch sử ba giai đoạn, chuyển landing sang Chat/Upload và bổ sung orchestration hữu hạn, typed tools/query, review-by-exception/resume. Các mô tả cũ về landing Dashboard/read-only Assistant là baseline lịch sử; quyền write chỉ qua server policy theo actor, approved scope và quyết định review hợp lệ. Không tự approve rule mới hoặc tính KPI bằng LLM.
+
+Prompt mới cho phép thực hiện liên tục, sửa lỗi Planner, nghiệm thu rồi merge/deploy/cleanup khi gates đạt; thay các lệnh dừng nhiệm vụ cũ. Tổng lifetime Gemini ceiling được phép50 **gồm history**, cập nhật đúng demo workspace sau kiểm ledger, không reset. Planner vòng sửa đầu tối đa8attempts mới; các tasks khác có ceilings riêng trong tổng50. Không gọi Qwen, Argon hoặc mở parser mới. Đây là ủy quyền triển khai, không phải bằng chứng các tính năng đã PASS.
+
 Tài liệu này là **nguồn yêu cầu thống nhất** cho dự án mới. Tất cả giai đoạn dùng cùng tên thực thể, trạng thái, kiểu dữ liệu và API contracts. Mọi thay đổi nghiệp vụ phải sửa đặc tả, golden fixtures và tests liên quan trước/song song khi đổi code; không có chuyện một giai đoạn tự sáng tạo định nghĩa mới cho bước trước.
 
 **Ba giai đoạn duy nhất:**

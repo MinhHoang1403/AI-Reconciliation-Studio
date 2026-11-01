@@ -218,7 +218,7 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
                 )
                 or 0
             )
-            if count >= 2:
+            if count >= settings.planner_request_budget:
                 return False
             allowed = reserve_gemini_request(db, workspace_id, job_id, settings)
             if allowed:

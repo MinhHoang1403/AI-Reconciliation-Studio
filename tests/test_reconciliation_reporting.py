@@ -90,6 +90,19 @@ def test_planner_typed_contract_bounded_attempts_and_policy(config, kind):
 
     def handle(request):
         requests.append(request)
+        wire = json.loads(request.content)["generationConfig"]["responseJsonSchema"]
+        assert (
+            "Only canonical/schema/artifact"
+            in wire["$defs"]["PlanningSuggestions"]["properties"]["evidence_ids"]["description"]
+        )
+        allowed = json.loads(json.loads(request.content)["contents"][0]["parts"][0]["text"])[
+            "allowed_rule_evidence_ids"
+        ]
+        assert set(allowed) == {
+            ident
+            for cat in cats
+            for ident in (cat.canonical.id, cat.canonical.artifact.id, cat.canonical.schema_id)
+        }
         body = dict(status="PROPOSED", plan=p.model_dump(mode="json"))
         if kind == "invented":
             body["plan"]["join_keys"][0]["left"] = "invented"
@@ -122,7 +135,7 @@ def test_planner_typed_contract_bounded_attempts_and_policy(config, kind):
     else:
         with pytest.raises(DomainError):
             propose_plan(provider, cats, p, policy, reserve, "demo", "project")
-        expected = 0 if kind == "off" else 1 if kind == "invented" else 2
+        expected = 0 if kind == "off" else 1
         assert len(requests) == len(reserved) == expected
     provider.close()
 
@@ -142,6 +155,9 @@ def test_planner_typed_contract_bounded_attempts_and_policy(config, kind):
         "suggested-bad-money",
         "suggested-cardinality",
         "changed-period",
+        "structured-complete",
+        "structured-sparse-complete",
+        "structured-partial",
     ],
 )
 def test_planner_partial_request_proposes_keys_without_execution(config, kind):
@@ -161,12 +177,18 @@ def test_planner_partial_request_proposes_keys_without_execution(config, kind):
         for pair in p.join_keys
     ]
     draft = PlanningRequest.from_plan(p)
+    if kind == "structured-sparse-complete":
+        sparse = draft.model_dump(mode="json", exclude_unset=True)
+        sparse.pop("allow_partial", None)
+        sparse["right"].pop("filters", None)
+        draft = PlanningRequest.model_validate(sparse)
     if kind in {
         "missing",
         "suggestions",
         "suggested-fake-field",
         "fake-evidence",
         "unconfirmed-scope",
+        "structured-partial",
     }:
         draft = PlanningRequest(left={"canonical_id": "internal"}, right={"canonical_id": "shopee"})
     config.allow_external_ai = True
@@ -195,6 +217,9 @@ def test_planner_partial_request_proposes_keys_without_execution(config, kind):
             )
         if kind in {
             "suggestions",
+            "structured-complete",
+            "structured-sparse-complete",
+            "structured-partial",
             "suggested-fake-field",
             "fake-evidence",
             "suggested-bad-money",
@@ -226,7 +251,7 @@ def test_planner_partial_request_proposes_keys_without_execution(config, kind):
             if kind == "suggested-cardinality":
                 suggestion["cardinality"] = "MANY_TO_MANY"
             body = dict(
-                status="NEEDS_REVIEW",
+                status="PROPOSED" if kind.startswith("structured-") else "NEEDS_REVIEW",
                 plan=None,
                 suggestions=suggestion,
                 missing_requirements=["Confirm reporting period"],
@@ -252,13 +277,13 @@ def test_planner_partial_request_proposes_keys_without_execution(config, kind):
         result = propose_plan(provider, cats, draft, policy, lambda: True, "demo", "project")
         if kind == "missing":
             assert result.status == "NEEDS_REVIEW" and result.plan is None
-        elif kind in {"suggestions", "unconfirmed-scope"}:
+        elif kind in {"suggestions", "unconfirmed-scope", "structured-partial"}:
             assert result.status == "NEEDS_REVIEW" and result.plan is None
             assert result.suggestions.join_keys == p.join_keys
             assert result.missing_requirements
         else:
             assert result.status == "PROPOSED" and result.plan.join_keys == p.join_keys
-    assert len(requests) == (0 if kind == "budget" else 2 if kind == "suggested-cardinality" else 1)
+    assert len(requests) == (0 if kind == "budget" else 1)
     provider.close()
 
 

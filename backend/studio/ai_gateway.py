@@ -4,6 +4,7 @@ Qwen tasks share a schema understanding contract (classification, grain, mapping
 transformation suggestions). Provider output never grants approval or tool access.
 """
 
+import hashlib
 import json
 import re
 from collections.abc import Callable
@@ -177,6 +178,7 @@ class QwenProvider:
                         "Qwen từ chối truy cập; kiểm tra allowlist của endpoint.",
                         503,
                     )
+                self.usage["http_status"] = response.status_code
                 if response.status_code in {429, 500, 502, 503, 504}:
                     raise httpx.TransportError("transient")
                 if not response.is_success:
@@ -240,6 +242,7 @@ class GeminiProvider:
         validator: Callable[[str], T],
         *,
         max_attempts: Literal[1, 2] = 2,
+        response_schema: dict[str, Any] | None = None,
     ) -> T:
         """Shared bounded transport for registered typed tasks; each attempt reserves first."""
         if (
@@ -267,6 +270,7 @@ class GeminiProvider:
                             "temperature": 0,
                             "responseMimeType": "application/json",
                             "maxOutputTokens": 6000,
+                            **({"responseJsonSchema": response_schema} if response_schema else {}),
                         },
                     },
                     timeout=self.config.ai_timeout_seconds,
@@ -278,12 +282,44 @@ class GeminiProvider:
                 try:
                     body = response.json()
                     self.usage["tokens"] = body.get("usageMetadata")
-                    content = body["candidates"][0]["content"]["parts"][0]["text"]
+                    candidate = body["candidates"][0]
+                    self.usage["finish_reason"] = candidate.get("finishReason")
+                    if candidate.get("finishReason") not in {None, "STOP"}:
+                        raise DomainError(
+                            "AI_INCOMPLETE_OUTPUT", "Gemini chưa trả kết quả hoàn chỉnh."
+                        )
+                    content = "".join(
+                        part["text"]
+                        for part in candidate["content"]["parts"]
+                        if not part.get("thought") and isinstance(part.get("text"), str)
+                    )
                     if not isinstance(content, str):
                         raise ValueError("content")
                 except (KeyError, IndexError, ValueError, TypeError) as exc:
                     raise DomainError("AI_INVALID_JSON", "Phản hồi Gemini sai hợp đồng.") from exc
-                return validator(content)
+                self.usage["response_sha256"] = hashlib.sha256(content.encode()).hexdigest()
+                try:
+                    return validator(content)
+                except DomainError as exc:
+                    cause = exc.__cause__
+                    if isinstance(cause, ValidationError):
+                        # Chỉ lưu type và vị trí schema; không lưu input/message/provider text.
+                        known = set(
+                            re.findall(
+                                r'"([A-Za-z_][A-Za-z_0-9]*)"\s*:', json.dumps(response_schema or {})
+                            )
+                        )
+                        self.usage["validation_errors"] = [
+                            {
+                                "type": error["type"],
+                                "loc": [
+                                    p if isinstance(p, int) or p in known else "<field>"
+                                    for p in error["loc"]
+                                ],
+                            }
+                            for error in cause.errors(include_input=False, include_url=False)[:20]
+                        ]
+                    raise
             except httpx.TransportError as exc:
                 if attempt == max_attempts - 1:
                     raise DomainError("GEMINI_UNAVAILABLE", "Gemini không phản hồi.") from exc
