@@ -93,19 +93,23 @@ function ResultChart({ data }: {
     data: Chart;
 }) {
     const root = useRef<HTMLDivElement>(null);
+    const horizontal = data.points.length > 5 || data.points.some(p => label(p.label).length > 18);
+    // Nhãn dài được xuống dòng, mỗi nhóm đủ chỗ; chỉ đổi cách vẽ, không tính lại số liệu.
+    const rowHeight = Math.max(48, ...data.points.map(p => Math.ceil(label(p.label).length / 16) * 16 + 20));
+    const height = horizontal ? Math.max(285, data.points.length * rowHeight + 50) : 285;
     useEffect(() => {
         if (!root.current)
             return;
         const chart = echarts.init(root.current, undefined, { renderer: "svg" });
-        chart.setOption({ aria: { enabled: true }, grid: { left: 80, right: 20, bottom: 70, top: 20 },
+        chart.setOption({ aria: { enabled: true, label: { description: `${data.title}. ${data.unit}. ${data.population_definition}. ${data.points.map(p => `${label(p.label)}: ${p.value}`).join("; ")}` } }, grid: { left: 8, right: 24, bottom: 32, top: 20, containLabel: true },
             tooltip: { trigger: "axis", renderMode: "richText", formatter: (params: unknown) => {
                     const first = (params as {
                         dataIndex: number;
                     }[])[0];
                     const point = data.points[first?.dataIndex];
                     return point ? `${label(point.label)}: ${point.value} ${data.unit}` : "";
-                } }, xAxis: { type: "category", data: data.points.map(p => label(p.label)), axisLabel: { rotate: 20 } },
-            yAxis: { type: "value" }, series: [{ type: "bar", color: "#2563eb", data: data.points.map(p => ({ value: Number(p.value), name: p.value })) }] });
+                } }, xAxis: horizontal ? { type: "value" } : { type: "category", data: data.points.map(p => label(p.label)), axisLabel: { interval: 0 } },
+            yAxis: horizontal ? { type: "category", inverse: true, data: data.points.map(p => label(p.label)), axisLabel: { interval: 0, width: 120, overflow: "break", lineHeight: 16 } } : { type: "value" }, series: [{ type: "bar", color: "#2563eb", data: data.points.map(p => ({ value: Number(p.value), name: p.value })) }] });
         const observer = new ResizeObserver(() => chart.resize());
         observer.observe(root.current);
         return () => { observer.disconnect(); chart.dispose(); };
@@ -113,7 +117,10 @@ function ResultChart({ data }: {
     return <section className="agent-chart"><h4>{data.title}</h4><p>{data.unit} · {data.population_definition} ({data.population}) · {statusText[data.verification_status]||label(data.verification_status)}</p>
     {data.period_start && <p>{data.period_start} → {data.period_end} · {data.timezone}</p>}
     {data.completeness !== "COMPLETE" && <Notice tone="warning">Biểu đồ chỉ hiển thị các nhóm đã tải.</Notice>}
-    <div className="result-chart" ref={root} role="img" aria-label={data.title}/>
+    {!data.points.length && <p>Chưa có nhóm dữ liệu để vẽ biểu đồ.</p>}
+    <div className="agent-chart-scroll" tabIndex={horizontal ? 0 : undefined} role={horizontal ? "region" : undefined} aria-label={horizontal ? "Các nhóm trong biểu đồ; cuộn để xem toàn bộ" : undefined}>
+      <div className="result-chart" style={{height}} ref={root} role="img" aria-label={data.title}/>
+    </div>
     <details><summary>Giá trị chính xác và nguồn</summary><ul>{data.points.map(p => <li key={p.label}>{label(p.label)}: {p.value} {data.unit}</li>)}</ul><small>{data.source_refs.join(" · ")}</small></details></section>;
 }
 export function AgentResultBlocks({ blocks, context, onNavigate }: {

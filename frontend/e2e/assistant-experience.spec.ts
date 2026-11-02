@@ -103,6 +103,33 @@ test('[MOCK CONTRACT] IME composition does not submit a message',async({page})=>
   await expect(input).toHaveValue('Đối soát dữ liệu');expect(posts).toBe(0);
 });
 
+test('[MOCK CONTRACT] Long chart categories remain readable on mobile with exact values',async({page})=>{
+  const labels=Array.from({length:6},(_,i)=>`Nhóm ${i+1}: Chứng từ thanh toán cần kiểm tra và xác nhận dữ liệu`);
+  const context={project_id:'long-chart-project'};
+  await page.setViewportSize({width:390,height:900});
+  await page.addInitScript(()=>{localStorage.setItem('studio.project','long-chart-project');localStorage.setItem('studio.conversation.long-chart-project','long-chart-conversation');});
+  await page.route('**/api/**',route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path==='/api/session')return route.fulfill({json:{workspace_id:'synthetic',actor_id:'chart-reader',role:'viewer'}});
+    if(path==='/api/settings')return route.fulfill({json:{policy:{allow_external_ai:false}}});
+    if(path==='/api/projects/long-chart-project')return route.fulfill({json:{id:context.project_id,name:'Biểu đồ tổng hợp',business_scope:'synthetic',classification:'TEST'}});
+    if(path==='/api/conversations/long-chart-conversation')return route.fulfill({json:{conversation:{id:'long-chart-conversation',title:'Biểu đồ tổng hợp',context},items:[{id:'chart-answer',role:'assistant',context,workflow_id:'long-chart-workflow',created_at:'2026-11-02T00:00:00Z'}],has_more:false}});
+    if(path==='/api/agent/workflows/long-chart-workflow')return route.fulfill({json:{id:'long-chart-workflow',context,state:'COMPLETED',updated_at:'2026-11-02T00:00:00Z',detail:{intent:{intent:'CREATE_VISUALIZATION'},model_calls:0,steps:[],reviews:[],blocks:[{type:'chart',title:'Các nhóm chứng từ',unit:'VND',population:6,population_definition:'Toàn bộ nhóm tổng hợp',verification_status:'CANONICAL',completeness:'COMPLETE',points:labels.map((label,i)=>({label,value:i===0?'12.75':`${i+1}.00`})),source_refs:['synthetic-chart-ref']}]}}});
+    return route.fulfill({json:{items:[],total:0,has_more:false}});
+  });
+  await page.goto('/');const chart=page.locator('.agent-chart .result-chart');await expect(chart.locator('svg')).toBeVisible();
+  await mkdir('../runtime/ui-refinement',{recursive:true});await page.screenshot({path:'../runtime/ui-refinement/long-chart.png'});
+  const text=await chart.locator('svg').textContent();
+  for(const label of labels)expect(text!.replace(/\s/g,'')).toContain(label.replace(/\s/g,''));
+  await expect(chart).toHaveAttribute('aria-label',/Các nhóm chứng từ.*12.75/);
+  const scroll=page.getByRole('region',{name:'Các nhóm trong biểu đồ; cuộn để xem toàn bộ',exact:true});
+  await scroll.focus();await page.keyboard.press('End');
+  await expect.poll(()=>scroll.evaluate(el=>el.scrollTop)).toBeGreaterThan(0);
+  await page.getByText('Giá trị chính xác và nguồn',{exact:true}).click();
+  await expect(page.locator('.agent-chart')).toContainText('12.75 VND');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
 for(const width of [390,768,1366,1440,1920]){
   test(`Assistant-only navigation and history focus at ${width}px`,async({page})=>{
     const writes:string[]=[];page.on("request",r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});

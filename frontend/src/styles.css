@@ -1930,6 +1930,7 @@ pre {
 .agent-table, .agent-chart, .agent-facts {padding:1rem; background:#fff; border:1px solid #e2e8f0; border-radius:.65rem; min-width:0; max-width:100%;}
 .agent-table small, .agent-chart small, .agent-review p {overflow-wrap:anywhere;}
 .agent-table .table-scroll {max-width:100%;}
+.agent-chart-scroll { max-height: 420px; overflow: auto; scrollbar-gutter: stable; }
 .agent-steps {padding-left:1.25rem; color:#475569; font-size:.85rem;}
 .agent-file-chips {display:flex; flex-wrap:wrap; gap:.4rem; grid-column:1 / -1; width:100%;}
 .agent-file-chips>span {display:flex; align-items:center; gap:.25rem; overflow-wrap:anywhere; max-width:100%; padding:.35rem .6rem; background:#eff6ff; border-radius:.5rem; font-size:.8rem;}
