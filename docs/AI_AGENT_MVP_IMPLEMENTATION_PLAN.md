@@ -921,6 +921,8 @@ Kết quả bổ sung UI: **PASS LOCAL/MOCK CONTRACT** theo mô tả, 18 trạng
 
 ## 24. Chỉ dẫn tiếp theo — Assistant Experience & NLP Quality Finalization
 
+Yêu cầu hoàn thiện tiếp nối ngày 02/11/2026 giữ phạm vi này, thu gọn composer/Settings, sửa upload recovery và biểu đồ nhãn dài; trạng thái kiểm chứng mới ở IMPLEMENTATION_STATUS mục U. Những số ở mốc T bên dưới được giữ làm lịch sử. Không tăng ceiling Gemini hoặc thực hiện lại live inference chỉ để nghiệm thu giao diện.
+
 Mục này thay primary navigation của mục 23: **AI Assistant, Lịch sử, Cài đặt**; không còn Dữ liệu hoặc nhóm Kết quả ở sidebar. Nguồn dữ liệu/kết quả/evidence/export mở từ hội thoại. Giữ manual fallback/deep links để bảo toàn chức năng, không tạo lại menu sáu trang. Một composer và một history Modal; Enter gửi, Shift+Enter xuống dòng, không gửi lúc IME composition. Giữ logo/workspace/header/light blue/font/avatar và responsive 5 widths.
 
 Giữ nguyên bộ 80 gold/rubric; bổ sung 24 biến thể độc lập. Gate full gold: intent/source ≥95%, slots ≥90%, không P0/P1; financial/auth/security/persistence gates không thay. Bằng chứng routing 15: gold 79/80 intent, 59/60 nguồn, 34/34 slots; variants 24/24, 16/16, 10/10; 28/28 negatives an toàn. Một ca gold hỏi lại không cần thiết còn được ghi P2, không tô thành PASS từng ca.

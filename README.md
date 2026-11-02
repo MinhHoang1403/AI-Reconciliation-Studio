@@ -4,7 +4,7 @@ Không gian đối soát CSV/XLSX bằng hội thoại: tải tệp, chuẩn hó
 
 Composer gọn, tự giãn khi nhập nhiều dòng; Enter gửi, Shift+Enter xuống dòng. Cài đặt trình bày tài khoản, quyền riêng tư và giới hạn từ API; chủ không gian mở thông tin nâng cao khi cần. Trạng thái được cấp quyền AI và đã cấu hình không chứng minh model đang kết nối.
 
-**Trạng thái 02/11/2026:** **Assistant-only đã hợp nhất vào `main` và triển khai Docker**, đạt **259 Backend/PostgreSQL PASS, 81 Playwright PASS**, 0 FAIL/SKIP/flaky. Gemini routing 15: gold intent **79/80**, nguồn **59/60**, slots **34/34**; 24 biến thể độc lập đạt toàn bộ. Mười luồng chat thực ở hai miền dữ liệu đạt với một request mỗi luồng. Gemini **110/120 lifetime attempts, còn 10**, giữ đủ lịch sử. Trạng thái hợp nhất, Docker và khôi phục ở [báo cáo hiện tại, mục T](docs/IMPLEMENTATION_STATUS.md#t-ai-assistant-experience--nlp-quality-finalization). Qwen hoãn HTTP 403; parser mới OFF.
+**Kiểm chứng 02/11/2026:** Composer/Settings đã được tinh giản; sửa upload recovery, nhãn biểu đồ dài và lựa chọn bản chuẩn hóa. **260 Backend/PostgreSQL PASS, 90 Playwright PASS**, 0 FAIL/SKIP/flaky. Gemini vẫn **110/120 lifetime attempts, còn 10**, không inference mới; 104 phản hồi cũ được revalidate, routing 15 giữ gold intent79/80, nguồn59/60, slots34/34 và P2 D04. Trạng thái phát hành/vận hành mới nhất ở [báo cáo mục U](docs/IMPLEMENTATION_STATUS.md); mốc Assistant-only đã hợp nhất trước đó ở mục T. Qwen hoãn HTTP403; parser mới OFF. Chỉ nghiệm thu sử dụng local trong phạm vi MVP, không production Internet.
 
 ## Mở ứng dụng trong workspace hiện tại
 

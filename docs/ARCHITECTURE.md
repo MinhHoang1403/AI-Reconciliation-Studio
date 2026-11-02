@@ -6,6 +6,10 @@ Data Foundation và Reconciliation đã nghiệm thu theo [kế hoạch](PROJECT
 
 Hoàn thiện giao diện 02/11/2026: `WorkspaceSettings.tsx` tách phần trình bày chỉ đọc khỏi App, gom tài khoản/quyền riêng tư/giới hạn theo một cột; owner mở thông tin vận hành. Composer một hàng tự giãn, focus bàn phím tại control, dùng giới hạn chat từ Settings API chung với server validation. Không thêm service/framework, không thay orchestration, matcher/verifier, storage hoặc approvals.
 
+Upload chưa nhận được phản hồi giữ idempotency key và chữ ký SHA256 theo actor/project trong sessionStorage. Hash tuần tự từng tệp, giữ thứ tự/tên trong chữ ký, không lưu raw bytes; refresh cần đính kèm lại đúng tệp rồi mới reuse key. Server tiếp tục kiểm bytes/scope và trả cùng bootstrap project/dataset. Biểu đồ có tên nhóm dài/nhiều nhóm dùng thanh ngang, nhãn xuống dòng và vùng cuộn bàn phím; giá trị chính xác/đơn vị vẫn từ DTO, không tính lại bằng frontend.
+
+Data drawer reset bảng/revision/filter/preview cùng thao tác đổi nguồn hoặc nhận bảng mới, thay effect reset sau render để không xóa revision người dùng vừa chọn. Chọn lại cùng nguồn giữ lựa chọn; request nguồn cũ vẫn được abort. Không thay artifact hoặc mapping lịch sử.
+
 Theo yêu cầu Product UX ngày 30/10/2026, Assistant là trang trong AppShell, thay panel tại kế hoạch §28; không thêm router hoặc implementation chat thứ hai. History API lưu identifiers trong URL, API xác minh quyền khi khôi phục; bản nháp theo actor/scope nằm trong sessionStorage của tab. Reconciliation giữ state khi đi sang Assistant và trở về, không dựng lại engine hoặc tính KPI ở frontend.
 
 `assistant_tools.py` chỉ đọc theo actor/workspace/project/explicit run; `assistant.py` kiểm và render claims từ `AnswerFactSet`. `assistant_api.py` dùng auth/session/Origin hiện có. Hai bảng additive `conversations`/`conversation_messages` lưu context cố định theo hội thoại, messages, facts và citations; mỗi actor chỉ xem hội thoại của mình. Đổi run/group tạo hội thoại mới. Pagination dùng `(created_at,id)` và scoped cursor.

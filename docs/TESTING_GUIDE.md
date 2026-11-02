@@ -2,6 +2,12 @@
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
+## Kiểm tra Assistant và Settings — 02/11/2026
+
+Phạm vi mới: composer gọn/tự giãn, icon gửi có accessible name, không outline xanh quanh composer khi click, focus bàn phím, Settings theo người dùng và giới hạn chat từ API. `assistant-experience.spec.ts` bổ sung năm widths 390/768/1366/1440/1920, các trạng thái quyền/cấu hình/hạn mức AI mô phỏng, IME, upload mất phản hồi rồi refresh và biểu đồ tên nhóm dài. Các test mới giữ nguyên số tiền/oracle; không bật provider để kiểm giao diện.
+
+Regression upload dùng POST thật tới Backend nhưng browser chủ động bỏ phản hồi đầu: đính kèm lại cùng bytes sau refresh phải có cùng key/project/dataset, không tạo bootstrap thứ hai. Regression biểu đồ dùng DTO MOCK sáu tên nhóm dài, kiểm đủ nhãn SVG, exact values, accessible description và cuộn bàn phím. Backend thêm một PG test giới hạn chat thay theo cấu hình và được server thực thi. Xem kết quả nghiệm thu mới nhất tại IMPLEMENTATION_STATUS; các số liệu theo mốc ở phần dưới là lịch sử.
+
 Nghiệm thu bổ sung **30/10/2026**, [mục R](IMPLEMENTATION_STATUS.md): trước cleanup190 backend/59 E2E PASS; sau sửa công cụ và cleanup **191 backend PASS (153 offline + 38 PostgreSQL), 59 E2E MANUAL PASS, 0 FAIL/SKIP/flaky**. Backend55,45giây, E2E192,85giây. Không cộng các replays. Regression mới kiểm payload CLI qua đúng `AIPlanInput.request` và bảo toàn source IDs/period/timezone/coverage; PostgreSQL harness copy helper vào `/tmp` hiện có. Lỗi cũ được tái hiện bằng missing request/extra plan, không gửi cloud.
 
 Hai live attempts được cấp phép riêng: Assistant `assistant-grounded-1` PASS LIVE; Planner `reconciliation-planning-2` FAIL LIVE vì JSON không đạt Pydantic. Mock/schema/semantic tests PASS không phủ định FAIL LIVE. Giữ ngân sách9/10, còn1; không bật Assistant cloud hoặc dùng `--planner-live` để thử lại. Công cụ đọc cached proposal ghi PASS CACHED, không nhận là live mới. Merge/main release BLOCKED; không chạy regression trên merge result hoặc image main mới khi chưa có chúng.

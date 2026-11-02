@@ -1309,3 +1309,54 @@ Cập nhật release này chỉ đổi tài liệu so với SHA đã build; runt
 - Kết quả này đáp ứng ngưỡng MVP được giao cho Assistant experience; không tự bắt đầu tính năng/giai đoạn mới. Dừng sau bàn giao và chờ nhiệm vụ riêng.
 
 Receipts local ngoài Git: `runtime/assistant-experience-backend-final.log`, `assistant-experience-e2e-resumed.json`, `assistant-experience-gold-final.json`, `assistant-experience-variants-final.json`, `assistant-experience-native-workflows.json`, `assistant-experience-payment-chart.json`, `assistant-experience-products.json`, `assistant-experience-usage.json`, `assistant-experience-original-data-proof.json`, cùng logs recovery/persistence/backup/rollback/release tương ứng. Không commit runtime artifacts hoặc secrets.
+
+## U. Hoàn thiện Assistant, Settings và kiểm chứng local — 02/11/2026
+
+### Phạm vi và baseline
+
+Nhiệm vụ master prompt ngày 02/11/2026: cải thiện UI, audit luồng nghiệp vụ, sửa lỗi thực tế, kiểm chứng và phát hành local trong cùng repository/Compose. Baseline main và origin/main cùng `952566663e03f37d244d1f97aa000b4571861427`, working tree sạch; runtime accepted-main `f1ad9f1`. Backend baseline chạy mới **259 PASS / 57,75 giây**; 81 E2E là mốc bàn giao/cataloque trước thay đổi, không tính thành một lượt chạy mới. Một Compose, bốn services healthy, hai named volumes; không thay .env/provider/model/quota/migrations hoặc dữ liệu cũ.
+
+### UI và thiết kế
+
+- Một composer, `rows=1`, tự giãn tối đa180px; nút gửi icon có accessible name, attach/remove/Enter/Shift+Enter/IME/draft/review/idempotency giữ nguyên. Gộp các khai báo composer chồng nhau, bỏ focus-within xanh và hai lớp khung. Đo năm widths 390/768/1366/1440/1920: trống64–70px, send40×40px, outline composer khi click=none, focus bàn phím rõ; chữ gợi ý/nền đo7,24:1. Đây là samples, không phải chứng nhận WCAG toàn ứng dụng/thiết bị thật.
+- Ghost suggestions, empty state nhẹ, transcript AI không bọc mọi câu trong card; panel giữ cho dữ liệu/review/evidence. AppShell, logo, workspace/account/header và sidebar Assistant/Lịch sử/Cài đặt được bảo toàn. Nhãn TEST trong project selector đổi thành “Thử nghiệm”, enum API không đổi.
+- `WorkspaceSettings.tsx` tách trình bày chỉ đọc khỏi App: tài khoản/quyền, quyền riêng tư và giới hạn; owner mới mở thông tin nâng cao. Không nút/switch giả, không endpoint/secret. Cấu hình/quyền/task allowance được phân biệt với kết nối AI: `NOT VERIFIED` không trở thành “sẵn sàng”. Cài đặt vẫn nêu khả năng gửi bounded context/mẫu ra dịch vụ bên ngoài khi policy cho phép.
+- Đọc nguồn công khai [ChatGPT](https://chatgpt.com/), [Julius](https://julius.ai/guides/academic), [Copilot](https://learn.microsoft.com/copilot/faq), [Rillet Aura](https://www.rillet.com/product/aura-ai); dùng nguyên tắc [Fluent layout](https://fluent2.microsoft.design/layout), [tokens](https://fluent2.microsoft.design/design-tokens), [WCAG2.2](https://www.w3.org/WAI/WCAG22/quickref/), [Playwright snapshots](https://playwright.dev/docs/test-snapshots) và [trace viewer](https://playwright.dev/docs/trace-viewer). Chỉ đọc public pages/docs, không sao chép code/branding hoặc tuyên bố đã dùng phiên tài khoản riêng của các sản phẩm.
+- Baseline screenshots của Assistant/Settings ở cả năm widths vì attachment không chứa hai ảnh gốc. Visual regressions23states×5widths, Settings basic/advanced, keyboard/multiline/file chips và long-category chart có ảnh thực; xem các states chính trước/sau bằng mắt. Giữ phân biệt layout MOCK với luồng Backend thật.
+
+### Lỗi đã sửa và bằng chứng
+
+| Hiện tượng | Nguyên nhân và sửa | Kiểm chứng |
+|---|---|---|
+| Settings ghi10tệp, chat chỉ nhận5; composer hardcode20MB/5tệp | `config.agent_max_upload_files`/allowlist dùng chung giữa kiểm upload và GET/settings; FE nhận giới hạn từ API | Một PG regression đổi max_files=2, upload3bị422/TOO_MANY_FILES, nâng cấu hình10thìchat5; không job/provider |
+| Mất response upload, refresh/đính kèm lại tạo bootstrap khác | Random upload key chỉ nằm trong ref. Giữ key chưa có receipt theo chữ ký SHA256 của ordered files và actor/project trong sessionStorage; hash tuần tự, không lưu bytes | Browser FAIL trên bản trước sửa vì hai key khác nhau; PASS sau sửa: cùng key/project/dataset, một dataset và0cloud |
+| Tên nhóm dài làm ECharts chỉ hiện một nhãn, cột bị ép hẹp trên390px | Axis tự bỏ nhãn, grid không đủ chỗ. Thanh ngang/nhãn xuống dòng cho nhóm dài/nhiều; bounded scroll bàn phím, mô tả tiếng Việt và Decimal string chính xác | MOCK DTO6nhóm: FAIL trước/PASS sau; đủ6nhãnSVG, End cuộn, exact12.75VND. Theo [ECharts ARIA](https://echarts.apache.org/handbook/en/best-practices/aria/) |
+| Chọn canonical revision đôi khi bị reset, nút xem bị disabled | Effect reset sau tableId render đua với thao tác chọn. Reset đồng thời khi đổi nguồn/bảng/nhận metadata; chọn cùng nguồn giữ revision; abort request cũ | Bắt được trong full suite cuối; tăng assertion giữ revision và chọn lại nguồn, replay5/5PASS. Không nới timeout/validator hoặc sửa dữ liệu |
+
+### Nghiệp vụ, dữ liệu và providers
+
+Upload/parsing/mapping/normalization/exact+composite+group reconciliation/independent verifier/query/evidence/export/auth/isolation được kiểm bằng full Backend/PG và browser journeys thật. Provider transports/NLP failure/permission UI dùng MOCK được ghi riêng; không coi đó là inference mới. Oracle giữ mã000702, hai nguồn12.75/10.00VND, delta2.75VND, full-match1/3=33.33%; CSV/XLSX đối chiếu snapshot, zero-prefix/null/formula injection được giữ.
+
+Prompt15/Gateway/engine/verifier không đổi. **104 phản hồi đã lưu** được revalidate qua validator hiện hành trên catalogue PostgreSQL:80gold+24variants PASS CACHED,0HTTP/reservations; đây không là phép đo inference mới hoặc sửa ca D04 thành PASS. Gemini vẫn110/120, Agent93/103, Planner10/10; default source cloudOFF/0. Qwen không probe, LlamaParse không tạo job, Argon không tích hợp. Billed cost, kết nối model trực tiếp mới, thiết bị thật/screen reader và tải/concurrency production NOT VERIFIED.
+
+Worker fault injection mới:75.000dòng, SIGKILL child normalization,2attempts→1canonical, AgentCOMPLETED,0cloud,13,640giây toàn hành trình; không suy thành steady-state throughput. Đọc lại9workflow đã lưu, hai snapshot/raw/export của hai miền khớp. Full inventory trước nhiệm vụ: mọi ID/metadata/hash artifact cũ được giữ, chỉ thêm synthetic test records; không xóa dữ liệu.
+
+Backup/restore trước deploy: `backup_89d8d39de73040bdac2845ee0225271c`,24bảng/981files; metadata SHA256 `2434d7f889f75a805f367b4a96e3f4e4d817bf4720e57d88c1510227f86e9674`, backup3,849s/restore4,375s, corruption/traversal bị chặn. Copy ra host và kiểm lại toàn bộ981file/SHA; cùng máy vật lý, chưa là backup disaster recovery ngoài máy. Restore schema UUID chỉ dùng trong cùng PostgreSQL và được tool dọn, public không overwrite.
+
+### Source, tài liệu và giới hạn
+
+Thay đổi giới hạn ở Assistant/App/Settings/DataDrawer/ProjectSelector/AgentResultBlocks/CSS/types, ba module settings/upload nhỏ và regressions. Không thêm dependency/framework/service/worktree, không đổi financial contracts hoặc migration. Manual fallback, deep links, advanced workflows và golden fixtures vẫn giữ. Xóa CSS chồng/lỗi thời tại vị trí cũ, không nối override vô hạn. Rules§9.1 và tài liệu đầu trang được đồng bộ Assistant-only theo quyền mới; các mốc S/T và ba giai đoạn giữ làm lịch sử. Không xóa AGENTS hoặc tài liệu bằng chứng.
+
+P2 D04 over-abstention với tên nguồn A/B rút gọn giữ nguyên. Không có bằng chứng accuracy tuyệt đối ngoài gold. Chỉ hướng tới READY_FOR_LOCAL_USE trong phạm vi MVP khi gates vận hành/release bên dưới đạt, không PRODUCTION_READY.
+
+Kết quả source chốt và release được ghi tiếp sau khi chạy các cổng cuối. Receipts/screenshot/backup nằm ở `runtime/ui-refinement/`, ngoài Git.
+
+### Quality gates của source chốt
+
+Source ứng dụng chốt `83d9b35`; các thay đổi tiếp theo trong đợt này chỉ là tài liệu. **260 Backend/PostgreSQL PASS, 0 FAIL/SKIP, 55,86 giây**; baseline259 tăng đúng một PG regression. **90 Playwright PASS, 0 FAIL/SKIP/flaky, 295,30 giây** trên source chốt; baseline81 tăng đúng chín cases:5widths composer/Settings,1ma trận Settings,1IME,1upload recovery,1long-chart. Các assertion được tăng trong ca drawer sẵn có, không tăng số case và không cộng5replays vào90.
+
+Ruff toàn backend/tests/tools, mypy42source files, TypeScript/check, ESLint và production build PASS. T01–T40, financial/property/security/auth/CSRF/isolation/export-injection/query/lease/backup contracts nằm trong full suites; không xóa oracle, hạ validator hoặc thêm dependency. Một Starlette/httpx deprecation warning giữ nguyên, không phải failure. Repository content/known-secret/history/Markdown paths và git diff whitespace checks PASS. Không có workflow CI được định nghĩa trong repository; không ghi GitHub CI PASS từ local tests.
+
+Các lượt trung gian không được cộng PASS: test mới ban đầu kỳ vọng400thay422theo error contract; một lượt chạy bị ngắt khi sửa thông báo định dạng/placeholder; một fixture Settings thiếu API envelope; một test khởi động trước khi proof local được cấp; một full run bắt được drawer reset race89PASS/1FAIL. Nguyên nhân đã xử lý ở lớp tương ứng, không tăng timeout/retry hoặc bỏ case. Full suite cuối ở trên là lượt90/90sau sửa drawer và selector label.
+
+Restart và full recreate đều PASS full metadata/artifact snapshot, đồng thời GET/session fail-closed403trước verify-local (2/2). Rollback thực tới accepted-main-f1ad9f1, đọc lại9workflow/hai snapshot/raw/export và full persistence PASS, rồi quay lại candidate khỏe. Không downgrade, đổi policy/quota, xóa volume hoặc tạo Compose thứ hai. Snapshot trước các phép vận hành có916dataset artifacts+94run artifacts+151exports; toàn bộ giữ nguyên qua các thao tác này.
