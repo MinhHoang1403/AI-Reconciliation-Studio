@@ -146,7 +146,13 @@ test("unknown message delivery keeps its idempotency key after reload", async ({
   const s = await state();
   const assistant = await openAssistant(page, s.project_id);
   await assistant.getByRole("button",{name:"Đổi ngữ cảnh phân tích",exact:true}).click();
-  await page.getByLabel("Chọn kết quả phân tích",{exact:true}).selectOption(s.runs.delivery.run_id);
+  const runSelect=page.getByLabel("Chọn kết quả phân tích",{exact:true});
+  await expect(runSelect).toBeEnabled();
+  while(!await runSelect.locator(`option[value="${s.runs.delivery.run_id}"]`).count()){
+    const more=page.getByRole('button',{name:'Tải thêm runs',exact:true});await expect(more).toBeVisible();
+    const count=await runSelect.locator('option').count();await more.click();await expect.poll(()=>runSelect.locator('option').count()).toBeGreaterThan(count);
+  }
+  await runSelect.selectOption(s.runs.delivery.run_id);
   await assistant
     .getByRole("button", { name: "Hội thoại mới", exact: true })
     .click();
@@ -334,7 +340,13 @@ test("T39 missing KPI and untrusted instructions remain bounded", async ({
   const s = await state();
   const dialog = await openAssistant(page, s.project_id);
   await dialog.getByRole("button",{name:"Đổi ngữ cảnh phân tích",exact:true}).click();
-  await page.getByLabel("Chọn kết quả phân tích",{exact:true}).selectOption(s.runs.delivery.run_id);
+  const runSelect=page.getByLabel("Chọn kết quả phân tích",{exact:true});
+  await expect(runSelect).toBeEnabled();
+  while(!await runSelect.locator(`option[value="${s.runs.delivery.run_id}"]`).count()){
+    const more=page.getByRole('button',{name:'Tải thêm runs',exact:true});await expect(more).toBeVisible();
+    const count=await runSelect.locator('option').count();await more.click();await expect.poll(()=>runSelect.locator('option').count()).toBeGreaterThan(count);
+  }
+  await runSelect.selectOption(s.runs.delivery.run_id);
   let answer = await ask(page, "Tỷ lệ EBITDA là bao nhiêu?");
   await expect(answer).toContainText("không tự suy ra KPI");
   await dialog

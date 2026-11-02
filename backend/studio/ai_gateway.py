@@ -291,9 +291,22 @@ class GeminiProvider:
                             self.usage["provider_error_status"] = error["status"]
                         message = str(error.get("message", "")).lower()
                         self.usage["schema_complexity_rejected"] = "schema" in message and any(
-                            word in message
-                            for word in ("too many states", "branching", "complexity")
+                            word in message for word in ("too many states", "branching", "complex")
                         )
+                        self.usage["provider_error_features"] = [
+                            word
+                            for word in (
+                                "schema",
+                                "constraint",
+                                "enum",
+                                "pattern",
+                                "size",
+                                "unsupported",
+                                "maxitems",
+                                "minitems",
+                            )
+                            if word in message
+                        ]
                     except (ValueError, TypeError, AttributeError):
                         pass
                     raise DomainError("GEMINI_HTTP_ERROR", "Gemini trả lỗi HTTP.")

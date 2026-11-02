@@ -528,7 +528,14 @@ def test_routing_query_binds_source_kind_project_and_rejects_wrong_field_or_ambi
     from studio.agent_intents import compile_routing
 
     cat = routing_catalogue()
-    query = dict(source_ref="source-2", select_fields=["order_id"])
+    query = dict(
+        source_ref="canonical-1",
+        select_fields=["order_id"],
+        filters=[],
+        aggregations=[],
+        group_by=[],
+        currency_field=None,
+    )
 
     def route(q):
         return compile_routing(
@@ -610,6 +617,9 @@ def test_routing_exception_fields_use_the_native_query_catalogue():
     assert [f["id"] for f in source["fields"]] == EXCEPTION_FIELDS
     query = dict(
         source_ref=source["ref"],
+        aggregations=[],
+        group_by=[],
+        currency_field=None,
         select_fields=["case_id", "group_id"],
         filters=[dict(field_id="state", op="eq", value="OPEN")],
     )
@@ -672,15 +682,21 @@ def test_routing_gemini_mock_sends_bounded_schema_once_and_binds_native_source()
     def handler(request):
         payload = json.loads(request.read())
         schema = payload["generationConfig"]["responseJsonSchema"]
-        assert schema["properties"]["intents"]["minItems"] == 1
-        assert schema["properties"]["intents"]["maxItems"] == 1
+        assert "minItems" not in schema["properties"]["intents"]
+        assert "maxItems" not in schema["properties"]["intents"]
         assert "PlanningRequest" not in schema["$defs"]
         received.append(payload)
         reply = dict(
             intents=[
                 dict(
                     intent="QUERY_DATA",
-                    query=dict(source_ref=source["ref"], aggregations=[dict(op="count")]),
+                    query=dict(
+                        source_ref=source["ref"],
+                        filters=[],
+                        group_by=[],
+                        currency_field=None,
+                        aggregations=[dict(op="count")],
+                    ),
                 )
             ]
         )
@@ -730,3 +746,12 @@ def test_independent_variant_suite_keeps_original_gold_and_negative_rubric():
     assert not {g["goal"] for g in gold} & {g["goal"] for g in variants}
     assert {g["domain"] for g in variants} == {"delivery", "ledger"}
     assert all(g["intent"] in {"CLARIFY", "UNSUPPORTED"} for g in variants if g.get("negative"))
+
+
+def test_routing_query_requires_explicit_population_and_aggregation_slots():
+    from studio.contracts.agent import RoutingQuery
+
+    with pytest.raises(ValidationError):
+        RoutingQuery(source_ref="source-1")
+    required = RoutingQuery.model_json_schema()["required"]
+    assert {"source_ref", "filters", "aggregations", "group_by", "currency_field"} <= set(required)

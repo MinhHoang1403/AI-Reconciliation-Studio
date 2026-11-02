@@ -300,9 +300,14 @@ def main() -> None:
                     reused = False
             if not reused:
                 goals = [g["goal"] for g in subset]
+                captured = []
 
-                def invoke(provider, policy, reserve, goals=goals, catalogue=catalogue):
-                    return interpret_requests(provider, goals, catalogue, policy, reserve)
+                def invoke(
+                    provider, policy, reserve, goals=goals, catalogue=catalogue, captured=captured
+                ):
+                    return interpret_requests(
+                        provider, goals, catalogue, policy, reserve, capture_routing=captured.append
+                    )
 
                 try:
                     parsed = model_call(
@@ -327,6 +332,12 @@ def main() -> None:
                         job.error_code = (
                             exc.code if isinstance(exc, DomainError) else "BENCHMARK_FAILED"
                         )
+                        # Chỉ project TEST đã xác minh; lưu typed candidates cho offline
+                        # diagnosis, không thực thi hoặc tự sửa câu trả lời không hợp lệ.
+                        if captured:
+                            job.result = dict(
+                                routing_candidates=captured[-1].model_dump(mode="json")
+                            )
                         row = db.get(AgentWorkflowRow, workflow_id)
                         row.state = "BLOCKED"
                         attempt = db.scalar(select(AttemptRow).where(AttemptRow.job_id == job.id))

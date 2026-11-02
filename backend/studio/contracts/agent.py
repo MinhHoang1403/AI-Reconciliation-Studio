@@ -7,7 +7,13 @@ from pydantic import Field
 
 from studio.contracts import Contract, SchemaDefinition
 from studio.contracts.assistant import AssistantAnswer, AssistantContext, Identifier, ToolResult
-from studio.contracts.data_query import DataQuery, QueryOperations, QueryResult
+from studio.contracts.data_query import (
+    DataQuery,
+    QueryAggregation,
+    QueryFilter,
+    QueryOperations,
+    QueryResult,
+)
 from studio.contracts.reconciliation import PlanningRequest, PlanningSuggestions, ReconciliationPlan
 
 IntentName = Literal[
@@ -105,6 +111,10 @@ class RoutingQuery(QueryOperations):
     """Model chọn một nguồn trong catalogue; không tự ghép project/kind/ID."""
 
     source_ref: str = Field(min_length=1, max_length=64)
+    filters: list[QueryFilter] = Field(max_length=8)
+    aggregations: list[QueryAggregation] = Field(max_length=5)
+    group_by: list[Identifier] = Field(max_length=3)
+    currency_field: Identifier | None
 
 
 class ReconciliationSelection(Contract):
