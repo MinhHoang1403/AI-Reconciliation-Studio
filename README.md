@@ -4,7 +4,7 @@ Không gian đối soát CSV/XLSX bằng hội thoại: tải tệp, chuẩn hó
 
 Composer gọn, tự giãn khi nhập nhiều dòng; Enter gửi, Shift+Enter xuống dòng. Cài đặt trình bày tài khoản, quyền riêng tư và giới hạn từ API; chủ không gian mở thông tin nâng cao khi cần. Trạng thái được cấp quyền AI và đã cấu hình không chứng minh model đang kết nối.
 
-**Kiểm chứng 02/11/2026:** Composer/Settings đã được tinh giản; sửa upload recovery, nhãn biểu đồ dài và lựa chọn bản chuẩn hóa. **260 Backend/PostgreSQL PASS, 90 Playwright PASS**, 0 FAIL/SKIP/flaky. Gemini vẫn **110/120 lifetime attempts, còn 10**, không inference mới; 104 phản hồi cũ được revalidate, routing 15 giữ gold intent79/80, nguồn59/60, slots34/34 và P2 D04. Trạng thái phát hành/vận hành mới nhất ở [báo cáo mục U](docs/IMPLEMENTATION_STATUS.md); mốc Assistant-only đã hợp nhất trước đó ở mục T. Qwen hoãn HTTP403; parser mới OFF. Chỉ nghiệm thu sử dụng local trong phạm vi MVP, không production Internet.
+**Nghiệm thu demo 02/11/2026:** đã khôi phục Python/Playwright sau khi mất runtime AppData; bổ sung History loading/error/retry, tạo dự án trong picker, task allowance và sửa manual fallback, form Planner sparse/null, context sau failure/reload. Bộ UAT mới có11tìnhhuống/24tệp/2131dòng tổng hợp và oracle Decimal độc lập. Kết quả/rủi ro hiện hành ở [báo cáo mục V](docs/IMPLEMENTATION_STATUS.md#v-nghiệm-thu-demo-đang-thực-hiện--02112026); mốc260backend/90browser tại mụcU là lịch sử trước nhiệm vụ này.
 
 ## Mở ứng dụng trong workspace hiện tại
 
@@ -30,7 +30,7 @@ Mở **AI Assistant** → đính kèm 1–5 CSV/XLSX → giao việc bằng ti�
 
 Sidebar chỉ **AI Assistant / Lịch sử / Cài đặt**. **Tệp đã tải** mở dữ liệu gốc/chuẩn hóa/lỗi/tải raw ngay trong chat; kết quả mở bảng chi tiết dùng đúng run. Các màn hình thủ công nằm trong fallback theo ngữ cảnh. UI đã kiểm tra 23 trạng thái tại 390/768/1366/1440/1920: lịch sử mở bằng nút **Lịch sử**, ngữ cảnh kết quả mở từ chip, xóa trong menu hội thoại. Reply cho review dùng composer chính và chỉ tạo bản diễn giải trước khi duyệt. Luồng manual/facts cũ vẫn qua các trang chi tiết và chế độ **Chỉ hỏi dữ kiện đã xác minh**. Hội thoại có owner/project và run refs; drafts lưu sessionStorage riêng theo actor/context/conversation, đóng tab có thể mất draft. Dữ liệu persisted không phụ thuộc drafts.
 
-Source cài mới mặc định cloud OFF/0 cho Agent và Assistant. Demo được chủ dự án cho phép tăng allowance có audit, hiện dùng **110/120**, Agent **93/103**, còn **10**; không reset lịch sử hoặc reservations khi restart. Đọc dữ liệu, polling và layout không gọi model. Không tự bật Qwen/Argon/LlamaParse.
+Source cài mới mặc định cloud OFF/0 cho Agent và Assistant. Chủ dự án đã cho phép demo bật Agent, Assistant cloud, parser và Qwen; global/workspace lifetime ceiling200, Agent163, Planner30, Assistant20. Không reset ledger; Cài đặt hiển thị remaining thực tại lúc mở, gồm giới hạn task và tổng. Qwen mapping synthetic mới đã PASS LIVE trên host và Docker; Gemini vẫn là provider mapping mặc định. LlamaParse mới vẫn bị ràng buộc allowance2tài liệu và SHA allowlist, đã dùng2/2; đọc lại PDF/DOCX đã lưu hoạt động, không tạo job mới. Argon chưa tích hợp. Đọc dữ liệu/polling/layout không tự gọi model.
 
 Với dữ liệu đã chọn, có thể thử các câu: `Chuẩn hóa các file này giúp tôi`; `Liệt kê giao dịch đã thanh toán ở file A`; `Vì sao giao dịch 000702 không khớp?`. Cần đủ nguồn/quyền/ngữ nghĩa đã xác nhận. Một ca tên nguồn rút gọn còn hỏi lại không cần thiết; chọn rõ tên tệp khi được hỏi. Kết quả benchmark không bảo đảm mọi câu ngoài tập kiểm tra đều đúng.
 
@@ -66,7 +66,7 @@ Copy cả thư mục backup theo ID được trả về ra host bằng `docker c
 
 Mặc định `LOCAL_DEMO_ACCESS=true`, Gemini/LlamaParse keys rỗng, cloud permissions false và request budgets bằng 0. Quyền workspace cũng mặc định `LOCAL_ONLY`; biến môi trường không tự cấp quyền cloud. Không tự chuyển provider khi Qwen lỗi.
 
-Demo được cấp phép chọn `MAPPING_AI_PROVIDER=GEMINI`, `ALLOW_EXTERNAL_AI=true`, `EXTERNAL_AI_REQUEST_BUDGET=120`, key chỉ trong `.env`; workspace `CLOUD_ALLOWED` có cùng lifetime ceiling 120 và đã dùng 110. Đây là cấu hình demo đã được cấp riêng, không phải quyền tự bật cloud hoặc tăng hạn mức ở cài đặt khác. Mỗi HTTP attempt (kể cả retry/lỗi) có reservation bền vững, trừ hạn mức toàn hệ thống lẫn workspace; Cài đặt hiển thị số đã dùng/còn lại. Không reset khi restart. Qwen giữ nguyên adapter/endpoint nhưng không probe lặp lại; chỉ lựa chọn khi chủ dự án mở quyền. LlamaParse có quyền, request/credit ceilings và SHA256 allowlist riêng; sau phép thử đã tắt quyền tạo job, không xóa keys/reservations/artifacts.
+Demo được cấp phép chọn `MAPPING_AI_PROVIDER=GEMINI`, `ALLOW_EXTERNAL_AI=true`, `EXTERNAL_AI_REQUEST_BUDGET=200`; key chỉ trong `.env`, workspace `CLOUD_ALLOWED` có cùng ceiling200. Đây là hạn mức nội bộ của ứng dụng, không thay quota/billing của Google. Mỗi HTTP attempt có reservation bền vững, kể cả lỗi; không reset khi restart. Không cộng lượt người dùng vào phép đo UAT của Codex: phân loại bằng job/workflow/trace refs, đồng thời giữ mọi lượt trong tổng ledger. Qwen đang bật và đã probe synthetic; không tự đổi provider. Parser có quyền, request/credit ceilings và SHA256 allowlist riêng; bật flag không mở phép xử lý tài liệu chưa được cấp allowance.
 
 `docker compose up -d --build --wait` khởi động đủ bốn service. Sau lệnh này, chạy `./tools/verify-local.ps1` để kích hoạt auto-session local. Nếu chưa xác minh, `/api/session` trả 403; không tắt auth để vượt qua. Proof mất hiệu lực khi restart/recreate backend hoặc frontend. Chỉ hỗ trợ loopback demo; không publish LAN/Internet hoặc public reverse proxy.
 
@@ -121,6 +121,14 @@ docker compose stop
 ```
 
 Named volumes `ai-reconciliation-studio_postgres_data` và `ai-reconciliation-studio_artifacts` giữ metadata/raw/Parquet. Không chạy `down -v`, xóa volumes hoặc global prune. GitHub lưu source, không thay backup dữ liệu. Công cụ `./tools/check-persistence.ps1` kiểm tra restart và force-recreate trong project hiện tại, so metadata và checksum trước/sau, không xóa volumes.
+
+## Thử bộ dữ liệu nghiệm thu mới
+
+Bộ chọn dự án → bật **Hiển thị dự án kiểm thử** → tìm **DEMO UAT 1000 giao dịch**. Dự án tổng hợp đã có hai nguồn, mappings/rule được duyệt và run verified; Lịch sử mở lại hội thoại đã chạy. Có thể kiểm tra run cũ mà không gọi AI. Muốn kiểm thử độc lập, tạo dự án khác và đính kèm tệp trong `runtime/demo-acceptance/data/`; `tools/create-uat-fixtures.py` tái tạo fixture và đáp án cùng seed, không cần cloud.
+
+Các câu đã chạy trên dự án demo: `Liệt kê các giao dịch đã thanh toán ở G 1000 giao dịch nguồn A.csv`; `Vẽ biểu đồ đếm toàn bộ giao dịch theo từng payment_status, không lọc bỏ trạng thái nào`; `Vì sao giao dịch GD-0000002 không khớp?`; `Xuất kết quả đối soát đang xem ra Excel`. Đáp án:686PAID,114COMPLETED,200UNPAID; tổng1000; giao dịchGD-0000002 có4479.17−4478.80=0.37VND; run966/1000khớp đủ,19lệch,15thiếu đối ứng, tổng lệch tuyệt đối7.03VND.
+
+Khi liệt kê thiếu đối ứng hoặc lệch tiền, nêu rõ **chỉ tiêu reported_transaction_amount đã duyệt** nếu model chưa chọn được chỉ tiêu. Hai câu chung đã bị chặn an toàn trong UAT; câu có chỉ tiêu trả đúng15/19. Câu nối tiếp `Còn bên A thì sao?` có thể hỏi lại; ghi rõ thao tác/tệp khi được hỏi. Manual fallback, Ngoại lệ và báo cáo vẫn dùng được. Đây là giới hạn NLP được ghi nhận, không là bảo đảm hiểu mọi câu.
 
 ## Kiểm thử và phát triển
 

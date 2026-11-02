@@ -338,6 +338,7 @@ test("T39 missing KPI and untrusted instructions remain bounded", async ({
   page,
 }) => {
   const s = await state();
+  const before = (await (await page.request.get('/api/settings')).json()).gemini_requests_used;
   const dialog = await openAssistant(page, s.project_id);
   await dialog.getByRole("button",{name:"Đổi ngữ cảnh phân tích",exact:true}).click();
   const runSelect=page.getByLabel("Chọn kết quả phân tích",{exact:true});
@@ -360,6 +361,7 @@ test("T39 missing KPI and untrusted instructions remain bounded", async ({
   await expect(
     answer.getByRole("button", { name: "Xem đề xuất đối soát" }),
   ).toHaveCount(0);
+  expect((await (await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before);
 });
 
 test("language workflow requires source/period/template confirmation before existing mutation API", async ({
@@ -756,13 +758,17 @@ test("conversation history failure shows recoverable error", async ({
     else await route.continue();
   });
   const dialog = await openAssistant(page, s.project_id);
-  await expect(dialog.getByRole("alert")).toContainText(
+  await page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true}).click();
+  const history = page.getByRole('dialog',{name:'Lịch sử',exact:true});
+  await expect(history.getByRole("alert")).toContainText(
     "Lịch sử tạm chưa tải được",
   );
   fail = false;
-  await dialog
-    .getByRole("button", { name: "Cập nhật hội thoại", exact: true })
+  await history
+    .getByRole("button", { name: "Tải lại lịch sử", exact: true })
     .click();
+  await expect(history.getByRole('alert')).toHaveCount(0);
+  await page.keyboard.press('Escape');
   await expect(
     dialog.getByRole("textbox", { name: "Câu hỏi cho AI Assistant" }),
   ).toBeEnabled();

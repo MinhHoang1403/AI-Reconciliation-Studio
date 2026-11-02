@@ -110,6 +110,13 @@ for(const scenario of manifest.datasets){
     const groups=[];
     for(let offset=0;;offset+=100){const p=await(await page.request.get(`/api/runs/${runId}/matches?offset=${offset}&limit=100`)).json();groups.push(...p.items);if(groups.length>=p.total)break;}
     await writeFile(`../runtime/demo-acceptance/results/${scenario.name}-observed.json`,JSON.stringify({projectId,name,runId,run,snapshot,groups},null,2));
+    for(const side of ['left','right'] as const){
+      const rowsFor=(state?:string)=>groups.filter(g=>!state||g.linkage_state===state).flatMap(g=>g.members.filter((m:{side:string})=>m.side===side).flatMap((m:{evidence:{row:number}[]})=>m.evidence.map(e=>e.row))).sort((a:number,b:number)=>a-b);
+      const part=scenario.oracle.partitions[side];
+      expect(rowsFor()).toEqual(Array.from({length:part.input},(_,i)=>i+2));
+      expect(rowsFor('INVALID')).toEqual(part.invalid);
+      expect(rowsFor('OUT_OF_SCOPE')).toEqual(part.out_of_scope);
+    }
     for(const expected of scenario.oracle.groups){
       const actual=groups.filter(g=>JSON.stringify(g.key)===JSON.stringify(expected.key));
       expect(actual.length,JSON.stringify(expected.key)).toBeGreaterThan(0);
