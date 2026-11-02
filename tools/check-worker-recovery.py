@@ -1,6 +1,6 @@
 """Live, scoped worker crash test against the existing local Compose deployment.
 
-Only a newly created synthetic normalization job is interrupted. The test advances
+Only a newly created synthetic Agent normalization child is interrupted. The test advances
 that job's lease after the kill so it need not wait five minutes. No volumes or
 business records are deleted; the synthetic project remains as acceptance evidence.
 """
@@ -55,6 +55,7 @@ def main() -> None:
         base_url="http://127.0.0.1:18180", timeout=30, headers={"Origin": "http://127.0.0.1:18180"}
     ) as client:
         client.get("/api/session").raise_for_status()
+        used_before = client.get("/api/settings").json()["gemini_requests_used"]
         created = client.post(
             "/api/projects",
             json={
@@ -128,13 +129,33 @@ def main() -> None:
         )
         approved.raise_for_status()
         mapping_id = approved.json()["id"]
+        context = {"project_id": project_id, "dataset_id": dataset["id"]}
+        conversation = client.post(
+            "/api/conversations",
+            json={"context": context},
+            headers={"Idempotency-Key": uuid4().hex},
+        )
+        conversation.raise_for_status()
         queued = client.post(
-            f"/api/datasets/{dataset['id']}/normalize",
-            json={"mapping_id": mapping_id},
+            "/api/assistant/messages",
+            json={
+                "conversation_id": conversation.json()["id"],
+                "context": context,
+                "mode": "AGENT",
+                "command": "PREPARE_NORMALIZATION",
+                "text": "Chuẩn hóa nguồn tổng hợp bằng ánh xạ đã duyệt",
+            },
             headers={"Idempotency-Key": uuid4().hex},
         )
         queued.raise_for_status()
-        job_id = queued.json()["job_id"]
+        parent = wait_job(client, queued.json()["job_id"], "SUCCEEDED")
+        workflow_id = parent["result"]["workflow_id"]
+        workflow = client.get(f"/api/agent/workflows/{workflow_id}")
+        workflow.raise_for_status()
+        child = next(
+            s for s in workflow.json()["detail"]["steps"] if s["tool"] == "run_normalization"
+        )
+        job_id = child["job_id"]
         wait_job(client, job_id, "RUNNING")
         guard = """import sys
 from sqlalchemy import select
@@ -186,6 +207,16 @@ with SessionFactory() as db:
         raw_ref = next(item for item in artifacts["items"] if item["kind"] == "raw")
         assert raw_ref["sha256"] == hashlib.sha256(raw).hexdigest()
         assert len([item for item in artifacts["items"] if item["kind"] == "parsed"]) == 1
+        for _ in range(180):
+            workflow = client.get(f"/api/agent/workflows/{workflow_id}").json()
+            if workflow["state"] == "COMPLETED":
+                break
+            assert workflow["state"] not in {"FAILED", "BLOCKED", "PARTIAL"}, workflow["state"]
+            time.sleep(0.5)
+        assert workflow["state"] == "COMPLETED" and workflow["detail"]["model_calls"] == 0
+        assert len(workflow["detail"]["blocks"]) == 1
+        assert workflow["detail"]["blocks"][0]["canonical_id"] == canonical[0]["id"]
+        assert client.get("/api/settings").json()["gemini_requests_used"] == used_before
         result = {
             "status": "PASS",
             "rows": rows,
@@ -194,10 +225,13 @@ with SessionFactory() as db:
             "project_id": project_id,
             "dataset_id": dataset["id"],
             "job_id": job_id,
+            "workflow_id": workflow_id,
+            "workflow_state": workflow["state"],
+            "cloud_requests": 0,
             "end_to_end_seconds": round(time.monotonic() - started, 3),
             "observed_pipeline_rows_per_second": round(rows / (time.monotonic() - started), 2),
             "measurement_scope": (
-                "upload, manual approval, normalization SIGKILL, reclaim, publication; "
+                "upload, manual approval, Agent child SIGKILL, reclaim, publication/resume; "
                 "not steady-state worker throughput"
             ),
         }
@@ -206,7 +240,7 @@ with SessionFactory() as db:
         output.write_text(json.dumps(result, indent=2), encoding="utf-8")
         print(
             "PASS live worker recovery: SIGKILL during 75k-row normalization; "
-            "expired lease reclaimed; exactly one canonical published"
+            "expired lease reclaimed; one canonical published and Agent resumed without cloud"
         )
 
 
