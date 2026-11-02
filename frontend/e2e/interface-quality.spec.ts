@@ -229,7 +229,7 @@ test("test visibility and owner classification preserve the current project and 
   await expect(trigger).toHaveAttribute("data-project-id", items[2].id);
   await expect(
     page.locator("#project-select .project-test-badge"),
-  ).toBeVisible();
+  ).toHaveText("Thử nghiệm");
   await openLegacyPage(page, "reconcile");
   await page
     .getByLabel("Nguồn tham chiếu", { exact: true })

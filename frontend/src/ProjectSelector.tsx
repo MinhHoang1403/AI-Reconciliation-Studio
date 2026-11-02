@@ -190,7 +190,7 @@ export function ProjectSelector({
           </small>
         </span>
         {project?.classification === "TEST" && (
-          <span className="project-test-badge">TEST</span>
+          <span className="project-test-badge" title="Dự án dùng để thử nghiệm">Thử nghiệm</span>
         )}
         <ChevronDown size={16} />
       </button>
