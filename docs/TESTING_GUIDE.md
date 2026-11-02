@@ -291,3 +291,5 @@ Bảng PASS LOCAL/MOCK/LIVE/FAIL/BLOCKED/NOT VERIFIED/DEFERRED, Git/Docker ident
 Các receipts mới: `runtime/assistant-experience-backend-final.log`, `assistant-experience-e2e-resumed.json`, `assistant-experience-gold-final.json`, `assistant-experience-variants-final.json`, `assistant-experience-native-workflows.json`, `assistant-experience-usage.json`. Runtime receipts/synthetic data không vào Git. Theo dõi recovery/persistence/backup/rollback và Git/Docker cuối tại IMPLEMENTATION_STATUS mục T.
 
 Final reliability source dc8fcc5: recovery 75k/2 attempts/1 canonical/Agent COMPLETED/0 cloud/12,984 s; backup 24 tables/981 files, UUID restore + host SHA verified; accepted rollback and return full snapshot/source/assets PASS. Variants đã tham gia chẩn đoán, không là blind holdout. Chi tiết/hash/receipts ở mục T.
+
+Main release f1ad9f1 có application diff rỗng so với dc8fcc5 đã full regression; build mới, identity/health/full snapshot và read-back 10 workflows + financial/evidence/export PASS, 0 AI calls thêm. Các commit sau release chỉ tài liệu, không suy healthcheck thay functional acceptance.

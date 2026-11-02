@@ -1,6 +1,6 @@
 # Kiến trúc ứng dụng
 
-Data Foundation và Reconciliation đã nghiệm thu theo [kế hoạch](PROJECT_PLAN.md). Assistant candidate trên feature branch tiêu thụ các contracts hiện có; không viết lại engine hay verifier. Bằng chứng, giới hạn và trạng thái chưa merge main tại [báo cáo triển khai](IMPLEMENTATION_STATUS.md).
+Data Foundation và Reconciliation đã nghiệm thu theo [kế hoạch](PROJECT_PLAN.md). Assistant đã hợp nhất main tiêu thụ các contracts hiện có; không viết lại engine hay verifier. Bằng chứng, giới hạn và trạng thái release hiện hành tại [báo cáo triển khai](IMPLEMENTATION_STATUS.md).
 
 ## Contextual Assistant
 
@@ -140,3 +140,5 @@ Runtime được kiểm từ source `95d29560387b6b4e231a86b7b185c6de45928014`: 
 Yêu cầu tiếp theo thay menu lịch sử: primary sidebar chỉ AI Assistant/Lịch sử/Cài đặt. `AssistantDataDrawer` đọc lại datasets/tables/artifacts/preview từ API hiện có và tải raw có checksum; `AssistantStudio` mở report trong Modal dùng lại `ReconciliationStudio` với explicit run. Manual pages/deep links vẫn tồn tại; không có engine, UI tiền/KPI hoặc service thứ hai. History có một Modal, composer giữ IME/Enter/Shift+Enter và draft/idempotency. AppShell giữ brand/workspace/header/light theme.
 
 Routing 15 có provider grammar hữu hạn theo tool, source refs phân biệt kind, catalogue scoped có readiness/schema và approved source facts. Server bind query project/kind/ID, kiểm fields/caps/status/paid semantics; current confirmed plan được dereference toàn bộ thay vì LLM dựng lại. Public/persisted AgentIntent/DataQuery/review/financial contracts không đổi. Xem bằng chứng hiện hành tại IMPLEMENTATION_STATUS mục T; các số liệu mục S ở trên là lịch sử.
+
+Release Assistant experience đã fast-forward/push main tại f1ad9f1, build đúng SHA và smoke/source/assets/persistence/read-back PASS. Những đoạn mốc S phía trên là lịch sử; status hiện hành ở IMPLEMENTATION_STATUS mục T.

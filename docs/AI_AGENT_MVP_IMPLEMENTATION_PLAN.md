@@ -926,3 +926,5 @@ Mục này thay primary navigation của mục 23: **AI Assistant, Lịch sử, 
 Giữ nguyên bộ 80 gold/rubric; bổ sung 24 biến thể độc lập. Gate full gold: intent/source ≥95%, slots ≥90%, không P0/P1; financial/auth/security/persistence gates không thay. Bằng chứng routing 15: gold 79/80 intent, 59/60 nguồn, 34/34 slots; variants 24/24, 16/16, 10/10; 28/28 negatives an toàn. Một ca gold hỏi lại không cần thiết còn được ghi P2, không tô thành PASS từng ca.
 
 Chủ dự án sau đó cho phép gọi Gemini khi cần để hoàn thành hiệu quả, thay điều kiện dừng 50/50 của prompt đầu. Ceiling được tăng có audit, giữ lịch sử và reservation trước HTTP; default source OFF/0. Không cho phép sửa raw, nới semantic validators, tự approve hoặc tùy tiện gọi Qwen/parser. Kết quả đầy đủ, source/runtime/Git và trạng thái release ở IMPLEMENTATION_STATUS mục T. Ba giai đoạn giữ nguyên.
+
+Kết quả hiện hành sau mục 24: đã đạt gate Assistant Experience theo phạm vi, full live routing/regression/recovery/persistence/backup/rollback PASS; đã hợp nhất và deploy main f1ad9f1, còn P2 D04 over-abstention. Không coi variants là blind holdout hoặc tự bắt đầu nhiệm vụ mới. Xem IMPLEMENTATION_STATUS mục T.

@@ -2,7 +2,7 @@
 
 Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, AI đề xuất ánh xạ, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
 
-**Trạng thái 02/11/2026:** Assistant-only trên `codex/assistant-automation` đã đạt **259 Backend/PostgreSQL PASS, 81 Playwright PASS**, 0 FAIL/SKIP/flaky. Gemini routing 15: gold intent **79/80**, nguồn **59/60**, slots **34/34**; 24 biến thể độc lập đạt toàn bộ. Mười luồng chat thực ở hai miền dữ liệu đạt với một request mỗi luồng. Gemini **110/120 lifetime attempts, còn 10**, giữ đủ lịch sử. Trạng thái hợp nhất, Docker và khôi phục ở [báo cáo hiện tại, mục T](docs/IMPLEMENTATION_STATUS.md#t-ai-assistant-experience--nlp-quality-finalization). Qwen hoãn HTTP 403; parser mới OFF.
+**Trạng thái 02/11/2026:** **Assistant-only đã hợp nhất vào `main` và triển khai Docker**, đạt **259 Backend/PostgreSQL PASS, 81 Playwright PASS**, 0 FAIL/SKIP/flaky. Gemini routing 15: gold intent **79/80**, nguồn **59/60**, slots **34/34**; 24 biến thể độc lập đạt toàn bộ. Mười luồng chat thực ở hai miền dữ liệu đạt với một request mỗi luồng. Gemini **110/120 lifetime attempts, còn 10**, giữ đủ lịch sử. Trạng thái hợp nhất, Docker và khôi phục ở [báo cáo hiện tại, mục T](docs/IMPLEMENTATION_STATUS.md#t-ai-assistant-experience--nlp-quality-finalization). Qwen hoãn HTTP 403; parser mới OFF.
 
 ## Mở ứng dụng trong workspace hiện tại
 
@@ -85,7 +85,7 @@ Bộ chọn dự án mặc định ẩn nhóm **Kiểm thử**, vẫn giữ dự
 7. Dùng lớp **Cảnh báo / lỗi** để kiểm tra invalid/null và **Xem nguồn** để mở dòng gốc. Dữ liệu lỗi không bị thay bằng zero hoặc bỏ đi. Sửa mapping tạo revision mới, canonical cũ được đánh dấu đã cũ; raw/parsed được bảo toàn.
 8. Mở lại trình duyệt, chọn dự án cũ để tiếp tục. Tệp cùng nội dung/config trong cùng dự án được reuse; mẫu đã duyệt chỉ được gợi ý trong scope tương thích.
 
-PDF/DOCX mới cần allowance riêng được duyệt trước khi upload. Kết quả đã lưu có preview theo file/trang/bảng và luôn “chưa được xác minh”; không tự chuyển thành canonical hoặc suy ra kết luận tiền. Đọc lại kết quả không gọi provider. Assistant trên feature branch được mô tả ở phần trên; kết quả live của provider không được suy từ câu trả lời xác định.
+PDF/DOCX mới cần allowance riêng được duyệt trước khi upload. Kết quả đã lưu có preview theo file/trang/bảng và luôn “chưa được xác minh”; không tự chuyển thành canonical hoặc suy ra kết luận tiền. Đọc lại kết quả không gọi provider. Assistant đã phát hành trên main được mô tả ở phần trên; kết quả live của provider không được suy từ câu trả lời xác định.
 
 ## Đối soát và báo cáo thủ công khi cần
 

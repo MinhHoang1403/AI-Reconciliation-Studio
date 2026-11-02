@@ -1200,7 +1200,7 @@ Có thể sử dụng feature hiện tại để đọc dữ liệu/kết quả 
 
 Ngày nghiệm thu: 02/11/2026 (Asia/Saigon). Phạm vi tiếp nối Agent-first, giữ nguyên ba giai đoạn và lịch sử A–S. Chỉ dẫn mới của chủ dự án cho phép dùng Gemini khi cần, thay blocker 50/50 của prompt ban đầu; không reset hoặc xóa request history. Rules §9.1 mô tả sidebar lịch sử khác yêu cầu mới: áp dụng chỉ dẫn Assistant-only được chủ dự án giao và bổ sung trong PROJECT_PLAN, không sửa Rules/AGENTS.
 
-**Kết luận phạm vi:** đủ gate UX/NLP/technical để hợp nhất MVP có giới hạn được nêu ở H. Một ca gold hỏi lại không cần thiết được giữ FAIL; không tuyên bố NLP hoàn hảo hoặc production audit certification. Trạng thái Git/release cuối ghi tại G sau khi kiểm xong backup/rollback/deployment.
+**Kết luận phạm vi:** đủ gate UX/NLP/technical để hợp nhất MVP có giới hạn được nêu ở H. Một ca gold hỏi lại không cần thiết được giữ FAIL; không tuyên bố NLP hoàn hảo hoặc production audit certification. Đã hợp nhất main và triển khai release sau khi kiểm backup/rollback/deployment; bằng chứng ở G.
 
 ### A. UX/UI — PASS LOCAL + MOCK CONTRACT + hành trình thực
 
@@ -1293,7 +1293,13 @@ Bỏ sidebar group/count state, icon/import và CSS nav đã hết tham chiếu.
 
 Source ứng dụng đã full regression: **dc8fcc5fc06f44372fae55aaa3d824cf95fd44a2**; prompt live đầy đủ ở 5a7eebc, chỉ thêm guard/cached validation không đổi prompt và revalidate đầy đủ sau đó. Backend/worker 50 tracked file hashes, HTTP assets và OCI labels PASS. Một Compose project `ai-reconciliation-studio`, 4 healthy, schema `create_agent_workflows`, giữ volumes `ai-reconciliation-studio_postgres_data` và `ai-reconciliation-studio_artifacts`; host chỉ loopback 127.0.0.1:18180.
 
-Candidate dc8fcc5: backend/worker `sha256:df03f902ffa0bc4ad75ddfd9858c79181bacc7a283585d26b0279ee5e4a70600`, frontend `sha256:2e4892705cc595e9e531d598603fbe0a57e3c390305aca9c60eaf2fef278f981`; PostgreSQL `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` không đổi. Protected accepted 5f358c4 và rollback pairs được giữ. Không thay hai acceptance tags cũ. Các commits chức năng đã push origin/codex/assistant-automation: 05625b0, b0d824b, 5a7eebc, dc8fcc5; fixture regression 8fedd1b. Main trước hợp nhất eefdd444. Bản báo cáo này chốt gate trước merge; phần cập nhật release sau cùng sẽ ghi SHA main/runtime và smoke thực tế, không suy từ healthcheck.
+Candidate dc8fcc5: backend/worker `sha256:df03f902ffa0bc4ad75ddfd9858c79181bacc7a283585d26b0279ee5e4a70600`, frontend `sha256:2e4892705cc595e9e531d598603fbe0a57e3c390305aca9c60eaf2fef278f981`; PostgreSQL `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` không đổi. Protected accepted 5f358c4 và rollback pairs được giữ. Không thay hai acceptance tags cũ. Các commits chức năng đã push origin/codex/assistant-automation: 05625b0, b0d824b, 5a7eebc, dc8fcc5; fixture regression 8fedd1b. Main trước hợp nhất eefdd444. **Đã fast-forward và push origin/main tới f1ad9f18fead39c449886c4efcb28807412aec19**, cùng source đã chốt báo cáo trên feature branch; không force-push hoặc sửa acceptance tags.
+
+**Release main PASS:** build/deploy từ `f1ad9f18fead39c449886c4efcb28807412aec19`; backend/worker `sha256:f70deb47f560e1a41d33f35051ea16afed697c78586ecebc8bd1d4e1415cba49`, frontend `sha256:73c6716d779626de3ee852ab3e6eaced98957ba5fb3a6e038b88d05975ba3028`. OCI/50 backend source hashes/HTTP assets/4 healthy/loopback/schema/PG image và hai volumes đều kiểm lại PASS. Application diff từ dc8fcc5 đến release rỗng; các commits sau chỉ fixture/tài liệu. Docker tags `accepted-main-f1ad9f1` giữ bản phát hành; `rollback-dc8fcc5`, accepted 5f358c4 và các rollback/candidate đã bảo vệ được giữ.
+
+Sau main deployment: full persistence snapshot PASS; đọc lại cả **10 workflow** đúng toàn bộ DTO/state đã lưu, raw/canonical/snapshot/evidence hai miền và XLSX SHA PASS; **0 request cloud mới**, ledger vẫn 110/120. Tất cả IDs/hashes trước nhiệm vụ vẫn giữ, chỉ workspace policy thay đổi có ủy quyền. Không có image dangling mang label repository trong lần audit cuối; **0 image/volume tự xóa**, không global prune hoặc bịa dung lượng đã giải phóng. C: còn khoảng 131,1 GiB tại kiểm tra cuối.
+
+Cập nhật release này chỉ đổi tài liệu so với SHA đã build; runtime giữ labels f1ad9f1 và source/assets được đối chiếu với HEAD sau commit. Git final status/remote heads nằm trong receipt local `runtime/assistant-experience-git-final.json`.
 
 ### H. Giới hạn và kết luận
 
