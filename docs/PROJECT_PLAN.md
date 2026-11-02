@@ -12,6 +12,10 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Hoàn thiện Assistant và Settings — 02/11/2026
+
+Chủ dự án giao thu gọn composer, gợi ý và transcript; Settings theo tài khoản/quyền riêng tư/giới hạn, thông tin vận hành trong phần mở rộng dành cho chủ không gian. Bảo toàn Assistant-only, manual fallback, typed tools, approvals, Decimal và independent verification. Các mô tả landing Dashboard/sidebar nhiều trang trong §§4/28/31/32/34/41 là baseline lịch sử, áp dụng các bổ sung ở đây cho giao diện hiện hành. Nhiệm vụ này cho phép nghiệm thu, merge/deploy khi gates đạt; **không tăng Gemini lifetime ceiling, không reset ledger, không bật Qwen hoặc tạo LlamaParse job**. Quyền mở rộng allowance trong các nhiệm vụ trước chỉ là lịch sử, không áp dụng để tăng quota ở lượt này.
+
 ### Amendment được chủ dự án ủy quyền — 01/11/2026
 
 [Kế hoạch Agent-first](AI_AGENT_MVP_IMPLEMENTATION_PLAN.md) là đặc tả triển khai mới cho MVP local: giữ App Shell, parser/mapping/normalization/matcher/verifier/Decimal và lịch sử ba giai đoạn, chuyển landing sang Chat/Upload và bổ sung orchestration hữu hạn, typed tools/query, review-by-exception/resume. Các mô tả cũ về landing Dashboard/read-only Assistant là baseline lịch sử; quyền write chỉ qua server policy theo actor, approved scope và quyết định review hợp lệ. Không tự approve rule mới hoặc tính KPI bằng LLM.

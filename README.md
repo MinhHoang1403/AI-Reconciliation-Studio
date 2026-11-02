@@ -1,6 +1,8 @@
 # AI Reconciliation Studio
 
-Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, AI đề xuất ánh xạ, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
+Không gian đối soát CSV/XLSX bằng hội thoại: tải tệp, chuẩn hóa, duyệt quy tắc, tra cứu và phân tích kết quả có bằng chứng. Backend tính tiền bằng Decimal, kiểm chứng độc lập và lưu dữ liệu/hội thoại trong PostgreSQL/Parquet.
+
+Composer gọn, tự giãn khi nhập nhiều dòng; Enter gửi, Shift+Enter xuống dòng. Cài đặt trình bày tài khoản, quyền riêng tư và giới hạn từ API; chủ không gian mở thông tin nâng cao khi cần. Trạng thái được cấp quyền AI và đã cấu hình không chứng minh model đang kết nối.
 
 **Trạng thái 02/11/2026:** **Assistant-only đã hợp nhất vào `main` và triển khai Docker**, đạt **259 Backend/PostgreSQL PASS, 81 Playwright PASS**, 0 FAIL/SKIP/flaky. Gemini routing 15: gold intent **79/80**, nguồn **59/60**, slots **34/34**; 24 biến thể độc lập đạt toàn bộ. Mười luồng chat thực ở hai miền dữ liệu đạt với một request mỗi luồng. Gemini **110/120 lifetime attempts, còn 10**, giữ đủ lịch sử. Trạng thái hợp nhất, Docker và khôi phục ở [báo cáo hiện tại, mục T](docs/IMPLEMENTATION_STATUS.md#t-ai-assistant-experience--nlp-quality-finalization). Qwen hoãn HTTP 403; parser mới OFF.
 

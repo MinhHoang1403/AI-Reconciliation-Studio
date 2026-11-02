@@ -2,6 +2,78 @@ import {test,expect} from "@playwright/test";
 import {mkdir} from "node:fs/promises";
 import {createHash} from "node:crypto";
 
+for(const width of [390,768,1366,1440,1920]) {
+  test(`Compact composer and user settings at ${width}px [LOCAL]`,async({page})=>{
+    const errors:string[]=[]; page.on('pageerror',e=>errors.push(e.message));
+    const writes:string[]=[];page.on('request',r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});
+    await page.setViewportSize({width,height:900}); await page.goto('/');
+    const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
+    await expect(input).toBeEnabled();
+    const form=page.locator('.assistant-composer');
+    const box=await form.boundingBox();expect(box!.height).toBeLessThanOrEqual(72);
+    const send=form.getByRole('button',{name:'Gửi câu hỏi',exact:true});
+    await expect(send).toHaveText('');await expect(send).toBeDisabled();
+    await input.click();
+    expect(await form.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+    expect(await input.evaluate(el=>getComputedStyle(el).outlineColor)).not.toBe('rgb(37, 99, 235)');
+    await input.press('Shift+Tab');await page.keyboard.press('Tab');await expect(input).toBeFocused();
+    expect(await input.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('solid');
+    await mkdir(`../runtime/ui-refinement/after/${width}`,{recursive:true});
+    await page.screenshot({path:`../runtime/ui-refinement/after/${width}/keyboard.png`});
+    await input.fill(Array.from({length:12},(_,i)=>`Dòng ${i+1}: giữ nguyên dữ liệu`).join('\n'));
+    expect((await input.boundingBox())!.height).toBeLessThanOrEqual(180);
+    expect((await input.boundingBox())!.height).toBeGreaterThan(100);
+    await expect(send).toBeInViewport();await input.fill('');
+    const name='Dữ liệu tổng hợp 000702.csv';
+    await form.locator('input[type=file]').setInputFiles({name,mimeType:'text/csv',buffer:Buffer.from('id,amount\n000702,12.75\n')});
+    await expect(form).toContainText(name);await expect(send).toBeEnabled();
+    await form.getByRole('button',{name:`Bỏ ${name}`,exact:true}).click();await expect(send).toBeDisabled();
+    if(width<900)await page.getByRole('button',{name:'Mở điều hướng',exact:true}).click();
+    await page.locator('.sidebar').getByRole('button',{name:'Cài đặt',exact:true}).click();
+    const settings=page.getByRole('region',{name:'Cài đặt',exact:true});
+    const dto=await(await page.request.get('/api/settings')).json();
+    await expect(settings.getByRole('heading',{name:'Tài khoản và không gian làm việc'})).toBeVisible();
+    await expect(settings).toContainText(`${dto.agent_max_upload_files} tệp mỗi lần`);
+    await expect(settings).toContainText('Chưa kiểm tra trực tiếp');
+    await expect(settings.getByText('Model Gemini',{exact:true})).not.toBeVisible();
+    await page.screenshot({path:`../runtime/ui-refinement/after/${width}/settings-basic.png`,fullPage:true});
+    await settings.getByText('Thông tin nâng cao',{exact:true}).click();
+    await expect(settings.getByText(dto.gemini_model,{exact:true})).toBeVisible();
+    await page.screenshot({path:`../runtime/ui-refinement/after/${width}/settings-advanced.png`,fullPage:true});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+    expect(errors).toEqual([]);expect(writes).toEqual([]);
+  });
+}
+
+test('[MOCK CONTRACT] Settings distinguishes permission, configuration, allowance and roles',async({page})=>{
+  let scenario='allowed', role='owner';
+  await page.route('**/api/settings',route=>route.fulfill({json:{workspace_name:'Synthetic privacy',
+    agent_cloud_enabled:scenario==='allowed',assistant_cloud_enabled:false,gemini_configured:scenario!=='key',
+    gemini_requests_remaining:scenario==='budget'?0:7,gemini_requests_used:3,gemini_model:'synthetic-model',
+    mapping_ai_provider:'GEMINI',cloud_live_status:'NOT VERIFIED',max_upload_bytes:3145728,max_upload_files:4,
+    agent_max_upload_files:2,agent_upload_extensions:['.csv','.xlsx'],max_rows:1234,
+    policy:{mode:scenario==='local'?'LOCAL_ONLY':'CLOUD_ALLOWED',allow_external_ai:scenario!=='local',allow_cloud_parsing:false}}}));
+  await page.route('**/api/session',route=>route.fulfill({json:{role,workspace_id:'synthetic',actor_id:'settings-reader'}}));
+  for(const [next,expected] of [['allowed','Được phép hỗ trợ tác vụ dữ liệu'],['key','Chưa cấu hình dịch vụ AI'],['budget','Đã hết lượt sử dụng AI'],['task','Tác vụ AI chưa được cấp quyền'],['local','Chưa bật AI bên ngoài']]){
+    scenario=next;await page.goto('/#page=settings');
+    const settings=page.locator('.settings-page');await expect(settings).toContainText(expected);
+    await expect(settings).toContainText('Chưa kiểm tra trực tiếp');
+    await expect(settings).toContainText('2 tệp mỗi lần');await expect(settings).toContainText('3 MB');
+    if(next==='local')await expect(settings).toContainText('Xử lý nội bộ theo chính sách hiện tại');
+    else await expect(settings).toContainText('Có thể sử dụng dịch vụ AI bên ngoài');
+  }
+  role='viewer';await page.reload();await expect(page.locator('.settings-page')).toContainText('Chỉ xem');
+  await expect(page.getByText('Thông tin nâng cao',{exact:true})).toHaveCount(0);
+});
+
+test('[MOCK CONTRACT] IME composition does not submit a message',async({page})=>{
+  let posts=0;await page.route('**/api/assistant/messages',route=>{posts++;return route.abort();});
+  await page.goto('/');const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
+  await expect(input).toBeEnabled();await input.fill('Đối soát dữ liệu');
+  await input.dispatchEvent('keydown',{key:'Enter',code:'Enter',isComposing:true,bubbles:true});
+  await expect(input).toHaveValue('Đối soát dữ liệu');expect(posts).toBe(0);
+});
+
 for(const width of [390,768,1366,1440,1920]){
   test(`Assistant-only navigation and history focus at ${width}px`,async({page})=>{
     const writes:string[]=[];page.on("request",r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});

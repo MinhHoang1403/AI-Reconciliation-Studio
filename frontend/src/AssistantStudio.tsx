@@ -62,6 +62,7 @@ export function AssistantStudio({
   onUploadProject,
   agentEnabled = false,
   historyOpen, setHistoryOpen, historyReturnFocus, aiRequestsRemaining,
+  uploadLimits,
 }: {
   initialContext: AssistantContext;
   onNavigate: (target: Suggestion, context: AssistantContext) => void;
@@ -74,6 +75,7 @@ export function AssistantStudio({
   onUploadProject: (id: string) => Promise<void>;
   agentEnabled?: boolean;
   aiRequestsRemaining?: number;
+  uploadLimits?: { maxBytes: number; maxFiles: number; extensions: string[] };
   historyOpen: boolean;
   setHistoryOpen: (open: boolean) => void;
   historyReturnFocus: RefObject<HTMLElement | null>;
@@ -555,8 +557,9 @@ export function AssistantStudio({
     if(reviewReply){setError("Hãy gửi hoặc hủy trả lời xác nhận trước khi đính kèm tệp.");return;}
     if(!selected)return;
     const next=[...files,...Array.from(selected)];
-    if(next.length>5||next.some(f=>!(/\.(csv|xlsx)$/i).test(f.name)||f.size>20*1024*1024)){
-      setError("Đính kèm tối đa5file CSV/XLSX, mỗi file tối đa20MB.");return;
+    if(!uploadLimits){setError("Chưa tải được giới hạn tệp. Hãy tải lại trang trước khi đính kèm.");return;}
+    if(next.length>uploadLimits.maxFiles||next.some(f=>!uploadLimits.extensions.some(ext=>f.name.toLowerCase().endsWith(ext))||f.size>uploadLimits.maxBytes)){
+      setError(`Đính kèm tối đa ${uploadLimits.maxFiles} tệp ${uploadLimits.extensions.join(" / ")}, mỗi tệp tối đa ${uploadLimits.maxBytes/1048576} MB.`);return;
     }
     setError("");setFiles(next);uploadKey.current=crypto.randomUUID();
   }
@@ -571,7 +574,7 @@ export function AssistantStudio({
         <details className="assistant-policy">
           <summary>
             {(mode==="AGENT"?agentEnabled:cloudEnabled)
-              ? "Gemini theo chính sách"
+              ? "AI theo chính sách dữ liệu"
               : "Chế độ dữ kiện"}
           </summary>
           <p>
@@ -838,22 +841,21 @@ export function AssistantStudio({
                   }
                 }}
                 maxLength={2000}
-                rows={2}
+                rows={1}
                 placeholder={reviewReply?"Bổ sung thông tin để AI diễn giải; bạn sẽ kiểm tra lại trước khi xác nhận...":"Ví dụ: Chuẩn hóa các file này rồi đối soát giúp tôi..."}
                 disabled={busy||loading}
               />
             </label>
             <button
-              className="button primary"
+              className="composer-send"
+              aria-label="Gửi câu hỏi"
+              title="Gửi câu hỏi"
               disabled={busy || loading || !!pendingJob || (!text.trim()&&!files.length)}
             >
               {busy ? (
                 <Spinner />
               ) : (
-                <>
-                  <Send size={16} />
-                  Gửi câu hỏi
-                </>
+                <Send size={18} aria-hidden="true" />
               )}
             </button>
           </form>

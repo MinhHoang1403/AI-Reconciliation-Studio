@@ -22,7 +22,7 @@ from studio.agent_workflows import (
     view,
 )
 from studio.assistant_tools import agent_catalogue
-from studio.config import settings
+from studio.config import AGENT_UPLOAD_EXTENSIONS, settings
 from studio.contracts import DatasetProfile
 from studio.contracts.agent import (
     ClarificationDecision,
@@ -209,12 +209,15 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         from studio.api import persist_uploads
 
         require_editor(actor, db)
-        if not 1 <= len(files) <= min(settings.max_upload_files, 5):
-            raise DomainError("TOO_MANY_FILES", "Mỗi lần đính kèm cần từ1đến5tệp CSV/XLSX.")
+        if not 1 <= len(files) <= settings.agent_max_upload_files:
+            raise DomainError(
+                "TOO_MANY_FILES",
+                f"Mỗi lần đính kèm cần từ 1 đến {settings.agent_max_upload_files} tệp CSV/XLSX.",
+            )
         inspections = [
             inspect_upload(f.file, f.filename or "", f.content_type or "", settings) for f in files
         ]
-        if any(i.extension not in {".csv", ".xlsx"} for i in inspections):
+        if any(i.extension not in AGENT_UPLOAD_EXTENSIONS for i in inspections):
             raise DomainError("AGENT_FILE_TYPE_UNSUPPORTED", "Chat hiện nhận CSV và XLSX.")
         request_hash = digest([project_id, [(i.sha256, i.filename) for i in inspections]])
         identity = f"agent-attachments:{actor.workspace_id}:{actor.id}:{key}"

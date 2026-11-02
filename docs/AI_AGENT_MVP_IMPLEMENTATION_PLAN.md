@@ -3,7 +3,7 @@
 > **Tài liệu thiết kế và triển khai dành cho Codex**  
 > **Ngày chốt nghiên cứu:** 01/11/2026  
 > **Đường dẫn đề xuất trong dự án:** `docs/AI_AGENT_MVP_IMPLEMENTATION_PLAN.md`  
-> **Trạng thái:** `IMPLEMENTED — ACCEPTANCE BLOCKED` (02/11/2026: UI/technical gates đã kiểm chứng; broad NLP quality chưa đạt, Gemini 50/50 còn 0; chưa merge/release)
+> **Trạng thái hiện hành:** Assistant-only đã hợp nhất và triển khai main theo mục 24 và IMPLEMENTATION_STATUS mục T; P2 D04 còn được ghi nhận. Các trạng thái BLOCKED/50 lượt ở phần triển khai ban đầu bên dưới là lịch sử. Yêu cầu hoàn thiện UI/Settings tiếp theo không cấp thêm Gemini quota.
 > **Mục tiêu:** Upload dữ liệu → ra lệnh bằng tiếng Việt → AI tự thực hiện việc an toàn → hỏi đúng phần mơ hồ → trả bảng, biểu đồ, kết quả và bằng chứng.  
 > **Phạm vi:** MVP demo local; KHÔNG xây hệ thống kế toán doanh nghiệp, KHÔNG viết lại engine đang hoạt động.
 

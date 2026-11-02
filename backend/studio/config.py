@@ -6,6 +6,8 @@ from typing import Literal
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+AGENT_UPLOAD_EXTENSIONS = (".csv", ".xlsx")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -47,6 +49,11 @@ class Settings(BaseSettings):
     cloud_parser_credit_budget: int = Field(default=0, ge=0, le=20)
     worker_lease_seconds: int = Field(default=300, ge=120)
     worker_poll_seconds: float = 1
+
+    @property
+    def agent_max_upload_files(self) -> int:
+        """Giới hạn đính kèm chat, dùng chung cho API và kiểm tra upload."""
+        return min(self.max_upload_files, 5)
 
     @property
     def origins(self) -> set[str]:

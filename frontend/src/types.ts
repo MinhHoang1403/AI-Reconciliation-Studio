@@ -180,6 +180,9 @@ export interface WorkspaceSettings {
   gemini_requests_remaining: number;
   max_upload_bytes: number;
   max_upload_files: number;
+  agent_max_upload_files?: number;
+  agent_upload_extensions?: string[];
+  cloud_live_status?: string;
   max_rows: number;
   policy: {
     mode: string;

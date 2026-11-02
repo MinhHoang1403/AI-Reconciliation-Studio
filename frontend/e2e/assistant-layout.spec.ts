@@ -19,7 +19,7 @@ for(const width of [390,768,1366,1440,1920]){
     await page.route("**/api/**",async route=>{
       const path=new URL(route.request().url()).pathname;
       if(path==="/api/session")return route.fulfill({json:{workspace_id:"visual",actor_id:"visual-owner",role:scenario==="permission"?"viewer":"owner"}});
-      if(path==="/api/settings")return route.fulfill({json:{workspace_name:"Visual contract only",assistant_cloud_enabled:false,agent_cloud_enabled:false,mapping_ai_provider:"GEMINI",gemini_requests_used:0,gemini_requests_remaining:0,max_upload_bytes:20971520,max_upload_files:5,max_rows:100000,policy:{allow_external_ai:false}}});
+      if(path==="/api/settings")return route.fulfill({json:{workspace_name:"Visual contract only",assistant_cloud_enabled:false,agent_cloud_enabled:false,mapping_ai_provider:"GEMINI",gemini_requests_used:0,gemini_requests_remaining:0,max_upload_bytes:20971520,max_upload_files:5,agent_max_upload_files:5,agent_upload_extensions:[".csv",".xlsx"],max_rows:100000,policy:{allow_external_ai:false}}});
       if(path==="/api/projects/visual-project")return route.fulfill({json:{id:context.project_id,name:"Dự án tổng hợp kiểm tra giao diện",business_scope:"synthetic visual fixture",workspace_id:"visual",classification:"TEST"}});
       if(path.endsWith("/summary"))return route.fulfill({json:{dataset_count:2,table_count:2,mapping_review_count:0,ready_canonical_count:2,active_job_count:0}});
       if(path==="/api/conversations")return route.fulfill({json:{items:[conversation],has_more:false}});

@@ -232,7 +232,7 @@ Nếu provider không hỗ trợ Structured Outputs theo contract thật, hỗ t
 
 ### 9.1. Trải nghiệm thống nhất
 
-Giữ **Modern Light SaaS Dashboard — Kosh-inspired**, lấy cảm hứng, không copy pixel/assets/branding. Light theme, xanh dương chủ đạo (`#2563EB`), nền `#F8FAFC`, card trắng, sidebar trái sáng; palette chi tiết theo kế hoạch §28. Sidebar: Tổng quan, Dữ liệu, Đối soát, Ngoại lệ, Báo cáo, Trợ lý AI, Cài đặt.
+Giữ giao diện sáng, xanh dương chủ đạo (`#2563EB`), nền `#F8FAFC`, sidebar trái sáng; lấy cảm hứng thiết kế, không copy pixel/assets/branding. Theo quyết định Assistant-only và yêu cầu hoàn thiện ngày 02/11/2026, landing là **AI Assistant**, sidebar chính chỉ **AI Assistant, Lịch sử, Cài đặt**. Dữ liệu/Đối soát/Ngoại lệ/Báo cáo mở từ hội thoại, manual fallback hoặc deep links; bảo toàn chức năng và hợp đồng. Bố cục Dashboard/sidebar nhiều trang tại kế hoạch §28 là thiết kế lịch sử, đã được các bổ sung đầu kế hoạch thay thế.
 
 - Dashboard trực quan, tối đa một hành động chính mỗi màn hình; AI-assisted workflow thật, người dùng không cần biết code. Advanced settings chỉ mở khi cần, không bắt sửa JSON/config kỹ thuật ngay từ đầu.
 - Bảng dễ tìm/lọc/kiểm tra, pagination, evidence drawer và truy ngược nguồn. Có loading/error/empty/success, progress và disabled thực; không file/run thì hướng dẫn bước tiếp, không hiện KPI 0% giả.

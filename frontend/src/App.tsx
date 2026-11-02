@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { api, ApiError } from "./api";
+import { WorkspaceSettings as WorkspaceSettingsPanel } from "./WorkspaceSettings";
 import { ProjectSelector } from "./ProjectSelector";
 import { DataOverview } from "./DataOverview";
 import {
@@ -1081,7 +1082,7 @@ export function App() {
                   : page === "data"
                     ? "Khám phá nguồn, kiểm tra đề xuất và chuẩn bị dữ liệu đáng tin cậy."
                     : page === "settings"
-                        ? "Chính sách xử lý và giới hạn đang áp dụng từ backend."
+                        ? "Tài khoản, quyền riêng tư và giới hạn sử dụng của bạn."
                         : "Quy tắc được duyệt, kết quả bất biến và bằng chứng từ dữ liệu nguồn."}
               </p>
             </div>
@@ -1275,6 +1276,10 @@ export function App() {
                     cloudEnabled={!!workspace?.assistant_cloud_enabled}
                     agentEnabled={!!workspace?.agent_cloud_enabled}
                     aiRequestsRemaining={workspace?.gemini_requests_remaining}
+                    uploadLimits={workspace?.agent_max_upload_files && workspace.agent_upload_extensions ? {
+                      maxBytes: workspace.max_upload_bytes, maxFiles: workspace.agent_max_upload_files,
+                      extensions: workspace.agent_upload_extensions,
+                    } : undefined}
                     historyOpen={assistantHistoryOpen}
                     setHistoryOpen={setAssistantHistoryOpen}
                     historyReturnFocus={assistantHistoryTrigger}
@@ -1769,87 +1774,7 @@ export function App() {
             </>
           )}
           {ready && page === "settings" && workspace && (
-            <section className="settings-grid">
-              <div className="panel">
-                <div className="panel-heading">
-                  <ShieldCheck size={23} />
-                  <h2>Chính sách dữ liệu</h2>
-                </div>
-                <dl>
-                  <dt>Workspace</dt>
-                  <dd>{workspace.workspace_name}</dd>
-                  <dt>Chế độ mặc định</dt>
-                  <dd>
-                    {workspace.policy.mode === "LOCAL_ONLY"
-                      ? "Xử lý nội bộ"
-                      : "Theo chính sách workspace"}
-                  </dd>
-                  <dt>Gemini cloud</dt>
-                  <dd>
-                    {workspace.policy.allow_external_ai ? "Có quyền" : "Tắt"} ·{" "}
-                    {workspace.gemini_requests_remaining} request còn lại ·{" "}
-                    {workspace.gemini_requests_used} đã dùng
-                  </dd>
-                  <dt>AI Assistant cloud</dt>
-                  <dd>
-                    {workspace.assistant_cloud_enabled
-                      ? "Được cấp phép theo từng tác vụ"
-                      : "Tắt · chế độ dữ kiện"}
-                  </dd>
-                  <dt>Parser cloud</dt>
-                  <dd>
-                    {workspace.policy.allow_cloud_parsing ? "Có quyền" : "Tắt"}{" "}
-                    · {workspace.policy.parser_request_budget} request
-                  </dd>
-                </dl>
-                <Notice>
-                  Thay đổi quyền cloud cần cấu hình và phê duyệt của chủ
-                  workspace. Không tự chuyển provider khi Qwen lỗi.
-                </Notice>
-              </div>
-              <div className="panel">
-                <div className="panel-heading">
-                  <Settings2 size={23} />
-                  <h2>Giới hạn xử lý</h2>
-                </div>
-                <dl>
-                  <dt>Mỗi tệp</dt>
-                  <dd>{workspace.max_upload_bytes / 1048576} MB</dd>
-                  <dt>Mỗi lần tải</dt>
-                  <dd>{workspace.max_upload_files} tệp</dd>
-                  <dt>Mỗi bảng</dt>
-                  <dd>{workspace.max_rows.toLocaleString("vi-VN")} dòng</dd>
-                </dl>
-                <details className="settings-advanced">
-                  <summary>Thông tin AI nâng cao</summary>
-                  <dl>
-                    <dt>Qwen</dt>
-                    <dd>
-                      {workspace.qwen_configured
-                        ? `Đã cấu hình · ${workspace.qwen_model}`
-                        : "Chưa cấu hình"}
-                    </dd>
-                    <dt>Provider đề xuất ánh xạ</dt>
-                    <dd>
-                      {workspace.mapping_ai_provider === "GEMINI"
-                        ? "Gemini"
-                        : "Qwen"}
-                    </dd>
-                    <dt>Gemini</dt>
-                    <dd>
-                      {workspace.gemini_configured
-                        ? workspace.gemini_model
-                        : "Chưa cấu hình khóa"}
-                    </dd>
-                  </dl>
-                </details>
-                <Notice>
-                  Khóa và địa chỉ provider chỉ được quản lý trên backend. Mỗi
-                  lần gọi Gemini tiêu thụ ngân sách, kể cả lỗi hoặc thử lại.
-                  Parser cloud có quyền riêng.
-                </Notice>
-              </div>
-            </section>
+            <WorkspaceSettingsPanel settings={workspace} role={actorRole} />
           )}
           {ready &&
             jobs.length > 0 &&

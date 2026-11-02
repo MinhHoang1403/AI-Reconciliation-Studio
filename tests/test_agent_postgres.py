@@ -25,6 +25,35 @@ from test_reconciliation_postgres import create_approved_run
 pytestmark = pytest.mark.integration
 
 
+def test_settings_chat_limits_match_enforced_upload_contract(pg, monkeypatch):  # noqa: F811
+    """Giới hạn công bố và upload cùng đổi theo cấu hình; GET không gọi provider."""
+    from studio.config import settings
+
+    client, factory, _ = pg
+    monkeypatch.setattr(settings, "max_upload_files", 2)
+    before = client.get("/api/settings").json()
+    assert before["agent_max_upload_files"] == 2
+    assert before["agent_upload_extensions"] == [".csv", ".xlsx"]
+    assert before["cloud_live_status"] == "NOT VERIFIED"
+    response = client.post(
+        "/api/agent/attachments",
+        files=[
+            ("files", (f"synthetic-{i}.csv", b"id,amount\n000702,12.75\n", "text/csv"))
+            for i in range(3)
+        ],
+        headers={"Idempotency-Key": "over-chat-file-limit"},
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "TOO_MANY_FILES"
+    monkeypatch.setattr(settings, "max_upload_files", 10)
+    after = client.get("/api/settings").json()
+    assert after["agent_max_upload_files"] == 5
+    assert after["max_upload_files"] == 10
+    assert after["gemini_requests_used"] == before["gemini_requests_used"]
+    with factory() as db:
+        assert not db.scalar(select(func.count()).select_from(JobRow))
+
+
 def ask_agent(client, context, cid, *, command=None, key="agent", text="Chuẩn hóa dữ liệu"):
     response = client.post(
         "/api/assistant/messages",

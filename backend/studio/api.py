@@ -386,6 +386,8 @@ def project_summary(project_id: str, db: DB, actor: CurrentActor) -> ProjectSumm
 
 @app.get("/api/settings")
 def workspace_settings(db: DB, actor: CurrentActor) -> dict[str, Any]:
+    from studio.config import AGENT_UPLOAD_EXTENSIONS
+
     workspace = db.get(WorkspaceRow, actor.workspace_id)
     assert workspace is not None
     global_used, workspace_used = gemini_request_counts(db, workspace.id)
@@ -449,6 +451,8 @@ def workspace_settings(db: DB, actor: CurrentActor) -> dict[str, Any]:
         else 0,
         "max_upload_bytes": settings.max_upload_bytes,
         "max_upload_files": settings.max_upload_files,
+        "agent_max_upload_files": settings.agent_max_upload_files,
+        "agent_upload_extensions": AGENT_UPLOAD_EXTENSIONS,
         "max_rows": settings.max_rows,
         "cloud_live_status": "NOT VERIFIED",
     }
