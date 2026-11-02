@@ -8,14 +8,18 @@ foreach ($taskService in @('backend', 'frontend')) {
     if ($LASTEXITCODE -ne 0 -or $taskImage.Config.Labels.'org.opencontainers.image.source' -ne 'https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git' -or -not $taskImage.Config.Labels.'org.opencontainers.image.revision'.StartsWith($ReleaseRevision)) { throw 'Accepted source/image identity mismatch.' }
     $taskImages[$taskService] = $taskTag
 }
-# Chỉ biết compatibility của migration additive này. Không dùng như bypass migration tổng quát.
+# Chỉ các migrations additive đã review; không downgrade DB hoặc suy compatibility tổng quát.
 $taskGuard = @'
 from sqlalchemy import text
 from studio.database import SessionFactory
 with SessionFactory() as db:
     revision=db.scalar(text('SELECT version_num FROM alembic_version'))
-    assert revision in {'create_reconciliation','create_conversations'}, 'Unknown schema: compatibility review required'
+    assert revision in {'create_reconciliation','create_conversations','create_agent_workflows'}, 'Unknown schema: compatibility review required'
     assert db.scalar(text("SELECT count(*) FROM jobs WHERE status IN ('QUEUED','RUNNING','RETRYABLE_FAILURE')")) == 0, 'Wait for active jobs'
+    if revision == 'create_agent_workflows':
+        assert db.scalar(text("SELECT count(*) FROM agent_workflows WHERE state IN ('CREATED','RUNNING')")) == 0, 'Wait for workflows to settle'
+        # Old code cannot resume Agent reviews. Preserve them, then return to the candidate.
+        print('Agent reviews are retained but cannot resume in the accepted legacy UI')
     assert db.scalar(text("SELECT count(*) FROM workspaces WHERE id='demo'")) == 1
     print('PASS compatible additive schema and no active jobs', revision)
 '@
