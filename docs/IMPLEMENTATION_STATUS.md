@@ -1458,3 +1458,45 @@ Các công cụ đã triển khai vẫn bật: external AI, Agent, Assistant, pa
 Mở [ứng dụng local](http://127.0.0.1:18180), bật dự án kiểm thử và tìm **DEMO UAT 1000 giao dịch** để xem hội thoại/run đã chuẩn bị. Kịch bản/câu hỏi và đáp án tại README, fixtures và manifest độc lập tại runtime/demo-acceptance/data. Để tự thử từ đầu, tạo project khác và dùng chính các files tổng hợp. Đóng/mở terminal để nạp profile mới; `python` trong dự án phải trỏ `.venv/Scripts/python.exe`. Hạn mức ứng dụng đã mở theo chỉ dẫn, nhưng không thay quota/billing riêng của Google hoặc allowance LlamaParse.
 
 Receipts chi tiết, screenshots, traces, logs ba lượt full browser (kể cả thất bại), backups và proofs môi trường nằm tại `runtime/demo-acceptance/`, ngoài Git. Commit bàn giao sau phần này chỉ sửa tài liệu; runtime giữ revision34c0ff1 với application diff được kiểm rỗng.
+
+## W. Rà soát môi trường VS Code và Antigravity IDE — 02/11/2026
+
+Phạm vi: môi trường phát triển sau khi chủ máy xóa nhầm AppData; không sửa nghiệp vụ, dependencies/lockfiles, database, quota hoặc quyền AI. Bắt đầu tại main6a4c2a5 sạch, đúng origin chính thức. Không tạo venv, Compose, bản sao repository hay framework mới. Không cài lại phần mềm đang hoạt động chỉ để tăng số lượt cài đặt.
+
+Hiện trạng xác minh: VS Code1.144.0; Antigravity IDE2.6.0 (nền editor1.107.0); Python3.12.14 trong `.venv`, Node24.19.0/npm11.17.0, uv0.12.15, Git2.55.0, gh2.100.0. Antigravity2.24.0 là ứng dụng khác với Antigravity IDE, không coi là bản cài trùng để gỡ. CLI đúng của IDE là `antigravity-ide`, không phải `antigravity`. Hai IDE đã có Python, Python Environments, Ruff, Mypy, PowerShell và Containers extensions; Antigravity dùng Pyrefly cho hỗ trợ Python.
+
+Các lỗi phát hiện và thay đổi:
+
+- Antigravity có interpreter người dùng3.11 và terminal mặc định mang tên dự án khác. `.vscode/settings.json` ưu tiên trình quản lý venv, đặt terminal Windows PowerShell riêng **PowerShell (AI Reconciliation Studio)** và cwd repository. Profile terminal của dự án khác được giữ nguyên. Profile PowerShell cá nhân đã khôi phục ở mụcV tiếp tục xử lý tự kích hoạt; 10ca mở shell/vào/rời dự án đều đạt, đã chạy lại cả ngoài Codex.
+- VS Code đã chọn Python toàn cục3.11; Python Environments của hai IDE từng trả versionnull cho `.venv`. PET CLI/JSON-RPC và việc ghi lại cache chỉ giải quyết nhận diện, chưa giải quyết nguyên nhân khởi động Python. Không sửa SQLite hay xóa toàn bộ storage.
+- Nguyên nhân gốc được chứng minh bằng `GetFinalPathNameByHandleW`: Python dưới `%APPDATA%/uv/python` mà lệnh trong Codex nhìn thấy thực tế nằm trong `LocalCache/Roaming` của gói MSIX Codex. Vì vậy kiểm tra PASS trong Codex trước đó chưa chứng minh IDE bên ngoài truy cập được Python nền; venv launcher trả `No Python at`, Mypy EPIPE, Pyrefly/Pylance không truy vấn được interpreter.
+- Chuyển hai bản Python đã khôi phục3.12.14/3.11.9 sang `C:/Users/admin/.local/share/uv/python`, giữ tên thư mục theo patch version chuẩn uv. Liên kết lại chính `.venv` hiện có bằng `uv venv --allow-existing`, giữ51gói và lockfile. Đặt `UV_PYTHON_INSTALL_DIR` ở cấu hình tài khoản cả trong và ngoài MSIX; uv cập nhật đăng ký Python/aliases offline. Giữ `python` toàn cục3.11.9 cho tương thích cũ; có `python3.12` và `python3.11`. Các đường dẫn Python AppData cũ còn thiếu được nối về bản dùng chung bằng junction; không thay thư mục Python cũ đang tồn tại hoặc sao chép thêm interpreter.
+- Thông báo Antigravity `Default interpreter path '${workspaceFolder}...' could not be resolved` còn xuất hiện do Python Environments1.20.1 thử phân giải biến workspace ở phạm vi global. Bản1.40.0 của VS Code cần editor>=1.110 nên không ép cài vào Antigravity1.107. Workspace dùng `python-envs.defaultEnvManager=ms-python.python:venv`; cấu hình người dùng của hai IDE đặt đường dẫn dự phòng cụ thể `C:/Users/admin/.local/bin/python3.12.exe` và autoActivationType command. Backup cấu hình trước sửa nằm trong runtime, không vào Git. Sau reload, log Antigravity chọn đúng `.venv`3.12.14 theo defaultEnvManager, không lặp lỗi phân giải đường dẫn.
+- Pylance từng mất hơn10giây để liệt kê workspace và cảnh báo quá nhiều thư mục. Cấu hình include backend/tests/tools, extraPaths backend, exclude môi trường/dependencies/runtime/build output; watcher bỏ các thư mục sinh tự động. Log workspace sau thay đổi tìm79source files trong khoảng0,6giây ở một lượt đo; không gọi đây là benchmark tổng thể.
+- Ruff từng lỗi dò executable qua Python và rơi về bản bundled. Workspace trỏ thẳng `.venv/Scripts/ruff.exe`; log mới xác minh Ruff0.17.3 và lệnh chạy server tại đúng đường dẫn. Mypy dùng interpreter `.venv`, importStrategy fromEnvironment; log sau khôi phục của cả hai IDE chạy mypy2.4.0 và publish diagnostics cho file đang mở. Pylance nhận đúng Python3.12.14; Pyrefly chạy language server và truy vấn được môi trường.
+
+| Kiểm tra thực tế của lượt này | Kết quả |
+|---|---|
+| `uv sync --locked --offline`, `uv pip check` | PASS; 51gói cài tương thích, không đổi lock |
+| PowerShell7 và Windows PowerShell, mở tại root/thư mục con/ngoài, vào/rời root | 10/10 PASS; trong dự án dùng đúng `.venv`3.12.14 |
+| PET CLI và JSON-RPC của hai extensions | PASS nhận version3.12.14/x64 của venv |
+| Python/gh/Docker/uv từ tiến trình Windows ngoài MSIX | PASS; xác minh GetCurrentPackageFullName trả15700 (không có package identity) |
+| Python dùng chung ngoài repository / đường dẫn AppData tương thích | PASS3.12.14, 3.11.9 và đường dẫn base3.12 cũ; không tạo venv thử khác |
+| Dịch vụ Python trong IDE sau sửa và mở lại | PASS interpreter `.venv`3.12.14, Mypy chạy được trong cả hai IDE; Pylance/Pyrefly hoạt động |
+| Node và Electron runtime của hai IDE gọi Python bằng subprocess | PASS; bằng chứng bổ sung, không thay thế log extension host |
+| Ruff CLI / mypy CLI | PASS; mypy47source files |
+| `pytest -q -m 'not integration and not live'` sau liên kết lại Python | 203PASS, 62deselected, 14,23giây; offline/mock, không live AI hoặc PostgreSQL integration |
+| TypeScript / ESLint / `npm ls --depth=0` / npm registry ping | PASS |
+| Docker Desktop / context / Compose config | PASS; running, desktop-linux, config hợp lệ |
+| Backend / worker / frontend / PostgreSQL | 4/4healthy, cùng một Compose của dự án |
+| HTTP `/`, `/health`, `/api/live`, `/api/ready` | 4/4HTTP200 |
+| Session demo sau khi Docker khởi động lại bên ngoài lượt thao tác của Codex | Ban đầu403 đúng fail-closed; chạy `tools/verify-local.ps1` xác minh cổng loopback rồi `/api/session`200 |
+| GitHub API user và repository | PASS tài khoản đúng; repository chính thức, quyền ADMIN |
+
+Docker Engine29.7.2/Compose5.5.0 và WSL2 hoạt động. WSLSvc/WSLService chạy automatic, vmcompute chạy manual bình thường; không suy ra thiếu `com.docker.service` là lỗi với bản Desktop cài theo người dùng. Không restart Docker hoặc recreate services trong lượt này. Hai named volumes và image revision34c0ff1 giữ nguyên; Compose của dự án khác được bảo toàn. Một mẫu tài nguyên: Backend142MiB/384MiB, frontend11,04MiB/128MiB, PostgreSQL83,46MiB/256MiB, worker107,4MiB/512MiB; C: còn khoảng132,1GiB. Không prune/xóa tài nguyên.
+
+**Giới hạn và phân biệt cảnh báo:** các lỗi launcher/interpreter/EPIPE ở log cũ được giữ làm bằng chứng lịch sử, không gọi là lỗi hiện hành sau khôi phục. Sau người dùng mở lại và reload cấu hình, log phiên VS Code171729 và Antigravity171735 ghi nhận dịch vụ hoạt động. Trực tiếp đọc Problems của Antigravity còn hai cảnh báo Pyrefly `unnecessary-type-conversion`: lời gọi bool dư thừa tại api.py437/455; đây là cảnh báo mã nguồn, không phải thiếu Python hoặc hỏng môi trường. Không sửa nghiệp vụ hoặc tắt trình phân tích để xóa cảnh báo. Pyrefly dùng cấu hình mypy được nhập tự động (Legacy); dòng Python extension báo languageServerNone là do Pyrefly phụ trách language services, không phải mọi hỗ trợ Python bị tắt. Conda/Poetry/Pipenv/Pyenv chưa cài và không thuộc stack uv của dự án, không cài thêm managers trùng chức năng chỉ vì log dò tìm.
+
+Python nền dùng chung được xác minh ở ngoài repository và ngoài MSIX, nhưng mỗi dự án vẫn phải có venv/dependencies phù hợp. Không tự sửa các venv/lockfile của dự án cũ hoặc cam kết mọi phiên bản Python khác đã phục hồi. Các terminal đã mở từ trước có thể báo environment stale; mở terminal mới để nạp môi trường mới. Trong hai IDE đã quan sát được prompt `.venv`; không nhập lệnh Windows qua tự động hóa UI. Cấu hình mới sẵn sàng cho phát triển và kiểm thử local trong phạm vi đã xác minh.
+
+Lượt này không gọi Gemini/Qwen/LlamaParse hoặc thay đổi cấu hình công cụ AI. Không chạy lại full265Backend/109E2E vì chỉ sửa môi trường và thiết lập editor; kết quả nghiệm thu mụcV là bằng chứng của lượt trước. Lượt203unit mới có một StarletteDeprecationWarning về testclient/httpx từ dependencies đã khóa; không tự cài thêm httpx2 hoặc thay lockfile để che cảnh báo. Receipts môi trường mới nằm tại `runtime/ide-environment/`, ngoài Git; đây là bằng chứng local, không phải CI hoặc bảo đảm đã phục hồi mọi dữ liệu AppData bị xóa.
