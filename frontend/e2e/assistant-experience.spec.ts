@@ -96,10 +96,10 @@ test('[MOCK conversation, LIVE read] verified report opens in chat and preserves
   const fs=await import('node:fs/promises');const s=JSON.parse(await fs.readFile('../runtime/agent-live-delivery.json','utf8'));
   const context={project_id:s.project_id,run_id:s.run_id};
   await page.addInitScript(s=>{localStorage.setItem('studio.project',s.project_id);localStorage.setItem(`studio.conversation.${s.project_id}`,s.conversation_id);},s);
-  await page.route(`**/api/conversations/${s.conversation_id}`,route=>route.fulfill({json:{conversation:{id:s.conversation_id,context,title:'Synthetic result overlay'},items:[{id:'overlay-answer',job_id:'overlay-job',role:'assistant',text:'',context,workflow_id:'overlay-workflow',created_at:'2026-11-02T00:00:00Z'}],has_more:false}}));
+  await page.route(url=>url.pathname===`/api/conversations/${s.conversation_id}`,route=>route.fulfill({json:{conversation:{id:s.conversation_id,context,title:'Synthetic result overlay'},items:[{id:'overlay-answer',job_id:'overlay-job',role:'assistant',text:'',context,workflow_id:'overlay-workflow',created_at:'2026-11-02T00:00:00Z'}],has_more:false}}));
   await page.route('**/api/agent/workflows/overlay-workflow',route=>route.fulfill({json:{id:'overlay-workflow',conversation_id:s.conversation_id,context,state:'COMPLETED',updated_at:'2026-11-02T00:00:00Z',detail:{intent:{intent:'SUMMARIZE_RESULTS'},model_calls:0,error_code:null,reviews:[],steps:[],blocks:[{type:'facts',result:{tool:'get_run_summary',run:{metric_snapshot:s.snapshot}}}]}}}));
   await page.goto('/');const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await expect(input).toBeEnabled();await input.fill('Bản nháp ở màn hình kết quả');
-  const before=page.url();await page.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
+  const before=page.url();await expect(page.getByRole('region',{name:'Công việc của AI Assistant',exact:true})).toHaveCount(1);await page.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Chi tiết kết quả đã xác minh',exact:true});
   await expect(dialog).toContainText('33.33');await expect(dialog).toContainText('2.75');await expect(dialog.getByRole('img',{name:'Phân bố trạng thái đối soát'})).toBeVisible();
   await page.keyboard.press('Escape');await expect(input).toHaveValue('Bản nháp ở màn hình kết quả');expect(page.url()).toBe(before);
