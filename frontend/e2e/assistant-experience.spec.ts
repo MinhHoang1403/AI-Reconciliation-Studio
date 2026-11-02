@@ -209,6 +209,9 @@ test('Persisted canonical and error previews stay inside the chat files drawer',
   await drawer.getByRole('button',{name:new RegExp(s.attachments.items[0].name)}).click();
   const artifacts=await(await page.request.get(`/api/datasets/${s.attachments.items[0].id}/artifacts`)).json();
   await drawer.getByLabel('Phiên bản chuẩn hóa',{exact:true}).selectOption(artifacts.canonical_datasets[0].id);
+  await expect(drawer.getByLabel('Phiên bản chuẩn hóa',{exact:true})).toHaveValue(artifacts.canonical_datasets[0].id);
+  await drawer.getByRole('button',{name:new RegExp(s.attachments.items[0].name)}).click();
+  await expect(drawer.getByLabel('Phiên bản chuẩn hóa',{exact:true})).toHaveValue(artifacts.canonical_datasets[0].id);
   await drawer.getByRole('button',{name:'Đã chuẩn hóa',exact:true}).click();
   await expect(drawer.getByRole('table')).toContainText('000702');
   await drawer.getByRole('button',{name:'Dòng lỗi',exact:true}).click();await expect(drawer).toContainText('0 dòng khớp điều kiện');
