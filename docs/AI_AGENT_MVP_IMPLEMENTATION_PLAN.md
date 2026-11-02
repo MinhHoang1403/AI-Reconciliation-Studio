@@ -906,7 +906,7 @@ Không thêm hàng chục Markdown trùng lặp, không xóa audit history hay a
 
 Không được đánh đổi 1–2 click ít hơn để tạo kết quả tài chính sai. Không thêm hệ thống doanh nghiệp/multi-agent vì mục tiêu nhỏ là chứng minh **AI Agent thật, chính xác, dễ dùng** trong MVP.
 
-**TRẠNG THÁI 02/11/2026: UI và technical gates đã kiểm chứng, chưa nghiệm thu toàn MVP vì broad NLP quality và hết quota; chưa merge hoặc deploy accepted-main release.**
+**MỐC LỊCH SỬ S 02/11/2026: UI và technical gates đã kiểm chứng, chưa nghiệm thu toàn MVP vì broad NLP quality và hết quota; chưa merge hoặc deploy accepted-main release.**
 
 ## 23. Bổ sung chính thức 02/11/2026 — tối giản giao diện AI Assistant
 
@@ -917,3 +917,12 @@ Empty chat không có khung chat trống hoặc cột lịch sử thường tr�
 Nghiệm thu bổ sung ít nhất 15 trạng thái ở 5 widths 390/768/1366/1440/1920: empty/short/long/upload/running/review/completed/wide table/chart/evidence/history/multiline/mobile keyboard/sidebar/loading-error-permission. Chụp và xem trước/sau, giữ regression cũ bằng thao tác phù hợp UI mới, không xóa oracle. Không đổi backend/security/approvals/ledger vì layout. Tệp bổ sung nhận được hiện chỉ chứa văn bản, chưa có hai ảnh phác thảo trong attachment; kiểm chứng bố cục theo mô tả chi tiết và screenshots thực tế, không tuyên bố đã đối chiếu ảnh chưa nhận. Toàn bộ gate Agent/live/release của nhiệm vụ trước vẫn tiếp tục.
 
 Kết quả bổ sung UI: **PASS LOCAL/MOCK CONTRACT** theo mô tả, 18 trạng thái × 5 widths = 90 screenshots, trong 5 visual tests của full 72 E2E PASS. Ảnh trước/sau đã xem; exact sketch comparison NOT VERIFIED vì attachment chỉ chứa văn bản. Không suy UI PASS thành broad Agent LIVE hoặc quyền merge. Chi tiết source SHA, bằng chứng và các gate chưa đạt ở IMPLEMENTATION_STATUS mục S.
+
+
+## 24. Chỉ dẫn tiếp theo — Assistant Experience & NLP Quality Finalization
+
+Mục này thay primary navigation của mục 23: **AI Assistant, Lịch sử, Cài đặt**; không còn Dữ liệu hoặc nhóm Kết quả ở sidebar. Nguồn dữ liệu/kết quả/evidence/export mở từ hội thoại. Giữ manual fallback/deep links để bảo toàn chức năng, không tạo lại menu sáu trang. Một composer và một history Modal; Enter gửi, Shift+Enter xuống dòng, không gửi lúc IME composition. Giữ logo/workspace/header/light blue/font/avatar và responsive 5 widths.
+
+Giữ nguyên bộ 80 gold/rubric; bổ sung 24 biến thể độc lập. Gate full gold: intent/source ≥95%, slots ≥90%, không P0/P1; financial/auth/security/persistence gates không thay. Bằng chứng routing 15: gold 79/80 intent, 59/60 nguồn, 34/34 slots; variants 24/24, 16/16, 10/10; 28/28 negatives an toàn. Một ca gold hỏi lại không cần thiết còn được ghi P2, không tô thành PASS từng ca.
+
+Chủ dự án sau đó cho phép gọi Gemini khi cần để hoàn thành hiệu quả, thay điều kiện dừng 50/50 của prompt đầu. Ceiling được tăng có audit, giữ lịch sử và reservation trước HTTP; default source OFF/0. Không cho phép sửa raw, nới semantic validators, tự approve hoặc tùy tiện gọi Qwen/parser. Kết quả đầy đủ, source/runtime/Git và trạng thái release ở IMPLEMENTATION_STATUS mục T. Ba giai đoạn giữ nguyên.

@@ -227,7 +227,7 @@ Luồng ba file dùng upload thật trên UI, approval/normalization qua API có
 
 Benchmark: `uv run python tools/benchmark-foundation.py`, `uv run python tools/benchmark-reconciliation.py`; `benchmark-assistant.py` copy/chạy trong Backend hiện có để đo Parquet evidence và read-only SQL. Không tạo service/container mới. Kết quả là samples tổng hợp; không suy ra precision/recall đại diện hoặc SLA. `check-worker-recovery.py` kiểm SIGKILL normalization thật; PG tests kiểm stale claim/fencing/không duplicate Assistant response và unknown delivery. `check-persistence.ps1` kiểm cả ConversationRow/MessageRow sau restart/recreate và frontend-only recreate. Backup/restore commands tại [README](../README.md); backup codec có regression chống JSON giả type tags.
 
-## Agent-first — kết quả và cách kiểm chứng 02/11/2026
+## Agent-first — kết quả và cách kiểm chứng mốc S ngày 02/11/2026
 
 Kết quả mới nhất: **248 backend/PostgreSQL PASS, 0 FAIL/SKIP**, 52,45 giây; **72 Playwright PASS, 0 FAIL/SKIP/flaky**, 226,72 giây trên app source `95d2956`. Ruff, mypy 42 modules, ESLint, TypeScript/build và repository/secrets/history/Markdown paths PASS. Các con số ngày 28–30/10 ở trên là lịch sử, không thay số mới. Full MVP chưa nghiệm thu do NLP quality và hết Gemini quota.
 
@@ -277,3 +277,17 @@ Native read-back sau live: 2 domains giữ raw SHA/canonical/snapshot; paid/miss
 - 3 samples/mốc 1k/10k/50k trên Ryzen 5 7535HS, khoảng 16 GB/Polars 2 threads, không GPU/AI. Foundation 50k normalize+write p50/p95 1.153,76/1.260,90 ms, peak 166,42 MiB; exact recon 50k total match 1.473,57/1.474,98 ms, verify 1.192,72/1.214,17 ms, peak 319,06 MiB. Chi tiết đủ stages/mốc ở `runtime/benchmarks.json`, `reconciliation-benchmark.json`; không suy SLA hoặc fuzzy/100k/production load.
 
 Bảng PASS LOCAL/MOCK/LIVE/FAIL/BLOCKED/NOT VERIFIED/DEFERRED, Git/Docker identity và paths receipts ở [IMPLEMENTATION_STATUS mục S](IMPLEMENTATION_STATUS.md). Merge/release/image cleanup chỉ sau quality gates, không dựa riêng số tests PASS.
+
+
+## Assistant Experience — kết quả hiện hành, mục T
+
+- `tools/test-postgres.ps1 -All`: **259 PASS, 0 FAIL/SKIP**, 72,00 giây trên deployed source dc8fcc5. Bao gồm foundation, engine/verifier/financial oracle, Agent/query/review/auth/security/backup contracts. Một Starlette/httpx deprecation warning từ dependency; không đổi dependency để che warning.
+- Ruff PASS; mypy **47 source files PASS**; frontend check/lint/build PASS.
+- Full Playwright **81 PASS, 0 FAIL/SKIP/flaky**, 269,23 giây. 72 regression cũ + 9 ca Assistant experience; giữ assertions/oracle. Legacy navigation tests dùng deep links/manual fallback; run cũ ngoài trang đầu được chọn qua nút phân trang thực.
+- Visual MOCK CONTRACT **23 states × 5 widths = 115 ảnh**, gồm PARTIAL/FAILED/Gemini unavailable/export/long filename. Kiểm keyboard/focus/history/review/composer, source/canonical/errors/download/result overlay, URL/draft retention; 5 ảnh trước và 5 ảnh sau sidebar. Đã xem ảnh mobile và desktop; keyboard viewport mô phỏng không là kiểm chứng thiết bị thật/WCAG certification.
+- Gold Gemini LIVE routing 15 **79/80 intent, 59/60 nguồn, 34/34 slots, 79/80 inferred dispatch, 20/20 safe và strict negatives**. Variants riêng **24/24, 16/16, 10/10, 24/24 dispatch, 8/8 negatives**. Ca D04 hỏi lại không cần thiết được giữ FAIL ở receipt, không sửa rubric.
+- Native LIVE **10/10**: chuẩn hóa reuse hai miền, reuse contract hai miền, paid query, exact-key explanation, XLSX export, chart tổng theo currency, chart PAID/UNPAID giữ đủ population và clarification thiếu paid semantics. **9 COMPLETED + 1 WAITING_REVIEW đúng kỳ vọng**, mỗi request đúng 1 model call, không thêm approval cho facts đã duyệt. Native oracle được so riêng với gold router.
+
+Các receipts mới: `runtime/assistant-experience-backend-final.log`, `assistant-experience-e2e-resumed.json`, `assistant-experience-gold-final.json`, `assistant-experience-variants-final.json`, `assistant-experience-native-workflows.json`, `assistant-experience-usage.json`. Runtime receipts/synthetic data không vào Git. Theo dõi recovery/persistence/backup/rollback và Git/Docker cuối tại IMPLEMENTATION_STATUS mục T.
+
+Final reliability source dc8fcc5: recovery 75k/2 attempts/1 canonical/Agent COMPLETED/0 cloud/12,984 s; backup 24 tables/981 files, UUID restore + host SHA verified; accepted rollback and return full snapshot/source/assets PASS. Variants đã tham gia chẩn đoán, không là blind holdout. Chi tiết/hash/receipts ở mục T.

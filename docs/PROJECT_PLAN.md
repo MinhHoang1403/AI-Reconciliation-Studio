@@ -1014,3 +1014,8 @@ Tài liệu này đủ để bắt đầu với hợp đồng/fixtures rồi tri
 ---
 
 **QUYẾT ĐỊNH CUỐI CÙNG:** Đây là một ứng dụng MVP mới với **ba giai đoạn**, dùng stack tối giản, giao diện Kosh-inspired sáng xanh dương và AI-first, nhưng kết quả tài chính chỉ có giá trị sau khi vượt qua gate, bất biến và bằng chứng. **Không dùng code cũ làm nền**, chỉ dùng bài học từ code cũ để tránh sai lầm lặp lại.
+
+
+### Chỉ dẫn bổ sung về Gemini sau Assistant-only
+
+Ngày 02/11/2026, chủ dự án tiếp tục cho phép gọi Gemini khi cần, không yêu cầu dừng ở ceiling 50 của chỉ dẫn trước. Điều này thay riêng blocker quota trong phần bổ sung Assistant-only ở đầu tài liệu. Được phân bổ thêm lifetime allowance có audit, bảo toàn reservations/request history; vẫn đo usage, batch hiệu quả, stop-on-error, không retry delivery chưa rõ và không đổi cloud OFF/0 của cài đặt mới. Không thay ba giai đoạn, công thức, approval/security gates hoặc thresholds NLP. Xem trạng thái thực tại IMPLEMENTATION_STATUS mục T.

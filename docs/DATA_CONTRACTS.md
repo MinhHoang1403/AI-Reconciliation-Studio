@@ -155,3 +155,13 @@ Linkage/comparison/exception workflow predicates dùng enum đúng chiều, ch�
 Result blocks có kiểu: progress/dataset_summary/table/facts/chart/download. Points/units/population/verification/completeness do backend trả. Phân bố tất cả groups không dùng nhầm eligible denominator của full-match KPI. `AssistantAnswer` legacy vẫn đọc được; message có optional workflow_id. Latest workflow chip chỉ là display context, không âm thầm sửa conversation/request/draft context khi phản hồi đến muộn.
 
 Một child job SUCCEEDED không đủ kết luận toàn workflow COMPLETED. Hủy chỉ dừng bước tiếp, không xóa published artifacts. Resume và review đều kiểm lại quyền/revision; stale trả lỗi có nghĩa, không tự sửa dữ liệu/approval để tiếp tục.
+
+
+## Assistant experience — bổ sung hợp đồng đọc và routing
+
+- `GET /api/datasets/{id}/download`: scoped dataset → immutable raw artifact của version → kiểm SHA256 giữa artifact/dataset/bytes → FileResponse attachment, nosniff, private/no-store. Anonymous/foreign workspace bị chặn; corruption trả 409; không nhận path từ client. Không sửa raw để xuất lại.
+- Provider-only `RoutingBatch`/`RoutingQuery`/`ReconciliationSelection` mở rộng thành AgentIntent ở server. `QueryOperations` dùng chung cho routing và public DataQuery; source_ref không thay source_id trong API public. Filter/aggregate/group/currency phải khai báo rõ trong routing. Provider schema chỉ cho field refs có trong catalogue và properties thuộc intent; validation server vẫn giữ cardinality/exact-count/caps.
+- `confirmed_run_id` chỉ dereference current run với đúng left/right canonical IDs READY. Sao chép đầy đủ PlanningRequest.from_plan, giữ role/date/time basis/filter/coverage/snapshot/effective facts; không cấp approval mới, không đổi lịch sử. Facts mới vẫn review.
+- EXCEPTION_FIELDS dùng chung giữa catalogue và native query: case_id/group_id/type/state/notes. Catalogue nguồn có kind/schema/readiness/project scope/current run; tệp trùng tên cần context/ID.
+
+Không migration mới trong nhiệm vụ này. API query, MetricSnapshot, Decimal/null/provenance, mappings/reviews/permissions và dataset/run revisions giữ nguyên.

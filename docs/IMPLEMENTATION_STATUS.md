@@ -1194,3 +1194,112 @@ Inventory cuối local: **57 host images/39,39 GB**, 31 containers, 36 volumes/9
 - **DEFERRED:** Qwen live HTTP 403 theo chỉ định; Argon chỉ nghiên cứu, LlamaParse jobs mới OFF.
 
 Có thể sử dụng feature hiện tại để đọc dữ liệu/kết quả đã lưu và luồng manual/typed commands trong điều kiện đủ quyền/rule. Ngôn ngữ tự nhiên cần model mới sẽ báo hết quota, không giả hiểu hoặc giả thành công. Giữ nguyên nhánh để hoàn thiện cổng AI khi có chỉ định tiếp; chưa đủ điều kiện hợp nhất main hoặc tuyên bố production-ready.
+
+
+## T. AI Assistant Experience & NLP Quality Finalization
+
+Ngày nghiệm thu: 02/11/2026 (Asia/Saigon). Phạm vi tiếp nối Agent-first, giữ nguyên ba giai đoạn và lịch sử A–S. Chỉ dẫn mới của chủ dự án cho phép dùng Gemini khi cần, thay blocker 50/50 của prompt ban đầu; không reset hoặc xóa request history. Rules §9.1 mô tả sidebar lịch sử khác yêu cầu mới: áp dụng chỉ dẫn Assistant-only được chủ dự án giao và bổ sung trong PROJECT_PLAN, không sửa Rules/AGENTS.
+
+**Kết luận phạm vi:** đủ gate UX/NLP/technical để hợp nhất MVP có giới hạn được nêu ở H. Một ca gold hỏi lại không cần thiết được giữ FAIL; không tuyên bố NLP hoàn hảo hoặc production audit certification. Trạng thái Git/release cuối ghi tại G sau khi kiểm xong backup/rollback/deployment.
+
+### A. UX/UI — PASS LOCAL + MOCK CONTRACT + hành trình thực
+
+- Sidebar chính đúng **AI Assistant / Lịch sử / Cài đặt**, giữ brand/workspace/header/font/avatar/light blue. Không menu sáu trang thay tên. Xóa nav state/icon/CSS của nhóm kết quả đã hết tham chiếu; giữ manual pages/deep links được regression bảo vệ.
+- `AssistantDataDrawer`: danh sách/paging, raw/canonical/errors/quality/history revision, tìm kiếm, tải raw kiểm SHA, manual mapping fallback. Report/exceptions dùng lại ReconciliationStudio trong Modal đúng explicit run; evidence và export trong hội thoại. Không viết bộ tính tiền/KPI thứ hai.
+- Một composer: Enter gửi, Shift+Enter xuống dòng, IME không gửi nhầm; 1–5 CSV/XLSX, upload bootstrap, draft/idempotency/unknown delivery/reload/project scope được giữ. Một history Modal có focus return; review reply dùng composer đang bind nonce/fingerprint.
+- 23 trạng thái × 5 widths **390/768/1366/1440/1920 = 115 screenshots**; keyboard/focus/scroll/history/review/source switch/result overlay/draft được tương tác thật. Bao gồm PARTIAL/FAILED/Gemini unavailable/export/tên tệp dài. Ảnh chỉ là bằng chứng bố cục; không cộng số ảnh vào tests, không tuyên bố thiết bị thật hoặc screen reader/WCAG chứng nhận.
+
+### B. NLP — PASS LIVE theo gate, còn một P2 an toàn
+
+Prompt phát hành **agent-intent-15**; normalization 3, review 1, Planner 5 giữ nguyên. Bộ 80 gold/rubric không sửa; thêm riêng 24 variants. Variants độc lập về câu chữ nhưng cũng được dùng trong các vòng chẩn đoán 13–15, không phải blind holdout; không suy accuracy production từ tập regression được tối ưu này.
+
+| Phép đo | Baseline prompt 5 tại S | Full gold prompt 15 | Variants độc lập prompt 15 |
+|---|---:|---:|---:|
+| Measured / requested | 80/80 | 80/80 | 24/24 |
+| Intent | 68/80 (85%) | **79/80 (98,75%)** | **24/24 (100%)** |
+| Source | 53/60 (88,33%) | **59/60 (98,33%)** | **16/16 (100%)** |
+| Slots/semantics | 21/34 (61,76%) | **34/34 (100%)** | **10/10 (100%)** |
+| Dispatch suy từ typed intent | 70/80 | **79/80** | **24/24** |
+| Safe abstention | 20/20 | **20/20** | **8/8** |
+| Strict negative label | 18/20 | **20/20** | **8/8** |
+
+Clarification labels của gold/variants đều đúng ở các negative cần hỏi; D04 thêm một clarification không cần thiết nên intent và source vẫn FAIL cho chính ca này. Đây là over-abstention, không chọn nhầm nguồn để thực thi. Router benchmark không execute tools; completion và financial oracle được kiểm riêng tại C.
+
+| Ca lỗi cũ | Nguyên nhân gốc | Sửa/kiểm tra | Kết quả hiện hành |
+|---|---|---|---|
+| D11, L03, L05 | Lẫn mục tiêu chuẩn bị và chạy ngay; READY làm model nhảy bước | Intent-specific schema, mô tả hành động hiện tại/tương lai, ví dụ độc lập; prepare dùng approved reuse | PASS LIVE |
+| D12, L11, L12 | Model dựng lại plan, mất coverage/filter/snapshot/role/effective facts | Dereference current confirmed_run_id và đúng left/right READY; PlanningRequest.from_plan, reject drift; PG reuse + full scope regression | PASS LIVE + PG |
+| D13, L13 | Tra cứu chuyển tiền bị hiểu thành lệnh chuyển tiền | Taxonomy read vs action; paid semantics và status enums trong catalogue; native paid oracle | PASS LIVE |
+| D20, L20 | Thiếu state predicate hoặc chọn sai loại nguồn | EXCEPTION_FIELDS dùng chung với native query, schema nguồn/field/status rõ; predicates OPEN/OPEN+IN_REVIEW | PASS LIVE |
+| D23, L21, L23 | Business key bị coi technical group ID hoặc unsupported | Exact key_value nguyên văn, facts/explanation branch không có query; provenance hai phía | PASS LIVE |
+| L18 | Thiếu currency field/population cho tổng | Query slots bắt buộc, enum field IDs, native Decimal/currency guard | PASS LIVE |
+| D27 | Tự lọc PAID khi hỏi toàn trạng thái | Group count không self-filter; guard giữ cả PAID/UNPAID; native count 3 gồm 2+1 | PASS LIVE + regression |
+| L25, L26 | KPI bị dựng bằng query hoặc chuyển review khi không có câu hỏi | Summary branch đọc snapshot, query properties bị loại; typed review boundary giữ nguyên | PASS LIVE |
+| N15, N17, N07 | Thiếu bằng chứng/nguồn bị dùng UNSUPPORTED hoặc default current run | CLARIFY khi thiếu nguồn/nghĩa, không suy COMPLETED=PAID; variants unknown/near-name không chạy | PASS LIVE |
+
+Provider-facing RoutingBatch tách khỏi domain plan, query binds project/kind/ID ở server; source refs/nhãn phân biệt canonical/raw. Dynamic field enums và schema theo tool chặn sai cột/action combination; không lookup hay regex phân loại từng câu gold, không auto-repair JSON/financial semantics. HTTP 400 được tái hiện ở grammar kết hợp các ràng buộc array/enum trong các revisions chẩn đoán; bỏ bounds chỉ ở provider grammar, Pydantic/exact-count/field/cap gates giữ nguyên. Safe trace chỉ schema/counts, không error body/secret.
+
+Sau sửa guard biểu đồ PAID+UNPAID, AST prompt/schema/catalogue/compiler vẫn giống source 5a7eebc. Revalidate **104 stored replies trên catalogue PostgreSQL thực, 0 HTTP/reservations**; không coi đây là inference mới. Benchmark cache nay chạy lại semantic validator hiện hành trước reuse. Bằng chứng: `assistant-experience-prompt-proof.log`, `assistant-experience-cached-revalidation.log`.
+
+### C. Agent workflows và financial oracle — PASS LIVE có phạm vi
+
+**10/10 hành trình đúng trạng thái: 9 COMPLETED + 1 WAITING_REVIEW đúng kỳ vọng**, mỗi hành trình đúng **1 model call**, không cần chuỗi model để sửa yêu cầu đơn giản:
+
+- Chuẩn hóa reuse mapping/canonical hai miền (giao nhận và sổ cái): hai nguồn READY, 3 dòng/nguồn, 0 lỗi, raw/mã có số 0 đầu nguyên vẹn.
+- Hai lệnh đối soát reuse đúng approved scope/run, 0 approval mới, không thêm run logic trùng; snapshot giữ eligible CU=3, full match 1/3=33,33%.
+- Paid query trả đúng 000701/000702; 000703 UNPAID không lẫn vào PAID. COMPLETED ở nguồn B không là bằng chứng thanh toán.
+- Giải thích 000702: hai source rows, tiền 12,75 và 10,00 VND, delta 2,75, đúng evidence/key/cell. Không suy đoán nguyên nhân nghiệp vụ chưa có chứng từ.
+- Chart sum toàn bộ nguồn theo currency = **42,75 VND**, khác tổng variance comparable **2,75 VND**. Chart trạng thái giữ đủ **3 dòng: PAID=2, UNPAID=1**, không tự filter paid.
+- XLSX xuất bằng worker thật; read-back export lịch sử **15.837 bytes, 8 sheets**, snapshot/SHA và zero-prefix/unmatched null được giữ.
+- Thiếu paid semantics ở Chứng từ B trả một clarification review, không table/chart giả hoặc tự duyệt.
+
+Bốn mapping approvals của lượt live trước là bốn quyết định schema riêng có key/currency/basis/grain/date cần xác nhận; không gom thành approval mù. Lượt này approved mappings/contracts chạy một lệnh và reuse an toàn. Mapping/rule mới, NL preview, nonce/fingerprint/stale/permission/resume vẫn có PG/MOCK regressions và bằng chứng live lịch sử tại S; không ghi các ca lịch sử thành request live mới.
+
+### D. Tests, reliability và persistence
+
+| Kiểm chứng | Kết quả hiện hành |
+|---|---|
+| Full Backend/PostgreSQL | **259 PASS, 0 FAIL/SKIP**, 72,00 giây; source dc8fcc5 |
+| Ruff / mypy | PASS; **47 source files** |
+| Frontend check/lint/build | PASS |
+| Full Playwright | **81 PASS, 0 FAIL/SKIP/flaky**, 269,23 giây; gồm fixture report khớp đúng pathname kể cả query string |
+| Financial/property/security/auth/isolation/CSV/XLSX/DSL/backup contracts | PASS trong full suites; không xóa oracle hoặc test cũ |
+| Responsive/visual | PASS MOCK CONTRACT 23 × 5, keyboard/focus và các hành động nêu tại A |
+| Worker fault injection | PASS source dc8fcc5: 75.000 dòng, SIGKILL/reclaim 2 attempts → 1 canonical → Agent COMPLETED, 0 cloud, 12,984 giây cả hành trình |
+| Restart/recreate/frontend recreate | 3/3 full metadata+file comparisons và 3/3 local demo fail-closed PASS; guard/recovery cuối không đổi storage contract |
+| Dữ liệu trước nhiệm vụ | Toàn bộ ID/metadata/artifact SHA cũ giữ nguyên; chỉ workspace policy đổi theo quyền mới |
+| Backup/restore + host copy | PASS 24 bảng / 981 files; backup 3,820 s, restore 3,404 s; corruption/traversal bị chặn; host copy đủ SHA256 |
+| Rollback/return candidate | PASS accepted 5f358c4: metrics/export đọc đúng; return dc8fcc5, full snapshot/50 source hashes/HTTP assets/4 healthy giữ nguyên |
+
+Các lỗi trung gian được giữ trong lịch sử: mock GET conversation thiếu envelope; legacy navigation helper bị race project/Back và listener trước reload-ready; run cũ ngoài 50 đầu cần dùng pagination. Targeted tests rồi full suite chạy lại, không đổi financial oracle. Một lần BE fail do import json trong test bị thiếu đã sửa và full suite cuối PASS. Mock report fixture sau đó được sửa để match pathname cả khi URL có query string; thêm assertion chỉ một workflow và full suite cuối PASS. Fault injection từng từ chối khi còn job khác (đúng guard), không kill job đang chạy khác. Lượt E2E bị gián đoạn không có số liệu PASS được tính; proof local mất hiệu lực đã fail closed và được xác minh lại trước lượt E2E cuối.
+
+Có một Starlette/httpx deprecation warning từ dependency, không là failure hoặc lý do nới validation. Physical keyboard/mobile/screen reader certification và 100k/concurrent production load NOT VERIFIED; performance 1k/10k/50k lịch sử tại S giữ đúng phạm vi.
+
+Backup `backup_a0ea9c9ddaa54797a128b0a00122f804`, metadata SHA256 `84d07768cebeb969fe746f54093251614c65b13724ba0b6dfaef6b02317b4f75`; schema restore UUID cùng PostgreSQL đã được dọn sau drill, public không overwrite. Host copy ở `runtime/assistant-experience-backup`; cùng máy vật lý, chưa là disaster-recovery backup ngoài máy.
+
+### E. Gemini và providers
+
+Gemini `gemini-3.5-flash-lite`: **110/120 lifetime attempts, còn 10**; Agent **93/103**, Planner 10/10, legacy 7. Giữ nguyên 50 attempts trước nhiệm vụ. Chủ dự án cho phép dùng thêm; ceiling global/workspace lần lượt 50→63→100→120, Agent 33→46→83→103, có CLOUD_BUDGET_AUTHORIZED audits; không xóa reservations/keys/history, không gửi bằng key dự án khác. Default cài mới OFF/0 và per-workflow caps giữ nguyên.
+
+Lượt này **60 HTTP attempts**, 55 VALIDATED, 2 HTTP 400, 2 invalid fields và 1 invalid intent được giữ. Trace VALIDATED không đồng nghĩa gold accuracy: canary đầu từng thiếu predicate dù đúng JSON. Revisions 7/8/9/10/11/12/13/14/15 lần lượt **1/2/2/1/3/3/12/12/24 attempts**; final prompt 15 gồm 2 canaries, 8 gold batch, 4 variant batch, 10 native workflows. Mỗi batch ≤10, một HTTP attempt, stop-on-block; không resend timeout/unknown delivery. 58 token receipts, **448.395 tokens**, latency HTTP gồm batch và câu đơn **p50 2.880 ms / p95 5.062 ms**; không suy latency từng câu từ batch. **Actual billed cost NOT VERIFIED**.
+
+Qwen `knowledge` DEFERRED vì HTTP 403 theo chỉ định, **0 calls mới**; Argon không dùng. LlamaParse tạo job mới OFF, **0 calls mới**; PDF/DOCX 2 files/6 credits là bằng chứng lịch sử S, không gọi live lại hoặc báo thành lượt kiểm mới.
+
+### F. Cleanup và bảo toàn
+
+Bỏ sidebar group/count state, icon/import và CSS nav đã hết tham chiếu. Giữ DataOverview, ReconciliationStudio, manual mapping/plan/evidence/export và deep links vì vẫn là fallback có kiểm thử; không coi chúng là code chết. Không xóa migrations, golden fixtures, raw/canonical/runs, backups hoặc hội thoại. Không dependency/framework/agent/service/worktree mới. Cleanup image chỉ thực hiện sau main release/rollback gate, ghi IDs và lý do tại G; không global prune, không xóa volumes.
+
+### G. Git / Docker / release
+
+Source ứng dụng đã full regression: **dc8fcc5fc06f44372fae55aaa3d824cf95fd44a2**; prompt live đầy đủ ở 5a7eebc, chỉ thêm guard/cached validation không đổi prompt và revalidate đầy đủ sau đó. Backend/worker 50 tracked file hashes, HTTP assets và OCI labels PASS. Một Compose project `ai-reconciliation-studio`, 4 healthy, schema `create_agent_workflows`, giữ volumes `ai-reconciliation-studio_postgres_data` và `ai-reconciliation-studio_artifacts`; host chỉ loopback 127.0.0.1:18180.
+
+Candidate dc8fcc5: backend/worker `sha256:df03f902ffa0bc4ad75ddfd9858c79181bacc7a283585d26b0279ee5e4a70600`, frontend `sha256:2e4892705cc595e9e531d598603fbe0a57e3c390305aca9c60eaf2fef278f981`; PostgreSQL `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` không đổi. Protected accepted 5f358c4 và rollback pairs được giữ. Không thay hai acceptance tags cũ. Các commits chức năng đã push origin/codex/assistant-automation: 05625b0, b0d824b, 5a7eebc, dc8fcc5; fixture regression 8fedd1b. Main trước hợp nhất eefdd444. Bản báo cáo này chốt gate trước merge; phần cập nhật release sau cùng sẽ ghi SHA main/runtime và smoke thực tế, không suy từ healthcheck.
+
+### H. Giới hạn và kết luận
+
+- **P2 còn lại:** D04 hỏi lại về Xác nhận B khi dùng tên A/B rút gọn; explicit filenames đã chạy thực. Không bỏ ca này hoặc đổi oracle. Không có P0/P1 còn được tái hiện trong phạm vi kiểm tra cuối; không đảm bảo mọi câu hỏi ngoài gold/variants đúng.
+- Manual fallback giữ vì cần xử lý nâng cao/AI unavailable; dữ liệu chưa được duyệt vẫn cần review, không auto-approve để giảm click.
+- LlamaParse mới OFF, Qwen live hoãn; cost tiền thực, thiết bị vật lý/WCAG certification và tải production chưa được xác minh như nêu trên.
+- Kết quả này đáp ứng ngưỡng MVP được giao cho Assistant experience; không tự bắt đầu tính năng/giai đoạn mới. Dừng sau bàn giao và chờ nhiệm vụ riêng.
+
+Receipts local ngoài Git: `runtime/assistant-experience-backend-final.log`, `assistant-experience-e2e-resumed.json`, `assistant-experience-gold-final.json`, `assistant-experience-variants-final.json`, `assistant-experience-native-workflows.json`, `assistant-experience-payment-chart.json`, `assistant-experience-products.json`, `assistant-experience-usage.json`, `assistant-experience-original-data-proof.json`, cùng logs recovery/persistence/backup/rollback/release tương ứng. Không commit runtime artifacts hoặc secrets.

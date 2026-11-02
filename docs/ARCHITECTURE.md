@@ -109,7 +109,7 @@ Nguồn đã kiểm tra ngày 28/10/2026: [DuckDB Python/Parquet](https://duckdb
 
 Giữ nguyên modular monolith, financial contracts, revisions và ba migrations. Nghiệm thu live dùng cùng queue/Gateway trên hai nguồn tổng hợp, không thêm service. Assistant PASS LIVE; Planner output bị Pydantic chặn (`AI_INVALID_JSON`), job BLOCKED và không công bố proposal/rule/run. Không giảm validation hoặc tự approve để vượt gate. Vì Planner FAIL LIVE, chưa hợp nhất feature vào main, chưa build/deploy release main mới hoặc xóa rollback images. Runtime ứng dụng vẫn source446d031; thay đổi công cụ nghiệm thu không nằm trong image ứng dụng. Parser env được đưa về OFF cùng workspace; Assistant OFF/budget0; quota bền vững9/10. Chi tiết tại [báo cáo](IMPLEMENTATION_STATUS.md).
 
-## Agent-first — triển khai và kiểm chứng 02/11/2026
+## Agent-first — triển khai và kiểm chứng mốc S ngày 02/11/2026
 
 Theo ủy quyền mới, AI Assistant là landing mặc định, upload/review/results ở trong chat; giữ AppShell và các routes thủ công. Một orchestrator nhỏ điều phối business services hiện có, không framework hoặc service mới. UI display name đổi, endpoint/database/module identifiers giữ nguyên.
 
@@ -133,3 +133,10 @@ UI giữ một composer cho gửi việc và trả lời review; history/context
 Runtime được kiểm từ source `95d29560387b6b4e231a86b7b185c6de45928014`: 50 backend source hashes ở cả backend/worker, dist assets qua HTTP và OCI labels; các thay đổi sau chỉ tài liệu/tools có diff proof. Một Compose/4 healthy, hai volumes, schema `create_agent_workflows`; full regression 248 backend/PG và 72 E2E PASS. Persistence/recovery/backup/restore/rollback đã chạy thực, receipts ở [báo cáo mục S](IMPLEMENTATION_STATUS.md).
 
 **Chưa phải accepted-main release.** Gold NLP còn lỗi; Gemini 50/50 còn 0, full current-prompt replay và merge/release BLOCKED. Health/source correctness không thay quality gate AI.
+
+
+## Assistant experience — bản hợp nhất 02/11/2026
+
+Yêu cầu tiếp theo thay menu lịch sử: primary sidebar chỉ AI Assistant/Lịch sử/Cài đặt. `AssistantDataDrawer` đọc lại datasets/tables/artifacts/preview từ API hiện có và tải raw có checksum; `AssistantStudio` mở report trong Modal dùng lại `ReconciliationStudio` với explicit run. Manual pages/deep links vẫn tồn tại; không có engine, UI tiền/KPI hoặc service thứ hai. History có một Modal, composer giữ IME/Enter/Shift+Enter và draft/idempotency. AppShell giữ brand/workspace/header/light theme.
+
+Routing 15 có provider grammar hữu hạn theo tool, source refs phân biệt kind, catalogue scoped có readiness/schema và approved source facts. Server bind query project/kind/ID, kiểm fields/caps/status/paid semantics; current confirmed plan được dereference toàn bộ thay vì LLM dựng lại. Public/persisted AgentIntent/DataQuery/review/financial contracts không đổi. Xem bằng chứng hiện hành tại IMPLEMENTATION_STATUS mục T; các số liệu mục S ở trên là lịch sử.
