@@ -47,6 +47,10 @@ for(const width of [390,768,1366,1440,1920]) {
 
 test('[MOCK CONTRACT] Settings distinguishes permission, configuration, allowance and roles',async({page})=>{
   let scenario='allowed', role='owner';
+  await page.route('**/api/**',route=>{
+    if(route.request().method()!=='GET')throw new Error('Unexpected settings write');
+    return route.fulfill({json:{items:[],total:0,has_more:false}});
+  });
   await page.route('**/api/settings',route=>route.fulfill({json:{workspace_name:'Synthetic privacy',
     agent_cloud_enabled:scenario==='allowed',assistant_cloud_enabled:false,gemini_configured:scenario!=='key',
     gemini_requests_remaining:scenario==='budget'?0:7,gemini_requests_used:3,gemini_model:'synthetic-model',
@@ -55,7 +59,7 @@ test('[MOCK CONTRACT] Settings distinguishes permission, configuration, allowanc
     policy:{mode:scenario==='local'?'LOCAL_ONLY':'CLOUD_ALLOWED',allow_external_ai:scenario!=='local',allow_cloud_parsing:false}}}));
   await page.route('**/api/session',route=>route.fulfill({json:{role,workspace_id:'synthetic',actor_id:'settings-reader'}}));
   for(const [next,expected] of [['allowed','Được phép hỗ trợ tác vụ dữ liệu'],['key','Chưa cấu hình dịch vụ AI'],['budget','Đã hết lượt sử dụng AI'],['task','Tác vụ AI chưa được cấp quyền'],['local','Chưa bật AI bên ngoài']]){
-    scenario=next;await page.goto('/#page=settings');
+    scenario=next;await page.goto('/#page=settings');await page.reload();
     const settings=page.locator('.settings-page');await expect(settings).toContainText(expected);
     await expect(settings).toContainText('Chưa kiểm tra trực tiếp');
     await expect(settings).toContainText('2 tệp mỗi lần');await expect(settings).toContainText('3 MB');
@@ -64,6 +68,31 @@ test('[MOCK CONTRACT] Settings distinguishes permission, configuration, allowanc
   }
   role='viewer';await page.reload();await expect(page.locator('.settings-page')).toContainText('Chỉ xem');
   await expect(page.getByText('Thông tin nâng cao',{exact:true})).toHaveCount(0);
+});
+
+test('[LOCAL] Lost upload response survives refresh without a second bootstrap project',async({page})=>{
+  await page.goto('/');await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeEnabled();
+  const original=await(await page.request.get('/api/settings')).json();
+  const file={name:`Synthetic-upload-recovery-${crypto.randomUUID()}.csv`,mimeType:'text/csv',buffer:Buffer.from('id,amount\n000702,12.75\n')};
+  const keys:string[]=[];const receipts:{project_id:string;items:{id:string}[]}[]=[];
+  await page.route('**/api/agent/attachments',async route=>{
+    keys.push(route.request().headers()['idempotency-key']);
+    const response=await route.fetch();expect(response.status()).toBe(202);receipts.push(await response.json());
+    if(keys.length===1)return route.abort('failed');
+    return route.fulfill({response});
+  });
+  await page.locator('.assistant-composer input[type=file]').setInputFiles(file);
+  await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();
+  await expect(page.getByRole('alert')).toBeVisible();expect(receipts).toHaveLength(1);
+  await page.reload();await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeEnabled();
+  await page.locator('.assistant-composer input[type=file]').setInputFiles(file);
+  await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();
+  await expect(page.locator('.agent-table')).toHaveCount(1);
+  expect(receipts).toHaveLength(2);expect(keys[1]).toBe(keys[0]);
+  expect(receipts[1].project_id).toBe(receipts[0].project_id);expect(receipts[1].items[0].id).toBe(receipts[0].items[0].id);
+  const count=await(await page.request.get(`/api/datasets?project_id=${receipts[0].project_id}`)).json();expect(count.total).toBe(1);
+  const classified=await page.request.patch(`/api/projects/${receipts[0].project_id}/classification`,{headers:{Origin:'http://127.0.0.1:18180'},data:{classification:'TEST',expected_classification:'UNKNOWN'}});expect(classified.status()).toBe(200);
+  expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(original.gemini_requests_used);
 });
 
 test('[MOCK CONTRACT] IME composition does not submit a message',async({page})=>{

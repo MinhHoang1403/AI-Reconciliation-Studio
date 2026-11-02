@@ -49,6 +49,16 @@ const labels: Record<string, string> = {
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Không tải được hội thoại.";
 
+/** Chỉ lưu chữ ký, không lưu bytes; hash tuần tự để giới hạn bộ nhớ khi nhiều tệp. */
+async function attachmentSignature(files: File[]): Promise<string> {
+  const hex = (bytes: ArrayBuffer) => Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, "0")).join("");
+  const members: string[][] = [];
+  for (const file of files) {
+    members.push([file.name, hex(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()))]);
+  }
+  return hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(members))));
+}
+
 /** Mỗi mount thuộc một project/context; abort và sequence chặn response cũ sau chuyển scope. */
 export function AssistantStudio({
   initialContext,
@@ -95,7 +105,6 @@ export function AssistantStudio({
   type ReplyBinding=Pick<Review,"id"|"nonce"|"fingerprint"|"question">&{workflowId:string};
   const [reviewReply,setReviewReply]=useState<ReplyBinding|null>(null);
   const replyKeyFor=(scope:AssistantContext,id:string)=>`studio.review-reply.${draftOwner}.${scope.project_id}.${id}`;
-  const uploadKey = useRef(crypto.randomUUID());
   const fileInput = useRef<HTMLInputElement>(null);
   const [activeWorkflowContext,setActiveWorkflowContext]=useState<AssistantContext|null>(null);
   const latestWorkflowId=messages.slice().reverse().find(m=>m.workflow_id)?.workflow_id;
@@ -362,12 +371,21 @@ export function AssistantStudio({
         await refreshMessages(conversation.id,request);await waitForAnswer(accepted.job_id,conversation.id,request);return;
       }
       if(files.length){
+        const storage = `studio.attachment-request.${draftOwner}.${context.project_id || "new"}`;
+        const signature = await attachmentSignature(files);
+        if(!alive.current||request!==sequence.current)return;
+        let key = crypto.randomUUID();
+        try {
+          const pending = JSON.parse(sessionStorage.getItem(storage) || "null");
+          if(pending?.signature === signature && typeof pending.key === "string") key = pending.key;
+        } catch { /* Server vẫn kiểm bytes/scope; cache không cấp quyền. */ }
+        sessionStorage.setItem(storage, JSON.stringify({signature, key}));
         const body=new FormData();files.forEach(file=>body.append("files",file));
         if(context.project_id)body.append("project_id",context.project_id);
         const uploaded=await api<{project_id:string}>("/agent/attachments",{method:"POST",body,
-          headers:{"Idempotency-Key":uploadKey.current}});
+          headers:{"Idempotency-Key":key}});
         if(!alive.current||request!==sequence.current)return;
-        setFiles([]);uploadKey.current=crypto.randomUUID();
+        setFiles([]);sessionStorage.removeItem(storage);
         if(!context.project_id){
           bootstrapProject=uploaded.project_id;
           localStorage.setItem("studio.project",uploaded.project_id);
@@ -561,7 +579,7 @@ export function AssistantStudio({
     if(next.length>uploadLimits.maxFiles||next.some(f=>!uploadLimits.extensions.some(ext=>f.name.toLowerCase().endsWith(ext))||f.size>uploadLimits.maxBytes)){
       setError(`Đính kèm tối đa ${uploadLimits.maxFiles} tệp ${uploadLimits.extensions.map(ext=>ext.slice(1).toUpperCase()).join("/")}, mỗi tệp tối đa ${uploadLimits.maxBytes/1048576} MB.`);return;
     }
-    setError("");setFiles(next);uploadKey.current=crypto.randomUUID();
+    setError("");setFiles(next);
   }
   return (
     <section className={`assistant-studio ${messages.length?"has-conversation":"is-welcome"}`} aria-label="Hội thoại AI Assistant">
@@ -822,7 +840,7 @@ export function AssistantStudio({
             {reviewReply&&<div className="review-reply-binding" role="status">Đang bổ sung: {reviewReply.question}<button type="button" className="icon-button" aria-label="Hủy trả lời xác nhận" onClick={()=>{setReviewReply(null);if(conversation)sessionStorage.removeItem(replyKeyFor(context,conversation.id));}}><X size={14}/></button></div>}
             <input ref={fileInput} type="file" accept=".csv,.xlsx" multiple hidden onChange={e=>{attach(e.target.files);e.target.value="";}}/>
             <button type="button" className="icon-button" aria-label="Đính kèm CSV hoặc Excel" disabled={!canEdit||busy||!!reviewReply} onClick={()=>fileInput.current?.click()}><Paperclip size={20}/></button>
-            {files.length>0&&<div className="agent-file-chips">{files.map((file,i)=><span key={`${file.name}:${i}`}>{file.name} · {Math.ceil(file.size/1024)}KB<button type="button" className="icon-button" aria-label={`Bỏ ${file.name}`} disabled={busy} onClick={()=>{setFiles(files.filter((_,n)=>n!==i));uploadKey.current=crypto.randomUUID();}}><X size={14}/></button></span>)}</div>}
+            {files.length>0&&<div className="agent-file-chips">{files.map((file,i)=><span key={`${file.name}:${i}`}>{file.name} · {Math.ceil(file.size/1024)}KB<button type="button" className="icon-button" aria-label={`Bỏ ${file.name}`} disabled={busy} onClick={()=>setFiles(files.filter((_,n)=>n!==i))}><X size={14}/></button></span>)}</div>}
             <label>
               <span className="visually-hidden">Giao việc cho AI Assistant</span>
               <textarea
