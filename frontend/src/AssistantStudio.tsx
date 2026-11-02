@@ -559,7 +559,7 @@ export function AssistantStudio({
     const next=[...files,...Array.from(selected)];
     if(!uploadLimits){setError("Chưa tải được giới hạn tệp. Hãy tải lại trang trước khi đính kèm.");return;}
     if(next.length>uploadLimits.maxFiles||next.some(f=>!uploadLimits.extensions.some(ext=>f.name.toLowerCase().endsWith(ext))||f.size>uploadLimits.maxBytes)){
-      setError(`Đính kèm tối đa ${uploadLimits.maxFiles} tệp ${uploadLimits.extensions.join(" / ")}, mỗi tệp tối đa ${uploadLimits.maxBytes/1048576} MB.`);return;
+      setError(`Đính kèm tối đa ${uploadLimits.maxFiles} tệp ${uploadLimits.extensions.map(ext=>ext.slice(1).toUpperCase()).join("/")}, mỗi tệp tối đa ${uploadLimits.maxBytes/1048576} MB.`);return;
     }
     setError("");setFiles(next);uploadKey.current=crypto.randomUUID();
   }
@@ -842,7 +842,7 @@ export function AssistantStudio({
                 }}
                 maxLength={2000}
                 rows={1}
-                placeholder={reviewReply?"Bổ sung thông tin để AI diễn giải; bạn sẽ kiểm tra lại trước khi xác nhận...":"Ví dụ: Chuẩn hóa các file này rồi đối soát giúp tôi..."}
+                placeholder={reviewReply?"Bổ sung thông tin để kiểm tra trước khi xác nhận...":"Nhập yêu cầu của bạn..."}
                 disabled={busy||loading}
               />
             </label>
