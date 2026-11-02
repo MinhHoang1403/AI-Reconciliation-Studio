@@ -1360,3 +1360,20 @@ Ruff toàn backend/tests/tools, mypy42source files, TypeScript/check, ESLint và
 Các lượt trung gian không được cộng PASS: test mới ban đầu kỳ vọng400thay422theo error contract; một lượt chạy bị ngắt khi sửa thông báo định dạng/placeholder; một fixture Settings thiếu API envelope; một test khởi động trước khi proof local được cấp; một full run bắt được drawer reset race89PASS/1FAIL. Nguyên nhân đã xử lý ở lớp tương ứng, không tăng timeout/retry hoặc bỏ case. Full suite cuối ở trên là lượt90/90sau sửa drawer và selector label.
 
 Restart và full recreate đều PASS full metadata/artifact snapshot, đồng thời GET/session fail-closed403trước verify-local (2/2). Rollback thực tới accepted-main-f1ad9f1, đọc lại9workflow/hai snapshot/raw/export và full persistence PASS, rồi quay lại candidate khỏe. Không downgrade, đổi policy/quota, xóa volume hoặc tạo Compose thứ hai. Snapshot trước các phép vận hành có916dataset artifacts+94run artifacts+151exports; toàn bộ giữ nguyên qua các thao tác này.
+
+### Phát hành main và cleanup — READY_FOR_LOCAL_USE
+
+Đã fast-forward và push `origin/main` từ `952566663e03f37d244d1f97aa000b4571861427` tới **`d392c4a9216fe021ce301e2816a712ded025c951`** sau gates. Source ứng dụng giống hệt `83d9b35` đã chạy full suites; diff backend/frontend rỗng. Build/deploy main có OCI revision đúng SHA trên cả Backend/worker/frontend; kiểm48tracked Backend file hashes ở hai tiến trình và assets HTTP so với dist PASS. Không có migration mới, schema vẫn `create_agent_workflows`, PostgreSQL image không đổi.
+
+| Image main | Digest |
+|---|---|
+| Backend + worker | `sha256:2260ad5ee96d75a1cdb8db8fe76a56ba5f56dea041a12e87b302c156e12fe902` |
+| Frontend | `sha256:484acae401f9c6ecfcfde3c983fee8e7ac2dc6a50f99df6ae3eb2d03810bd935` |
+
+Sau deploy main: full persistence trước/sau image recreate PASS; đọc9workflow/hai snapshot/raw/export PASS; **19/19 browser smoke PASS, 55,72giây, 0 FAIL/SKIP/flaky**, gồm product journey thực và các ca Assistant/Settings/upload recovery/chart/drawer. Không cộng19replays vào90cases. Bốn services healthy, chỉ `127.0.0.1:18180` được publish; Backend/worker/PostgreSQL không host port. Web: [mở local](http://127.0.0.1:18180). Dữ liệu trước nhiệm vụ được so lại lần cuối theo mọi ID/metadata/hash: PASS; chỉ thêm fixtures tổng hợp, không xóa hoặc sửa bản gốc. Gemini vẫn110/120,0calls mới.
+
+Cleanup đã kiểm labels/source/references trên cả container đang chạy và đã dừng trước mỗi lần xóa, không force: **14→6 application images, xóa8image** gồm candidate446d031/9802545 và rollbackdc8fcc5/e025094 đã có rollbackf1ad9f1 thay thế được thử thực. Giữ các pairs `accepted-main-d392c4a`, `accepted-main-f1ad9f1` (đường rollback đã kiểm) và mốc accepted `5f358c4`; images lưu trữ không là ứng dụng chạy song song. Container ứng dụng4→4; volumes2→2: `ai-reconciliation-studio_postgres_data` và `ai-reconciliation-studio_artifacts`. Không đụng project khác, Git acceptance tags, volumes/backups hoặc global build cache. Docker accounting Images toàn host **39,4→38,91GB**, build cache vẫn47,71GB; không xác nhận số byte vật lý thu hồi vì cache/layers chung. C: còn khoảng139,2GB tại lúc đo; không coi biến động free space là bằng chứng cleanup riêng.
+
+Backup sau release: `backup_3ecc88c9105e45eb8cf2383fdabe6338`,24bảng, metadata SHA256 `be9633bf5689bd97a09e377e140b44d482fa89a55db8eb701c80c63feb091956`; backup3,829s/restore4,880s PASS, giữ nguyên public. Đã copy ra host; manifest/metadata/toàn bộ1176files được kiểm SHA. Cả hai backups của nhiệm vụ được giữ, không thay backup ngoài máy. Xóa script chỉnh CSS tạm của lượt làm việc; giữ receipts/screenshot và công cụ đọc kiểm chứng local ngoài Git. Không phát sinh dependency/service khác.
+
+Kết luận **READY_FOR_LOCAL_USE** trong MVP đã phê duyệt; không P0/P1 còn tái hiện trong phạm vi suites/journeys đã chạy, còn P2 D04 và các NOT VERIFIED nêu trên. Commit ghi báo cáo sau deploy chỉ thay tài liệu; runtime giữ labels `d392c4a`, application diff được kiểm rỗng. Git status/remote SHA cuối ở receipt `runtime/ui-refinement/git-release-proof.json`; không gọi một doc-only commit là binary release khác.
