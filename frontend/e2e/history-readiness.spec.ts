@@ -49,3 +49,19 @@ for(const width of [390,768,1366,1440,1920]){
     await page.screenshot({path:`../runtime/demo-acceptance/history/${width}.png`,fullPage:true});
   });
 }
+
+test('[MOCK CONTRACT] a failed user turn keeps the last visible workflow run after reload',async({page})=>{
+  const project_id='history-project',run_id='verified-run',cid='saved-conversation';
+  await page.addInitScript(()=>{localStorage.setItem('studio.project','history-project');localStorage.setItem('studio.conversation.history-project','saved-conversation');});
+  await page.route('**/api/**',route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(route.request().method()!=='GET')throw Error('Unexpected context write');
+    if(path==='/api/session')return route.fulfill({json:{role:'owner',workspace_id:'synthetic'}});
+    if(path==='/api/settings')return route.fulfill({json:{policy:{allow_external_ai:false}}});
+    if(path==='/api/projects/history-project')return route.fulfill({json:{id:project_id,name:'Synthetic context',workspace_id:'synthetic',classification:'TEST'}});
+    if(path===`/api/conversations/${cid}`)return route.fulfill({json:{conversation:{id:cid,context:{project_id},title:'Saved'},items:[{id:'completed',role:'assistant',created_at:'2026-11-02T00:00:00Z',context:{project_id,run_id},workflow_id:'visible-workflow'},{id:'failed',role:'user',text:'Yêu cầu thất bại đã lưu',created_at:'2026-11-02T00:01:00Z',context:{project_id},workflow_id:'unrendered-failed-workflow'}],has_more:false}});
+    if(path==='/api/agent/workflows/visible-workflow')return route.fulfill({json:{id:'visible-workflow',context:{project_id,run_id},state:'COMPLETED',updated_at:'2026-11-02T00:01:00Z',detail:{steps:[],reviews:[],blocks:[],model_calls:0}}});
+    return route.fulfill({json:{items:[],total:0,has_more:false}});
+  });
+  await page.goto('/');const chip=page.getByRole('button',{name:'Đổi ngữ cảnh phân tích',exact:true});await expect(chip).toHaveAttribute('data-run-id',run_id);await page.reload();await expect(chip).toHaveAttribute('data-run-id',run_id);
+});

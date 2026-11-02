@@ -109,7 +109,7 @@ export function AssistantStudio({
   const replyKeyFor=(scope:AssistantContext,id:string)=>`studio.review-reply.${draftOwner}.${scope.project_id}.${id}`;
   const fileInput = useRef<HTMLInputElement>(null);
   const [activeWorkflowContext,setActiveWorkflowContext]=useState<AssistantContext|null>(null);
-  const latestWorkflowId=messages.slice().reverse().find(m=>m.workflow_id)?.workflow_id;
+  const latestWorkflowId=messages.slice().reverse().find(m=>m.role==="assistant"&&m.workflow_id)?.workflow_id;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);

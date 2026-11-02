@@ -524,6 +524,46 @@ def test_routing_scope_reference_preserves_every_confirmed_fact_and_never_mutate
         )
 
 
+def test_completed_benchmark_keeps_rejected_candidates_in_accuracy_denominators():
+    import runpy
+    from pathlib import Path
+
+    candidate = Path(__file__).resolve().parents[1] / "tools/benchmark-agent.py"
+    if not candidate.exists():
+        candidate = Path(__file__).with_name("benchmark-agent.py")
+    helper = runpy.run_path(str(candidate))
+    cat = routing_catalogue()
+    rows = helper["score_completed_candidates"](
+        [
+            dict(
+                intent="QUERY_DATA",
+                query=dict(
+                    source_ref="foreign",
+                    filters=[],
+                    group_by=[],
+                    aggregations=[],
+                    currency_field=None,
+                ),
+            ),
+            dict(intent="UNSUPPORTED"),
+        ],
+        [
+            dict(
+                id="rejected", goal="Đếm nguồn", intent="QUERY_DATA", source="CA", aggregate="count"
+            ),
+            dict(id="negative", goal="Đọc bí mật", intent="UNSUPPORTED", negative=True),
+        ],
+        cat,
+        {"CA": cat.confirmed_plan.left.canonical_id},
+    )
+    assert len(rows) == 2
+    assert rows[0]["validation_error"] == "AI_INVALID_SOURCE"
+    assert rows[0]["source_applicable"] and not rows[0]["source_ok"]
+    assert rows[0]["semantic_applicable"] and not rows[0]["semantic_ok"]
+    assert "blocked" not in rows[0]  # counted as an observed failure, not excluded/unmeasured
+    assert rows[1]["abstention_ok"] is True
+
+
 def test_routing_query_binds_source_kind_project_and_rejects_wrong_field_or_ambiguous_name():
     from studio.agent_intents import compile_routing
 

@@ -19,7 +19,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from sqlalchemy import select
 from studio.access import Actor
-from studio.agent_intents import INTENT_REVISION, interpret_requests, validate_intents
+from studio.agent_intents import (
+    INTENT_REVISION,
+    compile_routing,
+    interpret_requests,
+    validate_intents,
+)
 from studio.agent_jobs import model_call
 from studio.agent_workflows import digest
 from studio.assistant_api import own_conversation
@@ -56,6 +61,41 @@ def repairable_failure(code: str | None, usage: dict[str, Any]) -> bool:
         and usage.get("http_status") == 200
         and usage.get("finish_reason") == "STOP"
     )
+
+
+def score_completed_candidates(candidates, cases, catalogue, ids):
+    """Score every completed synthetic reply; a rejected case stays in all denominators.
+
+    This never executes or repairs an action. The original batch/job remains BLOCKED.
+    Other items use the same production validator independently, not an LLM judge.
+    """
+    assert len(candidates) == len(cases)
+    results = []
+    for candidate, case in zip(candidates, cases, strict=True):
+        try:
+            parsed = compile_routing(
+                json.dumps(dict(intents=[candidate])), [case["goal"]], catalogue
+            )[0]
+            results.append(score(case, parsed, ids, catalogue.confirmed_plan))
+        except DomainError as exc:
+            # Conservative: failed source/slot validation cannot earn source/slot credit.
+            results.append(
+                dict(
+                    id=case["id"],
+                    intent_ok=candidate["intent"] == case["intent"],
+                    source_applicable=case.get("source") is not None,
+                    source_ok=False,
+                    semantic_applicable=any(
+                        case.get(k) for k in ("key", "aggregate", "filter", "group", "scope")
+                    ),
+                    semantic_ok=False,
+                    tool_ok=False,
+                    abstention_ok=False if case.get("negative") else None,
+                    validation_error=exc.code,
+                    actual_routing=candidate,
+                )
+            )
+    return results
 
 
 def score(gold: dict, intent: AgentIntent, ids: dict, confirmed_plan=None) -> dict:
@@ -191,6 +231,11 @@ def main() -> None:
     parser.add_argument("--suite", choices=["gold", "variants"], default="gold")
     parser.add_argument("--cases", nargs="+", help="Canary IDs; never changes the full gold rubric")
     parser.add_argument("--repair-known", choices=["payment-status-grouping"])
+    parser.add_argument(
+        "--evaluate-completed-cases",
+        action="store_true",
+        help="Score known HTTP200/STOP typed candidates per case; keep original failed jobs",
+    )
     args = parser.parse_args()
     assert args.execute_live and settings.agent_cloud_enabled and settings.agent_request_budget > 0
     gold = json.loads(args.gold.read_text(encoding="utf-8"))
@@ -245,6 +290,29 @@ def main() -> None:
                 )
                 job_id = job.id
                 repair_of = None
+                if job.status == "BLOCKED" and args.evaluate_completed_cases:
+                    trace = db.scalar(select(TraceRow).where(TraceRow.job_id == job.id))
+                    assert trace and trace.usage.get("http_status") == 200
+                    assert trace.usage.get("finish_reason") == "STOP"
+                    assert job.result and job.result.get("routing_candidates")
+                    results.extend(
+                        score_completed_candidates(
+                            job.result["routing_candidates"]["intents"],
+                            subset,
+                            catalogue,
+                            config["ids"],
+                        )
+                    )
+                    batches.append(
+                        dict(
+                            domain=domain,
+                            offset=offset,
+                            job_id=job_id,
+                            status="CACHED_COMPLETED_CASE_EVALUATION",
+                            original_status="BLOCKED",
+                        )
+                    )
+                    continue
                 if job.status == "BLOCKED" and args.repair_known:
                     trace = db.scalar(select(TraceRow).where(TraceRow.job_id == job.id))
                     # Explicit, one repair round after a reproduced validator fix.
@@ -353,6 +421,33 @@ def main() -> None:
                         )
                         db.commit()
                     # Batch không đạt schema/semantic: các ca chưa đo không được chấm PASS.
+                    if args.evaluate_completed_cases and captured:
+                        with SessionFactory() as db:
+                            trace = db.scalar(select(TraceRow).where(TraceRow.job_id == job_id))
+                            known_complete = bool(
+                                trace
+                                and trace.usage.get("http_status") == 200
+                                and trace.usage.get("finish_reason") == "STOP"
+                            )
+                        if known_complete:
+                            results.extend(
+                                score_completed_candidates(
+                                    captured[-1].model_dump(mode="json")["intents"],
+                                    subset,
+                                    catalogue,
+                                    config["ids"],
+                                )
+                            )
+                            batches.append(
+                                dict(
+                                    domain=domain,
+                                    offset=offset,
+                                    job_id=job_id,
+                                    status="LIVE_COMPLETED_CASE_EVALUATION",
+                                    original_status="BLOCKED",
+                                )
+                            )
+                            continue
                     results.extend(dict(id=g["id"], blocked=job.error_code) for g in subset)
                     batches.append(
                         dict(
@@ -403,6 +498,8 @@ def main() -> None:
         tool_correct=sum(r["tool_ok"] for r in measured),
         negative_measured=sum(r["abstention_ok"] is not None for r in measured),
         correct_abstentions=sum(r["abstention_ok"] is True for r in measured),
+        case_validation_failures=sum(bool(r.get("validation_error")) for r in measured),
+        completed_case_evaluation=args.evaluate_completed_cases,
         action_execution="NONE; router only, workflow completion measured separately",
         tool_measurement="Inferred fixed dispatch from typed intent; no action tools executed here",
     )
