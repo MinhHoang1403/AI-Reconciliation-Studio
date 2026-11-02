@@ -109,14 +109,27 @@ Nguồn đã kiểm tra ngày 28/10/2026: [DuckDB Python/Parquet](https://duckdb
 
 Giữ nguyên modular monolith, financial contracts, revisions và ba migrations. Nghiệm thu live dùng cùng queue/Gateway trên hai nguồn tổng hợp, không thêm service. Assistant PASS LIVE; Planner output bị Pydantic chặn (`AI_INVALID_JSON`), job BLOCKED và không công bố proposal/rule/run. Không giảm validation hoặc tự approve để vượt gate. Vì Planner FAIL LIVE, chưa hợp nhất feature vào main, chưa build/deploy release main mới hoặc xóa rollback images. Runtime ứng dụng vẫn source446d031; thay đổi công cụ nghiệm thu không nằm trong image ứng dụng. Parser env được đưa về OFF cùng workspace; Assistant OFF/budget0; quota bền vững9/10. Chi tiết tại [báo cáo](IMPLEMENTATION_STATUS.md).
 
-## Agent-first bổ sung —02/11/2026, đang triển khai
+## Agent-first — triển khai và kiểm chứng 02/11/2026
 
-Đây là phần bổ sung theo nhiệm vụ Agent-first đã được chủ dự án giao; các luồng thủ công và hợp đồng tài chính phía dưới vẫn được giữ. Source mới chưa đồng nghĩa bản Docker đang chạy đã nâng cấp.
+Theo ủy quyền mới, AI Assistant là landing mặc định, upload/review/results ở trong chat; giữ AppShell và các routes thủ công. Một orchestrator nhỏ điều phối business services hiện có, không framework hoặc service mới. UI display name đổi, endpoint/database/module identifiers giữ nguyên.
 
-`assistant/messages` giữ mặc định LEGACY để tương thích; mode AGENT đi qua `agent_jobs` → typed intent → `agent_workflows` → registry `agent_tools`. Registry kiểm lại membership/project trên mỗi call và dùng chung business helpers của API upload/approval/normalization/plan/run/export; không HTTP nội bộ hoặc service account. Model không có tool approve. PostgreSQL thêm duy nhất bảng metadata `agent_workflows` qua migration additive sau `create_conversations`; vẫn một queue/jobs, lease/fence và bốn services.
+```text
+assistant/messages (AGENT) -> agent_jobs -> typed intent + validation
+ -> agent_workflows -> agent_tools registry -> existing PostgreSQL queue
+ -> mapping/normalization/planning/review/matching/verification/export
+ -> typed blocks + source evidence -> AssistantStudio
+```
 
-Workflow lưu steps, kết quả, review và context có kiểu trong JSONB. Child-job finish và tín hiệu `agent_resume` được commit cùng transaction. Review API khóa workflow, kiểm owner/role, nonce, expiry, source fingerprint, tạo approval đúng actor và enqueue bước tiếp cùng transaction. Replay cùng decision trả state hiện có; đổi nội dung trả409. Hủy chỉ ngăn bước tiếp, giữ các job đã xếp và kết quả bất biến. Resume reauthorize; reservation trước HTTP được giữ nếu delivery unknown.
+`assistant/messages` vẫn mặc định LEGACY ở API để tương thích; frontend chọn AGENT cho công việc và giữ chế độ facts cũ. Registry re-authorize membership/project trên mỗi call, dùng business helpers transaction-neutral của API, không gọi HTTP nội bộ hoặc giả service account. Model không có tool approve. Một bảng `agent_workflows` thêm sau `create_conversations`, bounded typed JSONB cho steps/reviews/context; vẫn một queue, lease/fence/SKIP LOCKED và bốn services.
 
-`agent/attachments` tạo project có scope duy nhất `UNCONFIRMED:<id>` khi thật sự upload, không tạo khi mở chat; metadata/bootstrap/receipt/jobs cùng transaction và stable actor-scoped key. Không tự phân loại WORK/TEST; receipt cùng key khác bytes bị409. CSV/XLSX dùng parser/dedup hiện có, `request_ai_mapping=false` để không tự tiêu ngân sách trước yêu cầu AI.
+Child-job finish và `agent_resume` cùng transaction. Review khóa workflow/source, kiểm owner/role/nonce/expiry/fingerprint, ghi approval đúng actor và enqueue bước tiếp atomically. Replay quyết định cùng key trả state cũ; thay payload trả conflict. Cancel giữ kết quả bất biến và chỉ ngăn bước tiếp. Resume re-authorize; provider reservation đã commit trước HTTP không bị reset/resend nếu unknown delivery.
 
-`data_query` biên dịch predicate/aggregate từ allowlist sang Polars trên artifact đã kiểm scope/SHA; không nhận SQL/path/join. Count/tổng áp dụng ALL_MATCHING trước paging; giữ Decimal/null/currency và provenance nhóm; trang tối đa50, nguồn tối đa100k. Query và chart là dữ liệu canonical/raw hoặc verified run, không tự trở thành KPI đối soát. Các bước UI chat-first, natural-language review, live Agent benchmark và release vẫn chưa nghiệm thu.
+`agent/attachments` chỉ tạo project `UNCONFIRMED:<id>` khi upload thật; metadata/bootstrap/receipt/jobs cùng transaction với stable actor-scoped key. Cùng key khác bytes bị conflict; không tự phân loại WORK/TEST. CSV/XLSX dùng parser/dedup hiện có, mặc định không enqueue AI mapping từ upload trước khi người dùng giao việc.
+
+`data_query` compile allowlist sang Polars trên artifact đã kiểm scope/SHA, không SQL/path/join tự do. Tổng/count trên ALL_MATCHING trước paging, giữ Decimal/null/currency/full lineage. Verified comparisons/snapshot được đọc nguyên, không thay công thức. Chart points tính native, không model numbers. Chi tiết ở [hợp đồng](DATA_CONTRACTS.md).
+
+UI giữ một composer cho gửi việc và trả lời review; history/context/delete dùng dialog mở khi cần. Request/draft/conversation context và chip hiển thị latest workflow được tách để stale response không đổi scope. Không thêm router/framework hoặc CSS rewrite toàn ứng dụng.
+
+Runtime được kiểm từ source `95d29560387b6b4e231a86b7b185c6de45928014`: 50 backend source hashes ở cả backend/worker, dist assets qua HTTP và OCI labels; các thay đổi sau chỉ tài liệu/tools có diff proof. Một Compose/4 healthy, hai volumes, schema `create_agent_workflows`; full regression 248 backend/PG và 72 E2E PASS. Persistence/recovery/backup/restore/rollback đã chạy thực, receipts ở [báo cáo mục S](IMPLEMENTATION_STATUS.md).
+
+**Chưa phải accepted-main release.** Gold NLP còn lỗi; Gemini 50/50 còn 0, full current-prompt replay và merge/release BLOCKED. Health/source correctness không thay quality gate AI.

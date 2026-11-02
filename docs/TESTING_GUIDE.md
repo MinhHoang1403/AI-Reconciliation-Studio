@@ -227,10 +227,53 @@ Luồng ba file dùng upload thật trên UI, approval/normalization qua API có
 
 Benchmark: `uv run python tools/benchmark-foundation.py`, `uv run python tools/benchmark-reconciliation.py`; `benchmark-assistant.py` copy/chạy trong Backend hiện có để đo Parquet evidence và read-only SQL. Không tạo service/container mới. Kết quả là samples tổng hợp; không suy ra precision/recall đại diện hoặc SLA. `check-worker-recovery.py` kiểm SIGKILL normalization thật; PG tests kiểm stale claim/fencing/không duplicate Assistant response và unknown delivery. `check-persistence.ps1` kiểm cả ConversationRow/MessageRow sau restart/recreate và frontend-only recreate. Backup/restore commands tại [README](../README.md); backup codec có regression chống JSON giả type tags.
 
-## Kiểm thử Agent-first đang triển khai02/11/2026
+## Agent-first — kết quả và cách kiểm chứng 02/11/2026
 
-`tests/test_agent.py` kiểm typed intent, fabricated IDs/authority, caps, PAID≠COMPLETED, thiếu năm và cloud OFF không HTTP/reservation. Đây là contract/MOCK, không phải số đo NLP live. `tests/test_data_query_postgres.py` kiểm oracle tổng hợp3dòng25+12,75+5=42,75VND, paging/ALL_MATCHING/group provenance/currency, viewer-read và write deny. `tests/test_agent_postgres.py` chạy queue/worker/API/approval/normalizer/verifier thật với AI được MOCK rõ: review→atomic rollback→approve→resume→canonical, stale/expiry/nonce/viewer/cancel, bootstrap/dedup, approved-rule reuse, new-period review, follow-up run context, query/chart oracle và durable blocked.
+Kết quả mới nhất: **248 backend/PostgreSQL PASS, 0 FAIL/SKIP**, 52,45 giây; **72 Playwright PASS, 0 FAIL/SKIP/flaky**, 226,72 giây trên app source `95d2956`. Ruff, mypy 42 modules, ESLint, TypeScript/build và repository/secrets/history/Markdown paths PASS. Các con số ngày 28–30/10 ở trên là lịch sử, không thay số mới. Full MVP chưa nghiệm thu do NLP quality và hết Gemini quota.
 
-Chạy trên UUID schema của PostgreSQL/container hiện có: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-postgres.ps1 -All -Source`; không tạo Compose khác hoặc sửa dữ liệu public. Historical migration test tiếp tục chạy từ `create_data_foundation` và kiểm giữ nguyên canonical qua head mới. `check-persistence.py` thêm workflow metadata vào snapshot sau khi runtime được migrate. UI/Playwright Agent, gold tiếng Việt60+20và Agent live cần chạy riêng; không quy đổi tests MOCK thành PASS LIVE hoặc accuracy thực tế.
+- `tests/test_agent.py`: typed intent/tool bounds, IDs/authority, cloud OFF không HTTP/reservation, cardinality, source column exactness, PAID khác COMPLETED, enum/grouping/all-status population, known-repair guards và rubric độc lập.
+- `tests/test_agent_postgres.py`: queue/worker/API/mapping/normalizer/verifier thật, provider MOCK có nhãn; review -> atomic rollback -> approve -> resume, expiry/nonce/stale/viewer/cancel, bootstrap/dedup, approved-rule reuse/new-period review, tombstone/NL reply publish/context và durable blocked.
+- `tests/test_data_query_postgres.py`: count/tổng 3 dòng 25+12,75+5=42,75 VND, ALL_MATCHING/paging/group provenance/currency/null/Decimal, verified immutable member/comparison values, missing-side filtering và authorization.
+- Catalogue T01–T40, golden/property/security cũ tiếp tục chạy. Không cộng replay hoặc catalogue IDs thành số tests mới.
 
-GoldAgent dùng8batch10táchmiền, giữnguyênoracle80. Benchmarkkhôngexecutetools vàinferred dispatchkhôngphảiworkflowcompletion. `--repair-known payment-status-grouping`chỉdùngsauvalidatorfixđãtáihiện: giữjobcũ,3knownHTTP200/STOPsemantic/JSONfailuresđượcđolạimộtlầnqualinkrepair_of,successcachedkhôngthêmHTTP. Unknown delivery/truncation/HTTPerrorkhôngđượcrepairbằngflag; task/globalledgervẫnchặnrequest. Unithelperguardvàdecimalrubricchạytrongtest_agent.py,helperđượccopyvàobackendtesttempnhưcáchelperkhác.
+Chạy trong source/backend và UUID schema của PostgreSQL hiện có, không tạo Compose hoặc DB server mới:
+
+```powershell
+./tools/test-postgres.ps1 -All -Source
+uv run ruff check backend tests tools
+uv run mypy backend
+npm --prefix frontend run lint
+npm --prefix frontend run check
+npm --prefix frontend run build
+$env:STUDIO_EXPECT_AI_PROVIDER='MANUAL'
+npm --prefix frontend run test:e2e
+uv run python tools/check_repository.py
+```
+
+Không recreate container trong lúc PG source tests đang dùng `/tmp` của container đó. Sau restart/recreate, verify-local phải PASS trước UI checks; 403 trước proof là fail-closed mong đợi, không tắt auth/CSRF. Provider trong regression MOCK không phải Gemini LIVE.
+
+### Browser và visual
+
+72 cases gồm 59 cũ + 7 Agent + 1 delayed report/Back regression + 5 layout cases. `frontend/e2e/assistant-layout.spec.ts` kiểm **18 states × 5 widths = 90 screenshots**, MOCK CONTRACT: empty, short, long, upload, running, review, completed, wide table, chart, evidence, history, multiline, keyboard, sidebar, delete, error, permission, loading. Kiểm one composer, review binding/cancel giữ draft, delayed old workflow không đổi run chip, delete confirmation/focus và không page overflow/error. Không cộng ảnh thành tests.
+
+Ảnh trước `runtime/agent-ui/empty-{width}.png`, sau `runtime/assistant-layout/{width}/{state}.png`; đã xem ảnh trọng yếu mobile/tablet/desktop. Không nhận được hai sketches trong attachment nên exact sketch match NOT VERIFIED. Keyboard viewport mô phỏng không chứng minh thiết bị vật lý hoặc WCAG/screen-reader certification.
+
+### Gold và Gemini LIVE
+
+`tests/fixtures/agent-intents.json`: 60 câu/2 miền + 20 negative, oracle độc lập. `tools/benchmark-agent.py` đo routing, **không execute tools**; inferred dispatch khác workflow completion. Lịch sử prompt 5: **80 measured, intent 68/80, source 53/60, slots 21/34, inferred dispatch 70/80, safe abstention 20/20**. Strict negative intent 18/20. Rubric D27 đã sửa population và chấm stored replies bằng 0 HTTP, không đổi gold để ép PASS.
+
+Tám batch đầu và ba known completed failed batches đo lại một lần: tổng 11 HTTP, năm batch thành công cached. Flag `--repair-known payment-status-grouping` chỉ cho HTTP 200/STOP semantic/JSON fail đã biết, giữ original job và repair_of; không cho HTTP error/timeout/unknown delivery/truncation. Các lỗi lịch sử không bị ghi đè bằng success mới.
+
+**Không chạy lại live hiện tại:** global/demo workspace **50/50 còn 0**, Agent 33/33, Planner 10/10. Full 80-case gold trên prompt 6 **NOT VERIFIED/BLOCKED**, không lấy prompt 5 thay thế. Representative live journeys có receipts riêng ở mục S báo cáo; 16 parent workflows qua các rounds gồm 9 COMPLETED/5 BLOCKED/2 WAITING_REVIEW. Không báo 100% automation hoặc production readiness.
+
+Native read-back sau live: 2 domains giữ raw SHA/canonical/snapshot; paid/missing/variance/explanation đúng oracle; count 3/sum 42,75 VND/full lineage. Export XLSX 15.837 bytes/8 sheets/4 groups/6 members, snapshot full match 1/3=33,33%, variance 2,75 VND, zero-prefix và unmatched null đúng. Reload/native evidence mở đúng cell, không cloud. Receipts local ngoài Git, không tạo request để làm đẹp số live.
+
+### Recovery, persistence và performance
+
+- `tools/check-worker-recovery.py`: cùng worker, fixture TEST 75k, SIGKILL/lease reclaim -> 2 attempts/1 canonical -> Agent resume COMPLETED, model_calls 0, raw SHA nguyên, 13,797 giây cả hành trình. Native query 75k trả 50/allmatching 75k, 132,09 ms một sample.
+- `tools/check-persistence.ps1`: 3/3 metadata/file comparisons và 3/3 fail-closed PASS qua restart/recreate/frontend recreate, gồm workflow/review.
+- `tools/check-backup-restore.py`: cùng PG, UUID restore schema, 24 tables/764 files, backup SHA/corruption/traversal checks; public không overwrite, host copy đủ SHA. Không tự gọi lại nếu đã có receipt hợp lệ và không thay dữ liệu.
+- `tools/rollback.ps1`: accepted 5f358c4 trên additive schema hiện tại, chặn active jobs/workflows, giữ volumes/schema/reviews; legacy không resume Agent mới. Đã drill full snapshot/report/export rồi trở về candidate và kiểm lại source/assets/products.
+- 3 samples/mốc 1k/10k/50k trên Ryzen 5 7535HS, khoảng 16 GB/Polars 2 threads, không GPU/AI. Foundation 50k normalize+write p50/p95 1.153,76/1.260,90 ms, peak 166,42 MiB; exact recon 50k total match 1.473,57/1.474,98 ms, verify 1.192,72/1.214,17 ms, peak 319,06 MiB. Chi tiết đủ stages/mốc ở `runtime/benchmarks.json`, `reconciliation-benchmark.json`; không suy SLA hoặc fuzzy/100k/production load.
+
+Bảng PASS LOCAL/MOCK/LIVE/FAIL/BLOCKED/NOT VERIFIED/DEFERRED, Git/Docker identity và paths receipts ở [IMPLEMENTATION_STATUS mục S](IMPLEMENTATION_STATUS.md). Merge/release/image cleanup chỉ sau quality gates, không dựa riêng số tests PASS.

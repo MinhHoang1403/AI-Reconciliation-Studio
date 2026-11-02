@@ -2,7 +2,7 @@
 
 Nền tảng chuẩn bị dữ liệu CSV/XLSX: đọc và phân tích cấu trúc, AI đề xuất ánh xạ, người dùng xác nhận rồi chuẩn hóa có kiểu và nguồn gốc. Giao diện sáng, xanh dương; dữ liệu, mapping và kết quả được lưu trong PostgreSQL/Parquet.
 
-**Trạng thái02/11/2026:** Giai đoạn1–2 đã ở `main`; Agent-first MVP đang triển khai/nghiệm thu trên `codex/assistant-automation`, chưa merge hoặc release main mới. Nhánh đã có upload từ chat, workflow bền, review/resume và typed query/results. Planner đã qua2ca **PASS LIVE** sau sửa contract; Agent NLP/workflow live và nghiệm thu UI mới còn tiếp tục. Backend234PASS; số E2E và phạm vi live/mock xem [báo cáo hiện tại](docs/IMPLEMENTATION_STATUS.md), không coi các mốc cũ là kết quả mới. Qwen live hoãn HTTP403, parser tạo job OFF.
+**Trạng thái 02/11/2026:** UI AI Assistant đã triển khai và kiểm tra trên `codex/assistant-automation`; **chưa đạt nghiệm thu toàn Agent-first MVP**, chưa merge/release main. Backend/PostgreSQL **248 PASS**, Playwright **72 PASS**, 0 FAIL/SKIP ở hai suite cuối. Các ca Gemini đại diện đã chạy thật, nhưng gold NLP còn lỗi intent/source/slots; prompt mới chưa được đo lại toàn bộ. Gemini **50/50 attempts, còn 0**, không gọi thêm. Xem [báo cáo hiện tại, mục S](docs/IMPLEMENTATION_STATUS.md). Qwen hoãn HTTP 403; parser tạo job mới OFF.
 
 ## Mở ứng dụng trong workspace hiện tại
 
@@ -24,11 +24,13 @@ Máy đã kiểm tra: Windows, Ryzen 5 7535HS (6 cores/12 threads), khoảng 16 
 
 ## AI Assistant có bằng chứng
 
-Mở **AI Assistant** → đính kèm1–5CSV/XLSX → giao việc bằng tiếng Việt → kiểm tra điểm cần xác nhận → nhận kết quả và nguồn. Khi chưa chọn project, upload tạo scope `UNCONFIRMED` riêng, không tự dùng quy tắc khác. Mapping/rule mới vẫn cần quyết định người dùng; rule đã duyệt đúng phạm vi có thể chạy lại theo yêu cầu rõ ràng. Kết quả query/raw/canonical và KPI verified được phân biệt, LLM không tính tiền.
+Mở **AI Assistant** → đính kèm 1–5 CSV/XLSX → giao việc bằng tiếng Việt → kiểm tra điểm cần xác nhận → nhận kết quả và nguồn. Khi chưa chọn project, upload tạo scope `UNCONFIRMED` riêng, không tự dùng quy tắc khác. Mapping/rule mới vẫn cần quyết định người dùng; rule đã duyệt đúng phạm vi có thể chạy lại theo yêu cầu rõ ràng. Kết quả query/raw/canonical và KPI verified được phân biệt, LLM không tính tiền.
 
-UI tối giản đang được tích hợp: lịch sử mở bằng nút **Lịch sử**, ngữ cảnh kết quả mở từ chip, xóa trong menu hội thoại. Reply cho review dùng composer chính và chỉ tạo bản diễn giải trước khi duyệt. Luồng manual/facts cũ vẫn qua các trang chi tiết và chế độ **Chỉ hỏi dữ kiện đã xác minh**. Hội thoại có owner/project và run refs; drafts lưu sessionStorage riêng theo actor/context/conversation, đóng tab có thể mất draft. Dữ liệu persisted không phụ thuộc drafts.
+UI đã kiểm tra tại 390/768/1366/1440/1920: lịch sử mở bằng nút **Lịch sử**, ngữ cảnh kết quả mở từ chip, xóa trong menu hội thoại. Reply cho review dùng composer chính và chỉ tạo bản diễn giải trước khi duyệt. Luồng manual/facts cũ vẫn qua các trang chi tiết và chế độ **Chỉ hỏi dữ kiện đã xác minh**. Hội thoại có owner/project và run refs; drafts lưu sessionStorage riêng theo actor/context/conversation, đóng tab có thể mất draft. Dữ liệu persisted không phụ thuộc drafts.
 
-Cloud mặc định OFF/0 cho Agent và Assistant. Snapshot ngân sách sau gate Planner: Gemini15/50(còn35), giữ9reservations cũ, không reset; chưa dùng Agent live ở mốc này. Chỉ gọi Gemini khi policy, key và global/workspace/task allowances đều cho phép; GET/polling/layout không gọi model. Đọc số hiện tại trong Cài đặt và báo cáo trước khi chạy live. Qwen/Argon/LlamaParse không được tự bật.
+Source cài mới mặc định cloud OFF/0 cho Agent và Assistant. Demo hiện tại đã dùng **50/50 Gemini lifetime attempts**, gồm 9 lượt lịch sử và 41 lượt mới; Agent 33/33, Planner 10/10, còn 0. Không reset khi restart hoặc tự tăng allowance. Cài đặt phản ánh trạng thái hết quota; đọc lại dữ liệu, polling và layout không gọi model. Không tự bật Qwen/Argon/LlamaParse.
+
+Với dữ liệu đã chọn, có thể thử các câu: `Chuẩn hóa các file này giúp tôi`; `Liệt kê giao dịch đã thanh toán ở file A`; `Vì sao giao dịch 000702 không khớp?`. Cần đủ nguồn/quyền/ngữ nghĩa đã xác nhận. Những câu cần Gemini mới hiện bị chặn do hết quota; dùng gợi ý có lệnh rõ ràng, dữ kiện đã lưu hoặc màn hình thủ công để tiếp tục trong phạm vi hỗ trợ.
 
 ## Vận hành và khôi phục
 
@@ -62,11 +64,13 @@ Copy cả thư mục backup theo ID được trả về ra host bằng `docker c
 
 Mặc định `LOCAL_DEMO_ACCESS=true`, Gemini/LlamaParse keys rỗng, cloud permissions false và request budgets bằng 0. Quyền workspace cũng mặc định `LOCAL_ONLY`; biến môi trường không tự cấp quyền cloud. Không tự chuyển provider khi Qwen lỗi.
 
-Workspace local chọn `MAPPING_AI_PROVIDER=GEMINI`, `ALLOW_EXTERNAL_AI=true`, `EXTERNAL_AI_REQUEST_BUDGET=10`, key chỉ trong `.env`; policy workspace `CLOUD_ALLOWED` và trần 10 request. Mỗi HTTP attempt (kể cả retry/lỗi) có reservation bền vững, trừ hạn mức toàn hệ thống lẫn workspace; Cài đặt hiển thị số đã dùng/còn lại. Không reset khi restart. Qwen giữ nguyên adapter/endpoint nhưng không probe lặp lại; chỉ lựa chọn khi chủ dự án mở quyền. LlamaParse có quyền, request/credit ceilings và SHA256 allowlist riêng; sau phép thử đã tắt quyền tạo job, không xóa keys/reservations/artifacts.
+Demo được cấp phép chọn `MAPPING_AI_PROVIDER=GEMINI`, `ALLOW_EXTERNAL_AI=true`, `EXTERNAL_AI_REQUEST_BUDGET=50`, key chỉ trong `.env`; workspace `CLOUD_ALLOWED` có cùng lifetime ceiling 50 và đã dùng đủ 50. Đây là cấu hình demo đã được cấp riêng, không phải quyền tự bật cloud hoặc tăng hạn mức ở cài đặt khác. Mỗi HTTP attempt (kể cả retry/lỗi) có reservation bền vững, trừ hạn mức toàn hệ thống lẫn workspace; Cài đặt hiển thị số đã dùng/còn lại. Không reset khi restart. Qwen giữ nguyên adapter/endpoint nhưng không probe lặp lại; chỉ lựa chọn khi chủ dự án mở quyền. LlamaParse có quyền, request/credit ceilings và SHA256 allowlist riêng; sau phép thử đã tắt quyền tạo job, không xóa keys/reservations/artifacts.
 
 `docker compose up -d --build --wait` khởi động đủ bốn service. Sau lệnh này, chạy `./tools/verify-local.ps1` để kích hoạt auto-session local. Nếu chưa xác minh, `/api/session` trả 403; không tắt auth để vượt qua. Proof mất hiệu lực khi restart/recreate backend hoặc frontend. Chỉ hỗ trợ loopback demo; không publish LAN/Internet hoặc public reverse proxy.
 
-## Cách sử dụng
+## Chế độ thủ công và kiểm tra chi tiết
+
+Luồng mặc định là upload/giao việc trong AI Assistant ở trên. Các bước dưới đây là lựa chọn chi tiết khi cần kiểm tra hoặc AI chưa khả dụng.
 
 Bộ chọn dự án mặc định ẩn nhóm **Kiểm thử**, vẫn giữ dự án **Chưa phân loại**. Bật “Hiển thị dự án kiểm thử” để mở lại; dự án đang chọn và dữ liệu không bị xóa hoặc đổi ngầm. Chủ không gian có thể mở “Phân loại dự án hiện tại”, kiểm tra tên/phạm vi/ID rồi xác nhận nhóm. “Dữ liệu gần đây” luôn lấy tối đa năm nguồn tải mới nhất, độc lập trang danh sách Dữ liệu.
 
@@ -86,8 +90,8 @@ PDF/DOCX mới cần allowance riêng được duyệt trước khi upload. Kế
 ## Đối soát và báo cáo
 
 1. Sau khi có hai canonical trong cùng project, mở **Đối soát**, chọn nguồn tham chiếu/đối ứng.
-2. Có thể dùng AI chuẩn bị gợi ý khóa/chỉ tiêu trước khi nhập rule đầy đủ khi được cấp phép, hoặc mở phần chỉnh thủ công. Thiếu kỳ/coverage phải xác nhận, gợi ý không cấp quyền chạy. Prompt Planner mới FAIL LIVE ở gate schema; regression dùng MANUAL/MOCK, không nhấn gọi AI live để retry.
-3. Xác nhận khóa, quan hệ một-một/một-nhiều/nhiều-một, grain, metric/currency/basis, dấu tiền, kỳ `[start,end)`, timezone và coverage rồi **Kiểm tra điều kiện** và lưu đề xuất. Internal lọc đúng platform/shop cho từng pair, không JOIN ba nguồn. Manual không cloud; Gemini hiện 9/10 còn 1, không reset/tăng hoặc fallback khi lỗi. Không gọi Qwen/mở parser.
+2. Có thể dùng AI chuẩn bị gợi ý khóa/chỉ tiêu trước khi nhập rule đầy đủ khi được cấp phép, hoặc mở phần chỉnh thủ công. Thiếu kỳ/coverage phải xác nhận, gợi ý không cấp quyền chạy. Planner hiện tại đã qua một số ca live sau sửa contract, nhưng toàn Agent chưa nghiệm thu. Regression dùng MANUAL/MOCK; không gọi live khi hết quota.
+3. Xác nhận khóa, quan hệ một-một/một-nhiều/nhiều-một, grain, metric/currency/basis, dấu tiền, kỳ `[start,end)`, timezone và coverage rồi **Kiểm tra điều kiện** và lưu đề xuất. Internal lọc đúng platform/shop cho từng pair, không JOIN ba nguồn. Manual không cloud; Gemini hiện 50/50 còn 0, không reset/tăng hoặc fallback khi lỗi. Không gọi Qwen/mở parser.
 4. Review đề xuất, **Xác nhận quy tắc và dấu số tiền**, rồi **Chạy đối soát đã duyệt**. Duplicate/fuzzy mơ hồ giữ review, không tự chọn; null/invalid không thành zero. Coverage thiếu phải cho phép partial rõ ràng.
 5. **Báo cáo/Tổng quan** hiển thị snapshot đã verified, denominator/CU/period và từng metric/currency riêng. Không có verified result thì empty/loading state, không KPI giả. Lọc lịch sử theo kỳ/nguồn, chọn đúng run ID.
 6. **Ngoại lệ** có tìm kiếm, lọc loại/trạng thái, sort, bằng chứng hai bên và dòng nguồn. Resolve/dismiss cần ghi chú; review không sửa comparison, variance hoặc snapshot của run.
@@ -100,7 +104,7 @@ Chạy bộ demo có oracle trên dữ liệu tổng hợp, không gọi AI:
 uv run python tools/check-reconciliation.py
 ```
 
-Công cụ tạo/reuse đúng một project demo, năm nguồn CSV và ba pair runs, kiểm oracle, lưu báo cáo tại runtime bị ignore. Planner prompt cũ có kết quả live cached; prompt `reconciliation-planning-2` FAIL LIVE ở lượt mới. Đọc cache không phải live mới; không chạy lại cloud chỉ để replay. `--planner-live` là lựa chọn explicit có quota guard/task cap, không phải regression mặc định.
+Công cụ tạo/reuse đúng một project demo, năm nguồn CSV và ba pair runs, kiểm oracle, lưu báo cáo tại runtime bị ignore. Planner prompt cũ có cả cached success và FAIL LIVE lịch sử; prompt hiện tại `reconciliation-planning-5` có ca PASS LIVE sau sửa, xem báo cáo mục S. Đọc cache không phải live mới; không chạy lại cloud chỉ để replay. `--planner-live` là lựa chọn explicit có quota guard/task cap, không phải regression mặc định.
 
 ## Vận hành và bảo toàn dữ liệu
 
@@ -146,6 +150,6 @@ Dependencies khóa bằng `uv.lock`, `requirements.txt` sinh từ lock và `fron
 - [Kiểm thử](docs/TESTING_GUIDE.md), [trạng thái nghiệm thu](docs/IMPLEMENTATION_STATUS.md).
 - [Kế hoạch ba giai đoạn](docs/PROJECT_PLAN.md), [Rules](Rules.md), [hướng dẫn Codex](AGENTS.md).
 
-Giai đoạn 2 dùng trực tiếp CanonicalDataset/MappingRevision/SchemaDefinition/EvidenceRef, queue, session và App Shell hiện có; source đã hợp nhất `main`. Không triển khai Assistant Giai đoạn 3 hoặc tích hợp Argon trong nhiệm vụ nghiệm thu. `.vscode/settings.json` chỉ chia sẻ boolean dùng env file local; `.env`/credentials vẫn bị ignore. Repository chính thức: [MinhHoang1403/AI-Reconciliation-Studio](https://github.com/MinhHoang1403/AI-Reconciliation-Studio).
+Giai đoạn 2 dùng trực tiếp CanonicalDataset/MappingRevision/SchemaDefinition/EvidenceRef, queue, session và App Shell hiện có; source đã hợp nhất `main`. Assistant/Agent hiện được triển khai theo ủy quyền mới trên feature branch; chưa merge main do quality gate NLP. Argon chưa tích hợp. `.vscode/settings.json` chỉ chia sẻ boolean dùng env file local; `.env`/credentials vẫn bị ignore. Repository chính thức: [MinhHoang1403/AI-Reconciliation-Studio](https://github.com/MinhHoang1403/AI-Reconciliation-Studio).
 
 Kiểm toán bổ sung: chọn hai nguồn → AI có thể gợi ý khóa/chỉ tiêu dù chưa nhập khóa; thiếu kỳ/coverage giữ trạng thái cần xác nhận. Nhập kỳ, múi giờ và phạm vi thực tế, xác nhận rồi lưu/duyệt rule; phần chỉnh thủ công dùng được khi cloud tắt hoặc hết quota. UI không tự chọn tháng/UTC. Trong bằng chứng, bấm **Xem nguồn [tên trường]** để xem giá trị gốc đúng cột/file/sheet/dòng. KPI **Tự động phân loại** bao gồm kết luận thiếu đối ứng/lệch đã xác minh, không phải tỷ lệ ngoại lệ đã giải quyết. Báo cáo export bất biến theo lần tạo đầu của run/định dạng/revision; UI và Summary ghi thời điểm/phạm vi review, review sau đó không cập nhật file cũ. Xem kết quả kiểm toán trong [báo cáo](docs/IMPLEMENTATION_STATUS.md).
