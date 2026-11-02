@@ -8,19 +8,15 @@ import {
   useState,
 } from "react";
 import {
-  ArrowDownToLine,
   ArrowRight,
-  BellRing,
   ChevronLeft,
-  ChevronDown,
   ChevronRight,
   CircleHelp,
   Database,
   FileSpreadsheet,
   FolderOpen,
-  GitCompareArrows,
   Layers3,
-  LayoutDashboard,
+  History,
   Menu,
   RefreshCw,
   Search,
@@ -85,8 +81,8 @@ type View = "parsed" | "raw" | "canonical" | "errors";
 export function App() {
   const [location, setLocation] = useState(readLocation);
   const { page, context: assistantContext } = location;
-  const [resultsOpen,setResultsOpen]=useState(()=>["home","reconcile","exceptions","reports"].includes(location.page));
-  useEffect(()=>{if(["home","reconcile","exceptions","reports"].includes(page))setResultsOpen(true);},[page]);
+  const [assistantHistoryOpen, setAssistantHistoryOpen] = useState(false);
+  const assistantHistoryTrigger = useRef<HTMLElement | null>(null);
   const locationRef = useRef(location);
   const navigationSequence = useRef(0);
   locationRef.current = location;
@@ -985,65 +981,13 @@ export function App() {
             <Sparkles size={19} />
             <span>AI Assistant</span>
           </button>
-          <button
-            className={page === "data" ? "active" : ""}
-            onClick={() => {
-              setPage("data");
-              setSidebar(false);
-            }}
-          >
-            <Database size={19} />
-            Dữ liệu
-            <span className="nav-count">
-              {projectId ? (summary ? datasetTotal : "…") : "—"}
-            </span>
-          </button>
-          <button className={`result-nav-toggle ${["home","reconcile","exceptions","reports"].includes(page)?"current-group":""}`} aria-expanded={resultsOpen} aria-controls="result-nav-list" onClick={()=>setResultsOpen(!resultsOpen)}>
-            <LayoutDashboard size={19}/><span>Kết quả</span><ChevronDown size={15} className={resultsOpen?"expanded":""}/>
-          </button>
-          <div id="result-nav-list" className="result-nav-list" hidden={!resultsOpen}>
-          <button
-            className={page === "home" ? "active" : ""}
-            onClick={() => {
-              setPage("home");
-              setSidebar(false);
-            }}
-          >
-            <LayoutDashboard size={19} />
-            Tổng quan
-          </button>
-          <button
-            className={page === "reconcile" ? "active" : ""}
-            onClick={() => {
-              setPage("reconcile");
-              setSidebar(false);
-            }}
-          >
-            <GitCompareArrows size={19} />
-            <span>Đối soát</span>
-          </button>
-          <button
-            className={page === "exceptions" ? "active" : ""}
-            onClick={() => {
-              setPage("exceptions");
-              setSidebar(false);
-            }}
-          >
-            <BellRing size={19} />
-            <span>Ngoại lệ</span>
-          </button>
-          <button
-            className={page === "reports" ? "active" : ""}
-            onClick={() => {
-              setPage("reports");
-              setSidebar(false);
-            }}
-          >
-            <ArrowDownToLine size={19} />
-            <span>Báo cáo</span>
-          </button>
-
-          </div>
+          <button disabled={!ready} aria-expanded={assistantHistoryOpen} onClick={event => {
+            assistantHistoryTrigger.current = window.matchMedia("(max-width: 900px)").matches
+              ? document.querySelector<HTMLElement>(".menu-button") : event.currentTarget;
+            if (page !== "assistant") openAssistant({project_id:projectId});
+            setSidebar(false);
+            setAssistantHistoryOpen(true);
+          }}><History size={19}/><span>Lịch sử</span></button>
         </nav>
         <div className="sidebar-bottom">
           <div className="system-mini"><ShieldCheck size={14}/><span>{workspace?.policy.allow_external_ai?"Cloud theo chính sách":"Xử lý local"}</span></div>
@@ -1330,6 +1274,10 @@ export function App() {
                     }}
                     cloudEnabled={!!workspace?.assistant_cloud_enabled}
                     agentEnabled={!!workspace?.agent_cloud_enabled}
+                    aiRequestsRemaining={workspace?.gemini_requests_remaining}
+                    historyOpen={assistantHistoryOpen}
+                    setHistoryOpen={setAssistantHistoryOpen}
+                    historyReturnFocus={assistantHistoryTrigger}
                     onUploadProject={async id=>{const selected=await api<Project>(`/projects/${id}`);chooseProject(selected);}}
                     canEdit={canEdit}
                     onReview={(id) => {

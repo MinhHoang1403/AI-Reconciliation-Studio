@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { MessageSquarePlus, Send, Trash2, MessagesSquare, Paperclip, MoreHorizontal, Sparkles, X } from "lucide-react";
+import { useEffect, useRef, useState, lazy, Suspense, type RefObject } from "react";
+import { MessageSquarePlus, Send, Trash2, Paperclip, MoreHorizontal, Sparkles, X } from "lucide-react";
 import { AgentWorkflowPanel } from "./AgentWorkflowPanel";
 import type { Review } from "./agentTypes";
 import { api, ApiError } from "./api";
@@ -22,6 +22,9 @@ import type {
   FactReference,
   Suggestion,
 } from "./assistantTypes";
+
+const AssistantDataDrawer = lazy(() => import("./AssistantDataDrawer").then(m => ({default:m.AssistantDataDrawer})));
+const ReconciliationStudio = lazy(() => import("./ReconciliationStudio").then(m => ({default:m.ReconciliationStudio})));
 
 const labels: Record<string, string> = {
   VERIFIED_FACT: "Dữ kiện đã xác minh",
@@ -58,6 +61,7 @@ export function AssistantStudio({
   onContextChange,
   onUploadProject,
   agentEnabled = false,
+  historyOpen, setHistoryOpen, historyReturnFocus, aiRequestsRemaining,
 }: {
   initialContext: AssistantContext;
   onNavigate: (target: Suggestion, context: AssistantContext) => void;
@@ -69,6 +73,10 @@ export function AssistantStudio({
   onContextChange: (context: AssistantContext) => void;
   onUploadProject: (id: string) => Promise<void>;
   agentEnabled?: boolean;
+  aiRequestsRemaining?: number;
+  historyOpen: boolean;
+  setHistoryOpen: (open: boolean) => void;
+  historyReturnFocus: RefObject<HTMLElement | null>;
 }) {
   const [context, setContext] = useState(initialContext);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -100,7 +108,9 @@ export function AssistantStudio({
   const [rule, setRule] = useState<(AssistantRule & { run_id: string }) | null>(
     null,
   );
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [dataContext,setDataContext] = useState<AssistantContext|null>(null);
+  const [resultContext,setResultContext] = useState<{context:AssistantContext;mode:"reports"|"exceptions"}|null>(null);
+  const detailTrigger = useRef<HTMLElement|null>(null);
   const [contextOpen,setContextOpen]=useState(false);
   const [sourceLabel,setSourceLabel]=useState<{id:string;name:string}|null>(null);
   useEffect(()=>{
@@ -111,7 +121,7 @@ export function AssistantStudio({
     return()=>controller.abort();
   },[context.project_id,context.dataset_id]);
   const [historySearch,setHistorySearch]=useState("");
-  const historyTrigger=useRef<HTMLElement|null>(null);
+  const historyTrigger=historyReturnFocus;
   const deleteTrigger=useRef<HTMLElement|null>(null);
   const composerInput=useRef<HTMLTextAreaElement>(null);
   const transcript=useRef<HTMLDivElement>(null);
@@ -463,7 +473,7 @@ export function AssistantStudio({
     reference: FactReference,
   ) {
     if (!reference.group_id) {
-      onNavigate("OPEN_REPORT", answer.fact_set.context);
+      openDetail("OPEN_REPORT", answer.fact_set.context);
       return;
     }
     const request = ++evidenceSequence.current;
@@ -505,7 +515,7 @@ export function AssistantStudio({
       }
       return;
     }
-    onNavigate(target, answer.fact_set.context);
+    openDetail(target, answer.fact_set.context);
   }
   async function deleteConversation() {
     if (!conversation) return;
@@ -526,11 +536,20 @@ export function AssistantStudio({
   const displayContext=activeWorkflowContext||context;
   const selectedRun = runs.find((r) => r.id === displayContext.run_id);
   async function agentNavigate(target:Suggestion,next:AssistantContext){
-    if(target!=="OPEN_EVIDENCE"||!next.run_id||!next.group_id){onNavigate(target,next);return;}
+    if(target!=="OPEN_EVIDENCE"||!next.run_id||!next.group_id){openDetail(target,next);return;}
     const request=++evidenceSequence.current;citationTrigger.current=document.activeElement as HTMLElement;
     try{const result=await api<SourceEvidence>(`/runs/${next.run_id}/groups/${next.group_id}/evidence`,getOptions());
       if(alive.current&&request===evidenceSequence.current)setEvidence(result);
     }catch(err){if(alive.current&&request===evidenceSequence.current)setError(errorText(err));}
+  }
+  function openDetail(target:Suggestion,next:AssistantContext){
+    if(next.project_id!==context.project_id)return;
+    detailTrigger.current=document.activeElement as HTMLElement;
+    if(target==="OPEN_DATA")setDataContext(next);
+    else if(target==="OPEN_REPORT"||target==="OPEN_EXCEPTIONS"){
+      if(!next.run_id){setContextOpen(true);return;}
+      setResultContext({context:next,mode:target==="OPEN_REPORT"?"reports":"exceptions"});
+    }else onNavigate(target,next);
   }
   function attach(selected:FileList | File[] | null){
     if(reviewReply){setError("Hãy gửi hoặc hủy trả lời xác nhận trước khi đính kèm tệp.");return;}
@@ -544,16 +563,8 @@ export function AssistantStudio({
   return (
     <section className={`assistant-studio ${messages.length?"has-conversation":"is-welcome"}`} aria-label="Hội thoại AI Assistant">
       <div className="assistant-toolbar">
-        <button
-          className="button secondary compact"
-          aria-expanded={historyOpen}
-          aria-controls="assistant-history-panel"
-          onClick={(event) => {historyTrigger.current=event.currentTarget;setHistoryOpen(!historyOpen);}}
-        >
-          <MessagesSquare size={16} />
-          Lịch sử
-        </button>
         <div className="assistant-toolbar-actions">
+          {context.project_id&&<button className="text-button" onClick={()=>openDetail("OPEN_DATA",displayContext)}>Tệp đã tải</button>}
           {context.project_id&&<button className="context-chip" data-run-id={displayContext.run_id||""} data-dataset-id={displayContext.dataset_id||""} aria-label="Đổi ngữ cảnh phân tích" title={displayContext.dataset_id&&sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:undefined} onClick={()=>setContextOpen(true)}>{displayContext.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:displayContext.dataset_id?(sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Nguồn đang xem"):"Dữ liệu dự án"}</button>}
           {context.project_id&&<button className="icon-button" aria-label="Hội thoại mới" title="Hội thoại mới" disabled={busy||loading} onClick={()=>newConversation()}><MessageSquarePlus size={18}/></button>}
           {conversation&&<details className="assistant-menu"><summary aria-label="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary><button className="text-button" disabled={busy||!!pendingJob} onClick={event=>{deleteTrigger.current=event.currentTarget;setConfirmDelete(true);}}><Trash2 size={15}/>Xóa hội thoại</button></details>}
@@ -567,8 +578,10 @@ export function AssistantStudio({
             Dữ kiện lấy từ backend đã xác minh.{" "}
             {(mode==="AGENT"?agentEnabled:cloudEnabled)
               ? "Suy luận cloud cần policy và reservation riêng cho từng request."
-              : "Suy luận cloud của AI Assistant đang tắt; không dùng quota Gemini còn lại."}
+              : "Suy luận cloud của AI Assistant hiện chưa khả dụng theo chính sách hoặc hạn mức."}
           </p>
+          {typeof aiRequestsRemaining==="number"&&<p>Gemini còn {aiRequestsRemaining} lượt theo chính sách hiện tại.</p>}
+          {context.project_id&&<button className="text-button" onClick={()=>onNavigate("OPEN_RECONCILIATION",displayContext)}>Thiết lập đối soát thủ công</button>}
           <label>Xử lý yêu cầu<select aria-label="Chế độ hội thoại" value={mode} disabled={busy||!!pendingJob} onChange={e=>setMode(e.target.value as "AGENT"|"LEGACY")}><option value="AGENT">Thực hiện tác vụ dữ liệu</option><option value="LEGACY">Chỉ hỏi dữ kiện đã xác minh</option></select></label>
         </details>
         </div>
@@ -818,6 +831,12 @@ export function AssistantStudio({
                   setCommand(null);
                   sessionStorage.setItem(draftKey.current, event.target.value);
                 }}
+                onKeyDown={event=>{
+                  if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){
+                    event.preventDefault();
+                    if(!busy&&!loading&&!pendingJob&&(text.trim()||files.length))void send();
+                  }
+                }}
                 maxLength={2000}
                 rows={2}
                 placeholder={reviewReply?"Bổ sung thông tin để AI diễn giải; bạn sẽ kiểm tra lại trước khi xác nhận...":"Ví dụ: Chuẩn hóa các file này rồi đối soát giúp tôi..."}
@@ -841,6 +860,10 @@ export function AssistantStudio({
           {!messages.length&&<div className="agent-prompts">{[["Chuẩn hóa dữ liệu","PREPARE_NORMALIZATION"],["Đối soát các file",null],["Tra cứu thông tin",null],["Phân tích kết quả","SUMMARIZE_RESULTS"]].map(([title,action])=><button className="text-button" key={title} onClick={()=>{setText(title!);setCommand(action);composerInput.current?.focus();}}>{title}</button>)}</div>}
         </div>
       </div>
+      {dataContext&&<Suspense fallback={<Spinner/>}><AssistantDataDrawer key={`${dataContext.project_id}:${dataContext.dataset_id||""}`} context={dataContext} onClose={()=>setDataContext(null)} returnFocus={detailTrigger} onManual={next=>{setDataContext(null);onNavigate("OPEN_DATA",next);}}/></Suspense>}
+      <Modal title="Chi tiết kết quả đã xác minh" wide open={!!resultContext} onOpenChange={open=>{if(!open)setResultContext(null);}} returnFocus={detailTrigger}>
+        {resultContext&&<Suspense fallback={<Spinner/>}><ReconciliationStudio key={`${resultContext.context.run_id}:${resultContext.mode}`} projectId={context.project_id} canEdit={canEdit} mode={resultContext.mode} requestedPlan={null} requestedRun={{id:resultContext.context.run_id!,caseId:resultContext.context.case_id,request:1}} onRunSelected={()=>{}} onAsk={next=>{setResultContext(null);newConversation(next);}} onSetup={()=>{setResultContext(null);onNavigate("OPEN_RECONCILIATION",context);}}/></Suspense>}
+      </Modal>
       <Modal title="Xác nhận xóa hội thoại" open={confirmDelete} onOpenChange={setConfirmDelete} returnFocus={deleteTrigger}>
         <p>Xóa nội dung hội thoại này? Lượt đối soát, quy tắc, nguồn dữ liệu và báo cáo được giữ nguyên.</p>
         <div className="modal-actions"><button className="button secondary" disabled={busy} onClick={()=>setConfirmDelete(false)}>Hủy</button><button className="button primary" disabled={busy} onClick={()=>void deleteConversation()}>Xác nhận xóa hội thoại</button></div>

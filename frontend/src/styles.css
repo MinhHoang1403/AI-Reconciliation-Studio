@@ -186,13 +186,6 @@ nav .active,
   background: #eff6ff;
   font-weight: 650;
 }
-.nav-count {
-  margin-left: auto;
-  background: #dbeafe;
-  padding: 0 6px;
-  border-radius: 5px;
-  font-size: 11px;
-}
 .future-nav {
   color: #64748b;
 }
@@ -1956,11 +1949,6 @@ pre {
 .assistant-composer>.agent-file-chips {grid-row:1;}
 .assistant-message:has(.agent-workflow) {max-width:100%; width:100%; min-width:0;}
 .visually-hidden {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
-.result-nav-list {display:grid;padding:3px 0 8px 14px;gap:3px;}
-.result-nav-list[hidden] {display:none;}
-.result-nav-toggle>span {flex:1;text-align:left;}
-.result-nav-toggle .expanded {transform:rotate(180deg);}
-.result-nav-toggle.current-group {color:#1d4ed8;}
 .sidebar .workspace-switch {padding:12px;margin-bottom:20px;}
 .sidebar .workspace-switch small {display:none;}
 .system-mini {display:flex;gap:7px;align-items:center;font-size:11px;color:#64748b;padding:8px 12px;}
@@ -2010,3 +1998,7 @@ pre {
 @media(max-width:768px){.assistant-toolbar-actions {gap:3px;}.assistant-policy summary {font-size:11px;padding:5px;}.context-chip {max-width:126px;font-size:10px;}.assistant-toolbar>.button {padding:5px;}.assistant-toolbar .button svg {width:15px;}.assistant-project-bar {margin-bottom:4px;}.is-welcome .assistant-conversation {padding-bottom:8vh;}.is-welcome .agent-empty {padding-bottom:20px;}.is-welcome .agent-empty p {font-size:13px;}.assistant-composer {padding:10px;border-radius:14px;}.agent-prompts {gap:6px;}.agent-prompts>.text-button {font-size:11px;padding:7px;}.assistant-scroll {padding-inline:0;}}
 @media(max-height:650px){.is-welcome .assistant-conversation {padding-bottom:0;}.is-welcome:focus-within .agent-empty,.is-welcome:focus-within .agent-prompts {display:none;}}
 @media(max-width:768px){.agent-review,.agent-table,.agent-chart,.agent-facts {padding:.75rem;}.agent-review button {max-width:100%; white-space:normal;}.agent-form-grid {grid-template-columns:1fr;}}
+
+.assistant-source-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.assistant-source-list > button { min-width: 0; max-width: 100%; overflow-wrap: anywhere; white-space: normal; text-align: left; }
+.assistant-source-list > button.selected { border-color: #2563eb; background: #eff6ff; }

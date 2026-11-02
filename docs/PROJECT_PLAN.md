@@ -22,6 +22,10 @@ Prompt mới cho phép thực hiện liên tục, sửa lỗi Planner, nghiệm 
 
 Tên hiển thị đổi thành **AI Assistant**, không đổi API/database/module identifiers. Chủ dự án yêu cầu giảm phần điều khiển thường trực: sidebar AI Assistant/Dữ liệu/Kết quả mở rộng; lịch sử trong panel; ngữ cảnh run trong chip/dialog; welcome+composer ở giữa khi trống, transcript+composer cuối khi có hội thoại; xóa vào menu, không có quay lại từ landing mặc định. Giữ AppShell/theme/font/logo và toàn bộ contracts. Chi tiết mới tại [kế hoạch Agent-first mục23](AI_AGENT_MVP_IMPLEMENTATION_PLAN.md#23-bổ-sung-chính-thức-02112026--tối-giản-giao-diện-ai-assistant), thay tổ chức UX ở§28 và mục3của kế hoạch Agent-first; lịch sử nghiệm thu ba giai đoạn vẫn được bảo toàn. Screenshot và tương tác thực tế15trạng thái/5width phải đạt trước kết luận UI hoàn thành.
 
+### Bổ sung Assistant-only và NLP quality được ủy quyền — 02/11/2026
+
+Prompt AI Assistant Experience & NLP Quality Finalization thay cấu trúc điều hướng của bổ sung UI trước: sidebar chỉ AI Assistant, Lịch sử và Cài đặt; workspace/brand/header giữ nguyên. Dữ liệu, chuẩn hóa, đối soát, ngoại lệ, KPI/chart/evidence/export truy cập từ hội thoại và các thẻ/bảng chi tiết; giữ manual fallback/deep links, không xóa backend nghiệp vụ. Không dựng menu sáu trang dưới tên khác. NLP sửa theo root cause, giữ nguyên 80 gold và bổ sung variants; intent/source >=95%, slots/semantics >=90% cho full live replay, không hạ các gate financial/authorization cao hơn. Gemini vẫn 50/50 còn 0; không cấp thêm allowance. Hoàn tất mọi gate offline/local độc lập, full current-prompt live và merge/release phải BLOCKED khi chưa có quyền mới. Không đổi ba giai đoạn, công thức hoặc lịch sử nghiệm thu.
+
 Tài liệu này là **nguồn yêu cầu thống nhất** cho dự án mới. Tất cả giai đoạn dùng cùng tên thực thể, trạng thái, kiểu dữ liệu và API contracts. Mọi thay đổi nghiệp vụ phải sửa đặc tả, golden fixtures và tests liên quan trước/song song khi đổi code; không có chuyện một giai đoạn tự sáng tạo định nghĩa mới cho bước trước.
 
 **Ba giai đoạn duy nhất:**

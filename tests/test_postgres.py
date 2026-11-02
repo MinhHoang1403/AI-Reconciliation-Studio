@@ -27,6 +27,65 @@ from studio.database import (
 pytestmark = pytest.mark.integration
 
 
+def test_assistant_raw_download_preserves_bytes_permissions_and_checksum(pg):
+    from studio.database import ProjectRow
+    from studio.storage import storage_path
+
+    client, factory, _worker = pg
+    project = client.post(
+        "/api/projects", json={"name": "Synthetic download", "business_scope": "download-oracle"}
+    ).json()
+    raw = b"id,amount\n000702,12.75\n"
+    upload = client.post(
+        "/api/datasets/uploads",
+        data={"project_id": project["id"], "request_ai_mapping": "false"},
+        files=[("files", ("Chung-tu.csv", raw, "text/csv"))],
+    )
+    assert upload.status_code == 202
+    dataset_id = upload.json()["items"][0]["id"]
+    path = f"/api/datasets/{dataset_id}/download"
+    response = client.get(path)
+    assert response.status_code == 200 and response.content == raw
+    assert response.headers["content-disposition"].startswith("attachment;")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    with factory() as db:
+        db.get(MembershipRow, ("demo", "test-owner")).role = "viewer"
+        db.commit()
+    assert client.get(path).content == raw  # Read-only download does not require editor.
+    with factory() as db:
+        artifact = db.scalar(select(ArtifactRow).where(ArtifactRow.kind == "raw"))
+        stored = storage_path(settings.storage_root, artifact.storage_key)
+        stored.write_bytes(b"corrupted synthetic fixture")
+    assert client.get(path).status_code == 409
+    with factory() as db:
+        db.add(WorkspaceRow(id="foreign-download", name="Other", policy={}))
+        db.flush()
+        db.add(
+            ProjectRow(
+                id="foreign-project",
+                workspace_id="foreign-download",
+                name="Other",
+                business_scope="private",
+            )
+        )
+        db.flush()
+        db.add(
+            DatasetRow(
+                id="foreign-dataset",
+                workspace_id="foreign-download",
+                project_id="foreign-project",
+                owner_id="other",
+                name="private.csv",
+                sha256="0" * 64,
+                parse_signature="private",
+            )
+        )
+        db.commit()
+    assert client.get("/api/datasets/foreign-dataset/download").status_code == 404
+    client.cookies.clear()
+    assert client.get(path).status_code == 401
+
+
 @pytest.fixture
 def pg(monkeypatch, tmp_path, request):
     import os

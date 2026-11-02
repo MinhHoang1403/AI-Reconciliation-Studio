@@ -12,7 +12,7 @@ from uuid import uuid4
 import polars as pl
 from fastapi import Depends, FastAPI, File, Form, Header, Query, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import Field
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
@@ -922,6 +922,32 @@ def artifacts(dataset_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
         "items": [artifact_ref(r).model_dump() for r in rows],
         "canonical_datasets": [{**r.contract, "stale": r.stale} for r in canonicals],
     }
+
+
+@app.get("/api/datasets/{dataset_id}/download")
+def download_source(dataset_id: str, db: DB, actor: CurrentActor) -> FileResponse:
+    """Tải đúng raw bytes có quyền và SHA; không nhận path hoặc sinh lại nội dung."""
+    dataset = get_scoped(db, DatasetRow, dataset_id, actor)
+    artifact = db.scalar(
+        select(ArtifactRow)
+        .join(VersionRow, ArtifactRow.dataset_version_id == VersionRow.id)
+        .where(
+            VersionRow.dataset_id == dataset.id,
+            ArtifactRow.workspace_id == actor.workspace_id,
+            ArtifactRow.kind == "raw",
+        )
+    )
+    if artifact is None:
+        raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy tệp nguồn.", 404)
+    path = storage_path(settings.storage_root, artifact.storage_key)
+    if checksum(path) != artifact.sha256 or artifact.sha256 != dataset.sha256:
+        raise DomainError("ARTIFACT_CHECKSUM_FAILED", "Tệp nguồn không khớp checksum đã lưu.", 409)
+    return FileResponse(
+        path,
+        filename=dataset.name,
+        media_type="application/octet-stream",
+        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
+    )
 
 
 @app.get("/api/evidence/{evidence_id}")

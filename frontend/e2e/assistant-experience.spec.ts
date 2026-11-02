@@ -1,0 +1,69 @@
+import {test,expect} from "@playwright/test";
+import {mkdir} from "node:fs/promises";
+import {createHash} from "node:crypto";
+
+for(const width of [390,768,1366,1440,1920]){
+  test(`Assistant-only navigation and history focus at ${width}px`,async({page})=>{
+    const writes:string[]=[];page.on("request",r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});
+    await page.setViewportSize({width,height:900});
+    await page.goto('/');
+    await expect(page.getByRole('heading',{name:'Bạn muốn xử lý dữ liệu gì?'})).toBeVisible();
+    if(width<900)await page.getByRole('button',{name:'Mở điều hướng',exact:true}).click();
+    const nav=page.locator('.sidebar');
+    await expect(nav.getByRole('button')).toHaveText(['AI Assistant','Lịch sử','Cài đặt']);
+    for(const name of ['Dữ liệu','Tổng quan','Đối soát','Ngoại lệ','Báo cáo','Kết quả'])await expect(nav.getByRole('button',{name,exact:true})).toHaveCount(0);
+    await mkdir('../runtime/assistant-experience',{recursive:true});
+    await page.screenshot({path:`../runtime/assistant-experience/after-${width}.png`,fullPage:true});
+    await nav.getByRole('button',{name:'Lịch sử',exact:true}).click();
+    await expect(page.getByRole('dialog',{name:'Lịch sử',exact:true})).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(width<900?page.getByRole('button',{name:'Mở điều hướng',exact:true}):nav.getByRole('button',{name:'Lịch sử',exact:true})).toBeFocused();
+    await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeVisible();
+    expect(writes).toEqual([]);
+  });
+}
+
+test('[MOCK CONTRACT] composer Enter submits once, Shift+Enter preserves a newline',async({page})=>{
+  let posted=0;
+  await page.addInitScript(()=>{localStorage.setItem('studio.project','keyboard-project');});
+  await page.route('**/api/**',async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path==='/api/session')return route.fulfill({json:{workspace_id:'mock',actor_id:'keyboard-owner',role:'owner'}});
+    if(path==='/api/settings')return route.fulfill({json:{agent_cloud_enabled:false,assistant_cloud_enabled:false,policy:{allow_external_ai:false}}});
+    if(path==='/api/projects/keyboard-project')return route.fulfill({json:{id:'keyboard-project',name:'Synthetic keyboard',workspace_id:'mock',business_scope:'synthetic',classification:'TEST'}});
+    if(path==='/api/conversations'&&route.request().method()==='POST')return route.fulfill({json:{id:'keyboard-conversation',context:{project_id:'keyboard-project'},title:'Keyboard'}});
+    if(path==='/api/assistant/messages'){posted++;return route.fulfill({status:202,json:{job_id:'keyboard-job'}});}
+    if(path==='/api/jobs/keyboard-job')return route.fulfill({json:{id:'keyboard-job',status:'BLOCKED',error_code:'GEMINI_BUDGET_EXHAUSTED'}});
+    if(route.request().method()!=='GET')throw Error('Unexpected write '+path);
+    return route.fulfill({json:{items:[],total:0,has_more:false,dataset_count:0}});
+  });
+  await page.goto('/');
+  const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
+  await expect(input).toBeEnabled();await input.fill('Tra cứu dữ liệu');await input.press('Shift+Enter');await input.press('x');
+  await expect(input).toHaveValue('Tra cứu dữ liệu\nx');
+  await input.press('Enter');await expect.poll(()=>posted).toBe(1);
+  await expect(page.getByRole('alert')).toContainText('Lịch sử được giữ');
+  expect(posted).toBe(1);
+});
+
+test('Chat files drawer previews and downloads original bytes without leaving conversation',async({page})=>{
+  test.setTimeout(90000);
+  await page.addInitScript(()=>{if(!sessionStorage.getItem('experience-started')){localStorage.clear();sessionStorage.clear();sessionStorage.setItem('experience-started','1');}});
+  await page.goto('/');await expect(page.getByRole('heading',{name:'Bạn muốn xử lý dữ liệu gì?'})).toBeVisible();
+  const before=await(await page.request.get('/api/settings')).json();
+  const raw=Buffer.from('voucher,amount\n000701,25.00\n000702,12.75\n');const name=`Synthetic-source-${crypto.randomUUID()}.csv`;
+  await page.locator('.assistant-composer input[type=file]').setInputFiles({name,mimeType:'text/csv',buffer:raw});
+  const received=page.waitForResponse(r=>r.url().endsWith('/agent/attachments')&&r.request().method()==='POST');
+  await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();const attachment=await(await received).json();
+  await expect(page.locator('.agent-table')).toHaveCount(1);
+  const classified=await page.request.patch(`/api/projects/${attachment.project_id}/classification`,{data:{classification:'TEST',expected_classification:'UNKNOWN'},headers:{Origin:'http://127.0.0.1:18180'}});expect(classified.status()).toBe(200);
+  const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await input.fill('Bản nháp cần giữ');
+  const originalURL=page.url();await page.getByRole('button',{name:'Tệp đã tải',exact:true}).click();
+  const drawer=page.getByRole('dialog',{name:'Tệp và dữ liệu',exact:true});await drawer.getByRole('button',{name:new RegExp(name)}).click();
+  await expect(drawer.getByRole('table')).toContainText('000702');await expect(drawer.getByRole('table')).toContainText('12.75');
+  const response=await page.request.get(`/api/datasets/${attachment.items[0].id}/download`);expect(response.status()).toBe(200);
+  expect(createHash('sha256').update(await response.body()).digest('hex')).toBe(createHash('sha256').update(raw).digest('hex'));
+  await expect(drawer.getByRole('link',{name:'Tải tệp gốc',exact:true})).toHaveAttribute('href',`/api/datasets/${attachment.items[0].id}/download`);
+  await page.keyboard.press('Escape');await expect(input).toHaveValue('Bản nháp cần giữ');expect(page.url()).toBe(originalURL);
+  expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used);
+});
