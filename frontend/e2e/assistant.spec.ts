@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
-import { selectProject } from "./project-selection";
+import { selectProject, openLegacyPage } from "./project-selection";
 import type { Catalogue } from "../src/reconciliationTypes";
 
 type State = {
@@ -23,7 +23,7 @@ test("Assistant is a scoped page; draft survives history, reload and project swi
   const input = page.getByRole("textbox", { name: "Câu hỏi cho AI Assistant" });
   const draft = `Bản nháp chưa gửi ${crypto.randomUUID()}`;
   await input.fill(draft);
-  await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
+  await openLegacyPage(page, "reports");
   await page.goBack();
   await expect(input).toHaveValue(draft);
   await page.reload();
@@ -92,8 +92,6 @@ async function openAssistant(page: Page, projectId: string) {
   await selectProject(page, projectId);
   const menu = page.getByRole("button", { name: "Mở điều hướng", exact: true });
   if (await menu.isVisible()) await menu.click();
-  const results=page.getByRole("button",{name:"Kết quả",exact:true});
-  if(await results.getAttribute("aria-expanded")==="false")await results.click();
   await page.getByRole("button", { name: "AI Assistant", exact: true }).click();
   const dialog = page.getByRole("region", { name: "AI Assistant", exact: true });
   await expect(dialog).toBeVisible();
@@ -135,7 +133,7 @@ test("late report selection cannot rewrite Back navigation to Assistant",async({
     if(!/^\/api\/runs\/[^/]+$/.test(path))return route.continue();
     const response=await route.fetch();started();await gate;await route.fulfill({response}).catch(()=>{});
   });
-  await page.getByRole("button",{name:"Báo cáo",exact:true}).click();
+  await openLegacyPage(page, "reports");
   await pending;
   await page.goBack();release();
   await expect(input).toHaveValue("Bản nháp được giữ khi kết quả báo cáo đến muộn");
@@ -223,7 +221,7 @@ test("navigation cancels a delayed Back restore without leaving the page inert",
   });
   await page.goBack();
   await pending;
-  await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
+  await openLegacyPage(page, "reports");
   release();
   await expect(
     page.getByRole("heading", { name: "Báo cáo đối soát", exact: true }),
@@ -636,9 +634,7 @@ test("language workflow requires source/period/template confirmation before exis
   await expect(explanation).toContainText("10.00");
   await expect(explanation).toContainText("chưa chứng minh nguyên nhân");
   // Origin here is Reconciliation; the new UX only offers Back for Data/Exceptions/Reports.
-  const results=page.getByRole("button",{name:"Kết quả",exact:true});
-  if(await results.getAttribute("aria-expanded")==="false")await results.click();
-  await page.getByRole("button",{name:"Báo cáo",exact:true}).click();
+  await openLegacyPage(page, "reports");
   await page.getByRole("button", { name: "Xuất CSV", exact: true }).click();
   await expect(page.getByRole("link", { name: /Tải báo cáo/ })).toBeVisible();
 });
@@ -772,10 +768,7 @@ test("data screen passes only its current scoped dataset to assistant", async ({
       await page.request.get(`/api/datasets?project_id=${s.project_id}&limit=1`)
     ).json()
   ).items[0];
-  await page
-    .getByRole("button", { name: /^Dữ liệu/ })
-    .first()
-    .click();
+  await openLegacyPage(page, "data");
   await page
     .getByRole("button")
     .filter({ hasText: dataset.name })

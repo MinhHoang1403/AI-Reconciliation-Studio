@@ -145,6 +145,7 @@ def agent_catalogue(
                         for c in table.profile["columns"]
                     ],
                     canonical_id=canonical.id if canonical else None,
+                    canonical_status=canonical.contract["quality_status"] if canonical else None,
                     schema_definition=definition,
                     mapping_id=table.active_mapping_id,
                     paid_status_fields=[
@@ -165,6 +166,7 @@ def agent_catalogue(
         confirmed = ReconciliationContract.model_validate(rule.definition).plan
     return IntentCatalogue(
         context=context,
+        project_scope=get_scoped(db, ProjectRow, context.project_id, actor).business_scope,
         datasets=sources,
         run_ids=runs,
         confirmed_plan=confirmed,

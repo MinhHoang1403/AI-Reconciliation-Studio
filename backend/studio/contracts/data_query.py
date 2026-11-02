@@ -24,10 +24,9 @@ class QuerySort(Contract):
     descending: bool = False
 
 
-class DataQuery(Contract):
-    project_id: Identifier
-    source_kind: Literal["RAW_PREVIEW", "CANONICAL", "VERIFIED_RUN", "EXCEPTIONS"]
-    source_id: Identifier
+class QueryOperations(Contract):
+    """Các phép đọc dùng chung; quyền và nguồn do boundary riêng xác định."""
+
     select_fields: list[Identifier] = Field(default_factory=list, max_length=20)
     filters: list[QueryFilter] = Field(default_factory=list, max_length=8)
     aggregations: list[QueryAggregation] = Field(default_factory=list, max_length=5)
@@ -39,6 +38,12 @@ class DataQuery(Contract):
     result_scope: Literal["ALL_MATCHING"] = "ALL_MATCHING"
     currency_field: Identifier | None = None
     metric_id: Identifier | None = None
+
+
+class DataQuery(QueryOperations):
+    project_id: Identifier
+    source_kind: Literal["RAW_PREVIEW", "CANONICAL", "VERIFIED_RUN", "EXCEPTIONS"]
+    source_id: Identifier
 
 
 class QueryResult(Contract):

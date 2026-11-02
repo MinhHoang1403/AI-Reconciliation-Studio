@@ -58,6 +58,7 @@ VERIFIED_FIELDS = [
     "right_member_count",
 ]
 VERIFIED_MONEY_FIELDS = ["left_amount", "right_amount", "delta", "absolute_variance", "tolerance"]
+EXCEPTION_FIELDS = ["case_id", "group_id", "type", "state", "notes"]
 STATUS_VALUES = {
     "VERIFIED_RUN": {
         "linkage_state": list(get_args(LinkageState)),
@@ -262,9 +263,9 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
                 )
                 for c in cases
             ],
-            schema={k: pl.String for k in ("case_id", "group_id", "type", "state", "notes")},
+            schema={k: pl.String for k in EXCEPTION_FIELDS},
         ).lazy()
-        fields = ["case_id", "group_id", "type", "state", "notes"]
+        fields = EXCEPTION_FIELDS.copy()
     return QuerySource(frame, fields, [run.id, run.metric_snapshot["id"]], run.status, {})
 
 

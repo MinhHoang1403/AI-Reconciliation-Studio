@@ -109,3 +109,12 @@ Intent 6 phân biệt canonical field ID với approved metric ID, listing với
 - Prompt 6 chỉ có representative variance LIVE PASS, **full 80-case replay NOT VERIFIED/BLOCKED** do global 50/50. Broad NLP chưa đạt nghiệm thu; không merge/release, không tự sửa quota để chạy tiếp.
 
 Receipts local ngoài Git và bảng đầy đủ ở IMPLEMENTATION_STATUS mục S. Mọi số tiền/chart points do native tools/snapshot tính và kiểm chứng; model không là oracle, không tự approve hoặc sinh SQL/Python.
+
+
+### Assistant experience — routing contract 7 (02/11/2026)
+
+`agent-intent-7` đưa `RoutingBatch` hữu hạn vào `responseJsonSchema`. Model chọn `source_ref` từ catalogue; server bind project, loại nguồn và ID, kiểm trường trước khi gọi native query. `QueryOperations` dùng chung giữ nguyên public `DataQuery`. Catalogue có tên, project scope, kind, schema, readiness, paid semantics và current run; trường ngoại lệ dùng chung `EXCEPTION_FIELDS` với bộ truy vấn. Tệp trùng tên phải có lựa chọn context/ID; không đoán bằng tên gần giống.
+
+Đối soát trong phạm vi đã duyệt chỉ tham chiếu current `confirmed_run_id` và đúng canonical IDs; server tạo `PlanningRequest.from_plan`, giữ filters, coverage, snapshot, effective dates, role/time basis. Kỳ mới, nguồn mới hoặc facts chưa rõ vẫn review. Không cấp quyền cho model hoặc thay financial contract. Prompt phân biệt chuẩn bị dữ liệu với chạy đối soát, tra cứu thanh toán với chuyển tiền thật, KPI snapshot với query, exact business key với technical group ID. Guard không phải bộ phân loại dựa trên từng câu gold.
+
+Sau chỉ dẫn bổ sung của chủ dự án “cứ gọi Gemini … nếu cần”, được phép phân bổ thêm request cần thiết, giữ nguyên toàn bộ 50 reservations lịch sử. Kế hoạch đầu: 1 canary, 8 batch gold gốc 80 câu, 4 batch biến thể 24 câu; tối đa 13 attempts, mỗi batch tối đa 10 câu, không retry tự động. Benchmark dừng khi transport/schema/semantic gate lỗi; successes cùng prompt/gold/context/subset được cache, không gán cache prompt cũ thành kết quả prompt mới. Chất lượng live chỉ kết luận theo receipts của lượt đo, không từ unit/MOCK.

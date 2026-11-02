@@ -188,17 +188,25 @@ def main() -> None:
     parser.add_argument("--contexts", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--execute-live", action="store_true")
+    parser.add_argument("--suite", choices=["gold", "variants"], default="gold")
+    parser.add_argument("--cases", nargs="+", help="Canary IDs; never changes the full gold rubric")
     parser.add_argument("--repair-known", choices=["payment-status-grouping"])
     args = parser.parse_args()
     assert args.execute_live and settings.agent_cloud_enabled and settings.agent_request_budget > 0
     gold = json.loads(args.gold.read_text(encoding="utf-8"))
     contexts = json.loads(args.contexts.read_text(encoding="utf-8"))
-    assert len(gold) == 80 and len({c["id"] for c in gold}) == 80
-    assert sum(bool(c.get("negative")) for c in gold) == 20
+    expected_count, expected_negative = (80, 20) if args.suite == "gold" else (24, 8)
+    assert len(gold) == expected_count and len({c["id"] for c in gold}) == expected_count
+    assert sum(bool(c.get("negative")) for c in gold) == expected_negative
+    if args.cases:
+        assert set(args.cases) <= {c["id"] for c in gold}
     assert set(contexts) == {"delivery", "ledger"}
     version = hashlib.sha256(args.gold.read_bytes()).hexdigest()
     results, batches = [], []
+    stopped = False
     for domain in ("delivery", "ledger"):
+        if stopped:
+            break
         config = contexts[domain]
         with SessionFactory() as db:
             member = db.get(MembershipRow, (config["workspace_id"], config["actor_id"]))
@@ -214,10 +222,13 @@ def main() -> None:
             catalogue = agent_catalogue(db, actor, context, [])
             assert set(config["ids"][k] for k in ("A", "B")) == {d.id for d in catalogue.datasets}
             context_hash = digest(catalogue.model_dump(mode="json"))
-        cases = [g for g in gold if g["domain"] == domain]
+        cases = [
+            g for g in gold if g["domain"] == domain and (not args.cases or g["id"] in args.cases)
+        ]
         for offset in range(0, len(cases), 10):
             subset = cases[offset : offset + 10]
-            key = f"nl-gold:{INTENT_REVISION}:{version[:12]}:{context_hash[:12]}:{offset}"
+            selection_hash = digest([g["id"] for g in subset])[:12]
+            key = f"nl-gold:{INTENT_REVISION}:{version[:12]}:{context_hash[:12]}:{selection_hash}"
             token = str(uuid5(NAMESPACE_URL, key + ":claim"))
             with SessionFactory() as db:
                 job = enqueue_job(
@@ -340,7 +351,9 @@ def main() -> None:
                         json.dumps(dict(results=results, batches=batches), indent=2),
                         encoding="utf-8",
                     )
-                    continue
+                    # Không tốn các batch tiếp theo khi transport/schema/semantic gate lỗi.
+                    stopped = True
+                    break
             results.extend(
                 score(g, i, config["ids"], catalogue.confirmed_plan)
                 for g, i in zip(subset, parsed, strict=True)
@@ -359,6 +372,10 @@ def main() -> None:
             )
     measured = [r for r in results if not r.get("blocked")]
     summary = dict(
+        suite=args.suite,
+        prompt_revision=INTENT_REVISION,
+        stopped_on_block=stopped,
+        requested_total=sum(1 for g in gold if not args.cases or g["id"] in args.cases),
         total=len(results),
         measured=len(measured),
         blocked=len(results) - len(measured),

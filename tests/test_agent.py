@@ -440,3 +440,293 @@ def test_agent_transaction_key_is_not_an_invented_technical_group_id():
     assert validate_intents(json.dumps(dict(intents=[payload])), ["Xem nhóm hiện tại"], cat)[
         0
     ].query
+
+
+def routing_catalogue():
+    from reconciliation_cases import catalogue as source
+    from reconciliation_cases import plan, records
+    from studio.contracts.agent import DatasetContext, TableContext
+    from studio.contracts.assistant import AssistantContext
+
+    candidate = plan()
+    tables = [
+        source("internal", records("internal-sales.csv")),
+        source("shopee", records("shopee-orders.csv")),
+    ]
+    return IntentCatalogue(
+        context=AssistantContext(project_id="project", run_id="run"),
+        run_ids=["run"],
+        confirmed_plan=candidate,
+        datasets=[
+            DatasetContext(
+                id=f"dataset-{i}",
+                name=f"Source {i}",
+                status="READY",
+                tables=[
+                    TableContext(
+                        table_id=f"table-{i}",
+                        sheet="Sheet1",
+                        row_count=3,
+                        columns=[],
+                        canonical_id=t.canonical.id,
+                        canonical_status="READY",
+                        schema_definition=t.schema_definition,
+                    )
+                ],
+            )
+            for i, t in enumerate(tables)
+        ],
+    )
+
+
+def test_routing_scope_reference_preserves_every_confirmed_fact_and_never_mutates_history():
+    from studio.agent_intents import compile_routing
+    from studio.contracts.reconciliation import PlanningRequest
+
+    cat = routing_catalogue()
+    before = cat.model_dump_json()
+    selection = dict(
+        left_canonical_id=cat.confirmed_plan.left.canonical_id,
+        right_canonical_id=cat.confirmed_plan.right.canonical_id,
+        confirmed_run_id="run",
+    )
+    routed = compile_routing(
+        json.dumps(dict(intents=[dict(intent="RECONCILE_DATASETS", reconciliation=selection)])),
+        ["Thực hiện đối chiếu trong phạm vi hiện tại"],
+        cat,
+    )[0]
+    expected = PlanningRequest.from_plan(cat.confirmed_plan).model_dump(exclude={"intent"})
+    assert routed.planning_request.model_dump(exclude={"intent"}) == expected
+    assert cat.model_dump_json() == before
+    for change in [
+        dict(confirmed_run_id="foreign-run"),
+        dict(period_start="2027-01-01"),
+        dict(timezone="Asia/Ho_Chi_Minh"),
+        dict(left_canonical_id=selection["right_canonical_id"]),
+    ]:
+        with pytest.raises(DomainError):
+            compile_routing(
+                json.dumps(
+                    dict(
+                        intents=[
+                            dict(intent="RECONCILE_DATASETS", reconciliation=selection | change)
+                        ]
+                    )
+                ),
+                ["Giữ phạm vi hiện tại"],
+                cat,
+            )
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        compile_routing(
+            json.dumps(dict(intents=[dict(intent="RECONCILE_DATASETS", reconciliation=selection)])),
+            ["Đối chiếu kỳ 2027"],
+            cat,
+        )
+
+
+def test_routing_query_binds_source_kind_project_and_rejects_wrong_field_or_ambiguous_name():
+    from studio.agent_intents import compile_routing
+
+    cat = routing_catalogue()
+    query = dict(source_ref="source-2", select_fields=["order_id"])
+
+    def route(q):
+        return compile_routing(
+            json.dumps(dict(intents=[dict(intent="QUERY_DATA", query=q)])),
+            ["Xem mã giao dịch nguồn tham chiếu"],
+            cat,
+        )[0]
+
+    actual = route(query).query
+    assert actual.project_id == "project" and actual.source_kind == "CANONICAL"
+    assert actual.source_id == cat.confirmed_plan.left.canonical_id
+    for q in [
+        query | dict(source_ref="foreign"),
+        query | dict(select_fields=["invented_amount"]),
+        query | dict(project_id="foreign"),
+        query | dict(source_id="foreign"),
+    ]:
+        with pytest.raises(DomainError):
+            route(q)
+    cat.datasets[1].name = cat.datasets[0].name
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        route(query)
+    cat.context.dataset_id = cat.datasets[0].id
+    assert route(query).query.source_id == cat.confirmed_plan.left.canonical_id
+
+
+def test_payment_population_guard_handles_unpaid_and_grouping_paraphrases_without_coercion():
+    payload = dict(
+        intent="CREATE_VISUALIZATION",
+        query=dict(
+            project_id="p",
+            source_kind="CANONICAL",
+            source_id="canonical",
+            group_by=["payment_status"],
+            aggregations=[dict(op="count")],
+        ),
+    )
+    assert validate(payload, "Phân bố toàn bộ trạng thái trả tiền").query
+    payload["query"]["filters"] = [dict(field_id="payment_status", op="eq", value="PAID")]
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        validate(payload, "Phân bố toàn bộ trạng thái trả tiền")
+    payload["intent"] = "QUERY_DATA"
+    payload["query"]["group_by"] = []
+    payload["query"]["aggregations"] = []
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        validate(payload, "Cho xem giao dịch chưa thanh toán")
+    payload["query"]["filters"] = [dict(field_id="payment_status", op="eq", value="UNPAID")]
+    assert validate(payload, "Cho xem giao dịch chưa thanh toán").query.filters[0].value == "UNPAID"
+
+
+def test_routing_schema_is_small_transport_contract_and_domain_query_shape_stays_compatible():
+    from studio.contracts.agent import RoutingBatch
+    from studio.contracts.data_query import DataQuery
+
+    schema = RoutingBatch.model_json_schema()
+    assert "PlanningRequest" not in schema.get("$defs", {})
+    assert "ReconciliationPlan" not in schema.get("$defs", {})
+    original = dict(
+        project_id="p",
+        source_kind="CANONICAL",
+        source_id="canonical",
+        filters=[dict(field_id="amount", op="gt", value="12.75")],
+    )
+    actual = DataQuery.model_validate(original)
+    assert actual.model_dump()["filters"] == original["filters"]
+    assert (
+        actual.limit == 25
+        and actual.result_scope == "ALL_MATCHING"
+        and actual.null_policy == "PRESERVE"
+    )
+
+
+def test_routing_exception_fields_use_the_native_query_catalogue():
+    from studio.agent_intents import compile_routing, routing_sources
+    from studio.data_query import EXCEPTION_FIELDS
+
+    cat = routing_catalogue()
+    source = next(s for s in routing_sources(cat) if s["source_kind"] == "EXCEPTIONS")
+    assert [f["id"] for f in source["fields"]] == EXCEPTION_FIELDS
+    query = dict(
+        source_ref=source["ref"],
+        select_fields=["case_id", "group_id"],
+        filters=[dict(field_id="state", op="eq", value="OPEN")],
+    )
+    actual = compile_routing(
+        json.dumps(dict(intents=[dict(intent="QUERY_DATA", query=query)])),
+        ["Xem ngoại lệ đang mở"],
+        cat,
+    )[0]
+    assert actual.query.source_kind == "EXCEPTIONS"
+    assert actual.query.source_id == "run"
+    assert actual.query.filters[0].value == "OPEN"
+    for field in ("match_group_id", "severity_basis", "id"):
+        with pytest.raises(DomainError, match="AI_INVALID_FIELD"):
+            compile_routing(
+                json.dumps(
+                    dict(
+                        intents=[
+                            dict(intent="QUERY_DATA", query=query | dict(select_fields=[field]))
+                        ]
+                    )
+                ),
+                ["Xem ngoại lệ"],
+                cat,
+            )
+
+
+def test_routing_refuses_partial_reconciliation_and_duplicate_normalization_source():
+    from studio.agent_intents import compile_routing
+
+    cat = routing_catalogue()
+    cat.datasets[0].tables[0].canonical_status = "PARTIAL"
+    selection = dict(
+        left_canonical_id=cat.confirmed_plan.left.canonical_id,
+        right_canonical_id=cat.confirmed_plan.right.canonical_id,
+        confirmed_run_id="run",
+    )
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        compile_routing(
+            json.dumps(dict(intents=[dict(intent="RECONCILE_DATASETS", reconciliation=selection)])),
+            ["Đối soát kỳ hiện tại"],
+            cat,
+        )
+    cat.datasets[1].name = cat.datasets[0].name
+    intent = dict(intent="PREPARE_NORMALIZATION", dataset_ids=[cat.datasets[0].id])
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        compile_routing(json.dumps(dict(intents=[intent])), ["Chuẩn hóa tệp"], cat)
+    cat.context.dataset_id = cat.datasets[0].id
+    assert compile_routing(json.dumps(dict(intents=[intent])), ["Chuẩn hóa tệp đang xem"], cat)[
+        0
+    ].dataset_ids == [cat.datasets[0].id]
+
+
+def test_routing_gemini_mock_sends_bounded_schema_once_and_binds_native_source():
+    from studio.agent_intents import routing_sources
+
+    received, reserved = [], []
+    cat = routing_catalogue()
+    source = next(s for s in routing_sources(cat) if s["source_kind"] == "CANONICAL")
+
+    def handler(request):
+        payload = json.loads(request.read())
+        schema = payload["generationConfig"]["responseJsonSchema"]
+        assert schema["properties"]["intents"]["minItems"] == 1
+        assert schema["properties"]["intents"]["maxItems"] == 1
+        assert "PlanningRequest" not in schema["$defs"]
+        received.append(payload)
+        reply = dict(
+            intents=[
+                dict(
+                    intent="QUERY_DATA",
+                    query=dict(source_ref=source["ref"], aggregations=[dict(op="count")]),
+                )
+            ]
+        )
+        return httpx.Response(
+            200,
+            json=dict(
+                candidates=[
+                    dict(finishReason="STOP", content=dict(parts=[dict(text=json.dumps(reply))]))
+                ]
+            ),
+        )
+
+    provider = GeminiProvider(
+        Settings(
+            allow_external_ai=True,
+            external_ai_request_budget=1,
+            gemini_api_key="synthetic-key-only",
+        ),
+        httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    try:
+        result = interpret_requests(
+            provider,
+            ["Đếm dữ liệu nguồn"],
+            cat,
+            WorkspacePolicy(
+                mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=1
+            ),
+            lambda: reserved.append(True) or True,
+        )
+    finally:
+        provider.close()
+    assert len(received) == len(reserved) == 1
+    assert result[0].query.source_id == cat.confirmed_plan.left.canonical_id
+    assert result[0].query.project_id == cat.context.project_id
+
+
+def test_independent_variant_suite_keeps_original_gold_and_negative_rubric():
+    from pathlib import Path
+
+    fixtures = Path(__file__).parent / "fixtures"
+    gold = json.loads((fixtures / "agent-intents.json").read_text(encoding="utf-8"))
+    variants = json.loads((fixtures / "agent-intent-variants.json").read_text(encoding="utf-8"))
+    assert len(gold) == 80 and sum(bool(g.get("negative")) for g in gold) == 20
+    assert len(variants) == len({g["id"] for g in variants}) == 24
+    assert sum(bool(g.get("negative")) for g in variants) == 8
+    assert not {g["goal"] for g in gold} & {g["goal"] for g in variants}
+    assert {g["domain"] for g in variants} == {"delivery", "ledger"}
+    assert all(g["intent"] in {"CLARIFY", "UNSUPPORTED"} for g in variants if g.get("negative"))

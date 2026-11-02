@@ -1,13 +1,13 @@
 """Mục tiêu, công việc và quyết định có kiểu; model không sở hữu quyền phê duyệt."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal
 
 from pydantic import Field
 
 from studio.contracts import Contract, SchemaDefinition
 from studio.contracts.assistant import AssistantAnswer, AssistantContext, Identifier, ToolResult
-from studio.contracts.data_query import DataQuery, QueryResult
+from studio.contracts.data_query import DataQuery, QueryOperations, QueryResult
 from studio.contracts.reconciliation import PlanningRequest, PlanningSuggestions, ReconciliationPlan
 
 IntentName = Literal[
@@ -73,6 +73,7 @@ class TableContext(Contract):
     row_count: int
     columns: list[SourceColumn] = Field(max_length=40)
     canonical_id: str | None = None
+    canonical_status: Literal["READY", "PARTIAL", "FAILED"] | None = None
     schema_definition: SchemaDefinition | None = None
     mapping_id: str | None = None
     paid_status_fields: list[str] = Field(default_factory=list)
@@ -87,6 +88,7 @@ class DatasetContext(Contract):
 
 class IntentCatalogue(Contract):
     context: AssistantContext
+    project_scope: str = ""
     datasets: list[DatasetContext] = Field(max_length=5)
     run_ids: list[str] = Field(default_factory=list, max_length=20)
     confirmed_plan: ReconciliationPlan | None = None
@@ -97,6 +99,38 @@ class IntentCatalogue(Contract):
 
 class IntentBatch(Contract):
     intents: list[AgentIntent] = Field(min_length=1, max_length=10)
+
+
+class RoutingQuery(QueryOperations):
+    """Model chọn một nguồn trong catalogue; không tự ghép project/kind/ID."""
+
+    source_ref: str = Field(min_length=1, max_length=64)
+
+
+class ReconciliationSelection(Contract):
+    """Chọn phạm vi đã lưu hoặc facts mới cần review, không dựng lại approved plan."""
+
+    left_canonical_id: Identifier
+    right_canonical_id: Identifier
+    confirmed_run_id: Identifier | None = None
+    period_start: date | None = None
+    period_end: date | None = None
+    timezone: str | None = Field(default=None, max_length=100)
+
+
+class RoutingIntent(Contract):
+    intent: IntentName
+    dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
+    run_id: Identifier | None = None
+    key_value: str | None = Field(default=None, min_length=1, max_length=200)
+    query: RoutingQuery | None = None
+    reconciliation: ReconciliationSelection | None = None
+    questions: list[str] = Field(default_factory=list, max_length=5)
+    export_format: Literal["csv", "xlsx"] = "xlsx"
+
+
+class RoutingBatch(Contract):
+    intents: list[RoutingIntent] = Field(min_length=1, max_length=10)
 
 
 class WorkflowStep(Contract):

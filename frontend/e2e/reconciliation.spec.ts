@@ -1,4 +1,4 @@
-import { selectProject } from "./project-selection";
+import { selectProject, openLegacyPage } from "./project-selection";
 import { test, expect, type Page } from "@playwright/test";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -92,7 +92,7 @@ test("late evidence from a previous run cannot open under the selected run", asy
   );
   await page.goto("/#page=home");
   await selectProject(page, s.project_id);
-  await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
+  await openLegacyPage(page, "reports");
   await selectRun(page, original);
   await page
     .getByRole("button", { name: "Xem bằng chứng", exact: true })
@@ -121,7 +121,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
   await page.goto("/#page=home");
   await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
   await selectProject(page, s.project_id);
-  await page.getByRole("button", { name: "Đối soát", exact: true }).click();
+  await openLegacyPage(page, "reconcile");
   await page
     .getByLabel("Nguồn tham chiếu", { exact: true })
     .selectOption(s.sources["shipments.csv"].canonical_id);
@@ -240,7 +240,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
     (await (await page.request.get(`/api/runs/${rid}/exceptions`)).json())
       .total,
   ).toBe(3);
-  await page.getByRole("button", { name: "Ngoại lệ", exact: true }).click();
+  await openLegacyPage(page, "exceptions");
   await page.getByLabel("Lần đối soát", { exact: true }).selectOption(rid);
   const row = page.getByRole("row").filter({
     has: page.getByRole("cell", { name: "Lệch tiền", exact: true }),
@@ -339,7 +339,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
     ),
   );
   await page.reload();
-  await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
+  await openLegacyPage(page, "reports");
   await expect(page.getByLabel("Lần đối soát", { exact: true })).toHaveValue(
     rid,
   );
@@ -440,7 +440,7 @@ test("Planner UI accepts sources with no common key and presents review-only sug
   );
   await page.goto("/#page=home");
   await selectProject(page, s.project_id);
-  await page.getByRole("button", { name: "Đối soát", exact: true }).click();
+  await openLegacyPage(page, "reconcile");
   await page.getByLabel("Nguồn tham chiếu", { exact: true }).selectOption(left);
   await page.getByLabel("Nguồn đối ứng", { exact: true }).selectOption(right);
   await page
@@ -507,7 +507,7 @@ for (const size of [
       await page
         .getByRole("button", { name: "Mở điều hướng", exact: true })
         .click();
-    await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
+    await openLegacyPage(page, "reports");
     await selectRun(page, s.runs.delivery.run_id);
     await expect(
       page.getByText("Giá trị lệch tuyệt đối", { exact: true }),
@@ -528,7 +528,7 @@ for (const size of [
       await page
         .getByRole("button", { name: "Mở điều hướng", exact: true })
         .click();
-    await page.getByRole("button", { name: "Đối soát", exact: true }).click();
+    await openLegacyPage(page, "reconcile");
     await page
       .getByLabel("Nguồn tham chiếu", { exact: true })
       .selectOption(s.sources["shipments.csv"].canonical_id);

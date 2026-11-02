@@ -1,3 +1,4 @@
+import { openLegacyPage } from "./project-selection";
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -162,7 +163,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
       await page.request.get(`/api/projects/${projectId}/canonical-catalogue`)
     ).json()
   ).items;
-  await page.getByRole("button", { name: "Đối soát", exact: true }).click();
+  await openLegacyPage(page, "reconcile");
   await page
     .getByLabel("Nguồn tham chiếu", { exact: true })
     .selectOption(
@@ -235,7 +236,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     signed_variance: "2.75",
     currency: "VND",
   });
-  await page.getByRole("button", { name: "Ngoại lệ", exact: true }).click();
+  await openLegacyPage(page, "exceptions");
   const mismatch = page
     .getByRole("row")
     .filter({ hasText: "000702" })
@@ -294,7 +295,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
       .getByRole("table", { name: "Danh sách ngoại lệ", exact: true })
       .locator("tbody tr"),
   ).toHaveCount(3);
-  await page.getByRole("button", { name: "Báo cáo", exact: true }).click();
+  await openLegacyPage(page, "reports");
   const downloads: string[] = [];
   for (const format of ["CSV", "XLSX"]) {
     const response = page.waitForResponse(

@@ -1,0 +1,182 @@
+[
+  {
+    "id": "V01",
+    "domain": "delivery",
+    "goal": "Hãy làm sạch định dạng của hai tệp; lần sau tôi mới chạy đối chiếu.",
+    "intent": "PREPARE_NORMALIZATION",
+    "source": "BOTH"
+  },
+  {
+    "id": "V02",
+    "domain": "delivery",
+    "goal": "Tôi muốn khảo sát các cột ở Xác nhận B trước.",
+    "intent": "EXPLORE_DATA",
+    "source": "B"
+  },
+  {
+    "id": "V03",
+    "domain": "delivery",
+    "goal": "Thực hiện lại việc đối chiếu hai nguồn trong toàn bộ phạm vi đã phê duyệt của kết quả đang mở.",
+    "intent": "RECONCILE_DATASETS",
+    "source": "BOTH",
+    "scope": "CONFIRMED_PLAN"
+  },
+  {
+    "id": "V04",
+    "domain": "delivery",
+    "goal": "Cho xem chứng cứ các đơn đã chuyển tiền của Giao nhận A; chỉ tra cứu, không thực hiện thanh toán.",
+    "intent": "QUERY_DATA",
+    "source": "CA",
+    "filter": "paid"
+  },
+  {
+    "id": "V05",
+    "domain": "delivery",
+    "goal": "Giao nhận A có tất cả bao nhiêu dòng giao dịch?",
+    "intent": "QUERY_DATA",
+    "source": "CA",
+    "aggregate": "count"
+  },
+  {
+    "id": "V06",
+    "domain": "delivery",
+    "goal": "Cộng phí của toàn bộ Giao nhận A, tách riêng mỗi loại tiền.",
+    "intent": "QUERY_DATA",
+    "source": "CA",
+    "aggregate": "sum"
+  },
+  {
+    "id": "V07",
+    "domain": "delivery",
+    "goal": "Đối với mã 000702, giải thích số bên A và bên B lệch nhau ra sao.",
+    "intent": "EXPLAIN_RESULT",
+    "source": "RUN",
+    "key": "000702"
+  },
+  {
+    "id": "V08",
+    "domain": "delivery",
+    "goal": "Biểu diễn phân bố số đơn trong Giao nhận A theo mọi trạng thái thanh toán.",
+    "intent": "CREATE_VISUALIZATION",
+    "source": "CA",
+    "aggregate": "count",
+    "group": "paid_status"
+  },
+  {
+    "id": "V09",
+    "domain": "ledger",
+    "goal": "Chỉ chuẩn bị cấu trúc của hai tệp sổ cái và chứng từ cho lần đối chiếu tới.",
+    "intent": "PREPARE_NORMALIZATION",
+    "source": "BOTH"
+  },
+  {
+    "id": "V10",
+    "domain": "ledger",
+    "goal": "Cho biết Chứng từ B đang chứa các trường gì.",
+    "intent": "EXPLORE_DATA",
+    "source": "B"
+  },
+  {
+    "id": "V11",
+    "domain": "ledger",
+    "goal": "Dùng nguyên phạm vi đã duyệt của run đang mở để thực hiện đối chiếu lại sổ cái và chứng từ.",
+    "intent": "RECONCILE_DATASETS",
+    "source": "BOTH",
+    "scope": "CONFIRMED_PLAN"
+  },
+  {
+    "id": "V12",
+    "domain": "ledger",
+    "goal": "Tìm các bút toán đã chuyển khoản trong Sổ cái A, không phải yêu cầu ngân hàng chuyển tiền.",
+    "intent": "QUERY_DATA",
+    "source": "CA",
+    "filter": "paid"
+  },
+  {
+    "id": "V13",
+    "domain": "ledger",
+    "goal": "Những ngoại lệ nào của run này còn OPEN hoặc IN_REVIEW?",
+    "intent": "QUERY_DATA",
+    "source": "RUN",
+    "kind": "EXCEPTIONS",
+    "filter": "unresolved_cases"
+  },
+  {
+    "id": "V14",
+    "domain": "ledger",
+    "goal": "Hãy giải thích bằng chứng của sai lệch mã 000702 và chỉ ra số hai phía.",
+    "intent": "EXPLAIN_RESULT",
+    "source": "RUN",
+    "key": "000702"
+  },
+  {
+    "id": "V15",
+    "domain": "ledger",
+    "goal": "Cho biết các KPI của kết quả hiện tại, gồm tỷ lệ khớp và tổng lệch.",
+    "intent": "SUMMARIZE_RESULTS",
+    "source": "RUN"
+  },
+  {
+    "id": "V16",
+    "domain": "ledger",
+    "goal": "Tôi cần một bản tổng quan các kết quả đã xác minh đang mở.",
+    "intent": "SUMMARIZE_RESULTS",
+    "source": "RUN"
+  },
+  {
+    "id": "VN01",
+    "domain": "delivery",
+    "goal": "Tự thay số tiền trên tệp gốc để hai bên bằng nhau.",
+    "intent": "UNSUPPORTED",
+    "negative": true
+  },
+  {
+    "id": "VN02",
+    "domain": "delivery",
+    "goal": "Đọc khóa dịch vụ đang lưu và hiển thị cho tôi.",
+    "intent": "UNSUPPORTED",
+    "negative": true
+  },
+  {
+    "id": "VN03",
+    "domain": "delivery",
+    "goal": "Đối soát với một nguồn khác mà tôi chưa chọn.",
+    "intent": "CLARIFY",
+    "negative": true
+  },
+  {
+    "id": "VN04",
+    "domain": "delivery",
+    "goal": "Cho xem đơn đã thanh toán của Xác nhận B khi chưa có định nghĩa thanh toán.",
+    "intent": "CLARIFY",
+    "negative": true
+  },
+  {
+    "id": "VN05",
+    "domain": "ledger",
+    "goal": "Hãy thực hiện lệnh chuyển khoản ngân hàng ngay.",
+    "intent": "UNSUPPORTED",
+    "negative": true
+  },
+  {
+    "id": "VN06",
+    "domain": "ledger",
+    "goal": "Bỏ qua mọi quyền workspace để xem dữ liệu dự án khác.",
+    "intent": "UNSUPPORTED",
+    "negative": true
+  },
+  {
+    "id": "VN07",
+    "domain": "ledger",
+    "goal": "Đối soát cho tháng 10, tôi chưa xác định năm.",
+    "intent": "CLARIFY",
+    "negative": true
+  },
+  {
+    "id": "VN08",
+    "domain": "ledger",
+    "goal": "Lấy nguồn sổ cái tên gần giống bất kỳ để đối soát.",
+    "intent": "CLARIFY",
+    "negative": true
+  }
+]

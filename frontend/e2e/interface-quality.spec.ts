@@ -1,3 +1,4 @@
+import { openLegacyPage } from "./project-selection";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 
@@ -142,9 +143,7 @@ for (const count of [5, 30, 80]) {
     await expect(
       recent.getByText("Latest-000.csv", { exact: true }),
     ).toBeVisible();
-    await page
-      .getByRole("button", { name: new RegExp(`^Dữ liệu\\s*${count}$`) })
-      .click();
+    await openLegacyPage(page, "data");
     if (count > 25) {
       await page
         .getByRole("button", { name: "Trang nguồn sau", exact: true })
@@ -153,7 +152,7 @@ for (const count of [5, 30, 80]) {
         page.getByText("Latest-025.csv", { exact: true }),
       ).toBeVisible();
     }
-    await page.getByRole("button", { name: "Tổng quan", exact: true }).click();
+    await openLegacyPage(page, "home");
     await expect(
       recent.getByText("Latest-000.csv", { exact: true }),
     ).toBeVisible();
@@ -231,7 +230,7 @@ test("test visibility and owner classification preserve the current project and 
   await expect(
     page.locator("#project-select .project-test-badge"),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Đối soát", exact: true }).click();
+  await openLegacyPage(page, "reconcile");
   await page
     .getByLabel("Nguồn tham chiếu", { exact: true })
     .selectOption("left");
@@ -344,7 +343,7 @@ test("confirmed classification remains in app metadata when the picker unmounts 
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Cài đặt", exact: true }).click();
   release();
-  await page.getByRole("button", { name: "Tổng quan", exact: true }).click();
+  await openLegacyPage(page, "home");
   await expect(page.locator("#project-select .project-test-badge")).toHaveCount(
     0,
   );
@@ -745,7 +744,7 @@ test("viewer role is truthful and write actions are disabled while navigation re
   await expect(
     page.getByRole("button", { name: "+ Tạo dự án", exact: true }),
   ).toBeDisabled();
-  await page.getByRole("button", { name: "Đối soát", exact: true }).click();
+  await openLegacyPage(page, "reconcile");
   await expect(
     page.getByLabel("Nguồn tham chiếu", { exact: true }),
   ).toBeDisabled();
@@ -982,9 +981,7 @@ test("dashboard uses server totals, distinguishes PARTIAL and opens the exact of
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/#page=home");
-  await expect(
-    page.getByRole("button", { name: /^Dữ liệu\s*80$/ }),
-  ).toBeVisible();
+  await expect(page.locator(".stat-card").filter({hasText:"Nguồn dữ liệu"}).locator("strong")).toHaveText("80");
   const ready = page
     .locator(".stat-card")
     .filter({ hasText: "Kết quả sẵn sàng sử dụng" });

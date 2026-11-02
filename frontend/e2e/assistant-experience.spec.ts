@@ -32,6 +32,7 @@ test('[MOCK CONTRACT] composer Enter submits once, Shift+Enter preserves a newli
     if(path==='/api/settings')return route.fulfill({json:{agent_cloud_enabled:false,assistant_cloud_enabled:false,policy:{allow_external_ai:false}}});
     if(path==='/api/projects/keyboard-project')return route.fulfill({json:{id:'keyboard-project',name:'Synthetic keyboard',workspace_id:'mock',business_scope:'synthetic',classification:'TEST'}});
     if(path==='/api/conversations'&&route.request().method()==='POST')return route.fulfill({json:{id:'keyboard-conversation',context:{project_id:'keyboard-project'},title:'Keyboard'}});
+    if(path==='/api/conversations/keyboard-conversation')return route.fulfill({json:{conversation:{id:'keyboard-conversation',context:{project_id:'keyboard-project'},title:'Keyboard'},items:[],has_more:false}});
     if(path==='/api/assistant/messages'){posted++;return route.fulfill({status:202,json:{job_id:'keyboard-job'}});}
     if(path==='/api/jobs/keyboard-job')return route.fulfill({json:{id:'keyboard-job',status:'BLOCKED',error_code:'GEMINI_BUDGET_EXHAUSTED'}});
     if(route.request().method()!=='GET')throw Error('Unexpected write '+path);
@@ -66,4 +67,40 @@ test('Chat files drawer previews and downloads original bytes without leaving co
   await expect(drawer.getByRole('link',{name:'Tải tệp gốc',exact:true})).toHaveAttribute('href',`/api/datasets/${attachment.items[0].id}/download`);
   await page.keyboard.press('Escape');await expect(input).toHaveValue('Bản nháp cần giữ');expect(page.url()).toBe(originalURL);
   expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used);
+});
+
+
+test('Persisted canonical and error previews stay inside the chat files drawer',async({page})=>{
+  const fs=await import('node:fs/promises');
+  const s=JSON.parse(await fs.readFile('../runtime/agent-live-delivery.json','utf8'));
+  await page.addInitScript(s=>{localStorage.setItem('studio.project',s.project_id);localStorage.setItem(`studio.conversation.${s.project_id}`,s.conversation_id);},s);
+  await page.goto('/');
+  const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await expect(input).toBeEnabled();await input.fill('Giữ nguyên bản nháp kiểm tra nguồn');
+  const before=page.url();await page.getByRole('button',{name:'Tệp đã tải',exact:true}).click();
+  const drawer=page.getByRole('dialog',{name:'Tệp và dữ liệu',exact:true});
+  await drawer.getByRole('button',{name:new RegExp(s.attachments.items[0].name)}).click();
+  const artifacts=await(await page.request.get(`/api/datasets/${s.attachments.items[0].id}/artifacts`)).json();
+  await drawer.getByLabel('Phiên bản chuẩn hóa',{exact:true}).selectOption(artifacts.canonical_datasets[0].id);
+  await drawer.getByRole('button',{name:'Đã chuẩn hóa',exact:true}).click();
+  await expect(drawer.getByRole('table')).toContainText('000702');
+  await drawer.getByRole('button',{name:'Dòng lỗi',exact:true}).click();await expect(drawer).toContainText('0 dòng khớp điều kiện');
+  await drawer.getByRole('button',{name:new RegExp(s.attachments.items[1].name)}).click();
+  await expect(drawer.getByLabel('Phiên bản chuẩn hóa',{exact:true})).toHaveValue('');
+  await expect(drawer.getByRole('button',{name:'Dữ liệu gốc',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(drawer.getByRole('table')).toContainText('000704');
+  await page.keyboard.press('Escape');await expect(input).toHaveValue('Giữ nguyên bản nháp kiểm tra nguồn');expect(page.url()).toBe(before);
+  await expect(page.getByRole('button',{name:'Tệp đã tải',exact:true})).toBeFocused();
+});
+
+test('[MOCK conversation, LIVE read] verified report opens in chat and preserves draft',async({page})=>{
+  const fs=await import('node:fs/promises');const s=JSON.parse(await fs.readFile('../runtime/agent-live-delivery.json','utf8'));
+  const context={project_id:s.project_id,run_id:s.run_id};
+  await page.addInitScript(s=>{localStorage.setItem('studio.project',s.project_id);localStorage.setItem(`studio.conversation.${s.project_id}`,s.conversation_id);},s);
+  await page.route(`**/api/conversations/${s.conversation_id}`,route=>route.fulfill({json:{conversation:{id:s.conversation_id,context,title:'Synthetic result overlay'},items:[{id:'overlay-answer',job_id:'overlay-job',role:'assistant',text:'',context,workflow_id:'overlay-workflow',created_at:'2026-11-02T00:00:00Z'}],has_more:false}}));
+  await page.route('**/api/agent/workflows/overlay-workflow',route=>route.fulfill({json:{id:'overlay-workflow',conversation_id:s.conversation_id,context,state:'COMPLETED',updated_at:'2026-11-02T00:00:00Z',detail:{intent:{intent:'SUMMARIZE_RESULTS'},model_calls:0,error_code:null,reviews:[],steps:[],blocks:[{type:'facts',result:{tool:'get_run_summary',run:{metric_snapshot:s.snapshot}}}]}}}));
+  await page.goto('/');const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await expect(input).toBeEnabled();await input.fill('Bản nháp ở màn hình kết quả');
+  const before=page.url();await page.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Chi tiết kết quả đã xác minh',exact:true});
+  await expect(dialog).toContainText('33.33');await expect(dialog).toContainText('2.75');await expect(dialog.getByRole('img',{name:'Phân bố trạng thái đối soát'})).toBeVisible();
+  await page.keyboard.press('Escape');await expect(input).toHaveValue('Bản nháp ở màn hình kết quả');expect(page.url()).toBe(before);
 });

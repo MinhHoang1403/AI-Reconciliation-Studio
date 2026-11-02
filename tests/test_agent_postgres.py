@@ -212,8 +212,11 @@ def test_agent_review_denies_stale_permission_cancel_without_approval(pg, monkey
 
 
 def test_agent_approved_contract_runs_without_new_approval_and_verifier_oracle(pg, monkeypatch):  # noqa: F811
+    import json
+
     import studio.agent_jobs as agents
-    from studio.contracts.reconciliation import PlanningRequest, ReconciliationPlan
+    from studio.agent_intents import compile_routing
+    from studio.contracts.reconciliation import ReconciliationPlan
 
     client, factory, worker = pg
     pid, plan, rule, queued = create_approved_run(pg)
@@ -223,13 +226,26 @@ def test_agent_approved_contract_runs_without_new_approval_and_verifier_oracle(p
     monkeypatch.setattr(
         agents,
         "interpret_requests",
-        lambda *args: [
-            AgentIntent(
-                intent="RECONCILE_DATASETS", planning_request=PlanningRequest.from_plan(plan)
-            )
-        ],
+        lambda provider, goals, catalogue, policy, reserve: compile_routing(
+            json.dumps(
+                dict(
+                    intents=[
+                        dict(
+                            intent="RECONCILE_DATASETS",
+                            reconciliation=dict(
+                                left_canonical_id=plan.left.canonical_id,
+                                right_canonical_id=plan.right.canonical_id,
+                                confirmed_run_id=queued["run_id"],
+                            ),
+                        )
+                    ]
+                )
+            ),
+            goals,
+            catalogue,
+        ),
     )
-    context = dict(project_id=pid)
+    context = dict(project_id=pid, run_id=queued["run_id"])
     cid = conversation(client, context)
     message = ask_agent(client, context, cid, text="Đối soát kỳ 2026 theo phạm vi đã xác nhận")
     drain(factory, worker)
