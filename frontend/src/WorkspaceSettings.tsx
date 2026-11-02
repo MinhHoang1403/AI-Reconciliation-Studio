@@ -24,17 +24,17 @@ export function WorkspaceSettings({ settings: s, role }: { settings: Settings; r
     </section>
     <section className="settings-section" aria-labelledby="settings-privacy">
       <h2 id="settings-privacy">AI và quyền riêng tư dữ liệu</h2>
-      <p>AI hỗ trợ chuẩn bị dữ liệu, đối soát, tra cứu và giải thích kết quả. Hệ thống tính toán số liệu và kiểm chứng kết quả đối soát.</p>
+      <p>AI hỗ trợ chuẩn hóa, đối soát và tra cứu. Hệ thống tính toán và kiểm chứng số liệu.</p>
       <dl className="settings-rows">
         <div><dt>Hỗ trợ AI</dt><dd>{aiStatus}</dd></div>
         <div><dt>Kết nối dịch vụ AI</dt><dd>{s.cloud_live_status === "VERIFIED" ? "Đã được kiểm tra" : "Chưa kiểm tra trực tiếp"}</dd></div>
         <div><dt>Xử lý dữ liệu</dt><dd>{allowed ? "Có thể sử dụng dịch vụ AI bên ngoài" : "Xử lý nội bộ theo chính sách hiện tại"}</dd></div>
       </dl>
-      <p>{allowed
+      <details><summary>Dữ liệu được xử lý như thế nào?</summary><p>{allowed
         ? "Khi tác vụ được cấp quyền và còn lượt sử dụng, nội dung yêu cầu, cấu trúc dữ liệu và mẫu có giới hạn có thể được gửi tới dịch vụ AI bên ngoài. Tệp gốc được giữ nguyên."
         : "Tác vụ không được phép gửi dữ liệu tới dịch vụ AI bên ngoài. Bạn vẫn có thể xem dữ liệu, dùng quy tắc đã duyệt và thao tác thủ công."}</p>
       <p>Các quyết định mới về ý nghĩa dữ liệu và quy tắc đối soát cần bạn xác nhận. Quyền sử dụng và cấu hình AI được kiểm tra lại khi thực hiện; kết nối ứng dụng không xác nhận kết nối AI.</p>
-      {!permitted && <p>Tra cứu theo dữ kiện, quy tắc đã duyệt và công cụ thủ công vẫn sử dụng được trong phạm vi dữ liệu và quyền của bạn.</p>}
+      {!permitted && <p>Tra cứu theo dữ kiện, quy tắc đã duyệt và công cụ thủ công vẫn sử dụng được trong phạm vi dữ liệu và quyền của bạn.</p>}</details>
     </section>
     <section className="settings-section" aria-labelledby="settings-limits">
       <h2 id="settings-limits">Giới hạn sử dụng</h2>
@@ -53,6 +53,7 @@ export function WorkspaceSettings({ settings: s, role }: { settings: Settings; r
         <div><dt>Model Gemini</dt><dd>{s.gemini_configured ? s.gemini_model : "Chưa cấu hình"}</dd></div>
         <div><dt>Lượt AI đã ghi nhận</dt><dd>{Number.isFinite(s.gemini_requests_used) ? s.gemini_requests_used.toLocaleString("vi-VN") : "Chưa có thông tin"}</dd></div>
         <div><dt>Lượt AI còn trong hạn mức chung</dt><dd>{remaining === null ? "Chưa xác minh" : remaining.toLocaleString("vi-VN")}</dd></div>
+        {s.ai_task_allowances && ([['agent','Thực hiện tác vụ'],['planner','Đề xuất quy tắc mới'],['assistant','Diễn giải dữ kiện']] as const).map(([key,title])=><div key={key}><dt>{title}</dt><dd>{s.ai_task_allowances![key].remaining} lượt còn trong hạn mức tác vụ</dd></div>)}
         <div><dt>Tác vụ hội thoại</dt><dd>{s.agent_cloud_enabled ? "Có quyền theo chính sách" : "Chưa khả dụng theo chính sách hoặc hạn mức"}</dd></div>
         <div><dt>Hỏi dữ kiện qua AI bên ngoài</dt><dd>{s.assistant_cloud_enabled ? "Có quyền theo chính sách" : "Chưa khả dụng"}</dd></div>
         <div><dt>Qwen</dt><dd>{s.qwen_configured ? `Đã cấu hình · ${s.qwen_model} · kết nối chưa xác minh` : "Chưa cấu hình"}</dd></div>

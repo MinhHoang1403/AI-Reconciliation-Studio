@@ -1222,15 +1222,15 @@ details p {
   padding: 4px 0;
 }
 /* Settings uses a single reading column; details remain read-only. */
-.settings-page { width: 100%; max-width: 820px; margin-inline: auto; }
-.settings-section { padding-block: 26px; border-bottom: 1px solid var(--surface-border); }
+.settings-page { width: 100%; max-width: 720px; margin-inline: auto; }
+.settings-section { padding-block: 18px; border-bottom: 1px solid var(--surface-border); }
 .settings-section:first-child { padding-top: 4px; }
 .settings-section h2 { font-size: 17px; margin-bottom: 12px; }
-.settings-section > p { color: #475569; line-height: 1.7; margin-block: 10px; max-width: 72ch; }
+.settings-section > p, .settings-section details p { color: #475569; line-height: 1.6; margin-block: 8px; max-width: 68ch; }
 .settings-rows { margin: 14px 0 0; }
-.settings-rows > div { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(0, 1.4fr); gap: 20px; padding-block: 10px; }
+.settings-rows > div { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); gap: 16px; padding-block: 7px; }
 .settings-rows dt { color: #64748b; }
-.settings-rows dd { margin: 0; color: #1e293b; text-align: right; overflow-wrap: anywhere; }
+.settings-rows dd { margin: 0; color: #1e293b; text-align: left; overflow-wrap: anywhere; }
 .settings-advanced > summary { font-size: 15px; font-weight: 600; padding-block: 4px; }
 @media(max-width:600px) {
   .settings-rows > div { grid-template-columns: 1fr; gap: 4px; }

@@ -87,7 +87,10 @@ def test_tool_context_rejects_paths_sql_and_extra_args(invalid):
         ToolRequest(name="execute_sql", context=dict(project_id="project"), sql=invalid)
 
 
-def test_T36_cloud_off_and_qwen_failure_never_escalates():
+def test_T36_cloud_off_and_qwen_failure_never_escalates(monkeypatch):
+    # Kiểm defaults độc lập với env của deployment đang bật đầy đủ công cụ.
+    for key in ("ASSISTANT_CLOUD_ENABLED", "ASSISTANT_REQUEST_BUDGET"):
+        monkeypatch.delenv(key, raising=False)
     calls = []
     client = httpx.Client(transport=httpx.MockTransport(lambda request: calls.append(request)))
     config = Settings(_env_file=None, qwen_enabled=True, allow_external_ai=False)

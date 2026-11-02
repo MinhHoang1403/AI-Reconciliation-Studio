@@ -225,7 +225,7 @@ def test_planner_partial_request_proposes_keys_without_execution(config, kind):
             "suggestions",
             "structured-complete",
             "structured-sparse-complete",
-        "structured-null-complete",
+            "structured-null-complete",
             "structured-partial",
             "suggested-fake-field",
             "fake-evidence",

@@ -1130,6 +1130,7 @@ export function App() {
                 onSelect={chooseProject}
                 disabled={busy}
                 canClassify={actorRole === "owner"}
+                onCreate={canEdit ? openNewProject : undefined}
                 onClassificationChange={(value) =>
                   setProject((current) =>
                     current?.id === value.id ? value : current,

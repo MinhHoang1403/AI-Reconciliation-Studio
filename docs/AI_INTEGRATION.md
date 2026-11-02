@@ -1,5 +1,7 @@
 # AI Gateway và provider contracts
 
+**Nhiệm vụ nghiệm thu demo đang thực hiện — 02/11/2026:** chủ dự án cho phép tăng allowance và để toàn bộ công cụ đã triển khai bật cho việc tự thử. Global/workspace ceiling200, Agent163, Planner30, legacy Assistant20; không reset ledger hoặc đổi model/key. Agent/Assistant/parser flags bật trong demo; parser vẫn có allowance và approved-file gate riêng. Không gán kết nối VERIFIED chỉ từ flags. Các thông số110/120, Planner10/10 và yêu cầu OFF bên dưới là mốc lịch sử, đã được chỉ dẫn mới thay thế cho nhiệm vụ này. Lượt UAT của Codex gắn với project/job/trace riêng; lượt người dùng giữ nguyên trong tổng ledger, không được tính thành phép kiểm thử của Codex.
+
 **Hiện hành trước nhiệm vụ hoàn thiện UI/Settings 02/11/2026:** Gemini `gemini-3.5-flash-lite`, lifetime global/demo workspace **110/120, còn 10**, Agent 93/103, Planner 10/10; giữ toàn bộ lịch sử. Routing 15 đã đạt gate có giới hạn và main đã phát hành theo [báo cáo mục T](IMPLEMENTATION_STATUS.md#t-ai-assistant-experience--nlp-quality-finalization). Mốc S 50/50/BLOCKED và các kết quả ngày 28–30/10 bên dưới là lịch sử. Nhiệm vụ tiếp theo không cho tăng trần/reset ledger hoặc dùng cloud để test giao diện. Qwen hoãn, parser jobs mới OFF, Argon chưa tích hợp.
 
 Settings phân biệt cấu hình, quyền workspace, quyền tác vụ, lượt còn lại và kết nối model. `cloud_live_status=NOT VERIFIED` không được suy thành AI sẵn sàng từ `/api/ready` hoặc key đã cấu hình. Mở Settings, đổi kích thước và đọc giới hạn không gọi provider.

@@ -18,12 +18,14 @@ export function ProjectSelector({
   disabled = false,
   canClassify = false,
   onClassificationChange,
+  onCreate,
 }: {
   project: Project | null;
   onSelect: (project: Project) => void;
   disabled?: boolean;
   canClassify?: boolean;
   onClassificationChange?: (project: Project) => void;
+  onCreate?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -348,6 +350,7 @@ export function ProjectSelector({
             </div>
           </>
         )}
+        {onCreate && <button className="button secondary" onClick={()=>{setOpen(false);onCreate();}}>Tạo dự án mới</button>}
         {project && canClassify && (
           <details className="project-classification">
             <summary>Phân loại dự án hiện tại</summary>

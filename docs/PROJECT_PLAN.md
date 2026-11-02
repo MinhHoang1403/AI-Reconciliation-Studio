@@ -12,6 +12,12 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Nghiệm thu demo và mở công cụ được ủy quyền — 02/11/2026
+
+Master prompt Final User Acceptance & Demo Readiness và hai chỉ dẫn tiếp theo của chủ dự án cho phép tiếp tục kiểm thử, tăng lượt Gemini và để các công cụ đã triển khai bật cho chủ dự án tự thử. Chỉ dẫn mới thay giới hạn sáu lượt Agent và yêu cầu tắt cloud của các nhiệm vụ trước: demo global/workspace ceiling200, Agent163, Planner30, Assistant20; giữ toàn bộ reservations cũ. Lượt của người dùng và lượt nghiệm thu được phân biệt theo project/job/trace, không xóa hoặc loại lượt người dùng khỏi ledger toàn hệ thống. Kế hoạch chạy nghiệm thu tối đa30 HTTP attempts mới của Codex, rồi báo số thực tế.
+
+Quyền Agent, Assistant cloud và parser được bật trong môi trường demo hiện có. Allowance, danh sách file được phép và credits riêng của parser vẫn kiểm tra trước HTTP; bật cờ không chứng minh provider hoạt động. Qwen còn phụ thuộc allowlist bên ngoài; không tạo Argon hoặc tính năng chưa triển khai. Default source cài mới OFF/0, approvals, Decimal, scope, auth và independent verification giữ nguyên. Các đoạn quota/OFF bên dưới là lịch sử tại thời điểm tương ứng; bằng chứng hiện hành ghi ở báo cáo nghiệm thu.
+
 ### Hoàn thiện Assistant và Settings — 02/11/2026
 
 Chủ dự án giao thu gọn composer, gợi ý và transcript; Settings theo tài khoản/quyền riêng tư/giới hạn, thông tin vận hành trong phần mở rộng dành cho chủ không gian. Bảo toàn Assistant-only, manual fallback, typed tools, approvals, Decimal và independent verification. Các mô tả landing Dashboard/sidebar nhiều trang trong §§4/28/31/32/34/41 là baseline lịch sử, áp dụng các bổ sung ở đây cho giao diện hiện hành. Nhiệm vụ này cho phép nghiệm thu, merge/deploy khi gates đạt; **không tăng Gemini lifetime ceiling, không reset ledger, không bật Qwen hoặc tạo LlamaParse job**. Quyền mở rộng allowance trong các nhiệm vụ trước chỉ là lịch sử, không áp dụng để tăng quota ở lượt này.

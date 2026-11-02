@@ -392,9 +392,44 @@ def workspace_settings(db: DB, actor: CurrentActor) -> dict[str, Any]:
     assert workspace is not None
     global_used, workspace_used = gemini_request_counts(db, workspace.id)
     policy = WorkspacePolicy.model_validate(workspace.policy)
+    task_allowances = {}
+    for task, action, ceiling in (
+        ("agent", "AGENT_REQUEST_RESERVED", settings.agent_request_budget),
+        ("planner", "RECONCILIATION_PLANNER_ATTEMPT", settings.planner_request_budget),
+        ("assistant", "ASSISTANT_REQUEST_RESERVED", settings.assistant_request_budget),
+    ):
+        total = (
+            db.scalar(select(func.count()).select_from(AuditRow).where(AuditRow.action == action))
+            or 0
+        )
+        scoped = (
+            db.scalar(
+                select(func.count())
+                .select_from(AuditRow)
+                .where(AuditRow.action == action, AuditRow.workspace_id == workspace.id)
+            )
+            or 0
+        )
+        task_allowances[task] = {
+            "workspace_used": scoped,
+            "configured_ceiling": ceiling,
+            "remaining": max(
+                0,
+                min(
+                    ceiling - total,
+                    settings.external_ai_request_budget - global_used,
+                    policy.external_request_budget - workspace_used,
+                ),
+            )
+            if settings.allow_external_ai
+            and policy.mode == "CLOUD_ALLOWED"
+            and policy.allow_external_ai
+            else 0,
+        }
     return {
         "workspace_id": workspace.id,
         "workspace_name": workspace.name,
+        "ai_task_allowances": task_allowances,
         "policy": workspace.policy,
         "qwen_configured": bool(settings.qwen_base_url and settings.qwen_enabled),
         "qwen_model": settings.qwen_model,

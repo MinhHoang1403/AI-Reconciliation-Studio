@@ -50,6 +50,8 @@ def test_settings_chat_limits_match_enforced_upload_contract(pg, monkeypatch):  
     assert after["agent_max_upload_files"] == 5
     assert after["max_upload_files"] == 10
     assert after["gemini_requests_used"] == before["gemini_requests_used"]
+    assert set(after["ai_task_allowances"]) == {"agent", "planner", "assistant"}
+    assert all(t["remaining"] == 0 for t in after["ai_task_allowances"].values())
     with factory() as db:
         assert not db.scalar(select(func.count()).select_from(JobRow))
 
@@ -62,6 +64,39 @@ def ask_agent(client, context, cid, *, command=None, key="agent", text="Chuẩn 
     )
     assert response.status_code == 202, response.text
     return response.json()
+
+
+def test_settings_task_allowance_exhaustion_is_independent_from_global_budget(pg, monkeypatch):  # noqa: F811
+    """Planner hết lượt không được hiển thị như còn quyền chỉ vì global còn nhiều."""
+    from studio.config import settings
+    from studio.database import WorkspaceRow
+
+    client, factory, _ = pg
+    monkeypatch.setattr(settings, "allow_external_ai", True)
+    monkeypatch.setattr(settings, "external_ai_request_budget", 100)
+    monkeypatch.setattr(settings, "agent_request_budget", 100)
+    monkeypatch.setattr(settings, "planner_request_budget", 2)
+    with factory() as db:
+        row = db.get(WorkspaceRow, "demo")
+        row.policy = dict(
+            row.policy, mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=100
+        )
+        for index in range(2):
+            for action in ("GEMINI_REQUEST_RESERVED", "RECONCILIATION_PLANNER_ATTEMPT"):
+                db.add(
+                    AuditRow(
+                        workspace_id="demo",
+                        actor_id="test-owner",
+                        action=action,
+                        resource_id=f"synthetic-task-budget-{index}",
+                    )
+                )
+        db.commit()
+    dto = client.get("/api/settings").json()
+    assert dto["gemini_requests_remaining"] == 98
+    assert dto["ai_task_allowances"]["planner"]["remaining"] == 0
+    assert dto["ai_task_allowances"]["agent"]["remaining"] == 98
+    assert dto["ai_task_allowances"]["planner"]["workspace_used"] == 2
 
 
 def workflow_for(client, factory, jid):

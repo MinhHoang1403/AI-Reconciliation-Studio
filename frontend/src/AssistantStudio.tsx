@@ -94,6 +94,8 @@ export function AssistantStudio({
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [history, setHistory] = useState<Conversation[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const [moreHistory, setMoreHistory] = useState(false);
   const [moreMessages, setMoreMessages] = useState(false);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -174,8 +176,10 @@ export function AssistantStudio({
   async function loadHistory(append = false) {
     if (!initialContext.project_id) return;
     const request = ++historySequence.current;
+    setHistoryLoading(true);setHistoryError("");
     const before =
       append && history.length ? `&before_id=${history.at(-1)!.id}` : "";
+    try {
     const page = await api<{ items: Conversation[]; has_more: boolean }>(
       `/conversations?project_id=${initialContext.project_id}&limit=20${before}`,
       getOptions(),
@@ -183,6 +187,11 @@ export function AssistantStudio({
     if (!alive.current || request !== historySequence.current) return;
     setHistory((old) => (append ? [...old, ...page.items] : page.items));
     setMoreHistory(page.has_more);
+    } catch(err) {
+      if(alive.current && request===historySequence.current)setHistoryError(errorText(err));
+    } finally {
+      if(alive.current && request===historySequence.current)setHistoryLoading(false);
+    }
   }
   async function loadRuns(append = false) {
     if (!initialContext.project_id) return;
@@ -894,13 +903,17 @@ export function AssistantStudio({
           className="assistant-history"
           aria-label="Lịch sử hội thoại"
         >
+          <p>Lịch sử trong dự án: <strong>{projectName}</strong>. Đổi dự án để xem hội thoại ở nơi khác.</p>
           <label>Tìm trong hội thoại đã tải<input value={historySearch} onChange={e=>setHistorySearch(e.target.value)}/></label>
           <button className="button secondary" disabled={busy||!context.project_id} onClick={()=>{newConversation();setHistoryOpen(false);}}>Hội thoại mới</button>
           <h3>
             Lịch sử hội thoại ({history.length}
             {moreHistory ? "+" : ""})
           </h3>
-          {!history.length && <p>Chưa có hội thoại trong dự án này.</p>}
+          {historyLoading && <Spinner/>}
+          {historyError && <Notice tone="error">Không tải được lịch sử: {historyError}<button className="text-button" onClick={()=>void loadHistory()}>Tải lại lịch sử</button></Notice>}
+          {!historyLoading && !historyError && !history.length && <p>Chưa có hội thoại trong dự án này.</p>}
+          {!historyLoading && !historyError && history.length>0 && !history.some(item=>item.title.toLocaleLowerCase().includes(historySearch.toLocaleLowerCase())) && <p>Không có hội thoại phù hợp trong danh sách đã tải.</p>}
           {history.filter(item=>item.title.toLocaleLowerCase().includes(historySearch.toLocaleLowerCase())).map((item) => (
             <button
               key={item.id}
