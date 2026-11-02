@@ -1301,9 +1301,19 @@ export function App() {
                           request: Date.now(),
                         });
                       if (target === "OPEN_DATA") {
-                        if (context.dataset_id)
-                          setDatasetId(context.dataset_id);
-                        setPage("data");
+                        // Chat uploads update server state independently of the cached project list.
+                        // Resolve the selected source by ID as well, including sources outside its page.
+                        void run(async () => {
+                          await refreshProject();
+                          if (context.dataset_id)
+                            await openPreparation({
+                              kind: "REVIEW_DATA",
+                              dataset_id: context.dataset_id,
+                              table_id: null,
+                              canonical_id: null,
+                            });
+                          else setPage("data");
+                        });
                       } else
                         setPage(
                           target === "OPEN_REPORT"

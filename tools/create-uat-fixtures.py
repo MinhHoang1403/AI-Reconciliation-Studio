@@ -46,17 +46,19 @@ def oracle(
     Null/invalid/date/key thiếu có trạng thái riêng. Lưu đủ row numbers cho membership.
     Chỉ cộng các thành viên cùng đơn vị/tiền tệ; duplicate ngoài cardinality cần review.
     """
-    groups: dict[tuple[str, str], dict[str, list[tuple[int, Decimal, str]]]] = {}
+    groups: dict[tuple[str, str], dict[str, list[tuple[int, Decimal | None, str]]]] = {}
     partitions: dict[str, dict[str, Any]] = {}
     for side, rows in (("left", left), ("right", right)):
         part: dict[str, Any] = dict(input=len(rows), invalid=[], out_of_scope=[], in_scope=[])
         for index, row in enumerate(rows, 2):
             try:
                 when = date.fromisoformat(row["event_date"])
-                if not row["reference"] or not row["scope"] or not row["amount"]:
-                    raise ValueError("null/key")
-                amount = Decimal(row["amount"])
-                if not amount.is_finite():
+                if not row["reference"] or not row["scope"]:
+                    raise ValueError("missing key")
+                # An optional missing amount does not erase a known business linkage.
+                # DATA_CONTRACTS: NULL is distinct from conversion INVALID and zero.
+                amount = Decimal(row["amount"]) if row["amount"] else None
+                if amount is not None and not amount.is_finite():
                     raise ValueError("nonfinite")
             except (ValueError, InvalidOperation):
                 part["invalid"].append(index)
@@ -77,9 +79,23 @@ def oracle(
         )
         currencies = {r[2] for r in a + b}
         state = "AMBIGUOUS" if duplicate else "UNMATCHED" if not a or not b else "LINKED"
-        total_a = sum((r[1] for r in a), Decimal(0)) if a else None
-        total_b = sum((r[1] for r in b), Decimal(0)) if b else None
-        delta = total_a - total_b if state == "LINKED" and len(currencies) == 1 else None
+        totals = []
+        for source in (a, b):
+            values = [r[1] for r in source]
+            totals.append(
+                sum((v for v in values if v is not None), Decimal(0))
+                if values and all(v is not None for v in values)
+                else None
+            )
+        total_a, total_b = totals
+        delta = (
+            total_a - total_b
+            if state == "LINKED"
+            and len(currencies) == 1
+            and total_a is not None
+            and total_b is not None
+            else None
+        )
         comparison = (
             "NOT_EVALUATED"
             if state != "LINKED"

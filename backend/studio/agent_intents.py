@@ -16,7 +16,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-15"
+INTENT_REVISION = "agent-intent-16"
 
 
 def validate_intents(
@@ -390,6 +390,14 @@ def compile_routing(
                 raise DomainError("AI_INVALID_INTENT", "Intent không sử dụng kế hoạch đối soát.")
             left, right = selection.left_canonical_id, selection.right_canonical_id
             if left == right or left not in canonicals or right not in canonicals:
+                if diagnostics is not None:
+                    diagnostics["routing_error"] = dict(
+                        stage="reconciliation_sources",
+                        same_source=left == right,
+                        left_known=left in canonicals,
+                        right_known=right in canonicals,
+                        canonical_count=len(canonicals),
+                    )
                 raise DomainError(
                     "AI_INVALID_SOURCE", "Chọn hai nguồn chuẩn hóa khác nhau trong context."
                 )
@@ -471,6 +479,12 @@ def interpret_requests(
         schema["$defs"]["RoutingQuery"]["properties"]["source_ref"]["enum"] = [
             s["ref"] for s in sources
         ]
+    canonical_ids = [s["source_id"] for s in sources if s["source_kind"] == "CANONICAL"]
+    if canonical_ids:
+        for side in ("left", "right"):
+            schema["$defs"]["ReconciliationSelection"]["properties"][f"{side}_canonical_id"][
+                "enum"
+            ] = canonical_ids
 
     # Các tổ hợp enum × bounded arrays làm grammar provider phình; giới hạn
     # vẫn bắt buộc trong RoutingBatch/RoutingQuery và native DataQuery.
@@ -595,6 +609,9 @@ def interpret_requests(
                 "Nguồn thiếu bằng chứng trả tiền phải CLARIFY, không suy COMPLETED=PAID. "
                 "Chọn dataset_ids cho explore/normalize. Chọn source_ref đúng tên/loại từ "
                 "sources cho query; "
+                "Đối soát chọn left_canonical_id/right_canonical_id bằng source_id của hai "
+                "mục source_kind=CANONICAL trong sources, không dùng ref, dataset_id hoặc "
+                "source_id của RAW_PREVIEW. Hai nguồn phải khác nhau. "
                 "Khi tệp đã có bản CANONICAL, lọc/thống kê/vẽ theo schema đã duyệt dùng "
                 "ref canonical, không raw_preview. Raw chỉ khi yêu cầu xem dữ liệu gốc "
                 "hoặc chưa có bản chuẩn hóa, và chỉ dùng raw field IDs. "
