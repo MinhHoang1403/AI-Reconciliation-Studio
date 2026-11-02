@@ -17,7 +17,9 @@ function proposedPlan(review: Review, catalogue: Catalogue[]): Plan | null {
     const slot = (side: "left" | "right"): Slot => ({ ...{ canonical_id: request[side].canonical_id,
             role: side === "left" ? s.left_role : s.right_role, date_field: "", time_basis: "", currency_field: null,
             filters: {}, coverage_start: "", coverage_end: "", completeness: "", snapshot_at: "", settlement_due_at: null },
-        ...request[side] });
+        // Missing optional facts can be explicit null; keep editable defaults.
+        // Explicit false, zero and filters remain part of the reviewed proposal.
+        ...Object.fromEntries(Object.entries(request[side]).filter(([, value]) => value !== null && value !== undefined)) });
     return { name: "Đối soát hai nguồn", entity_kind: left.schema_definition.entity_kind,
         left: slot("left"), right: slot("right"), join_keys: s.join_keys, comparison_metrics: s.comparison_metrics,
         attributes: [], comparison_grain: s.comparison_grain, cardinality: s.cardinality, aggregation: s.aggregation,

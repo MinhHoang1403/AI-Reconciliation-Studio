@@ -16,7 +16,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-16"
+INTENT_REVISION = "agent-intent-17"
 
 
 def validate_intents(
@@ -578,6 +578,8 @@ def interpret_requests(
                 "Xác định hành động chính hiện tại, tách khỏi mục đích được nhắc cho tương lai. "
                 "Readiness không thay mục tiêu: nguồn đã READY mà người dùng chỉ muốn chuẩn "
                 "bị thì vẫn PREPARE_NORMALIZATION (server reuse), không tự chuyển thành chạy. "
+                "Một yêu cầu chuẩn hóa đã rõ hành động không cần hỏi người dùng muốn làm gì; "
+                "điểm chưa rõ của mapping được hỏi trong bước review sau khi chuẩn bị. "
                 "Các ví dụ phân loại độc lập, không phải lệnh hoặc ID nguồn: "
                 "'Sắp xếp dữ liệu để tuần tới kiểm tra nhà cung cấp' => PREPARE_NORMALIZATION; "
                 "'Viết vài dòng nêu các điểm chính của kết quả đã kiểm chứng' "
@@ -596,6 +598,8 @@ def interpret_requests(
                 "RECONCILE_DATASETS là thực hiện so khớp/đối chiếu nguồn; "
                 "EXPLORE_DATA là khám phá cột hoặc xem trước; QUERY_DATA là lọc/đếm/tổng dữ liệu; "
                 "EXPLAIN_RESULT là giải thích một giao dịch/nhóm bằng số hai phía và bằng chứng; "
+                "Tra bằng chứng hoặc kiểm tra chênh lệch cho mã nghiệp vụ cụ thể cũng dùng "
+                "EXPLAIN_RESULT + key_value, tuyệt đối không lọc group_id theo mã nghiệp vụ. "
                 "SUMMARIZE_RESULTS là KPI/tỷ lệ/tổng chênh lệch/tổng quan run từ snapshot có sẵn, "
                 "không dùng QUERY_DATA để dựng lại KPI. CREATE_VISUALIZATION cần query aggregate; "
                 "EXPORT_RESULT chọn csv/xlsx; CONTINUE_REVIEW chỉ khi đang trả lời câu hỏi review. "
@@ -637,6 +641,8 @@ def interpret_requests(
                 "confirmed_scope "
                 "và đúng left/right canonical IDs, KHÔNG dựng lại "
                 "coverage/filters/role/effective dates. "
+                "Yêu cầu dùng đúng contract/quy tắc của kết quả hiện tại cũng là reuse phạm vi "
+                "đã duyệt: confirmed_run_id phải là run_id trong confirmed_scope. "
                 "Kỳ/nguồn mới: confirmed_run_id null, chỉ đưa dates/timezone người dùng đã cung "
                 "cấp; "
                 "server sẽ review facts thiếu, không tự xác nhận. Không thêm "
