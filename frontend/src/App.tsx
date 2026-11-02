@@ -1475,6 +1475,7 @@ export function App() {
                               <select
                                 value={tableId}
                                 onChange={(e) => {
+                                  if (e.target.value === tableId) return;
                                   setProfile(null);
                                   setMappings([]);
                                   setCanonicals([]);

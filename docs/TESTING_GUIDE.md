@@ -2,6 +2,16 @@
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
+## Nghiệm thu demo và khôi phục môi trường — 02/11/2026
+
+Sau khi mất interpreter trong AppData, khôi phục đúng Python3.12.14 và rebind `.venv` hiện có bằng `uv venv .venv --allow-existing --python <interpreter-đã-kiểm-tra>`, rồi `uv sync --locked`/`uv pip check`. Không dùng `--clear`, không xóa lockfiles/venv data hoặc tạo Compose thứ hai. Máy hiện tại còn Python3.11.9 cho alias cũ; không thay project `requires-python`3.12. Node/npm và `npm --prefix frontend ls --depth=0`, Chromium Playwright được kiểm riêng. AppData có thể chứa môi trường của phần mềm khác không có manifest; không tự đoán package của chúng.
+
+`tools/create-uat-fixtures.py` sinh11scenarios/24files/2131transaction rows cùng manifest/oracle Decimal vào runtime/demo-acceptance/data. Oracle không import Matcher/Verifier/LLM. `frontend/e2e/user-acceptance.spec.ts` upload qua Chat, phân loại TEST, review mapping/contract qua UI, kiểm rawSHA/từnggroup/membership/partition/Decimal, CSV/XLSX snapshot và reload; nhãn LOCAL manual fallback, không gọi là NLlive. Hai fixtures hỏng/quá20MiB kiểm reject; formula warnings phải được review. `history-readiness.spec.ts` phân biệt MOCK UI ở năm widths và context sau failedturn; `agent-plan-review.spec.ts` bảo vệ optionalnull/false/filter defaults trước submit.
+
+Người dùng đã yêu cầu để công cụ runtime bật. Regression không được dựa vào deployment cloudOFF: các test default config phải cô lập env, unsafe legacy request phải reserve0call khi cloudON, kiểm UI dùng MOCK chỉ tại test. Quota ledger không reset. Lượt người dùng/Codex được phân loại bằng project/job/trace, không suy từ globaldelta trong lúc người dùng có thể tự thử.
+
+BenchmarkNL chỉ đo router/typed dispatch, không giả lập workflow thành công. Tùy chọn `--evaluate-completed-cases` chỉ chấm typed candidates có receiptHTTP200/STOP, cùng productionvalidator, giữ failure trong mẫu số và giữ job/batch gốcBLOCKED; unknown delivery không được resend. Full gold80/variants24 giữ nguyên rubric; CACHED revalidation và requestLIVE được báo riêng. Các kết quả nguồn/slot/NLP không là tỷ lệ đúng mọi dữ liệu. Kết quả mới nhất và knownlimits ở [mục V](IMPLEMENTATION_STATUS.md#v-nghiệm-thu-demo-đang-thực-hiện--02112026); các hướng dẫn quota/OFF theo mốc bên dưới là lịch sử.
+
 ## Kiểm tra Assistant và Settings — 02/11/2026
 
 Phạm vi mới: composer gọn/tự giãn, icon gửi có accessible name, không outline xanh quanh composer khi click, focus bàn phím, Settings theo người dùng và giới hạn chat từ API. `assistant-experience.spec.ts` bổ sung năm widths 390/768/1366/1440/1920, các trạng thái quyền/cấu hình/hạn mức AI mô phỏng, IME, upload mất phản hồi rồi refresh và biểu đồ tên nhóm dài. Các test mới giữ nguyên số tiền/oracle; không bật provider để kiểm giao diện.

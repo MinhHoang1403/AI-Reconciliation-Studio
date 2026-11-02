@@ -46,6 +46,8 @@ for(const scenario of manifest.datasets){
       await page.getByRole('combobox',{name:'Bảng / sheet',exact:true}).selectOption(table.id);
       await page.getByRole('tab',{name:'AI Smart Setup',exact:true}).click();
       await page.getByLabel('Loại dữ liệu',{exact:true}).fill('reported_transaction');
+      await page.getByRole('combobox',{name:'Bảng / sheet',exact:true}).selectOption(table.id);
+      await expect(page.getByLabel('Loại dữ liệu',{exact:true})).toHaveValue('reported_transaction');
       const detail=scenario.cardinality==='ONE_TO_MANY'?i===1:scenario.cardinality==='MANY_TO_ONE'?i===0:false;
       await page.getByLabel('Mỗi dòng đại diện cho điều gì?',{exact:true}).fill(detail?'transaction_part':'transaction');
       for(let n=0;n<f.headers.length;n++){
@@ -128,7 +130,7 @@ for(const scenario of manifest.datasets){
     }
     // Decimal assertions are independent of the application, with no binary float conversion.
     execFileSync(python,['-c',
-      'import json,sys;from decimal import Decimal as D;x=json.load(sys.stdin);s=x["snapshot"]["monetary"][0];o=x["oracle"];assert D(s["signed_variance"])==D(o["signed_variance"]);assert D(s["absolute_variance"])==D(o["absolute_variance"]);g={tuple(v["key"]):v for v in x["groups"] if v["linkage_state"]=="LINKED"};assert all(D(g[tuple(e["key"])]["comparisons"][0]["delta"])==D(e["delta"]) for e in o["groups"] if e["linkage"]=="LINKED" and e["delta"] is not None)'
+      'import json,sys;from decimal import Decimal as D;x=json.load(sys.stdin);s=x["snapshot"]["monetary"][0];o=x["oracle"];assert D(s["signed_variance"])==D(o["signed_variance"]);assert D(s["absolute_variance"])==D(o["absolute_variance"]);g={tuple(v["key"]):v for v in x["groups"] if v["linkage_state"]=="LINKED"};assert all(D(g[tuple(e["key"])]["comparisons"][0][field])==D(e[field]) for e in o["groups"] if e["linkage"]=="LINKED" and e["delta"] is not None for field in ("left_amount","right_amount","delta"))'
     ],{input:JSON.stringify({snapshot,oracle:scenario.oracle,groups}),encoding:'utf8'});
     await openLegacyPage(page,'reports');
     for(const format of ['CSV','XLSX']){

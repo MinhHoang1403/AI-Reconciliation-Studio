@@ -338,8 +338,8 @@ test("T39 missing KPI and untrusted instructions remain bounded", async ({
   page,
 }) => {
   const s = await state();
-  const before = (await (await page.request.get('/api/settings')).json()).gemini_requests_used;
   const dialog = await openAssistant(page, s.project_id);
+  const before = (await (await page.request.get('/api/settings')).json()).gemini_requests_used;
   await dialog.getByRole("button",{name:"Đổi ngữ cảnh phân tích",exact:true}).click();
   const runSelect=page.getByLabel("Chọn kết quả phân tích",{exact:true});
   await expect(runSelect).toBeEnabled();
