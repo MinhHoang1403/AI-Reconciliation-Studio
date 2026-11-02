@@ -10,7 +10,7 @@ function table(wide=false){const fields=["transaction_id","amount","description"
 const chart={type:"chart",title:"Giá trị tổng hợp theo nhóm",unit:"VND",population:3,population_definition:"Toàn bộ dòng khớp điều kiện",completeness:"COMPLETE",points:[{label:"Nhóm A",value:"25.00"},{label:"Nhóm B",value:"12.75"}],source_refs:["visual-artifact"],verification_status:"CANONICAL",period_start:null,period_end:null,timezone:null};
 
 for(const width of [390,768,1366,1440,1920]){
-  test(`[MOCK CONTRACT] Assistant 15 states, focus and layout at ${width}px`,async({page})=>{
+  test(`[MOCK CONTRACT] Assistant 18 states, focus and layout at ${width}px`,async({page})=>{
     test.setTimeout(120000);await page.setViewportSize({width,height:900});
     await mkdir(`../runtime/assistant-layout/${width}`,{recursive:true});
     const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
@@ -45,7 +45,7 @@ for(const width of [390,768,1366,1440,1920]){
       await page.screenshot({path:`../runtime/assistant-layout/${width}/${name}.png`,fullPage:true});
     }
     const input=page.getByLabel("Câu hỏi cho AI Assistant",{exact:true});
-    for(const name of ["empty","short","long","upload","running","review","completed","table","chart","evidence","history","multiline","keyboard","sidebar","error","permission","loading"]){
+    for(const name of ["empty","short","long","upload","running","review","completed","table","chart","evidence","history","multiline","keyboard","sidebar","delete","error","permission","loading"]){
       scenario=name;gate=new Promise<void>(resolve=>release=resolve);
       await page.goto("/");await expect(page.getByText("Hệ thống đã kết nối",{exact:true})).toBeAttached();
       if(name==="loading"){await expect(input).toBeDisabled();await shot(name);release();await expect(input).toBeEnabled();continue;}
@@ -76,6 +76,14 @@ for(const width of [390,768,1366,1440,1920]){
         const toggle=page.getByRole("button",{name:"Kết quả",exact:true});await expect(toggle).toHaveAttribute("aria-expanded","false");await toggle.focus();await page.keyboard.press("Enter");await expect(toggle).toHaveAttribute("aria-expanded","true");await expect(page.getByRole("button",{name:"Báo cáo",exact:true})).toBeVisible();
       }
       if(name==="evidence"){await page.getByRole("button",{name:"Xem dòng gốc",exact:true}).first().click();await expect(page.getByRole("dialog",{name:"Dòng dữ liệu nguồn",exact:true})).toContainText("000701");}
+      if(name==="delete"){
+        await page.locator('.assistant-menu summary').click();
+        await page.getByRole("button",{name:"Xóa hội thoại",exact:true}).click();
+        const confirmation=page.getByRole("dialog",{name:"Xác nhận xóa hội thoại",exact:true});
+        await expect(confirmation).toContainText("nguồn dữ liệu và báo cáo được giữ nguyên");
+        await shot(name);await page.keyboard.press("Escape");
+        await expect(page.getByRole("button",{name:"Xóa hội thoại",exact:true})).toBeFocused();continue;
+      }
       if(name==="completed"){
         await expect(page.getByRole("region",{name:"Công việc của AI Assistant",exact:true}).first()).toContainText("Kết quả cũ giữ nguyên ngữ cảnh riêng.");
         await expect(page.getByRole("button",{name:"Đổi ngữ cảnh phân tích",exact:true})).toHaveAttribute("data-run-id","visual-run");

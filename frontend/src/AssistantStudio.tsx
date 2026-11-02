@@ -112,6 +112,7 @@ export function AssistantStudio({
   },[context.project_id,context.dataset_id]);
   const [historySearch,setHistorySearch]=useState("");
   const historyTrigger=useRef<HTMLElement|null>(null);
+  const deleteTrigger=useRef<HTMLElement|null>(null);
   const composerInput=useRef<HTMLTextAreaElement>(null);
   const transcript=useRef<HTMLDivElement>(null);
   const lastMessageId=messages.at(-1)?.id;
@@ -555,7 +556,7 @@ export function AssistantStudio({
         <div className="assistant-toolbar-actions">
           {context.project_id&&<button className="context-chip" data-run-id={displayContext.run_id||""} data-dataset-id={displayContext.dataset_id||""} aria-label="Đổi ngữ cảnh phân tích" title={displayContext.dataset_id&&sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:undefined} onClick={()=>setContextOpen(true)}>{displayContext.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:displayContext.dataset_id?(sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Nguồn đang xem"):"Dữ liệu dự án"}</button>}
           {context.project_id&&<button className="icon-button" aria-label="Hội thoại mới" title="Hội thoại mới" disabled={busy||loading} onClick={()=>newConversation()}><MessageSquarePlus size={18}/></button>}
-          {conversation&&<details className="assistant-menu"><summary aria-label="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary><button className="text-button" disabled={busy||!!pendingJob} onClick={()=>setConfirmDelete(true)}><Trash2 size={15}/>Xóa hội thoại</button></details>}
+          {conversation&&<details className="assistant-menu"><summary aria-label="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary><button className="text-button" disabled={busy||!!pendingJob} onClick={event=>{deleteTrigger.current=event.currentTarget;setConfirmDelete(true);}}><Trash2 size={15}/>Xóa hội thoại</button></details>}
         <details className="assistant-policy">
           <summary>
             {(mode==="AGENT"?agentEnabled:cloudEnabled)
@@ -772,32 +773,6 @@ export function AssistantStudio({
                 }
               />
             )}
-            {confirmDelete && (
-              <section
-                className="notice warning"
-                aria-label="Xác nhận xóa hội thoại"
-              >
-                <div>
-                  <p>
-                    Xóa nội dung hội thoại này? Runs, rules, nguồn và báo cáo
-                    đối soát được giữ nguyên.
-                  </p>
-                  <button
-                    className="button secondary"
-                    disabled={busy}
-                    onClick={() => void deleteConversation()}
-                  >
-                    Xác nhận xóa hội thoại
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() => setConfirmDelete(false)}
-                  >
-                    Hủy
-                  </button>
-                </div>
-              </section>
-            )}
             {pendingJob && (
               <Notice>
                 Đang xử lý câu hỏi trong queue. Rời trang rồi quay lại vẫn xem
@@ -866,6 +841,10 @@ export function AssistantStudio({
           {!messages.length&&<div className="agent-prompts">{[["Chuẩn hóa dữ liệu","PREPARE_NORMALIZATION"],["Đối soát các file",null],["Tra cứu thông tin",null],["Phân tích kết quả","SUMMARIZE_RESULTS"]].map(([title,action])=><button className="text-button" key={title} onClick={()=>{setText(title!);setCommand(action);composerInput.current?.focus();}}>{title}</button>)}</div>}
         </div>
       </div>
+      <Modal title="Xác nhận xóa hội thoại" open={confirmDelete} onOpenChange={setConfirmDelete} returnFocus={deleteTrigger}>
+        <p>Xóa nội dung hội thoại này? Lượt đối soát, quy tắc, nguồn dữ liệu và báo cáo được giữ nguyên.</p>
+        <div className="modal-actions"><button className="button secondary" disabled={busy} onClick={()=>setConfirmDelete(false)}>Hủy</button><button className="button primary" disabled={busy} onClick={()=>void deleteConversation()}>Xác nhận xóa hội thoại</button></div>
+      </Modal>
       <Modal title="Lịch sử" open={historyOpen} onOpenChange={setHistoryOpen} returnFocus={historyTrigger}>
         <div
           id="assistant-history-panel"
