@@ -755,3 +755,23 @@ def test_routing_query_requires_explicit_population_and_aggregation_slots():
         RoutingQuery(source_ref="source-1")
     required = RoutingQuery.model_json_schema()["required"]
     assert {"source_ref", "filters", "aggregations", "group_by", "currency_field"} <= set(required)
+
+
+def test_chart_explicit_paid_and_unpaid_categories_keeps_the_entire_population():
+    intent = dict(
+        intent="CREATE_VISUALIZATION",
+        query=dict(
+            project_id="p",
+            source_kind="CANONICAL",
+            source_id="canonical",
+            group_by=["payment_status"],
+            aggregations=[dict(op="count")],
+        ),
+    )
+    assert (
+        validate(intent, "Vẽ phân bố cả PAID và UNPAID theo trạng thái thanh toán").query.filters
+        == []
+    )
+    intent["query"]["filters"] = [dict(field_id="payment_status", op="eq", value="PAID")]
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        validate(intent, "Vẽ phân bố cả PAID và UNPAID theo trạng thái thanh toán")

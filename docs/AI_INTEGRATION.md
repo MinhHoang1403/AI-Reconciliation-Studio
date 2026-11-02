@@ -88,7 +88,7 @@ Planner `propose_reconciliation_contract` / `reconciliation-planning-2`: **FAIL 
 
 Durable reservations: Gemini7→9/10 (còn1), Assistant0→1, Planner1→2; không reset/tăng ceiling10, không tự phục hồi lượt thất bại. Cả hai dùng Gateway/authorization/queue/reservation và validators hiện có; worker thường dừng tạm để tránh claim race, tiến trình kiểm thử giới hạn max_attempts=1 và chặn HTTP thứ hai. Worker được bật lại; Assistant OFF/budget0, parser OFF ở env/workspace. Qwen không probe, LlamaParse không gọi mới, Argon không tích hợp. Merge/release mới BLOCKED theo gate nghiệm thu; xem [báo cáo](IMPLEMENTATION_STATUS.md).
 
-## Agent-first — hợp đồng hiện tại 02/11/2026
+## Agent-first — hợp đồng tại mốc S ngày 02/11/2026
 
 Một Gateway và PostgreSQL queue hiện có phục vụ `agent-intent-6`, `agent-normalization-3`, `agent-review-1` và `reconciliation-planning-5`. Source defaults `agent_cloud_enabled=false`, `agent_request_budget=0`; demo từng được cấp Agent 30 rồi 33 **bên trong tổng 50 không đổi**, có audit, không reset history. Settings hiện trả Agent cloud không khả dụng do hết quota. Không gọi Qwen, Argon hoặc parser mới.
 
@@ -127,3 +127,6 @@ Sau canary và các lượt chẩn đoán có dừng khi lỗi, `agent-intent-15
 Gemini LIVE trên code này: **80/80 measured**, intent **79/80 (98,75%)**, nguồn **59/60 (98,33%)**, slots **34/34 (100%)**, inferred dispatch **79/80**, safe/strict abstention **20/20**. Bộ 24 biến thể riêng: intent **24/24**, nguồn **16/16**, slots **10/10**, safe/strict abstention **8/8**. D04 còn hỏi lại khi tên rút gọn, không chọn nguồn sai hoặc tự chạy. Giữ nguyên 80 gold và rubric gốc. Batch router không chứng minh workflow execution/latency từng câu; kiểm tra native workflow và test kỹ thuật được báo riêng ở IMPLEMENTATION_STATUS mục T.
 
 Ceiling demo được chủ dự án cho phép tăng tiếp có audit (không reset 50 requests cũ); default cài mới vẫn cloud OFF/0. Gỡ cap cấu hình cố định 50 của Agent để dùng lifetime ceiling được cấp, tương tự global budget; reservation workspace/global/task và max model/tool calls mỗi workflow vẫn giữ. Chi phí tiền thực phải ghi NOT VERIFIED nếu không có hóa đơn/pricing receipt.
+
+
+Routing 15 giữ nguyên prompt/schema sau khi sửa thêm guard population: biểu đồ trạng thái nêu cả PAID và UNPAID giữ toàn bộ nhóm, không bị ép thành hai predicate đơn trạng thái; vẫn từ chối self-filter. Regression tái hiện FAIL trước sửa và PASS sau sửa. Toàn bộ 104 replies đã đo được revalidate bằng validator hiện hành trên catalogue PostgreSQL thực, **0 HTTP/reservations mới**; AST prompt/schema/catalogue/compiler giống source 5a7eebc, không gọi đây là một lượt model inference mới. Cache benchmark nay luôn chạy lại semantic validator trước reuse, không bỏ qua guard mới.

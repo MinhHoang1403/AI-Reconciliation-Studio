@@ -144,6 +144,17 @@ def validate_intents(
                 w in normalized
                 for w in ("chua thanh toan", "chua chuyen tien", "chua chuyen khoan")
             ) or bool(re.search(r"\bunpaid\b", normalized))
+            # Cả hai nhãn trên biểu đồ trạng thái là các nhóm cần giữ, không
+            # phải hai bộ lọc đơn trạng thái mâu thuẫn. Vẫn chặn self-filter bên dưới.
+            if (
+                paid
+                and unpaid
+                and source
+                and intent.intent == "CREATE_VISUALIZATION"
+                and q.group_by
+                and set(q.group_by) <= set(source.paid_status_fields)
+            ):
+                paid = unpaid = False
             if (
                 intent.intent == "CREATE_VISUALIZATION"
                 and "trang thai" in normalized

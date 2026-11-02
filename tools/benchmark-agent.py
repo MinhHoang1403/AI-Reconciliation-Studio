@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from sqlalchemy import select
 from studio.access import Actor
-from studio.agent_intents import INTENT_REVISION, interpret_requests
+from studio.agent_intents import INTENT_REVISION, interpret_requests, validate_intents
 from studio.agent_jobs import model_call
 from studio.agent_workflows import digest
 from studio.assistant_api import own_conversation
@@ -270,7 +270,12 @@ def main() -> None:
                     )
                     job_id = job.id
                 if job.status == "SUCCEEDED":
-                    parsed = [AgentIntent.model_validate(v) for v in job.result["intents"]]
+                    # Cache không được bỏ qua semantic validator hiện hành.
+                    parsed = validate_intents(
+                        json.dumps(dict(intents=job.result["intents"])),
+                        [g["goal"] for g in subset],
+                        catalogue,
+                    )
                     reused = True
                 else:
                     if job.status != "QUEUED":
