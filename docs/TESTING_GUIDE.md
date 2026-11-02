@@ -10,7 +10,7 @@ Sau khi mất interpreter trong AppData, khôi phục đúng Python3.12.14 và r
 
 Người dùng đã yêu cầu để công cụ runtime bật. Regression không được dựa vào deployment cloudOFF: các test default config phải cô lập env, unsafe legacy request phải reserve0call khi cloudON, kiểm UI dùng MOCK chỉ tại test. Quota ledger không reset. Lượt người dùng/Codex được phân loại bằng project/job/trace, không suy từ globaldelta trong lúc người dùng có thể tự thử.
 
-BenchmarkNL chỉ đo router/typed dispatch, không giả lập workflow thành công. Tùy chọn `--evaluate-completed-cases` chỉ chấm typed candidates có receiptHTTP200/STOP, cùng productionvalidator, giữ failure trong mẫu số và giữ job/batch gốcBLOCKED; unknown delivery không được resend. Full gold80/variants24 giữ nguyên rubric; CACHED revalidation và requestLIVE được báo riêng. Các kết quả nguồn/slot/NLP không là tỷ lệ đúng mọi dữ liệu. Kết quả mới nhất và knownlimits ở [mục V](IMPLEMENTATION_STATUS.md#v-nghiệm-thu-demo-đang-thực-hiện--02112026); các hướng dẫn quota/OFF theo mốc bên dưới là lịch sử.
+BenchmarkNL chỉ đo router/typed dispatch, không giả lập workflow thành công. Tùy chọn `--evaluate-completed-cases` chỉ chấm typed candidates có receiptHTTP200/STOP, cùng productionvalidator, giữ failure trong mẫu số và giữ job/batch gốcBLOCKED; unknown delivery không được resend. Full gold80/variants24 giữ nguyên rubric; CACHED revalidation và requestLIVE được báo riêng. Các kết quả nguồn/slot/NLP không là tỷ lệ đúng mọi dữ liệu. Kết quả mới nhất và knownlimits ở [mục V](IMPLEMENTATION_STATUS.md#v-nghiệm-thu-demo-và-khôi-phục-môi-trường--02112026); các hướng dẫn quota/OFF theo mốc bên dưới là lịch sử.
 
 ## Kiểm tra Assistant và Settings — 02/11/2026
 

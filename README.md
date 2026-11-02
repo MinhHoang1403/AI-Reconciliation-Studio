@@ -4,7 +4,7 @@ Không gian đối soát CSV/XLSX bằng hội thoại: tải tệp, chuẩn hó
 
 Composer gọn, tự giãn khi nhập nhiều dòng; Enter gửi, Shift+Enter xuống dòng. Cài đặt trình bày tài khoản, quyền riêng tư và giới hạn từ API; chủ không gian mở thông tin nâng cao khi cần. Trạng thái được cấp quyền AI và đã cấu hình không chứng minh model đang kết nối.
 
-**Nghiệm thu demo 02/11/2026:** đã khôi phục Python/Playwright sau khi mất runtime AppData; bổ sung History loading/error/retry, tạo dự án trong picker, task allowance và sửa manual fallback, form Planner sparse/null, context sau failure/reload. Bộ UAT mới có11tìnhhuống/24tệp/2131dòng tổng hợp và oracle Decimal độc lập. Kết quả/rủi ro hiện hành ở [báo cáo mục V](docs/IMPLEMENTATION_STATUS.md#v-nghiệm-thu-demo-đang-thực-hiện--02112026); mốc260backend/90browser tại mụcU là lịch sử trước nhiệm vụ này.
+**Nghiệm thu demo 02/11/2026 — READY_FOR_LOCAL_USE_WITH_LIMITATIONS:** **265 Backend/PostgreSQL, 109 Playwright và 19 smoke sau deploy main PASS**. Đã khôi phục Python/Playwright sau khi mất runtime AppData; bổ sung History loading/error/retry, tạo dự án trong picker, task allowance và sửa manual fallback, form Planner sparse/null, context sau failure/reload. Bộ UAT mới có11tìnhhuống/24tệp/2131dòng tổng hợp và oracle Decimal độc lập. Kết quả/rủi ro hiện hành ở [báo cáo mục V](docs/IMPLEMENTATION_STATUS.md#v-nghiệm-thu-demo-và-khôi-phục-môi-trường--02112026); mốc260backend/90browser tại mụcU là lịch sử trước nhiệm vụ này.
 
 ## Mở ứng dụng trong workspace hiện tại
 
@@ -151,6 +151,8 @@ uv run python tools/check_repository.py
 Gemini E2E live chỉ khi explicit đặt `STUDIO_EXPECT_AI_PROVIDER=GEMINI`; có tiêu quota hiện hữu. LlamaParse không phải regression tự động: hai tài liệu thử đã lưu tại runtime và `tools/check-document-acceptance.py` đọc lại/reuse đúng refs. Không mở allowance hoặc tạo tài liệu/job khác chỉ để chạy lại tests.
 
 PostgreSQL tests chạy trong schema UUID `test_*` của server hiện tại rồi dọn đúng schema tổng hợp đó; không dùng bảng dữ liệu ứng dụng hoặc Compose test project. Chi tiết, catalogue T01–T16, benchmark và trạng thái live/mock nằm trong [hướng dẫn kiểm thử](docs/TESTING_GUIDE.md).
+
+Mở terminal mới trong workspace sẽ tự bật `.venv` bằng cấu hình VS Code. Máy hiện tại còn có profile PowerShell 7/Windows PowerShell tự kích hoạt khi vào repository hoặc thư mục con và tự tắt khi rời ra ngoài; profile cá nhân này không nằm trong Git. Trong dự án, `python -c "import sys; print(sys.executable)"` phải trỏ tới `.venv/Scripts/python.exe`, Python 3.12.14. Terminal cũ cần đóng/mở lại để nạp profile mới. GitHub CLI đã kiểm tra đăng nhập và quyền repository; Docker Desktop/WSL2 chạy đủ bốn services. Không cần cài lại các thành phần đang khỏe.
 
 Dependencies khóa bằng `uv.lock`, `requirements.txt` sinh từ lock và `frontend/package-lock.json`. Python 3.12.14; React 19.3.1, Vite 8.3.5, TypeScript 6.0.3, TanStack Table 8.21.3, Tailwind 4.3.3, Radix Dialog 1.3.1. TanStack dùng API stable nhánh 8 đã kiểm tra tương thích với React được chọn. Docker images pin tags trong Dockerfiles/Compose; backend và worker dùng cùng image.
 

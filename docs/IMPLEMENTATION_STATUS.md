@@ -1378,7 +1378,7 @@ Backup sau release: `backup_3ecc88c9105e45eb8cf2383fdabe6338`,24bảng, metadata
 
 Kết luận **READY_FOR_LOCAL_USE** trong MVP đã phê duyệt; không P0/P1 còn tái hiện trong phạm vi suites/journeys đã chạy, còn P2 D04 và các NOT VERIFIED nêu trên. Commit ghi báo cáo sau deploy chỉ thay tài liệu; runtime giữ labels `d392c4a`, application diff được kiểm rỗng. Git status/remote SHA cuối ở receipt `runtime/ui-refinement/git-release-proof.json`; không gọi một doc-only commit là binary release khác.
 
-## V. Nghiệm thu demo đang thực hiện — 02/11/2026
+## V. Nghiệm thu demo và khôi phục môi trường — 02/11/2026
 
 Baseline main `c3ca758`, runtime release `d392c4a`, working tree sạch trước nhiệm vụ. Branch `codex/demo-acceptance`, cùng repository và Compose. Chủ dự án yêu cầu tiếp tục kiểm thử, tăng allowance và giữ các công cụ đã triển khai bật. Global/demo workspace ceiling120→200, Agent103→163, Planner10→30, Assistant→20; không reset audit. Trước thay đổi: Gemini113, Agent96, Planner10, Assistant1; ba lượt Gemini phát sinh sau bàn giao U là lượt riêng của người dùng, không là phép thử của Codex. Receipt có CLOUD_BUDGET_AUTHORIZED; flags Agent/Assistant/parser bật, parser còn gate file/allowance riêng. Không đổi key/model hoặc default source OFF/0.
 
@@ -1429,3 +1429,32 @@ Tạo CurrentUserAllHosts profile cho PowerShell7 và WindowsPowerShell tại Do
 DockerDesktop4.89.0/LinuxEngine29.7.2/Compose5.5.0, contextdesktop-linux/WSL2:4serviceshealthy,loopback127.0.0.1:18180,2namedvolumesđúngproject; khôngserviceDB/backendhostport, OOM=false/restarts0ởlầnđo. SampleRAM trong regression:backend322MiB,worker119,3MiB,postgres175,1MiB,frontend16,46MiB; đây là maxima của96samples, không continuouspeak hoặc dedicatedloadbenchmark. Không tác động UbuntuWSLdistro hoặc dựánkhác.
 
 Backup trước main: `backup_06bf8019bbfe4a1aaab98fbcb62bbe92`,24tables,metadataSHA256 `58e5080da9841a3fbadf4cf0ab9706e64b31f2f5bb99bfa223bceb495a4a8550`; backup10,931s/restore11,039sPASS,publicunchanged,corruption/traversalrejected. Hostcopy metadata+1652publishedfilesSHA PASS; cùng máy, chưa thay off-hostdisasterrecovery. Cácgatesrestart/recreate/main được ghi tiếp sau thực thi, không suy từ backup.
+
+### Bàn giao main — READY_FOR_LOCAL_USE_WITH_LIMITATIONS
+
+Đã fast-forward và push `origin/main` từ `c3ca75887ab9bf782f48ea915605b6506d90c0ec` tới **`34c0ff16b59924fc60fe7f35684a1170f0f8e4fd`**. Build/deploy đúng SHA main này trong Compose hiện có; application diff từ source đã full regression rỗng. Migrations không đổi, schema vẫn `create_agent_workflows`.
+
+| Kiểm chứng cuối | Kết quả |
+|---|---|
+| Backend / PostgreSQL | 265 PASS, 0 FAIL/SKIP, 78,55 giây |
+| Browser full suite | 109 PASS, 0 FAIL/SKIP/flaky, 581,489 giây |
+| Smoke sau main | 19 PASS, 0 FAIL/SKIP/flaky, 72,618 giây; không cộng replay vào 109 |
+| PowerShell mới | 10/10 ca PASS trên hai phiên bản; đúng venv/interpreter trong dự án |
+| Restart / recreate / frontend recreate | 3/3 full metadata và artifact checksum PASS; 3/3 session403 trước verify-local |
+| Source runtime | 48 tracked Backend hashes trên API và worker; sáu HTTP assets; OCI revision/source PASS |
+| Dữ liệu trước nhiệm vụ | Tất cả ID, metadata và SHA gốc giữ nguyên; chỉ workspace policy có thay đổi được phép |
+| Sau main | Chart, phân trang PAID, dòng gốc, bằng chứng chênh lệch, export oracle, PDF/DOCX cached và reload đúng run PASS; 0 model submissions |
+
+Backend/worker image `sha256:e2b5cabd53cec8ca519c51b3d07abeb6e5ec1973db71f860a28664b5a04edfac`; frontend image `sha256:b1a4d9e2151c3c68dd98edfa31c8913709d7480bc6f7f1dd6948124fc1bfb349`. Giữ tags `accepted-main-34c0ff1` và các pairs d392c4a/f1ad9f1/5f358c4 để rollback. Một Compose, bốn services healthy, hai named volumes không đổi. Audit không thấy dangling application image mang source label của repository: 0 image tự xóa, không prune/cache/volumes hoặc can thiệp dự án khác; giữ tám application images phân biệt. C: còn khoảng133,1GiB tại audit, không suy thành dung lượng đã giải phóng. Không tuyên bố đã chạy rollback mới trong nhiệm vụ này; đường rollback cũ có bằng chứng tại U và images được giữ.
+
+Backup sau main: `backup_84ebe7f606ac47e8be896010de8c333b`, 24 bảng; metadata SHA256 `faaff586bae3f24366a8dd0d70288dc3d37be3dc9c53086c1fc7e8e5b9add722`; backup8,251s / restore9,034s PASS, không overwrite public. Bản sao trên host được giữ cùng bản trước main; kiểm metadata và mọi file theo manifest. Đây vẫn là bản sao cùng máy, chưa phải phục hồi thảm họa ngoài máy.
+
+Kết quả AI phải đọc tách biệt: 18 mục tiêu NL mới tạo 21 Gemini attempts, gồm 10 mục tiêu hoàn thành sau review khi cần, hai clarification, một safe refusal và năm mục tiêu bị chặn. Không lấy số COMPLETED làm accuracy mọi câu. Riêng mục refusal có stateBLOCKED nhưng intentUNSUPPORTED và0toolsteps là từ chối đúng. Gold hiện hành80câu dùng8HTTPbatches mới trong nhiệm vụ, variants24câu dùng4batches; khi đọc lại typed responses trong cùng nhiệm vụ phải ghi CACHED validation. Benchmark cũ prompt16 có7batches được giữ; một legacy regression có1attempt. Tổng **41 attempts** có đủ job/trace attribution; không reset hoặc loại failure. Việc gắn nhầm finalreceipt của reconciliation vào phase ban đầu trong script kiểm thử đã được sửa theo exact workflowID và giữ nguyên file receipt trước chỉnh; failure ban đầu vẫn hiện diện. Không có workflow bị gửi lại vì mất receipt.
+
+Giới hạn được giữ rõ: hai câu chung thiếu đối ứng/lệch tiền còn có thể thiếu metric và bị chặn; câu nêu rõ `reported_transaction_amount` đã chạy đúng15/19. Follow-up chung có thể hỏi lại. Gold intent78/80, nguồn57/60, slots31/34; variants24/24,16/16,10/10;28/28negative cases an toàn theo rubric, không chứng minh miễn nhiễm tấn công. D04 mới PASS cả gold và workflow reuse, không xóa FAIL lịch sử. Tìm kiếm Ngoại lệ hiện lọc loại/ghi chú, chưa tìm businesskey; chọn dòng hoặc đi từ kết quả Chat/evidence để xem giao dịch cụ thể. Parser flagsON nhưng allowance2/2 và SHA allowlist đã dùng hết, tài liệu mới chưa được cấp xử lý; không báo PDF/DOCX mới PASS LIVE. Qwen hai probe mapping synthetic mới PASS, không bảo đảm mọi tác vụ hoặc tự đổi provider mặc định. Billed cost, tải production, thiết bị vật lý/screen-reader và mọi dữ liệu/cấu hình phần mềm khác đã xóa trong AppData chưa có backup để phục hồi đều ngoài bằng chứng hiện có.
+
+Các công cụ đã triển khai vẫn bật: external AI, Agent, Assistant, parser và Qwen. Global154/200 còn46; Agent135/163, Planner11/30, Assistant2/20 tại audit cuối. Mỗi lần mở Settings đọc lại ledger thực; lượt người dùng sau audit sẽ làm số còn lại thay đổi. Không có workflow GitHub Actions trong repository (API trả0), nên các gates ở đây là kiểm tra local, không gọi là CI PASS.
+
+Mở [ứng dụng local](http://127.0.0.1:18180), bật dự án kiểm thử và tìm **DEMO UAT 1000 giao dịch** để xem hội thoại/run đã chuẩn bị. Kịch bản/câu hỏi và đáp án tại README, fixtures và manifest độc lập tại runtime/demo-acceptance/data. Để tự thử từ đầu, tạo project khác và dùng chính các files tổng hợp. Đóng/mở terminal để nạp profile mới; `python` trong dự án phải trỏ `.venv/Scripts/python.exe`. Hạn mức ứng dụng đã mở theo chỉ dẫn, nhưng không thay quota/billing riêng của Google hoặc allowance LlamaParse.
+
+Receipts chi tiết, screenshots, traces, logs ba lượt full browser (kể cả thất bại), backups và proofs môi trường nằm tại `runtime/demo-acceptance/`, ngoài Git. Commit bàn giao sau phần này chỉ sửa tài liệu; runtime giữ revision34c0ff1 với application diff được kiểm rỗng.
