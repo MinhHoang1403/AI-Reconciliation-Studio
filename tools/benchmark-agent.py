@@ -86,7 +86,8 @@ def score_completed_candidates(candidates, cases, catalogue, ids):
                     source_applicable=case.get("source") is not None,
                     source_ok=False,
                     semantic_applicable=any(
-                        case.get(k) for k in ("key", "aggregate", "filter", "group", "scope")
+                        case.get(k)
+                        for k in ("key", "aggregate", "filter", "group", "scope", "format")
                     ),
                     semantic_ok=False,
                     tool_ok=False,
@@ -138,8 +139,15 @@ def score(gold: dict, intent: AgentIntent, ids: dict, confirmed_plan=None) -> di
     if gold.get("filter"):
         q = intent.query
         target = (
-            ids[{"paid": "paid_field", "id": "id_field", "amount": "amount_field"}[gold["filter"]]]
-            if gold["filter"] in {"paid", "id", "amount"}
+            ids[
+                {
+                    "paid": "paid_field",
+                    "unpaid": "paid_field",
+                    "id": "id_field",
+                    "amount": "amount_field",
+                }[gold["filter"]]
+            ]
+            if gold["filter"] in {"paid", "unpaid", "id", "amount"}
             else ("linkage_state" if gold["filter"] == "missing" else "state")
         )
         semantic_ok = bool(
@@ -161,6 +169,8 @@ def score(gold: dict, intent: AgentIntent, ids: dict, confirmed_plan=None) -> di
                         )
                     )
                     if gold["filter"] == "paid"
+                    else f.op == "eq" and f.value == "UNPAID"
+                    if gold["filter"] == "unpaid"
                     else f.op == "eq" and f.value == "000702"
                     if gold["filter"] == "id"
                     else f.op in {"eq", "in"}
@@ -195,6 +205,8 @@ def score(gold: dict, intent: AgentIntent, ids: dict, confirmed_plan=None) -> di
             == PlanningRequest.from_plan(confirmed_plan).model_dump(exclude={"intent"})
         )
     intent_ok = intent.intent == gold["intent"]
+    if gold.get("format"):
+        semantic_ok = semantic_ok and intent.export_format == gold["format"]
     dispatch = {
         "PREPARE_NORMALIZATION": "normalization_workflow",
         "EXPLORE_DATA": "query_dataset",
@@ -214,7 +226,7 @@ def score(gold: dict, intent: AgentIntent, ids: dict, confirmed_plan=None) -> di
         source_applicable=expected is not None,
         semantic_ok=semantic_ok,
         semantic_applicable=any(
-            gold.get(k) for k in ("key", "aggregate", "filter", "group", "scope")
+            gold.get(k) for k in ("key", "aggregate", "filter", "group", "scope", "format")
         ),
         tool_ok=dispatch.get(intent.intent) == dispatch.get(gold["intent"]),
         abstention_ok=intent.intent in {"CLARIFY", "UNSUPPORTED"} if gold.get("negative") else None,

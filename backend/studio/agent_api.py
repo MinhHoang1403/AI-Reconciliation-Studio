@@ -29,13 +29,15 @@ from studio.contracts.agent import (
     IntentBatch,
     MappingReviewDecision,
     PlanReviewDecision,
+    QuerySelection,
     ReviewDecision,
     ReviewReply,
+    TableBlock,
     WorkflowState,
     WorkflowView,
 )
 from studio.contracts.assistant import AssistantContext
-from studio.contracts.data_query import SourceRowRequest, SourceRowResult
+from studio.contracts.data_query import DataQuery, QueryResult, SourceRowRequest, SourceRowResult
 from studio.contracts.reconciliation import PlanProposal
 from studio.database import (
     AuditRow,
@@ -139,20 +141,25 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         review.result_id = contract.id
     elif isinstance(body.decision, ClarificationDecision):
         context = AssistantContext.model_validate(row.context)
-        catalogue = agent_catalogue(db, actor, context, state.dataset_ids)
-        validate_intents(
+        catalogue = agent_catalogue(db, actor, context, state.dataset_ids, workflow_id=row.id)
+        if review.options and not any(
+            option.intent == body.decision.intent for option in review.options
+        ):
+            raise DomainError("STALE_CONTEXT", "Lựa chọn không thuộc câu hỏi đang chờ.", 409)
+        validated = validate_intents(
             IntentBatch(intents=[body.decision.intent]).model_dump_json(),
             [row.goal],
             catalogue,
-            user_confirmed=True,
         )
-        state.intent = body.decision.intent
+        state.intent = validated[0]
     review.state, review.decision_sha256 = "DECIDED", decision_hash
     db.add(
         AuditRow(
             workspace_id=actor.workspace_id,
             actor_id=actor.id,
-            action="AGENT_REVIEW_DECIDED",
+            action="AGENT_CLARIFICATION_ANSWERED"
+            if review.kind == "CLARIFICATION"
+            else "AGENT_REVIEW_DECIDED",
             resource_id=review.id,
         )
     )
@@ -272,6 +279,31 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     @router.get("/workflows/{workflow_id}", response_model=WorkflowView)
     def workflow(workflow_id: str, db: DB, actor: User) -> WorkflowView:
         return view(own_workflow(db, actor, workflow_id))
+
+    @router.post("/workflows/{workflow_id}/query-pages", response_model=QueryResult)
+    def query_page(workflow_id: str, body: DataQuery, db: DB, actor: User) -> QueryResult:
+        """Remember displayed page for follow-up; original result and run stay unchanged."""
+        from studio.data_query import execute_query
+
+        row = own_workflow(db, actor, workflow_id, lock=True)
+        state = WorkflowState.model_validate(row.detail)
+        core = body.model_dump(exclude={"offset", "sort"})
+        if not any(
+            isinstance(block, TableBlock)
+            and block.result.query.model_dump(exclude={"offset", "sort"}) == core
+            for block in state.blocks
+        ):
+            raise DomainError(
+                "STALE_CONTEXT", "Trang dữ liệu không thuộc kết quả hội thoại này.", 409
+            )
+        result = execute_query(db, actor, body)
+        state.query_selection = QuerySelection(
+            query=result.query,
+            group_ids=[str(r["group_id"]) for r in result.rows if r.get("group_id")],
+        )
+        save(row, state)
+        db.commit()
+        return result
 
     @router.post("/workflows/{workflow_id}/decisions", response_model=WorkflowView)
     def decision(

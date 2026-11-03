@@ -1,5 +1,7 @@
 # AI RECONCILIATION STUDIO — KẾ HOẠCH CẢI TẠO MVP AI AGENT-FIRST
 
+**Bổ sung được giao 03/11/2026:** hỏi bổ sung và approval là hai loại tương tác riêng; thay nút xác nhận chung ở các mô tả lịch sử bằng hỏi/chọn/trả lời qua composer hoặc nút duyệt ghi rõ tác động. Free-text clarification có đủ dữ kiện tiếp tục workflow, vẫn dừng khi phải duyệt mapping/rule mới. Giữ state machine, nonces/fingerprints/expiry, idempotency, permissions và financial gates. Nội dung chuẩn hiện hành ở [PROJECT_PLAN](PROJECT_PLAN.md#hoàn-thiện-hội-thoại-và-độ-tin-cậy--03112026) và [DATA_CONTRACTS](DATA_CONTRACTS.md#hội-thoại-bổ-sung-thông-tin-và-phê-duyệt--03112026); kết quả mới tại IMPLEMENTATION_STATUS. Chủ dự án tiếp tục yêu cầu tăng lượt Gemini và sửa đến khi đạt gate, thay giới hạn6attempts ban đầu;49lượt mới được audit, trần hiện hành210global/workspace và193Agent, không reset lịch sử hoặc đổi model/key. Các quyết định quota/OFF lịch sử bên dưới không ghi đè quyền mới.
+
 > **Tài liệu thiết kế và triển khai dành cho Codex**  
 > **Ngày chốt nghiên cứu:** 01/11/2026  
 > **Đường dẫn đề xuất trong dự án:** `docs/AI_AGENT_MVP_IMPLEMENTATION_PLAN.md`  

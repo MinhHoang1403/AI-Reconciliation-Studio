@@ -1,5 +1,6 @@
+import { test } from "./project-selection";
 import { selectProject } from "./project-selection";
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { mkdir, readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 

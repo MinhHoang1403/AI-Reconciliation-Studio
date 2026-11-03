@@ -1528,3 +1528,75 @@ Log VS Code phiên153900 và Antigravity phiên153950/window2 của Studio chọ
 Giới hạn cũ được giữ rõ: hai cảnh báo Pyrefly về bool dư thừa và deprecation TestClient/httpx không phải lỗi cài đặt; không đổi dependency hoặc tắt kiểm tra để che chúng. Chưa kiểm thử mọi dự án cũ/phiên bản Python khác. Không thay hạn mức/công cụ AI; API Settings cuối lượt vẫn Agent/Assistant/Qwen/Gemini configured/enabled tương ứng, Gemini154/200, bằng số cuối mụcV nên không phát sinh lượt Gemini mới. Không lấy cờ configured làm bằng chứng live inference mới. Không thực hiện prune/xóa volumes, không restart Docker engine hoặc tác động Compose dự án khác; Backend/frontend giữ runtime revision34c0ff1 vì application source không đổi. C: còn khoảng128,2GiB tại kiểm tra.
 
 Kết luận trong phạm vi kiểm tra: môi trường phát triển và ứng dụng local hoạt động, không phát hiện lỗi chức năng môi trường còn chặn các checks trên. Cảnh báo/giới hạn không bị gọi là đã hết tuyệt đối. Receipts mới tại `runtime/ide-environment/recheck-20261103/` ngoài Git; log/test artifacts trước đó được giữ riêng. Thay đổi Git của lượt này chỉ bổ sung báo cáo kiểm chứng.
+
+## Y. Hội thoại, clarification và natural language reliability — 03/11/2026
+
+### A. Phạm vi và release gate
+
+Bắt đầu tại main/origin `58d2d65`, sạch; feature `codex/assistant-conversation` trong repository hiện có, không worktree/Compose/dependency/migration mới. Runtime đầu nhiệm vụ `34c0ff1`, đủ4healthy và2volumes. Mục tiêu là trải nghiệm Assistant, typed routing/query/context, xác nhận và nghiệm thu; Matcher/Verifier/Decimal/parsers/normalization/lockfiles không sửa. `worker.py` chỉ đổi nội dung lỗi review, không đổi claim/lease/retry/queue publication.
+
+Gate source đã đạt:302Backend/PostgreSQL và116/116browser PASS; tại lúc commit phần source này chưa merge/deploy candidate. Phần phát hành phía dưới chỉ được cập nhật sau gate thực, không suy READY từ build hoặc screenshot. Log/receipts/screenshots/backup nằm tại `runtime/assistant-conversation/`, ngoài Git. Nhãn cuối cùng được ghi sau smoke/source/data checks.
+
+### B. UI/UX và files
+
+Composer vẫn một textarea tự giãn40–180px, Enter/Shift+Enter/IME/draft/upload/drop/chips/idempotency/recovery. Focus bàn phím nằm trên một bề mặt composer; textarea không có outline riêng. Nút gửi dùng icon spinner18px, không còn component chứa chữ trong ô40px; synchronous send lock chặn Enter/click đồng thời và focus trở lại input sau gửi. Transcript không lặp tên AI/timestamp/“Chuẩn bị dữ liệu” trên từng tin: metadata dưới dấu ba chấm, tool steps trong “Chi tiết xử lý”. Reply chỉ render workflow tại phản hồi mới nhất; dữ liệu message/audit không bị xóa.
+
+CLARIFICATION có vùng hội thoại riêng, câu hỏi, lựa chọn metric từ server hoặc “Trả lời bằng tiếng Việt”; không checkbox hay nút approval. MAPPING/RECONCILIATION giữ thẻ quyết định, tóm tắt nguồn/keys/metric/period/currency/tolerance, chỉnh sửa thu gọn, extraction acknowledgement và nút ghi rõ tác động. Generic checkbox được thay bằng “Duyệt ánh xạ và chuẩn hóa” / “Duyệt quy tắc và đối soát”; server gates không giảm. Kết quả ưu tiên counts từ snapshot, bằng chứng/phạm vi mở khi cần; bảng ẩn UUID, có vị trí/khóa giao dịch và nhãn từ schema thật. Chuỗi định danh giống enum(EQUAL/OPEN/PAID) vẫn giữ nguyên; chỉ dịch enum metadata của verified result/exception.
+
+Ảnh trước23states×5width được giữ tại `runtime/assistant-conversation/before/`; ảnh sau layout tại `runtime/assistant-layout/` và clarification/loading tại `runtime/assistant-conversation/after/`. Kiểm390/768/1366/1440/1920, multiline, loading, failed/partial/allowance/permission, history, keyboard, charts, evidence, export. Đã xem trực quan mobile approval, clarification tablet, composer desktop và results. Không có chứng nhận screen-reader hoặc bàn phím thiết bị vật lý.
+
+Files ứng dụng: `frontend/src/AssistantStudio.tsx`, `AgentWorkflowPanel.tsx`, `AgentResultBlocks.tsx`, `App.tsx`, `agentTypes.ts`, `styles.css`, `types.ts`; Backend `agent_intents.py`, `agent_jobs.py`, `agent_workflows.py`, `agent_api.py`, `assistant_api.py`, `assistant_tools.py`, `data_query.py`, contracts và thông báo review của worker. Browser fixture dùng dist candidate tại cùng origin/API để kiểm trước release, không dựng server/container thứ hai. Existing E2E chuyển import test sang fixture chung; assertions/oracles cũ giữ nguyên, chỉ đổi tương tác approval/focus theo contract mới.
+
+### C. Root causes, sửa và regression
+
+| Lỗi thực chứng | Nguyên nhân và sửa | Kiểm chứng |
+|---|---|---|
+| Composer lồng khung, loading lệch | Outline trên textarea bên trong border; Spinner có chữ. Focus chuyển ra surface, spinner icon cố định | Năm widths, keyboard/IME/double submit/loading/draft |
+| Clarification trông như approval | Chung ReviewCard/checkbox và luôn giữ preview | Renderer riêng; scoped reply đủ điều kiện advance cùng workflow; mapping/rule vẫn approval |
+| QUERY_FIELD_INVALID với money fields | Run có metric duy nhất nhưng query thiếu metric_id, money fields chưa được mở | Regression PG FAIL trước sửa; resolver bind đúng approved contract, Decimal2,75VND PASS; ambiguity/absence/foreign context giữ gate |
+| Top lệch đúng sort nhưng sai population | Model bỏ comparison_state AMOUNT_MISMATCH, chỉ sort variance | Semantic guard bắt filter, prompt hướng dẫn; live repaired trả3dòng/19eligible matches đúng thứ tự |
+| Follow-up theo vị trí có thể lấy nhầm trang | Backend chưa lưu trang/sort, context chỉ run cũ | QuerySelection bền, result_position bound current run/page; race đổi trang trong inference trả STALE_CONTEXT, không giải thích nhóm khác |
+| Nguồn rút gọn rõ vẫn hỏi lại | Thiếu alias có bằng chứng và safe listing path | Alias duy nhất trong filename, một bảng, từ vựng liệt kê hạn chế; không đoán A/B theo upload order |
+| Tổng variance qua query thay snapshot | Intent chọn sum_decimal toàn run | Sau validation chuyển sang SUMMARIZE_RESULTS; filtered/group analysis giữ query |
+| Nguồn tên gần giống có thể reuse current run | Prompt không đủ bảo đảm model từ chối | Native policy giảm xuống CLARIFY; fake source/permissions vẫn fail closed |
+| Tự duyệt/bỏ currency chỉ bị hỏi lại | Chưa có denial trước provider cho Agent | Explicit authority guard0cloud/0tools; không cản approved reuse hoặc câu “không tự duyệt” |
+| Mapping draft mất sau chuyển nguồn/sheet | Render table mới với profile/mapping cũ trong lúc async load | Detail scope dataset/table và component key; delayed-profile regression và UAT giữ loại dữ liệu |
+| Reply lỗi bảo người dùng xác nhận thẻ | Thông báo chung của worker không phân biệt nguyên nhân | Giữ redacted DomainError.message_vi; clarification không bị dẫn sang approval giả |
+
+Các guards mới là heuristic[D]/allowlist có tests; không nhận là thuật toán NLP đã hiệu chỉnh hoặc hiểu mọi câu tiếng Việt. API vẫn kiểm role/scope/revisions/nonce/fingerprint/expiry/pending jobs, không gắn user_confirmed từ chat. Không tự approve, sửa tiền, raw hay oracle.
+
+### D. Ngôn ngữ tự nhiên: mẫu số và bằng chứng riêng
+
+Giữ80gold/24variants cũ, thêm24câu độc lập/24chủ đề tại `tests/fixtures/assistant-conversation-cases.json`. Không sửa oracle cũ để tăng tỷ lệ. Prompt hiện hành `agent-intent-26`.
+
+| Tập/cách đo | Intent | Nguồn | Slots/ngữ nghĩa | Negative/safety | Giới hạn |
+|---|---:|---:|---:|---:|---|
+|80gold,8batches mới LIVE |79/80|60/60|34/34|20/20|Routing, không80workflow; N08 gold cũ mong UNSUPPORTED nhưng yêu cầu hiện hành báo thiếu metric bằng CLARIFY |
+|24variants,4batches mới LIVE |23/24|16/16|10/10|7/8|VN08 raw proposal chọn reuse khi xin nguồn gần giống; bị sửa ở native policy sau đó |
+|24variants CACHED revalidation trên policy mới |24/24|16/16|10/10|8/8|0HTTP; không gọi đây là inference mới |
+|24câu mới,4batches mới LIVE |22/24|14/16|10/10|8/8|C05 hỏi lại nguồn B; C16 chọn full-run sum thay snapshot |
+|24câu mới CACHED revalidation sau resolver/policy |24/24|16/16|10/10|8/8|0HTTP; C05 dùng safe listing và C16 đọc snapshot |
+
+Model-only output và hệ thống sau policy không được gộp thành một accuracy. Gate finalizer gốc ≥95%intent/source,≥90%slots được đo; negative phải xem sau server policy và native tests. C12/C24 có model hỏi lại nhưng workflow thật từ chối trước provider. N08 là khác biệt taxonomy giữa gold lịch sử và yêu cầu mới về chỉ tiêu chưa tồn tại; giữ strict79/80, không biến thành100%.
+
+LIVE workflow qua source API/TestClient/queue thật trong container hiện có, không HTTP server mới: top3mismatch + giải thích dòng thứ hai đúng cùng run/group; Decimal và source refs giữ nguyên. Clarification→reply trên project TEST có approved payment semantics hoàn thành đúng workflow, trả200UNPAID; nonce/reply binding hoạt động, không tạo contract/mapping approval. Một thử trên UAT mới chỉ có cột trạng thái string bị QUERY_SEMANTICS_REQUIRED đúng gate, không coi là mất tiền hoặc tự sửa semantics để PASS. UI readback sau release được ghi ở phần phát hành.
+
+### E. Chất lượng, dữ liệu và giới hạn
+
+`tools/test-postgres.ps1 -All -Source`:302PASS/0FAIL/SKIP trên UUID schemas và storage tạm, cùng PostgreSQL/Backend hiện có;134,04s ở lượt chốt. Bao gồm financial oracle/property/security/auth/persistence/export contracts và regression mới. Baseline265 không cộng lại;302=231offline+71PG. Ruff, mypy47files, TypeScript, ESLint, production build,79Python files formatting, uv lock/pip consistency và repository/secrets/Markdown paths PASS. Starlette/httpx deprecation warning giữ nguyên, không đổi dependency để che warning. Nhóm browser cuối và postdeploy ghi tiếp sau khi chạy xong.
+
+Full browser đầu112/114PASS: một ledger assertion bị nhiễu do inference của Codex chạy đồng thời và một mapping draft race thực tế. Lượt tiếp114/115PASS bị chạy chồng hai Playwright cùng artifacts ở ca export cuối, kèm ENOENT trace; đây là lỗi orchestration kiểm thử, không được gọi full PASS. Logs/failure screenshots được giữ; không tăng timeout/retry hoặc sửa oracle. Lượt cuối chạy duy nhất một browser runner với build cố định và output riêng: **116/116PASS,0FAIL/SKIP/retry,12,8phút**, gồm toàn bộ11UAT scenarios và bộ1000giao dịch, oracle/CSV/XLSX/reload. `browser-stable.log` là receipt chốt; không cộng các lượt replay thành tests mới.
+
+Backup trước sửa `backup_0772609005574617a32d91471a43d1c3`,24tables, metadataSHA256 `855a365717f26315bc8fbd77404e042accf63a069a7e17e7fee118bf7ac77a5e`, backup17,981s/restore9,870s PASS; checksum/path traversal probes từ chối đúng. Host copy giữ nguyên. So mọi original primary key/metadata và1.841files với backup:0missing/0changed/0checksumfail; policy external_request_budget210 là ngoại lệ đã được audit, normalize về policy trước cho đúng phép so. Không chỉ so counts hoặc bỏ hash. Hai persistent volumes, schema `create_agent_workflows`, approved mappings/contracts/runs/conversations gốc giữ nguyên.
+
+### F. AI usage và Docker/Git
+
+Global154→203/210; Agent135→184/193; Planner11/30, legacy2/20 không đổi.49attempts mới=42benchmark+5Agent+2review, đủ49trace.43VALIDATED/6provider-schema-semantic failures được giữ; VALIDATED không là tỷ lệ câu trả lời đúng.48token receipts tổng726.021tokens; actual billed cost NOT VERIFIED. Sau chỉ dẫn tiếp tục của chủ dự án có audit Agent163→183→193, global/workspace200→210; không reset reservations/đổi model/key/provider. Cài mới vẫnOFF/0, Qwen/parser0calls mới, LlamaParse2/2 không mở thêm. Hạn mức còn lại là min global/workspace/task và có thể đổi khi người dùng tự thử.
+
+Runtime đầu và rollback images `accepted-main-34c0ff1` còn nguyên; không prune/images/volumes hoặc tài nguyên dự án khác. Sample trước release:Backend222MiB/384,worker209MiB/512,PG167MiB/256,FE13MiB/128; không là load benchmark/peak liên tục. Feature chưa được coi là main release tại lúc ghi phần này; commit/source/runtime/digests/health/smoke và mức sẵn sàng sẽ ghi sau gate.
+
+### G. Demo dự kiến và giới hạn còn lại
+
+Chọn TEST **DEMO UAT 1000 giao dịch** có mappings/payment semantics/rule đã duyệt, mở hội thoại nghiệm thu. Câu chat: “Cho tôi xem ba nhóm giao dịch lệch tiền lớn nhất…”, “Giải thích giao dịch thứ hai”, hoặc trả lời câu hỏi bổ sung “Cho xem các giao dịch chưa thanh toán của nguồn A”. Expected:966EQUAL/19AMOUNT_MISMATCH/15UNMATCHED, absolute variance7,03VND,200UNPAID,686PAID,114COMPLETED. COMPLETED không được gọi PAID. Mở dòng nguồn/evidence rồi CSV/XLSX từ verified run; reload/history giữ cùng workflow/context. Để thử từ đầu dùng24files tổng hợp tại `runtime/demo-acceptance/data/`, project TEST khác và approval rõ nghĩa/phạm vi.
+
+Toàn pipeline UAT qua UI/manual fallback và native engines là PASS LOCAL; không trình bày mọi bước mapping/planner như một live end-to-end mới. Các model requests cụ thể/benchmarks có receipts riêng. PDF/DOCX mới, live inference mọi kiểu câu, nhiều người dùng/Internet, thiết bị vật lý/screen-reader, off-host disaster recovery và billed cost nằm ngoài bằng chứng nghiệm thu này. Không dùng nhãn production-ready hoặc tuyên bố hết mọi lỗi phần mềm.

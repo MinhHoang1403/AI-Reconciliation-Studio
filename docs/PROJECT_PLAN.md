@@ -12,6 +12,18 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Hoàn thiện hội thoại và độ tin cậy — 03/11/2026
+
+Chủ dự án yêu cầu phân biệt hỏi bổ sung (`CLARIFICATION`) với phê duyệt nghiệp vụ (`MAPPING`/`RECONCILIATION`). Hỏi bổ sung có câu hỏi và lựa chọn từ Backend hoặc trả lời qua composer, không checkbox approval. Câu trả lời hợp lệ tiếp tục cùng workflow sau kiểm tra quyền, nonce, expiry, fingerprint và intent; mapping/rule mới vẫn dừng ở approval chuyên biệt. Nút duyệt nói rõ tác động: lưu ánh xạ rồi chuẩn hóa, hoặc lưu quy tắc rồi đối soát. Các mô tả nút xác nhận chung trong tài liệu cũ được thay bằng hợp đồng này; không bỏ các xác nhận extraction/currency/coverage bắt buộc.
+
+Truy vấn tiền của một verified run được bind vào metric thuộc đúng contract: chọn metric explicit hợp lệ; nếu chỉ có một metric được duyệt thì dùng metric đó; nếu có nhiều metric, chỉ dùng ngữ cảnh cùng nguồn/run còn hợp lệ hoặc hỏi lựa chọn. Không có metric phù hợp thì không tính. Đếm/trạng thái không bắt người dùng chọn metric tiền. Backend giữ trang/sort đã hiển thị để hỏi theo vị trí không lấy nhầm trang; kết quả run và blocks ban đầu không bị ghi đè. Không suy gross=net, COMPLETED=PAID hoặc cộng đa tiền tệ.
+
+Phạm vi gồm composer/transcript/review/result presentation, routing/query/context, regression và release khi nghiệm thu đạt. Không sửa engine/verifier/Decimal/parsing, không migration/dependency/service mới. Tối đa **6 Gemini attempts mới** trong lifetime ceilings hiện có; không tăng quota/reset ledger, đổi provider hoặc tạo LlamaParse job. Mọi kiểm chứng LIVE/MOCK/CACHED/LOCAL được báo riêng tại IMPLEMENTATION_STATUS, không coi số tests hoặc vài câu model là accuracy tổng quát.
+
+**Chỉ dẫn tiếp theo cùng nhiệm vụ:** sau6attempts, chủ dự án yêu cầu tiếp tục sửa và tăng lượt Gemini để kiểm thử. Vòng tiếp theo phân bổ tối đa20attempts mới trước hết trong allowance còn lại (global160/200, Agent141/163 ở đầu vòng); giữ mọi failure/reservation, không reset hoặc đổi model/key. Giới hạn6 ở đoạn trước là lịch sử của vòng đầu. Thay đổi ceiling nếu cần phải có audit theo quyền mới, không mặc định đã thay policy vì được phép gọi thêm. Release vẫn chỉ khi quality gates đạt.
+
+Trong các vòng sửa tiếp theo theo cùng quyền tiếp tục, trần Agent được tăng163→183→193; global/workspace200→210. Mỗi thay đổi có audit riêng, không reset lịch sử. Kết thúc suy luận trong nhiệm vụ: global203/210, Agent184/193, Planner11/30, legacy Assistant2/20;49attempts mới của Codex có trace/job attribution (42benchmark,5Agent,2review). Các lần đọc lại response/fixtures không thêm lượt. Không gọi model để test CSS; số còn lại dành cho demo và phải đọc lại tại thời điểm sử dụng.
+
 ### Nghiệm thu demo và mở công cụ được ủy quyền — 02/11/2026
 
 Master prompt Final User Acceptance & Demo Readiness và hai chỉ dẫn tiếp theo của chủ dự án cho phép tiếp tục kiểm thử, tăng lượt Gemini và để các công cụ đã triển khai bật cho chủ dự án tự thử. Chỉ dẫn mới thay giới hạn sáu lượt Agent và yêu cầu tắt cloud của các nhiệm vụ trước: demo global/workspace ceiling200, Agent163, Planner30, Assistant20; giữ toàn bộ reservations cũ. Lượt của người dùng và lượt nghiệm thu được phân biệt theo project/job/trace, không xóa hoặc loại lượt người dùng khỏi ledger toàn hệ thống. Kế hoạch chạy nghiệm thu tối đa45 HTTP attempts mới của Codex, rồi báo số thực tế.

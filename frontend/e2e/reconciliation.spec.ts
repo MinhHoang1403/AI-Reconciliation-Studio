@@ -1,5 +1,6 @@
+import { test } from "./project-selection";
 import { selectProject, openLegacyPage } from "./project-selection";
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 

@@ -1,5 +1,6 @@
+import { test } from "./project-selection";
 import { openLegacyPage } from "./project-selection";
-import { test, expect } from "@playwright/test";
+import { expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 

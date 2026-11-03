@@ -51,6 +51,7 @@ export type QueryResult = {
     query: Query;
     source_id: string;
     fields: string[];
+    field_labels?: Record<string,string>;
     rows: Record<string, unknown>[];
     total_count: number;
     input_count: number;
@@ -97,6 +98,7 @@ export type Review = {
     reply_intent: AgentIntent | null;
     reply_questions: string[];
     pending_reply_job_id: string | null;
+    options?: { id: string; label: string; intent: AgentIntent }[];
 };
 export type Chart = {
     type: "chart";
@@ -163,5 +165,6 @@ export type Workflow = {
         blocks: AgentBlock[];
         model_calls: number;
         error_code: string | null;
+        query_selection?: { query: Query; group_ids: string[] } | null;
     };
 };

@@ -11,7 +11,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from studio.access import Actor, require_editor
-from studio.agent_intents import INTENT_REVISION, interpret_requests
+from studio.agent_intents import (
+    INTENT_REVISION,
+    approval_bypass_requested,
+    currency_bypass_requested,
+    interpret_requests,
+    resolve_plain_listing,
+)
 from studio.agent_preparation import (
     PREPARATION_REVISION,
     REVIEW_REVISION,
@@ -35,7 +41,14 @@ from studio.assistant_api import own_conversation
 from studio.assistant_tools import agent_catalogue
 from studio.config import settings
 from studio.contracts import DatasetProfile, WorkspacePolicy
-from studio.contracts.agent import AgentIntent, IntentBatch, ReviewReply, WorkflowState
+from studio.contracts.agent import (
+    AgentIntent,
+    IntentBatch,
+    IntentCatalogue,
+    ReviewInterpretation,
+    ReviewReply,
+    WorkflowState,
+)
 from studio.contracts.assistant import AssistantContext
 from studio.database import (
     AgentWorkflowRow,
@@ -54,6 +67,17 @@ from studio.repository import get_scoped, project_for_table, reserve_gemini_requ
 
 Fence = Callable[[Session, str, str], JobRow]
 Finish = Callable[[Session, JobRow, dict[str, Any]], None]
+
+
+def selection_fingerprint(catalogue: IntentCatalogue) -> str:
+    """Fence a pronoun/ordinal against page or source changes during inference."""
+    return digest(
+        [
+            catalogue.context.model_dump(mode="json"),
+            catalogue.previous_query.model_dump(mode="json") if catalogue.previous_query else None,
+            catalogue.previous_groups,
+        ]
+    )
 
 
 def model_call(
@@ -171,7 +195,8 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
         }:
             return
         context = AssistantContext.model_validate(row.context)
-        catalogue = agent_catalogue(db, actor, context, state.dataset_ids)
+        catalogue = agent_catalogue(db, actor, context, state.dataset_ids, workflow_id=row.id)
+        expected_selection = selection_fingerprint(catalogue)
         ids = [d.id for d in catalogue.datasets]
         parsing = db.scalar(
             select(JobRow)
@@ -200,6 +225,26 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
         parent = get_scoped(db, JobRow, row.parent_job_id, actor)
         command = parent.payload.get("command")
         goal = row.goal
+        plain_listing = resolve_plain_listing(goal, catalogue)
+        if plain_listing is not None:
+            state.intent = plain_listing
+            save(row, state)
+            db.commit()
+            return
+        if approval_bypass_requested(goal) or currency_bypass_requested(goal):
+            state.intent = AgentIntent(
+                intent="UNSUPPORTED",
+                questions=[
+                    "Tôi không thể bỏ qua tiền tệ để cộng gộp số tiền. "
+                    "Cần quy tắc quy đổi được duyệt."
+                    if currency_bypass_requested(goal)
+                    else "Tôi không thể tự phê duyệt ánh xạ hoặc quy tắc nghiệp vụ. "
+                    "Bạn cần xem và duyệt quyết định trước khi thực hiện."
+                ],
+            )
+            save(row, state)
+            db.commit()
+            return
         if command:
             state.intent = AgentIntent(intent=command, dataset_ids=state.dataset_ids)
             save(row, state)
@@ -229,6 +274,20 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
         owner(db, row)
         if row.state != "CANCELLED_BEFORE_NEXT_STEP":
             state = WorkflowState.model_validate(row.detail)
+            current_catalogue = agent_catalogue(
+                db,
+                owner(db, row),
+                AssistantContext.model_validate(row.context),
+                state.dataset_ids,
+                workflow_id=row.id,
+            )
+            if selection_fingerprint(current_catalogue) != expected_selection:
+                raise DomainError(
+                    "STALE_CONTEXT",
+                    "Trang dữ liệu hoặc ngữ cảnh đã thay đổi trong lúc xử lý. "
+                    "Hãy gửi lại yêu cầu theo lựa chọn hiện tại.",
+                    409,
+                )
             state.intent = intents[0]
             save(row, state)
             db.commit()
@@ -254,13 +313,15 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             row = db.get(AgentWorkflowRow, row_id)
             if row is None:
                 effective_context = AssistantContext.model_validate(message.context)
-                if effective_context.run_id is None:
+                if effective_context.dataset_id is None:
                     previous = db.scalar(
                         select(AgentWorkflowRow)
                         .where(
                             AgentWorkflowRow.conversation_id == conversation.id,
                             AgentWorkflowRow.actor_id == actor.id,
-                            AgentWorkflowRow.state.in_(["COMPLETED", "PARTIAL"]),
+                            AgentWorkflowRow.state.in_(
+                                ["COMPLETED", "PARTIAL", "BLOCKED", "FAILED", "WAITING_REVIEW"]
+                            ),
                             AgentWorkflowRow.context["run_id"].astext.is_not(None),
                         )
                         .order_by(AgentWorkflowRow.created_at.desc(), AgentWorkflowRow.id.desc())
@@ -321,16 +382,43 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 )
             ):
                 raise DomainError("STALE_CONTEXT", "Câu trả lời không còn thuộc thẻ đang chờ.", 409)
+            catalogue = agent_catalogue(
+                db,
+                actor,
+                AssistantContext.model_validate(row.context),
+                state.dataset_ids,
+                workflow_id=row.id,
+            )
+            clarification_goal = (
+                row.goal
+                + "\nCâu hỏi bổ sung: "
+                + review.question
+                + "\nNgười dùng trả lời: "
+                + reply.text
+            )
+            expected_selection = selection_fingerprint(catalogue)
+            if review.kind == "CLARIFICATION":
+                catalogue = catalogue.model_copy(
+                    update={"previous_goal": row.goal, "pending_question": review.question}
+                )
+        # Clarification uses the real scoped source catalogue. Mapping/rule edits
+        # remain previews and can never be applied by this branch.
         output = model_call(
             job_id,
             token,
             row_id,
-            "interpret_review_reply",
-            REVIEW_REVISION,
+            "interpret_user_request"
+            if review.kind == "CLARIFICATION"
+            else "interpret_review_reply",
+            INTENT_REVISION if review.kind == "CLARIFICATION" else REVIEW_REVISION,
             factory,
             fence,
-            lambda provider, policy, reserve: interpret_review_reply(
-                provider, review, reply.text, policy, reserve
+            lambda provider, policy, reserve: (
+                ReviewInterpretation(
+                    intent=interpret_requests(provider, [reply.text], catalogue, policy, reserve)[0]
+                )
+                if review.kind == "CLARIFICATION"
+                else interpret_review_reply(provider, review, reply.text, policy, reserve)
             ),
         )
         with factory() as db:
@@ -381,15 +469,42 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 from studio.agent_intents import validate_intents
 
                 catalogue = agent_catalogue(
-                    db, actor, AssistantContext.model_validate(row.context), state.dataset_ids
+                    db,
+                    actor,
+                    AssistantContext.model_validate(row.context),
+                    state.dataset_ids,
+                    workflow_id=row.id,
                 )
-                validate_intents(
+                if selection_fingerprint(catalogue) != expected_selection:
+                    raise DomainError(
+                        "STALE_CONTEXT",
+                        "Trang dữ liệu đã thay đổi trong lúc đọc câu trả lời. "
+                        "Hãy kiểm tra lại lựa chọn.",
+                        409,
+                    )
+                validated = validate_intents(
                     IntentBatch(intents=[output.intent]).model_dump_json(),
-                    [row.goal + "\n" + reply.text],
+                    [
+                        clarification_goal
+                        if current.kind == "CLARIFICATION"
+                        else row.goal + "\n" + reply.text
+                    ],
                     catalogue,
                 )
-                # Chưa áp dụng intent: chỉ đổi bản preview, đợi human decision.
+                output.intent = validated[0]
                 current.reply_intent = output.intent
+            continued = bool(
+                current.kind == "CLARIFICATION"
+                and output.intent
+                and output.intent.intent not in {"CLARIFY", "CONTINUE_REVIEW"}
+                and not output.questions
+            )
+            if (
+                current.kind == "CLARIFICATION"
+                and output.intent
+                and output.intent.intent == "CLARIFY"
+            ):
+                output.questions = output.intent.questions
             current.reply_questions = output.questions or (
                 []
                 if any([output.draft, output.plan, output.intent])
@@ -398,6 +513,27 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             current.pending_reply_job_id = None
             current.nonce = secrets.token_hex(16)
             current.expires_at = now() + timedelta(minutes=30)
+            if continued:
+                assert output.intent is not None
+                # No business approval: advance still enforces every mapping,
+                # new-period and reconciliation-contract review gate.
+                current.state = "DECIDED"
+                current.decision_sha256 = digest(
+                    dict(type="CLARIFICATION", intent=output.intent.model_dump(mode="json"))
+                )
+                state.intent = output.intent
+                state.error_code = None
+                row.state = "RUNNING"
+                db.add(
+                    AuditRow(
+                        workspace_id=actor.workspace_id,
+                        actor_id=actor.id,
+                        action="AGENT_CLARIFICATION_ANSWERED",
+                        resource_id=current.id,
+                    )
+                )
+                save(row, state)
+                advance(db, row)
             conversation = own_conversation(db, actor, row.conversation_id)
             db.refresh(conversation, with_for_update=True)
             if conversation.deleted_at:
@@ -410,21 +546,24 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                         conversation_id=row.conversation_id,
                         job_id=job.id,
                         role="assistant",
-                        text="Cần bổ sung thêm thông tin trên thẻ xác nhận."
+                        text=""
+                        if continued
+                        else "Cần bổ sung thêm thông tin trên thẻ xác nhận."
                         if output.questions
                         else "Đã cập nhật bản xem trước. Hãy kiểm tra và xác nhận để tiếp tục.",
                         context=conversation.context,
                         answer=None,
                     )
                 )
-            save(row, state)
+            if not continued:
+                save(row, state)
             finish(
                 db,
                 job,
                 {
                     "workflow_id": row.id,
                     "review_id": current.id,
-                    "status": "PREVIEW_REQUIRES_CONFIRMATION",
+                    "status": row.state if continued else "PREVIEW_REQUIRES_CONFIRMATION",
                 },
             )
             db.commit()

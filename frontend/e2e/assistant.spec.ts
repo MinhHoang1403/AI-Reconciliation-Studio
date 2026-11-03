@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { test } from "./project-selection";
+import { expect, type Page } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import { selectProject, openLegacyPage } from "./project-selection";
 import type { Catalogue } from "../src/reconciliationTypes";

@@ -1,4 +1,24 @@
-import { expect, type Page } from "@playwright/test";
+import { test as base, expect, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { resolve, sep } from "node:path";
+
+// Candidate UI uses the same browser origin and existing API. This opt-in asset
+// fixture validates dist before replacing the accepted Compose release.
+export const test = base.extend({
+  page: async ({ page }, use) => {
+    if (process.env.STUDIO_FRONTEND_DIST === "1") {
+      const dist = resolve("dist");
+      await page.route(url => url.pathname === "/" || url.pathname.startsWith("/assets/"), async route => {
+        const path = new URL(route.request().url()).pathname;
+        const file = resolve(dist, path === "/" ? "index.html" : `.${path}`);
+        if (!file.startsWith(dist + sep)) throw Error("Candidate asset outside dist");
+        const contentType = file.endsWith(".html") ? "text/html" : file.endsWith(".css") ? "text/css" : "text/javascript";
+        await route.fulfill({ body: await readFile(file), contentType });
+      });
+    }
+    await use(page);
+  },
+});
 
 /** Các trang cũ là deep links dự phòng, không còn là menu chính của Assistant. */
 export async function openLegacyPage(page: Page, target: "home"|"data"|"reconcile"|"reports"|"exceptions") {

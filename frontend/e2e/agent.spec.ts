@@ -1,4 +1,5 @@
-import {test,expect} from "@playwright/test";
+import { test } from "./project-selection";
+import {expect} from "@playwright/test";
 
 test("Agent landing without a project does not create metadata or call cloud",async({page})=>{
   await page.addInitScript(()=>{if(!sessionStorage.getItem("agent-test-initialized")){localStorage.clear();sessionStorage.clear();sessionStorage.setItem("agent-test-initialized","1");}});

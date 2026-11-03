@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, lazy, Suspense, type RefObject } from "react";
-import { MessageSquarePlus, Send, Trash2, Paperclip, MoreHorizontal, Sparkles, X } from "lucide-react";
+import { MessageSquarePlus, Send, Trash2, Paperclip, MoreHorizontal, Sparkles, X, LoaderCircle } from "lucide-react";
 import { AgentWorkflowPanel } from "./AgentWorkflowPanel";
 import type { Review } from "./agentTypes";
 import { api, ApiError } from "./api";
@@ -112,6 +112,7 @@ export function AssistantStudio({
   const latestWorkflowId=messages.slice().reverse().find(m=>m.role==="assistant"&&m.workflow_id)?.workflow_id;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const sendLock = useRef(false);
   const [loading, setLoading] = useState(true);
   const [pendingJob, setPendingJob] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -358,7 +359,8 @@ export function AssistantStudio({
     localStorage.removeItem(storageKey);
   }
   async function send() {
-    if ((!text.trim() && !files.length) || busy || pendingJob) return;
+    if ((!text.trim() && !files.length) || busy || pendingJob || sendLock.current) return;
+    sendLock.current = true;
     const request = sequence.current;
     setBusy(true);
     setError("");
@@ -479,7 +481,11 @@ export function AssistantStudio({
       if (alive.current && request === sequence.current)
         setError(errorText(err));
     } finally {
-      if (alive.current && request === sequence.current) setBusy(false);
+      sendLock.current = false;
+      if (alive.current && request === sequence.current) {
+        setBusy(false);
+        requestAnimationFrame(()=>composerInput.current?.focus({preventScroll:true}));
+      }
     }
   }
   async function olderMessages() {
@@ -656,16 +662,13 @@ export function AssistantStudio({
               {!loading && !messages.length && (
                 <div className="agent-empty"><Sparkles size={25} aria-hidden="true"/><h2>Bạn muốn xử lý dữ liệu gì?</h2><p>Tải file lên hoặc giao việc cho AI bằng tiếng Việt.</p></div>
               )}
-              {messages.map((message) => (
+              {messages.filter((message,index)=>message.role!=="assistant"||!message.workflow_id||!messages.slice(index+1).some(next=>next.role==="assistant"&&next.workflow_id===message.workflow_id)).map((message) => (
                 <article
                   className={`assistant-message ${message.role}`}
                   key={message.id}
+                  aria-label={message.role === "user" ? "Tin nhắn của bạn" : "Phản hồi của trợ lý"}
                 >
-                  <strong>{message.role === "user" ? "Bạn" : "AI Assistant"}</strong>
-                  <small>
-                    {new Date(message.created_at).toLocaleString("vi-VN")} ·{" "}
-                    {message.context.run_id?.slice(0, 8) || "Chuẩn bị dữ liệu"}
-                  </small>
+                  <details className="message-metadata"><summary aria-label="Thông tin tin nhắn"><MoreHorizontal size={14} aria-hidden="true"/></summary><small>{new Date(message.created_at).toLocaleString("vi-VN")}</small></details>
                   {message.role === "user" ? (
                     <p>{message.text}</p>
                   ) : (
@@ -869,7 +872,7 @@ export function AssistantStudio({
                 }}
                 maxLength={2000}
                 rows={1}
-                placeholder={reviewReply?"Bổ sung thông tin để kiểm tra trước khi xác nhận...":"Nhập yêu cầu của bạn..."}
+                placeholder={reviewReply?"Nhập câu trả lời của bạn…":"Nhập yêu cầu của bạn..."}
                 disabled={busy||loading}
               />
             </label>
@@ -880,7 +883,7 @@ export function AssistantStudio({
               disabled={busy || loading || !!pendingJob || (!text.trim()&&!files.length)}
             >
               {busy ? (
-                <Spinner />
+                <LoaderCircle size={18} className="spin" aria-label="Đang gửi" />
               ) : (
                 <Send size={18} aria-hidden="true" />
               )}

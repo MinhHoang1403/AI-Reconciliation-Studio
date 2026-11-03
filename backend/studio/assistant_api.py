@@ -147,6 +147,21 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                 query.order_by(MessageRow.created_at.desc(), MessageRow.id.desc()).limit(limit + 1)
             )
         )
+
+        def workflow_for_message(message: MessageRow) -> str | None:
+            job = db.get(JobRow, message.job_id)
+            condition = AgentWorkflowRow.parent_job_id == message.job_id
+            if job and job.kind == "agent_review" and message.role == "assistant":
+                condition = AgentWorkflowRow.id == job.payload.get("workflow_id")
+            return db.scalar(
+                select(AgentWorkflowRow.id).where(
+                    condition,
+                    AgentWorkflowRow.actor_id == actor.id,
+                    AgentWorkflowRow.workspace_id == actor.workspace_id,
+                    AgentWorkflowRow.conversation_id == conversation.id,
+                )
+            )
+
         return dict(
             conversation=conversation_view(conversation),
             has_more=len(rows) > limit,
@@ -158,12 +173,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                     text=r.text,
                     context=AssistantContext.model_validate(r.context),
                     answer=AssistantAnswer.model_validate(r.answer) if r.answer else None,
-                    workflow_id=db.scalar(
-                        select(AgentWorkflowRow.id).where(
-                            AgentWorkflowRow.parent_job_id == r.job_id,
-                            AgentWorkflowRow.actor_id == actor.id,
-                        )
-                    ),
+                    workflow_id=workflow_for_message(r),
                     created_at=r.created_at,
                 )
                 for r in reversed(rows[:limit])

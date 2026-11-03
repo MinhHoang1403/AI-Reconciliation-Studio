@@ -1,4 +1,5 @@
-import {test,expect} from '@playwright/test';
+import { test } from "./project-selection";
+import {expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 
 for(const width of [390,768,1366,1440,1920]){

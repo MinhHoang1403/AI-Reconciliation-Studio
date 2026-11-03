@@ -24,6 +24,8 @@ Migration `create_conversations` không đổi migrations cũ/runs/artifacts; do
 
 ## Thành phần đang chạy
 
+Hoàn thiện hội thoại 03/11/2026 giữ cùng orchestrator/queue. Clarification là cung cấp dữ kiện, không là approval: reply dùng scoped router, revalidate rồi advance; mapping/rule edits vẫn preview và quyết định riêng. Metric resolver ở data_query bind approved metric trước native query, không sửa Matcher/Verifier. Trang dữ liệu đang xem được lưu trong workflow JSONB tách khỏi blocks ban đầu; catalogue hỏi tiếp chỉ đọc cùng actor/conversation/nguồn còn hợp lệ. Frontend tách rendering clarification/approval, một composer có khóa gửi đồng bộ và icon loading cố định; timestamp/tool steps nằm trong phần mở rộng. Không thêm service/migration/dependency.
+
 ```mermaid
 flowchart LR
   Browser --> Nginx

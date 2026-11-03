@@ -235,6 +235,12 @@ export const jobKind: Record<string, string> = {
   assistant: "AI Assistant có bằng chứng",
 };
 export const errorText: Record<string, string> = {
+  QUERY_FIELD_INVALID: "Trường được yêu cầu không có trong nguồn đang chọn. Hãy kiểm tra nguồn và chỉ tiêu cần xem.",
+  QUERY_METRIC_AMBIGUOUS: "Có nhiều chỉ tiêu tiền phù hợp. Hãy chọn chỉ tiêu bạn muốn xem.",
+  QUERY_METRIC_UNAVAILABLE: "Nguồn này chưa có chỉ tiêu tiền được duyệt để tính kết quả.",
+  QUERY_SEMANTICS_REQUIRED: "Yêu cầu chưa khớp ý nghĩa dữ liệu đã duyệt. Cần làm rõ chỉ tiêu hoặc trạng thái trước khi tra cứu.",
+  INPUT_AMBIGUOUS: "Cần bổ sung thông tin để xác định đúng yêu cầu.",
+  STALE_CONTEXT: "Nguồn hoặc lựa chọn đã thay đổi. Hãy mở lại câu hỏi đang chờ để tiếp tục.",
   AI_INVALID_INTENT_COUNT: "AI chưa phân chia yêu cầu đúng cách; hệ thống đã dừng trước khi thực hiện.",
   INVALID_SOURCE_FIELD: "Đề xuất AI chưa khớp các cột nguồn; hệ thống đã dừng trước khi chuẩn hóa.",
   PARSER_BUDGET_EXHAUSTED:

@@ -686,7 +686,10 @@ def process_job(job_id: str, token: str) -> None:
                             if review.pending_reply_job_id == job.id:
                                 review.pending_reply_job_id = None
                                 review.reply_questions = [
-                                    "Chưa đọc được câu trả lời; có thể xác nhận bằng thẻ."
+                                    exc.message_vi
+                                    if isinstance(exc, DomainError)
+                                    else "Chưa đọc được câu trả lời. "
+                                    "Hãy bổ sung thông tin để tiếp tục."
                                 ]
                         state.error_code = code
                         save(row, state)

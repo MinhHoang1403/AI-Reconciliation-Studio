@@ -1,6 +1,58 @@
-import {test,expect} from "@playwright/test";
+import { test } from "./project-selection";
+import {expect} from "@playwright/test";
 import {mkdir} from "node:fs/promises";
 import {createHash} from "node:crypto";
+
+for(const width of [390,768,1366,1440,1920]){
+  test(`[MOCK CONTRACT] clarification is a conversation and keeps approval separate at ${width}px`,async({page})=>{
+    const context={project_id:'clarification-project'};
+    let state='WAITING_REVIEW',replied=false,posted=0,release:()=>void=()=>{};
+    let gate=Promise.resolve();
+    const query={project_id:context.project_id,source_kind:'VERIFIED_RUN',source_id:'verified-run',select_fields:['delta'],metric_id:'approved-amount',filters:[],sort:[],group_by:[],aggregations:[],offset:0,limit:25,currency_field:null,null_policy:'PRESERVE',result_scope:'ALL_MATCHING'};
+    const intent={intent:'QUERY_DATA',query};
+    const review={id:'clarification-review',kind:'CLARIFICATION',resource_id:'clarification-workflow',question:'Bạn muốn xem giá trị đơn hàng hay tiền thực nhận?',reason:'Hai chỉ tiêu đã được duyệt.',state:'OPEN',nonce:'b'.repeat(32),fingerprint:'a'.repeat(64),expires_at:'2099-01-01T00:00:00Z',normalization_draft:null,plan:null,planning_request:null,suggestions:null,reply_intent:null,reply_questions:[],pending_reply_job_id:null,expected_effects:[],options:[{id:'approved-amount',label:'Giá trị đơn hàng · gross · VND',intent}]};
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+    await page.setViewportSize({width,height:900});
+    await page.addInitScript(()=>{localStorage.setItem('studio.project','clarification-project');localStorage.setItem('studio.conversation.clarification-project','clarification-conversation');});
+    await page.route('**/api/**',async route=>{
+      const path=new URL(route.request().url()).pathname;
+      if(path==='/api/session')return route.fulfill({json:{workspace_id:'synthetic',actor_id:'clarification-reader',role:'owner'}});
+      if(path==='/api/settings')return route.fulfill({json:{policy:{allow_external_ai:false}}});
+      if(path===`/api/projects/${context.project_id}`)return route.fulfill({json:{id:context.project_id,name:'Synthetic clarification',business_scope:'synthetic',classification:'TEST'}});
+      if(path==='/api/conversations/clarification-conversation')return route.fulfill({json:{conversation:{id:'clarification-conversation',title:'Clarification',context},items:[{id:'first-response',role:'assistant',context,workflow_id:'clarification-workflow',created_at:'2026-11-03T00:00:00Z'},...(replied?[{id:'reply-user',role:'user',text:'Xem chênh lệch theo giá trị đơn hàng',context,created_at:'2026-11-03T00:00:01Z'},{id:'reply-response',role:'assistant',context,workflow_id:'clarification-workflow',created_at:'2026-11-03T00:00:02Z'}]:[])],has_more:false}});
+      if(path==='/api/agent/workflows/clarification-workflow')return route.fulfill({json:{id:'clarification-workflow',conversation_id:'clarification-conversation',context,state,updated_at:`${state}-${replied}`,detail:{steps:[],reviews:state==='WAITING_REVIEW'?[review]:[],blocks:state==='COMPLETED'?[{type:'progress',text:'Có 19 nhóm chênh lệch theo chỉ tiêu đã chọn.'}]:[{type:'progress',text:review.question}],model_calls:0}}});
+      if(path.endsWith('/decisions')){posted++;expect(route.request().postDataJSON().decision).toEqual({type:'CLARIFICATION',intent});state='COMPLETED';return route.fulfill({json:{}});}
+      if(path.endsWith('/replies')){posted++;expect(route.request().postDataJSON()).toMatchObject({review_id:review.id,nonce:review.nonce,fingerprint:review.fingerprint});await gate;replied=true;state='COMPLETED';return route.fulfill({status:202,json:{job_id:'clarification-reply-job'}});}
+      if(path==='/api/jobs/clarification-reply-job')return route.fulfill({json:{id:'clarification-reply-job',status:'SUCCEEDED'}});
+      if(route.request().method()!=='GET')throw Error('Unexpected clarification write '+path);
+      return route.fulfill({json:{items:[],total:0,has_more:false}});
+    });
+    await page.goto('/');
+    const card=page.getByRole('region',{name:'Câu hỏi bổ sung',exact:true});
+    await expect(card).toBeVisible();await expect(page.getByText(review.question,{exact:true})).toHaveCount(1);
+    await expect(card.getByRole('checkbox')).toHaveCount(0);await expect(card.getByText(/Xác nhận và tiếp tục|QUERY_FIELD_INVALID|QUERY_DATA/)).toHaveCount(0);
+    await expect(card.getByText('hệ thống chưa phê duyệt thay bạn',{exact:false})).toHaveCount(0);
+    await mkdir(`../runtime/assistant-conversation/after/${width}`,{recursive:true});
+    await page.screenshot({path:`../runtime/assistant-conversation/after/${width}/clarification.png`});
+    await card.getByRole('button',{name:'Giá trị đơn hàng · gross · VND',exact:true}).click();
+    await expect(page.locator('.agent-workflow')).toContainText('19 nhóm chênh lệch');expect(posted).toBe(1);
+    state='WAITING_REVIEW';await page.reload();await expect(card).toBeVisible();
+    await card.getByRole('button',{name:'Trả lời bằng tiếng Việt',exact:true}).click();
+    const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await expect(input).toBeFocused();
+    await input.fill('Xem chênh lệch theo giá trị đơn hàng');await page.reload();await expect(input).toHaveValue('Xem chênh lệch theo giá trị đơn hàng');
+    await expect(page.locator('.review-reply-binding')).toContainText(review.question);
+    gate=new Promise<void>(resolve=>release=resolve);
+    const send=page.getByRole('button',{name:'Gửi câu hỏi',exact:true});const before=await send.boundingBox();
+    await input.press('Enter');await send.dispatchEvent('click');
+    await expect(send).toBeDisabled();await expect(send).toHaveText('');await expect(send.locator('svg')).toBeVisible();
+    const during=await send.boundingBox();expect(during?.height).toBe(before?.height);expect(during?.width).toBe(before?.width);
+    await page.screenshot({path:`../runtime/assistant-conversation/after/${width}/sending.png`});
+    release();await expect(input).toBeEnabled();await expect(input).toHaveValue('');await expect(input).toBeFocused();
+    await expect(page.locator('.agent-workflow')).toHaveCount(1);await expect(page.locator('.agent-workflow')).toContainText('19 nhóm chênh lệch');
+    expect(posted).toBe(2);expect(errors).toEqual([]);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  });
+}
 
 for(const width of [390,768,1366,1440,1920]) {
   test(`Compact composer and user settings at ${width}px [LOCAL]`,async({page})=>{
@@ -14,10 +66,11 @@ for(const width of [390,768,1366,1440,1920]) {
     const send=form.getByRole('button',{name:'Gửi câu hỏi',exact:true});
     await expect(send).toHaveText('');await expect(send).toBeDisabled();
     await input.click();
-    expect(await form.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+    expect(await form.evaluate(el=>getComputedStyle(el).outlineColor)).not.toBe('rgb(37, 99, 235)');
     expect(await input.evaluate(el=>getComputedStyle(el).outlineColor)).not.toBe('rgb(37, 99, 235)');
     await input.press('Shift+Tab');await page.keyboard.press('Tab');await expect(input).toBeFocused();
-    expect(await input.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('solid');
+    expect(await input.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+    expect(await form.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('solid');
     await mkdir(`../runtime/ui-refinement/after/${width}`,{recursive:true});
     await page.screenshot({path:`../runtime/ui-refinement/after/${width}/keyboard.png`});
     await input.fill(Array.from({length:12},(_,i)=>`Dòng ${i+1}: giữ nguyên dữ liệu`).join('\n'));
@@ -128,6 +181,23 @@ test('[MOCK CONTRACT] Long chart categories remain readable on mobile with exact
   await page.getByText('Giá trị chính xác và nguồn',{exact:true}).click();
   await expect(page.locator('.agent-chart')).toContainText('12.75 VND');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('[MOCK CONTRACT] identifiers resembling status enums remain exact source strings',async({page})=>{
+  const context={project_id:'identifier-project'};
+  await page.addInitScript(()=>{localStorage.setItem('studio.project','identifier-project');localStorage.setItem('studio.conversation.identifier-project','identifier-conversation');});
+  await page.route('**/api/**',route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path==='/api/session')return route.fulfill({json:{workspace_id:'synthetic',actor_id:'identifier-reader',role:'owner'}});
+    if(path==='/api/settings')return route.fulfill({json:{policy:{allow_external_ai:false}}});
+    if(path==='/api/projects/identifier-project')return route.fulfill({json:{id:context.project_id,name:'Synthetic exact identifiers',business_scope:'synthetic',classification:'TEST'}});
+    if(path==='/api/conversations/identifier-conversation')return route.fulfill({json:{conversation:{id:'identifier-conversation',context,title:'Exact identifiers'},items:[{id:'identifier-answer',role:'assistant',workflow_id:'identifier-workflow',context,created_at:'2026-11-03T00:00:00Z'}],has_more:false}});
+    if(path==='/api/agent/workflows/identifier-workflow')return route.fulfill({json:{id:'identifier-workflow',context,state:'COMPLETED',updated_at:'2026-11-03T00:00:00Z',detail:{steps:[],reviews:[],blocks:[{type:'table',result:{query:{project_id:context.project_id,source_kind:'CANONICAL',source_id:'canonical',sort:[],filters:[]},fields:['transaction_id','state','amount'],field_labels:{transaction_id:'Mã giao dịch',state:'Vùng',amount:'Số tiền'},rows:[{transaction_id:'EQUAL',state:'OPEN',amount:'12.75'},{transaction_id:'000702',state:'PAID',amount:'0.00'}],total_count:2,input_count:2,offset:0,limit:25,truncated:false,evidence_complete:true,verification_status:'CANONICAL',warnings:[],source_refs:[]}}]}}});
+    return route.fulfill({json:{items:[],total:0,has_more:false}});
+  });
+  await page.goto('/');const table=page.locator('.agent-table');
+  for(const exact of ['EQUAL','OPEN','PAID','000702','12.75','0.00'])await expect(table.getByRole('cell',{name:exact,exact:true})).toBeVisible();
+  await expect(table).not.toContainText('Khớp chính xác');
 });
 
 for(const width of [390,768,1366,1440,1920]){

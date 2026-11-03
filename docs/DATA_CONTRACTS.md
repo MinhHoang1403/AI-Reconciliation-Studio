@@ -2,6 +2,22 @@
 
 Định nghĩa thực thi nằm trong `backend/studio/contracts/`. OpenAPI tại `/openapi.json` và `/docs` mô tả request/response; endpoint này không cấp quyền đọc dữ liệu. Error envelope: `code`, `message_vi`, `details` đã redacted, `retryable`, `correlation_id`.
 
+## Hội thoại: bổ sung thông tin và phê duyệt — 03/11/2026
+
+`ReviewRequest.kind` quyết định hành vi, không phân loại bằng CSS. `CLARIFICATION` nhận `options` optional (mặc định rỗng): mỗi lựa chọn do server tạo gồm id/label/typed intent của metric đã duyệt. Chọn qua decisions hoặc trả lời qua replies đều giữ owner/project/conversation/nonce/fingerprint/expiry, idempotency và pending-job guards. Lựa chọn có options phải khớp nguyên intent được cung cấp; không dùng một lựa chọn để đổi nguồn/filter tùy ý. Không gắn `user_confirmed=true` cho câu chat.
+
+Reply của clarification dùng catalogue scoped thật, mục tiêu gốc và câu trả lời mới để kiểm intent. Đủ dữ kiện thì ghi `AGENT_CLARIFICATION_ANSWERED` và advance trong cùng transaction; không ghi mapping/contract approval. Còn mơ hồ thì giữ OPEN và hỏi tiếp. MAPPING/RECONCILIATION replies vẫn chỉ sửa preview, xoay nonce và chờ nút duyệt chuyên biệt. Reply messages liên kết lại workflow gốc; FE chỉ render panel ở phản hồi mới nhất để tránh lặp.
+
+`resolve_verified_metric` không tính tiền: chỉ bind DataQuery vào metric của immutable approved contract. Unique metric giải quyết money fields trước query-field validation; nhiều metric chưa có lựa chọn trả `QUERY_METRIC_AMBIGUOUS`, không có metric trả `QUERY_METRIC_UNAVAILABLE`. Explicit metric sai trả `QUERY_SEMANTICS_REQUIRED`; field lạ vẫn `QUERY_FIELD_INVALID`. Input query không bị mutate; QueryResult.query ghi lựa chọn thực đã thực thi. Tổng/count, Decimal/null, currency và native verification không đổi. QueryResult thêm `field_labels` optional lấy từ schema/header có thật.
+
+`IntentCatalogue` thêm previous_query/previous_goal/previous_groups và pending_question (internal, bounded); chỉ lấy kết quả đã lưu cùng actor/conversation/project và nguồn còn hợp lệ, không chọn latest của project. AgentIntent/RoutingIntent thêm `result_position` optional, 1–50, chỉ cho EXPLAIN_RESULT, không đi cùng business key; phải nằm trong trang VERIFIED_RUN của đúng current run. Mã nghiệp vụ vẫn qua exact lookup.
+
+`POST /api/agent/workflows/{id}/query-pages` nhận DataQuery của TableBlock đã lưu, chỉ cho thay offset/sort. Authorization/CSRF và query validation được kiểm lại. Lưu WorkflowState.query_selection gồm query và tối đa50group IDs cho follow-up; không sửa original blocks, run, MetricSnapshot hoặc lịch sử nguồn. UI khôi phục trang đã lưu khi reload. Endpoint `/api/agent/queries` hiện có giữ tương thích. Không migration mới; fields JSONB additive có defaults, workflow lịch sử tiếp tục đọc được.
+
+Typed intent thêm gate phân biệt sort và filter: yêu cầu liệt kê nhóm lệch tiền phải có comparison_state AMOUNT_MISMATCH, kể cả khi sort absolute_variance đúng. Tổng delta/absolute_variance toàn run không filter/group trả SUMMARIZE_RESULTS từ MetricSnapshot; phân tích có phạm vi riêng vẫn query native. Việc chuyển sang snapshot diễn ra sau kiểm metric/source, không hợp thức hóa ID bịa. Query rows của verified run giữ thêm business_key chỉ để trình bày/evidence; không cho query tự chọn business key kỹ thuật hoặc mở join mới. UI ẩn UUID và hiển thị vị trí/khóa giao dịch; row provenance vẫn nguyên.
+
+Source aliases lấy từ chữ cái độc lập thực có trong filename và phải duy nhất giữa datasets; không gán A/B theo thứ tự upload. Plain listing fast path chỉ áp dụng một bảng, không filter/kỳ/tiền; câu phức tạp vẫn qua router. Yêu cầu tự phê duyệt/bỏ tiền tệ bị từ chối trước model trong workflow thật. Yêu cầu chọn tệp tên gần giống bị giảm xuống CLARIFY, không được biến thành reuse current run. Đây là policy từ chối/giảm quyền, không sửa proposal tài chính thành hành động được phép.
+
 ## Assistant: tools và facts
 
 API bổ sung: `POST /api/assistant/tools`, `POST /api/conversations`, `GET /api/conversations?project_id=...`, `GET /api/conversations/{id}`, `DELETE /api/conversations/{id}`, `POST /api/assistant/messages`. Create/message dùng `Idempotency-Key`; message trả job ID để resume bằng GET, không gửi lại provider. GET hỗ trợ limit 1–50 và `before_id` thuộc đúng project/hội thoại. Context và text khác với key cũ trả 409. Conversation/message output có source context riêng; hội thoại khác actor/project/workspace hoặc đã xóa trả 404.

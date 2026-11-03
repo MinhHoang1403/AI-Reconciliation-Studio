@@ -88,7 +88,8 @@ function ReviewCard({ review, workflow, canEdit, refresh, onReply }: {
 }) {
     const [draft, setDraft] = useState(review.normalization_draft);
     const [plan, setPlan] = useState(review.plan);
-    const [confirmed, setConfirmed] = useState(false);
+    const [catalogue,setCatalogue]=useState<Catalogue[]>([]);
+    const submitting = useRef(false);
     const [extraction, setExtraction] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
@@ -99,25 +100,29 @@ function ReviewCard({ review, workflow, canEdit, refresh, onReply }: {
     } | null>(null);
     useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
     useEffect(() => {
-        if (review.kind !== "RECONCILIATION" || review.plan)
+        if (review.kind !== "RECONCILIATION")
             return;
         const controller = new AbortController();
         void api<{
             items: Catalogue[];
         }>(`/projects/${workflow.context.project_id}/canonical-catalogue`, { signal: controller.signal })
-            .then(data => { if (!controller.signal.aborted)
-            setPlan(proposedPlan(review, data.items)); })
+            .then(data => { if (!controller.signal.aborted){
+            setCatalogue(data.items);if(!review.plan)setPlan(proposedPlan(review, data.items));} })
             .catch(err => { if (!controller.signal.aborted)
             setError(String(err)); });
         return () => controller.abort();
     }, [review.id, review.nonce]);
     const disabled = busy || !canEdit || !!review.pending_reply_job_id;
-    async function action() {
+    const sourceName=(id:string)=>catalogue.find(c=>c.canonical.id===id)?.name||"Nguồn đã chọn";
+    const fieldName=(id:string,field:string)=>catalogue.find(c=>c.canonical.id===id)?.schema_definition.fields.find(f=>f.id===field)?.name||field;
+    async function action(intent = review.reply_intent) {
+        if (submitting.current || disabled) return;
+        submitting.current = true;
         setBusy(true);
         setError("");
         try {
             const decision = review.kind === "MAPPING" ? { type: "MAPPING", draft, extraction_reviewed: extraction } :
-                review.kind === "RECONCILIATION" ? { type: "RECONCILIATION", plan } : { type: "CLARIFICATION", intent: review.reply_intent };
+                review.kind === "RECONCILIATION" ? { type: "RECONCILIATION", plan } : { type: "CLARIFICATION", intent };
             const body = JSON.stringify({ review_id: review.id, nonce: review.nonce,
                 fingerprint: review.fingerprint, decision });
             if (pending.current?.body !== body)
@@ -134,23 +139,33 @@ function ReviewCard({ review, workflow, canEdit, refresh, onReply }: {
                 setError(err instanceof Error ? err.message : "Không lưu được quyết định.");
         }
         finally {
+            submitting.current = false;
             if (alive.current)
                 setBusy(false);
         }
     }
     const ready = review.kind === "MAPPING" ? !!draft?.fields.every(f => f.data_type === "string" || (f.data_type === "decimal" ? f.locale && f.semantic_metric && f.amount_basis && f.currency && f.unit : f.date_format && f.timezone)) :
         review.kind === "RECONCILIATION" ? !!plan?.period_start && !!plan.period_end && !!plan.timezone && !!plan.effective_from && [plan.left, plan.right].every(s => s.date_field && s.time_basis && s.coverage_start && s.coverage_end && s.snapshot_at && s.completeness) : !!review.reply_intent;
-    return <section className="agent-review card" aria-label="Quyết định cần xác nhận">{review.resource_label&&<strong>{review.resource_label}</strong>}<h4>{review.question}</h4><p>{review.reason}</p>
+    if (review.kind === "CLARIFICATION") return <section className="agent-clarification" aria-label="Câu hỏi bổ sung">
+      <p>{review.question}</p>
+      {error && <Notice tone="error">{error}</Notice>}
+      {review.reply_questions.filter(q=>q!==review.question).map(q=><p key={q}>{q}</p>)}
+      <div className="clarification-options">{review.options?.map(option=><button className="button secondary" key={option.id} disabled={disabled} onClick={()=>void action(option.intent)}>{option.label}</button>)}</div>
+      {review.reply_intent && !review.options?.length && <button className="button secondary" disabled={disabled} onClick={()=>void action()}>Tiếp tục yêu cầu này</button>}
+      <button className="text-button" disabled={disabled} onClick={()=>onReply(workflow.id,review)}>Trả lời bằng tiếng Việt</button>
+      {review.pending_reply_job_id && <p role="status"><Spinner/> Đang đọc câu trả lời của bạn…</p>}
+    </section>;
+    return <section className="agent-review" aria-label="Quyết định cần xác nhận">{review.resource_label&&<strong>{review.resource_label}</strong>}<h4>{review.question}</h4><p>{review.reason}</p>
     {error && <Notice tone="error">{error}</Notice>}{review.reply_questions.map(q => <Notice key={q}>{q}</Notice>)}
-    {draft && <><p>{draft.grain}</p><ul className="review-summary">{draft.fields.filter(f=>f.data_type!=="string"||f.business_key||f.question).map(f=><li key={f.source_field}><strong>{f.name}</strong>: {f.data_type==="decimal"?`${f.semantic_metric||"Chưa rõ ý nghĩa"} · ${f.amount_basis||"chưa rõ gross/net"} · ${f.currency||"chưa rõ tiền tệ"} · ${f.locale||"chưa rõ định dạng số"}`:f.data_type==="date"?`${f.date_format||"chưa rõ định dạng ngày"} · ${f.timezone||"chưa rõ múi giờ"}`:"Giữ nguyên mã"}{f.question&&<span className="muted"> · {f.question}</span>}</li>)}</ul><details className="agent-review-editor"><summary>Xem và chỉnh các lựa chọn</summary><MappingReview draft={draft} disabled={disabled} onChange={v => { setDraft(v); setConfirmed(false); }}/></details></>}
-    {plan && <><p>Kỳ {plan.period_start||"chưa chọn"} → {plan.period_end||"chưa chọn"} · {plan.timezone||"chưa rõ múi giờ"}</p><p>Khóa: {plan.join_keys.map(k=>`${k.left} ↔ ${k.right}`).join(", ")}. {label(plan.cardinality)} · {label(plan.aggregation)}</p>{plan.comparison_metrics.map(m=><p key={m.metric_id}>{m.metric_id} · {m.amount_basis} · {m.currency} · sai số {m.absolute_tolerance}</p>)}<details className="agent-review-editor"><summary>Kiểm tra phạm vi và chỉnh quy tắc</summary><PlanReview plan={plan} disabled={disabled} onChange={v => { setPlan(v); setConfirmed(false); }}/></details></>}
+    {draft && <><p>{draft.grain}</p><ul className="review-summary">{draft.fields.filter(f=>f.data_type!=="string"||f.business_key||f.question).map(f=><li key={f.source_field}><strong>{f.name}</strong>: {f.data_type==="decimal"?`${f.semantic_metric||"Chưa rõ ý nghĩa"} · ${f.amount_basis||"chưa rõ gross/net"} · ${f.currency||"chưa rõ tiền tệ"} · ${f.locale||"chưa rõ định dạng số"}`:f.data_type==="date"?`${f.date_format||"chưa rõ định dạng ngày"} · ${f.timezone||"chưa rõ múi giờ"}`:"Giữ nguyên mã"}{f.question&&<span className="muted"> · {f.question}</span>}</li>)}</ul><details className="agent-review-editor"><summary>Xem và chỉnh các lựa chọn</summary><MappingReview draft={draft} disabled={disabled} onChange={v => { setDraft(v); }}/></details></>}
+    {plan && <><p>Nguồn A: {sourceName(plan.left.canonical_id)} · Nguồn B: {sourceName(plan.right.canonical_id)}</p><p>Kỳ {plan.period_start||"chưa chọn"} → {plan.period_end||"chưa chọn"} · {plan.timezone||"chưa rõ múi giờ"}</p><p>Khóa: {plan.join_keys.map(k=>`${fieldName(plan.left.canonical_id,k.left)} ↔ ${fieldName(plan.right.canonical_id,k.right)}`).join(", ")}. {label(plan.cardinality)} · {label(plan.aggregation)}</p>{plan.comparison_metrics.map(m=><p key={m.metric_id}>{fieldName(plan.left.canonical_id,m.left)} · {m.amount_basis} · {m.currency} · sai số {m.absolute_tolerance}</p>)}<details className="agent-review-editor"><summary>Kiểm tra phạm vi và chỉnh quy tắc</summary><PlanReview plan={plan} disabled={disabled} onChange={v => { setPlan(v); }}/></details></>}
     {review.kind === "RECONCILIATION" && !plan && <Notice>Cần bổ sung kỳ, múi giờ và độ đầy đủ. Chưa có quy tắc đủ điều kiện chạy.</Notice>}
-    {review.reply_intent && <p>Thao tác sẽ thực hiện: {review.reply_intent.intent}</p>}
     <button className="text-button" disabled={disabled} onClick={()=>onReply(workflow.id,review)}>Bổ sung bằng tiếng Việt</button>
     {review.pending_reply_job_id && <Spinner />}<p className="muted">Câu trả lời được diễn giải để bạn kiểm tra; hệ thống chưa phê duyệt thay bạn.</p>
     {draft && <label><input type="checkbox" checked={extraction} disabled={disabled} onChange={e => setExtraction(e.target.checked)}/>Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.</label>}
-    <label><input type="checkbox" checked={confirmed} disabled={disabled} onChange={e => setConfirmed(e.target.checked)}/>Tôi xác nhận các lựa chọn ở trên và cho phép tiếp tục.</label>
-    <button className="button primary" disabled={disabled || !confirmed || !ready} onClick={() => void action()}>Xác nhận và tiếp tục</button>
+    {!ready && <p className="muted">Mở phần chỉnh sửa hoặc bổ sung bằng tiếng Việt để hoàn tất các điều kiện còn thiếu.</p>}
+    <p className="muted">{review.kind === "MAPPING" ? "Khi duyệt, hệ thống sẽ lưu ánh xạ và chuẩn hóa theo các lựa chọn này." : "Khi duyệt, hệ thống sẽ lưu quy tắc và bắt đầu đối soát trong phạm vi trên."}</p>
+    <button className="button primary" disabled={disabled || !ready} onClick={() => void action()}>{review.kind === "MAPPING" ? "Duyệt ánh xạ và chuẩn hóa" : "Duyệt quy tắc và đối soát"}</button>
   </section>;
 }
 export function AgentWorkflowPanel({ id, canEdit, onNavigate, onContext, onReply }: {
@@ -200,10 +215,10 @@ export function AgentWorkflowPanel({ id, canEdit, onNavigate, onContext, onReply
             setError(String(err));
     } }
     return <section className="agent-workflow" aria-label="Công việc của AI Assistant">{error && <Notice tone="error">{error}<button className="text-button" onClick={() => void refresh()}>Cập nhật</button></Notice>}
-    {!workflow ? <Spinner /> : <><p className="agent-workflow-state"><strong>{states[workflow.state] || workflow.state}</strong>{["CREATED", "RUNNING", "WAITING_REVIEW"].includes(workflow.state) && <button className="text-button" onClick={() => void cancel()}>Dừng bước tiếp theo</button>}</p>
+    {!workflow ? <Spinner /> : <><p className="agent-workflow-state" role="status">{["CREATED","RUNNING"].includes(workflow.state)&&<Spinner/>}<strong>{workflow.state==="WAITING_REVIEW"&&workflow.detail.reviews.some(r=>r.state==="OPEN"&&r.kind==="CLARIFICATION")?"Cần bạn bổ sung":states[workflow.state] || workflow.state}</strong>{["CREATED", "RUNNING", "WAITING_REVIEW"].includes(workflow.state) && <button className="text-button" onClick={() => void cancel()}>Dừng bước tiếp theo</button>}</p>
       {workflow.detail.error_code && <Notice tone="warning">{errors[workflow.detail.error_code]||"Chưa đủ điều kiện để tiếp tục. Dữ liệu và kết quả đã lưu được giữ."}<details><summary>Chi tiết</summary><code>{workflow.detail.error_code}</code></details></Notice>}
-      <ol className="agent-steps">{workflow.detail.steps.map((s, i) => <li key={i}>{tools[s.tool] || s.tool} · {statusText[s.status]||label(s.status)}</li>)}</ol>
+      {workflow.detail.steps.length>0&&<details className="agent-processing"><summary>Chi tiết xử lý</summary><ol className="agent-steps">{workflow.detail.steps.map((s, i) => <li key={i}>{tools[s.tool] || s.tool} · {statusText[s.status]||label(s.status)}</li>)}</ol></details>}
       {workflow.detail.reviews.filter(r => r.state === "OPEN").map(r => <ReviewCard key={`${r.id}:${r.nonce}`} review={r} workflow={workflow} canEdit={canEdit && workflow.state === "WAITING_REVIEW"} refresh={refresh} onReply={onReply}/>)}
-      <AgentResultBlocks blocks={workflow.detail.blocks} context={workflow.context} onNavigate={onNavigate}/>
+      <AgentResultBlocks blocks={workflow.detail.blocks.filter((block,index,blocks)=>block.type!=="progress"||(!workflow.detail.reviews.some(r=>r.state==="OPEN"&&(r.question===block.text||r.reply_questions.includes(block.text)))&&!blocks.slice(0,index).some(previous=>previous.type==="progress"&&previous.text===block.text)))} context={workflow.context} onNavigate={onNavigate} workflowId={workflow.id} querySelection={workflow.detail.query_selection?.query}/>
     </>}</section>;
 }

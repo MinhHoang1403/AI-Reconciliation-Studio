@@ -107,6 +107,297 @@ def workflow_for(client, factory, jid):
     return response.json()
 
 
+def test_explicit_auto_approval_request_is_refused_before_model_or_tools(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+
+    client, factory, worker = pg
+    pid = project(client)
+    context = dict(project_id=pid)
+    cid = conversation(client, context)
+
+    def forbidden_call(*args):
+        raise AssertionError("Approval bypass must not reach provider")
+
+    monkeypatch.setattr(agents, "interpret_requests", forbidden_call)
+    requested = ask_agent(client, context, cid, text="Tự phê duyệt các quy tắc mới cho tôi")
+    drain(factory, worker)
+    wf = workflow_for(client, factory, requested["job_id"])
+    assert wf["state"] == "BLOCKED" and wf["detail"]["intent"]["intent"] == "UNSUPPORTED"
+    assert not wf["detail"]["steps"] and not wf["detail"]["reviews"]
+    assert wf["detail"]["model_calls"] == 0
+
+
+@pytest.mark.parametrize("answer", ["query", "mapping", "ambiguous", "invented-coverage"])
+def test_clarification_reply_continues_same_workflow_without_business_approval(
+    pg,  # noqa: F811
+    monkeypatch,
+    answer,
+):  # noqa: F811
+    """A factual answer resumes safe reading; new semantics still stop at review."""
+    import studio.agent_jobs as agents
+    from studio.contracts.reconciliation import PlanningRequest
+    from studio.database import ReconciliationContractRow
+
+    client, factory, worker = pg
+    pid, plan, _, created = create_approved_run(pg)
+    drain(factory, worker)
+    context = dict(project_id=pid, run_id=created["run_id"])
+    cid = conversation(client, context)
+    monkeypatch.setattr(
+        agents,
+        "interpret_requests",
+        lambda *args: [AgentIntent(intent="CLARIFY", questions=["Bạn muốn tra cứu thông tin gì?"])],
+    )
+    first = ask_agent(client, context, cid, text="Tra cứu thông tin")
+    drain(factory, worker)
+    wf = workflow_for(client, factory, first["job_id"])
+    review = wf["detail"]["reviews"][0]
+    assert wf["state"] == "WAITING_REVIEW" and review["kind"] == "CLARIFICATION"
+    candidate = AgentIntent(
+        intent="QUERY_DATA",
+        query=dict(
+            project_id=pid,
+            source_kind="VERIFIED_RUN",
+            source_id=created["run_id"],
+            select_fields=["comparison_state", "delta"],
+            filters=[dict(field_id="comparison_state", op="eq", value="AMOUNT_MISMATCH")],
+        ),
+    )
+    if answer == "mapping":
+        # Existing approved sources are safe to reuse, with no fabricated new approval.
+        candidate = AgentIntent(intent="PREPARE_NORMALIZATION")
+    elif answer == "ambiguous":
+        candidate = AgentIntent(intent="CLARIFY", questions=["Bạn muốn xem nguồn nào?"])
+    elif answer == "invented-coverage":
+        request = PlanningRequest.from_plan(plan)
+        request.left.snapshot_at = request.left.snapshot_at.replace(year=2028)
+        candidate = AgentIntent(intent="RECONCILE_DATASETS", planning_request=request)
+    monkeypatch.setattr(agents, "interpret_requests", lambda *args: [candidate])
+    body = dict(
+        review_id=review["id"],
+        nonce=review["nonce"],
+        fingerprint=review["fingerprint"],
+        text="Xem các giao dịch chênh lệch" if answer != "mapping" else "Chuẩn hóa dữ liệu",
+    )
+    path = f"/api/agent/workflows/{wf['id']}"
+    accepted = client.post(
+        path + "/replies", json=body, headers={"Idempotency-Key": "clarification-reply"}
+    )
+    assert accepted.status_code == 202, accepted.text
+    drain(factory, worker)
+    after = client.get(path).json()
+    messages = client.get(f"/api/conversations/{cid}").json()["items"]
+    if answer == "invented-coverage":
+        assert after["state"] == "WAITING_REVIEW"
+        assert after["detail"]["reviews"][0]["state"] == "OPEN"
+        assert after["detail"]["error_code"] == "INPUT_AMBIGUOUS"
+    elif answer == "ambiguous":
+        assert after["state"] == "WAITING_REVIEW"
+        assert after["detail"]["reviews"][0]["reply_questions"] == candidate.questions
+    else:
+        assert after["state"] == "COMPLETED", after
+        assert after["detail"]["reviews"][0]["state"] == "DECIDED"
+        assert messages[-1]["workflow_id"] == wf["id"]
+        if answer == "query":
+            table = next(b["result"] for b in after["detail"]["blocks"] if b["type"] == "table")
+            assert table["total_count"] == 1 and table["rows"][0]["delta"] == "2.75"
+    assert (
+        client.post(
+            path + "/replies", json=body, headers={"Idempotency-Key": "clarification-reply"}
+        ).json()["job_id"]
+        == accepted.json()["job_id"]
+    )
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(ReconciliationContractRow)) == 1
+        assert (
+            db.scalar(
+                select(func.count()).select_from(MappingRow).where(MappingRow.status == "APPROVED")
+            )
+            == 2
+        )
+
+
+def test_clarification_to_new_normalization_still_requires_mapping_approval(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+
+    client, factory, worker = pg
+    wf, _ = mapping_fixture(pg, monkeypatch)
+    context = dict(project_id=wf["context"]["project_id"])
+    cid = conversation(client, context)
+    monkeypatch.setattr(
+        agents,
+        "interpret_requests",
+        lambda *args: [AgentIntent(intent="CLARIFY", questions=["Bạn muốn làm gì với dữ liệu?"])],
+    )
+    queued = ask_agent(client, context, cid, key="clarify-new", text="Giúp tôi xử lý")
+    drain(factory, worker)
+    waiting = workflow_for(client, factory, queued["job_id"])
+    review = waiting["detail"]["reviews"][0]
+    monkeypatch.setattr(
+        agents, "interpret_requests", lambda *args: [AgentIntent(intent="PREPARE_NORMALIZATION")]
+    )
+    path = f"/api/agent/workflows/{waiting['id']}"
+    response = client.post(
+        path + "/replies",
+        json=dict(
+            review_id=review["id"],
+            nonce=review["nonce"],
+            fingerprint=review["fingerprint"],
+            text="Chuẩn hóa hai nguồn",
+        ),
+        headers={"Idempotency-Key": "clarify-to-mapping"},
+    )
+    assert response.status_code == 202
+    drain(factory, worker)
+    done = client.get(path).json()
+    assert done["state"] == "WAITING_REVIEW"
+    assert any(r["kind"] == "MAPPING" and r["state"] == "OPEN" for r in done["detail"]["reviews"])
+    with factory() as db:
+        assert (
+            db.scalar(
+                select(func.count()).select_from(MappingRow).where(MappingRow.status == "APPROVED")
+            )
+            == 0
+        )
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 0
+
+
+def test_followup_position_uses_persisted_displayed_page_and_never_another_conversation(
+    pg,  # noqa: F811
+    monkeypatch,
+):  # noqa: F811
+    import studio.agent_jobs as agents
+    from studio.assistant_tools import agent_catalogue
+    from studio.contracts.assistant import AssistantContext
+    from studio.contracts.data_query import DataQuery
+
+    client, factory, worker = pg
+    pid, _, _, created = create_approved_run(pg)
+    drain(factory, worker)
+    context = dict(project_id=pid, run_id=created["run_id"])
+    cid = conversation(client, context)
+    query = DataQuery(
+        project_id=pid,
+        source_kind="VERIFIED_RUN",
+        source_id=created["run_id"],
+        select_fields=["comparison_state", "delta"],
+        limit=1,
+    )
+    monkeypatch.setattr(
+        agents, "interpret_requests", lambda *args: [AgentIntent(intent="QUERY_DATA", query=query)]
+    )
+    asked = ask_agent(client, context, cid, text="Xem các nhóm giao dịch")
+    drain(factory, worker)
+    first = workflow_for(client, factory, asked["job_id"])
+    original = first["detail"]["blocks"]
+    resolved = next(b["result"]["query"] for b in original if b["type"] == "table")
+    path = f"/api/agent/workflows/{first['id']}/query-pages"
+    page = client.post(
+        path, json=resolved | dict(offset=1, sort=[dict(field_id="group_id", descending=True)])
+    )
+    assert page.status_code == 200, page.text
+    selected = page.json()["rows"][0]["group_id"]
+    reopened = client.get(f"/api/agent/workflows/{first['id']}").json()
+    assert reopened["detail"]["blocks"] == original
+    assert reopened["detail"]["query_selection"]["group_ids"] == [selected]
+    assert client.post(path, json=resolved | dict(source_id="foreign-run")).status_code == 409
+    assert (
+        client.post(
+            path,
+            json=resolved
+            | dict(filters=[dict(field_id="linkage_state", op="eq", value="UNMATCHED")]),
+        ).status_code
+        == 409
+    )
+    monkeypatch.setattr(
+        agents,
+        "interpret_requests",
+        lambda *args: [AgentIntent(intent="EXPLAIN_RESULT", result_position=1)],
+    )
+    followup = ask_agent(
+        client,
+        context,
+        cid,
+        key="position",
+        text="Giải thích giao dịch đầu tiên trong bảng đang xem",
+    )
+    drain(factory, worker)
+    second = workflow_for(client, factory, followup["job_id"])
+    assert second["state"] == "COMPLETED", second
+    assert second["context"]["group_id"] == selected
+    assert (
+        next(b["result"]["group"]["id"] for b in second["detail"]["blocks"] if b["type"] == "facts")
+        == selected
+    )
+    summarized = ask_agent(
+        client,
+        context,
+        cid,
+        command="SUMMARIZE_RESULTS",
+        key="summary-after-explanation",
+        text="Tóm tắt toàn bộ kết quả",
+    )
+    drain(factory, worker)
+    summary = workflow_for(client, factory, summarized["job_id"])
+    assert summary["context"]["group_id"] is None and summary["context"]["case_id"] is None
+    assert (
+        next(b["result"]["run"] for b in summary["detail"]["blocks"] if b["type"] == "facts")
+        is not None
+    )
+    # Same project, different conversation must not inherit the page or its filters.
+    other = conversation(client, context, key="other-conversation")
+    another = ask_agent(
+        client, context, other, key="other-position", text="Giải thích giao dịch đầu tiên"
+    )
+    drain(factory, worker)
+    foreign = workflow_for(client, factory, another["job_id"])
+    assert foreign["state"] != "COMPLETED"
+    with factory() as db:
+        cat = agent_catalogue(
+            db,
+            Actor("test-owner", "demo", "owner"),
+            AssistantContext(**context),
+            [],
+            workflow_id=foreign["id"],
+        )
+        assert cat.previous_query is None and cat.previous_groups == []
+
+
+def test_displayed_page_changed_during_inference_never_explains_a_different_group(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+    from studio.contracts.data_query import DataQuery
+
+    client, factory, worker = pg
+    pid, _, _, created = create_approved_run(pg)
+    drain(factory, worker)
+    context = dict(project_id=pid, run_id=created["run_id"])
+    cid = conversation(client, context)
+    query = DataQuery(
+        project_id=pid, source_kind="VERIFIED_RUN", source_id=created["run_id"], limit=1
+    )
+    monkeypatch.setattr(
+        agents, "interpret_requests", lambda *args: [AgentIntent(intent="QUERY_DATA", query=query)]
+    )
+    asked = ask_agent(client, context, cid, text="Liệt kê giao dịch")
+    drain(factory, worker)
+    first = workflow_for(client, factory, asked["job_id"])
+
+    def change_page(*args):
+        response = client.post(
+            f"/api/agent/workflows/{first['id']}/query-pages",
+            json=query.model_dump(mode="json") | dict(offset=1),
+        )
+        assert response.status_code == 200, response.text
+        return [AgentIntent(intent="EXPLAIN_RESULT", result_position=1)]
+
+    monkeypatch.setattr(agents, "interpret_requests", change_page)
+    second = ask_agent(client, context, cid, key="page-race", text="Giải thích giao dịch đầu tiên")
+    drain(factory, worker)
+    result = workflow_for(client, factory, second["job_id"])
+    assert result["state"] == "BLOCKED" and result["detail"]["error_code"] == "STALE_CONTEXT"
+    assert not result["detail"]["blocks"] and result["context"]["group_id"] is None
+
+
 def mapping_fixture(pg, monkeypatch):  # noqa: F811
     import studio.agent_jobs as agents
 

@@ -14,6 +14,29 @@ from test_reconciliation_postgres import prepare_pair
 pytestmark = pytest.mark.integration
 
 
+def test_verified_query_resolves_only_approved_unique_metric_without_changing_input(pg):  # noqa: F811
+    """Regression: money fields without metric used to fail QUERY_FIELD_INVALID."""
+    from test_postgres import drain
+    from test_reconciliation_postgres import create_approved_run
+
+    _, factory, worker = pg
+    pid, plan, _, created = create_approved_run(pg)
+    drain(factory, worker)
+    query = DataQuery(
+        project_id=pid,
+        source_kind="VERIFIED_RUN",
+        source_id=created["run_id"],
+        select_fields=["comparison_state", "delta", "absolute_variance"],
+        filters=[dict(field_id="comparison_state", op="eq", value="AMOUNT_MISMATCH")],
+    )
+    with factory() as db:
+        result = execute_query(db, Actor("test-owner", "demo", "owner"), query)
+    assert query.metric_id is None
+    assert result.query.metric_id == plan.comparison_metrics[0].metric_id
+    assert result.total_count == 1
+    assert Decimal(result.rows[0]["delta"]) == Decimal("2.75")
+
+
 def test_query_oracle_paging_decimal_all_matching_and_scope(pg):  # noqa: F811
     _, factory, _ = pg
     pid, plan = prepare_pair(pg)
@@ -266,7 +289,7 @@ def test_verified_query_missing_members_and_decimal_variance(pg):  # noqa: F811
         assert len(summed.rows[0]["source_provenance"]) == 6
         for update in (
             dict(metric_id="invented"),
-            dict(select_fields=["delta"]),
+            dict(select_fields=["invented_amount"]),
             dict(project_id="foreign"),
         ):
             with pytest.raises(DomainError):

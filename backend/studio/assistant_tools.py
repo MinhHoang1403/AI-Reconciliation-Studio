@@ -61,13 +61,24 @@ def scoped_context(db: Session, actor: Actor, context: AssistantContext) -> RunR
 
 
 def agent_catalogue(
-    db: Session, actor: Actor, context: AssistantContext, dataset_ids: list[str]
+    db: Session,
+    actor: Actor,
+    context: AssistantContext,
+    dataset_ids: list[str],
+    *,
+    workflow_id: str | None = None,
 ) -> "IntentCatalogue":
     """Catalogue bounded cho router; chỉ metadata/profile, không raw values/paths/secrets."""
     from studio.contracts import SchemaDefinition
-    from studio.contracts.agent import DatasetContext, SourceColumn, TableContext
+    from studio.contracts.agent import (
+        DatasetContext,
+        SourceColumn,
+        TableBlock,
+        TableContext,
+        WorkflowState,
+    )
     from studio.data_query import STATUS_VALUES
-    from studio.database import CanonicalRow, SchemaRow, TableRow, VersionRow
+    from studio.database import AgentWorkflowRow, CanonicalRow, SchemaRow, TableRow, VersionRow
 
     scoped_context(db, actor, context)
     if not dataset_ids and context.dataset_id:
@@ -164,12 +175,59 @@ def agent_catalogue(
         run = get_scoped(db, RunRow, context.run_id, actor)
         rule = get_scoped(db, ReconciliationContractRow, run.contract_id, actor)
         confirmed = ReconciliationContract.model_validate(rule.definition).plan
+    previous_query = None
+    previous_goal = None
+    previous_groups: list[str] = []
+    if workflow_id:
+        current = get_scoped(db, AgentWorkflowRow, workflow_id, actor)
+        if current.actor_id != actor.id or current.project_id != context.project_id:
+            raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy ngữ cảnh hội thoại.", 404)
+        history = db.scalars(
+            select(AgentWorkflowRow)
+            .where(
+                AgentWorkflowRow.conversation_id == current.conversation_id,
+                AgentWorkflowRow.actor_id == actor.id,
+                AgentWorkflowRow.id != current.id,
+                AgentWorkflowRow.created_at <= current.created_at,
+            )
+            .order_by(AgentWorkflowRow.updated_at.desc(), AgentWorkflowRow.id.desc())
+            .limit(10)
+        )
+        valid_sources = {t.table_id for d in sources for t in d.tables} | {
+            t.canonical_id for d in sources for t in d.tables if t.canonical_id
+        }
+        for old in history:
+            state = WorkflowState.model_validate(old.detail)
+            result_table = next(
+                (b for b in reversed(state.blocks) if isinstance(b, TableBlock)), None
+            )
+            if not result_table:
+                continue
+            q = state.query_selection.query if state.query_selection else result_table.result.query
+            if q.project_id != context.project_id or (
+                q.source_id != context.run_id
+                if q.source_kind in {"VERIFIED_RUN", "EXCEPTIONS"}
+                else q.source_id not in valid_sources
+            ):
+                # A newer, different scope must never resurrect an earlier query.
+                break
+            previous_query, previous_goal = q, old.goal
+            if q.source_kind == "VERIFIED_RUN":
+                previous_groups = (
+                    state.query_selection.group_ids
+                    if state.query_selection
+                    else [str(r["group_id"]) for r in result_table.result.rows if r.get("group_id")]
+                )
+            break
     return IntentCatalogue(
         context=context,
         project_scope=get_scoped(db, ProjectRow, context.project_id, actor).business_scope,
         datasets=sources,
         run_ids=runs,
         confirmed_plan=confirmed,
+        previous_query=previous_query,
+        previous_goal=previous_goal,
+        previous_groups=previous_groups,
         verified_run_fields=(
             [
                 "group_id",

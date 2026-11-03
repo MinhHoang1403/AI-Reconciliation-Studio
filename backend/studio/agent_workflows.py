@@ -29,6 +29,7 @@ from studio.config import settings
 from studio.contracts.agent import (
     ChartBlock,
     ChartPoint,
+    ClarificationOption,
     DatasetBlock,
     DownloadBlock,
     FactsBlock,
@@ -357,7 +358,9 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
         return
     intent = state.intent
     context = AssistantContext.model_validate(row.context)
-    catalogue = agent_catalogue(db, actor, context, state.dataset_ids or intent.dataset_ids)
+    catalogue = agent_catalogue(
+        db, actor, context, state.dataset_ids or intent.dataset_ids, workflow_id=row.id
+    )
 
     def facts(explain: bool = False) -> None:
         if len(state.steps) >= settings.agent_max_steps:
@@ -607,12 +610,55 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
     elif intent.intent in {"QUERY_DATA", "CREATE_VISUALIZATION"}:
         if intent.query is None:
             raise DomainError("INPUT_AMBIGUOUS", "Cần chọn nguồn và điều kiện truy vấn rõ ràng.")
+        from studio.data_query import resolve_verified_metric
+
+        metrics = catalogue.confirmed_plan.comparison_metrics if catalogue.confirmed_plan else []
+        try:
+            intent.query = resolve_verified_metric(intent.query, metrics, catalogue.previous_query)
+        except DomainError as exc:
+            if exc.code != "QUERY_METRIC_AMBIGUOUS":
+                raise
+            make_review(
+                db,
+                row,
+                state,
+                kind="CLARIFICATION",
+                resource_id=row.id,
+                question=exc.message_vi,
+                reason="Có nhiều chỉ tiêu đã được duyệt cho kết quả này.",
+            )
+            review = state.reviews[-1]
+            fields = {
+                f.id: f.name
+                for d in catalogue.datasets
+                for t in d.tables
+                if t.schema_definition
+                for f in t.schema_definition.fields
+            }
+            review.options = [
+                ClarificationOption(
+                    id=m.metric_id,
+                    label=f"{fields.get(m.left, m.metric_id)} · {m.amount_basis} · {m.currency}",
+                    intent=intent.model_copy(
+                        update={"query": intent.query.model_copy(update={"metric_id": m.metric_id})}
+                    ),
+                )
+                for m in metrics
+            ]
+            save(row, state)
+            return
         result = execute_tool(
             db, actor, QueryAction(name="query_dataset", query=intent.query), row.id
         )
         from studio.contracts.data_query import QueryResult
 
         assert isinstance(result, QueryResult)
+        intent.query = result.query
+        # A new table is a new selection surface; a previously explained group
+        # must not silently remain selected for a later pronoun/evidence request.
+        context.group_id = context.case_id = None
+        if result.query.source_kind in {"VERIFIED_RUN", "EXCEPTIONS"}:
+            context.run_id = result.query.source_id
         state.blocks.append(TableBlock(result=result))
         state.steps.append(
             WorkflowStep(tool="query_dataset", resource_id=result.source_id, status="SUCCEEDED")
@@ -645,6 +691,15 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
         row.state = "COMPLETED"
     elif intent.intent in {"EXPLAIN_RESULT", "SUMMARIZE_RESULTS"}:
         context.run_id = intent.run_id or context.run_id
+        if intent.intent == "SUMMARIZE_RESULTS":
+            context.group_id = context.case_id = None
+        if intent.result_position is not None:
+            if intent.result_position > len(catalogue.previous_groups):
+                raise DomainError(
+                    "INPUT_AMBIGUOUS", "Không có giao dịch ở vị trí này trong bảng đang xem."
+                )
+            context.group_id = catalogue.previous_groups[intent.result_position - 1]
+            context.case_id = None
         if intent.intent == "EXPLAIN_RESULT" and intent.key_value:
             try:
                 found = execute_tool(
@@ -741,8 +796,9 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                 tools_used += 1
         row.state = "COMPLETED" if tools_used else "WAITING_REVIEW"
     else:
-        for question in intent.questions or ["Cần thêm dữ liệu hoặc xác nhận trước khi thực hiện."]:
-            state.blocks.append(ProgressBlock(text=question))
+        if intent.intent == "UNSUPPORTED":
+            for question in intent.questions or ["Yêu cầu này chưa được hỗ trợ."]:
+                state.blocks.append(ProgressBlock(text=question))
         row.state = "WAITING_REVIEW" if intent.intent != "UNSUPPORTED" else "BLOCKED"
         if row.state == "WAITING_REVIEW" and not any(r.state == "OPEN" for r in state.reviews):
             make_review(

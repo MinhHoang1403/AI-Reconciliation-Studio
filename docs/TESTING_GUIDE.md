@@ -2,6 +2,28 @@
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
+## Hội thoại, clarification và metric — 03/11/2026
+
+Gate source hiện hành: **302Backend/PostgreSQL và116Playwright PASS**, gồm231offline+71PG, toàn bộ browser regression/UAT/financial oracle/export/reload. Browser chạy một worker, retries0, dist cố định tại cùng origin/API; không build hoặc chạy Playwright khác đồng thời. Bằng chứng postdeploy và source/runtime identity ghi tại [IMPLEMENTATION_STATUS mục Y](IMPLEMENTATION_STATUS.md#y-hội-thoại-clarification-và-natural-language-reliability--03112026); các số ở mục lịch sử bên dưới không thay kết quả hiện hành.
+
+Regression PostgreSQL tái hiện money fields thiếu metric (`QUERY_FIELD_INVALID` trước sửa), kiểm unique metric/Decimal2,75VND, nhiều/không metric, reply clarification tiếp tục đúng workflow, ambiguous giữ chờ, dữ kiện coverage do model bịa bị chặn, mapping mới vẫn cần approval. Follow-up theo vị trí dùng trang/sort đã lưu, run/case được kiểm lại; bảng gốc không bị sửa và conversation khác không kế thừa lựa chọn. Public fields additive/defaults, không migration/dependency mới.
+
+`assistant-experience.spec.ts` có năm viewport kiểm clarification không checkbox/enum/approval, chọn tùy chọn, trả lời qua composer/reload, một panel cho workflow sau reply, đồng thời Enter/click chỉ gửi một request và spinner không thay kích thước. Bộ layout cũ giữ23trạng thái; bổ sung screenshots hỏi bổ sung/loading. Keyboard viewport mô phỏng không chứng minh thiết bị di động vật lý hoặc screen-reader certification. Focus được chuyển sang bề mặt composer, theo [W3C Focus Visible](https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html); controlled textarea và accessible label đối chiếu [React textarea](https://react.dev/reference/react-dom/components/textarea), đã mở03/11/2026.
+
+Trước thay release, có thể chạy UI dist candidate với API hiện hành, cùng origin/Compose, không dựng app/server thứ hai:
+
+```powershell
+npm --prefix frontend run build
+$env:STUDIO_FRONTEND_DIST='1'
+$env:STUDIO_EXPECT_AI_PROVIDER='MANUAL'
+npm --prefix frontend run test:e2e
+Remove-Item Env:STUDIO_FRONTEND_DIST
+```
+
+Fixture trong `e2e/project-selection.ts` chỉ đọc dist đã build và intercept HTML/assets tại browser; API thật/mocks vẫn theo từng test, không có cloud request để test CSS. Sau deploy chạy lại trên assets/runtime thật, không dùng cờ candidate.
+
+`tests/fixtures/assistant-conversation-cases.json` bổ sung24câu mới/24chủ đề, giữ nguyên80gold và24variants cũ. Benchmark dùng cùng rubric/ledger production, mở rộng kiểm UNPAID và định dạng export, không đổi oracle cũ. Bộ câu mới có thể chạy bằng `benchmark-agent.py --suite variants --gold <fixture-mới> ...` do cùng shape24/8negative; đây là tập conversation mới, không đổi tên thành24variants lịch sử trong báo cáo. Routing LIVE không là workflow completion; cached revalidation không là inference mới. Kiểm multiple metrics/absence/mixed currency còn có deterministic/PG guards riêng.
+
 ## Nghiệm thu demo và khôi phục môi trường — 02/11/2026
 
 Sau khi mất interpreter trong AppData, khôi phục đúng Python3.12.14 và rebind `.venv` hiện có bằng `uv venv .venv --allow-existing --python <interpreter-đã-kiểm-tra>`, rồi `uv sync --locked`/`uv pip check`. Không dùng `--clear`, không xóa lockfiles/venv data hoặc tạo Compose thứ hai. Máy hiện tại còn Python3.11.9 cho alias cũ; không thay project `requires-python`3.12. Node/npm và `npm --prefix frontend ls --depth=0`, Chromium Playwright được kiểm riêng. AppData có thể chứa môi trường của phần mềm khác không có manifest; không tự đoán package của chúng.

@@ -1,4 +1,5 @@
-import {test,expect} from '@playwright/test';
+import { test } from "./project-selection";
+import {expect} from '@playwright/test';
 
 test('[MOCK CONTRACT] sparse Planner facts remain editable and submit valid reviewed defaults',async({page})=>{
   const context={project_id:'review-project'},cid='review-conversation';
@@ -24,7 +25,7 @@ test('[MOCK CONTRACT] sparse Planner facts remain editable and submit valid revi
   await page.goto('/');const card=page.getByRole('region',{name:'Quyết định cần xác nhận',exact:true});await card.getByText('Kiểm tra phạm vi và chỉnh quy tắc',{exact:true}).click();
   await card.getByLabel('Bắt đầu kỳ',{exact:true}).fill('2026-10-01');await card.getByLabel('Kết thúc kỳ (không bao gồm)',{exact:true}).fill('2026-11-01');await card.getByLabel('Quy tắc có hiệu lực từ',{exact:true}).fill('2026-10-01');await card.getByLabel('Múi giờ',{exact:true}).fill('UTC');
   for(let i=0;i<2;i++){const scope=card.locator('fieldset').nth(i);await scope.getByLabel('Trường ngày',{exact:true}).fill('event_date');await scope.getByLabel('Ý nghĩa ngày',{exact:true}).fill('Ngày phát sinh');await scope.getByLabel('Dữ liệu đầy đủ từ (ISO và timezone)',{exact:true}).fill('2026-10-01');await scope.getByLabel('Dữ liệu đầy đủ đến (không bao gồm)',{exact:true}).fill('2026-11-01');await scope.getByLabel('Thời điểm chốt dữ liệu',{exact:true}).fill('2026-11-02T00:00:00Z');await scope.getByRole('combobox',{name:'Độ đầy đủ',exact:true}).selectOption('CONFIRMED');}
-  await card.getByLabel('Tôi xác nhận các lựa chọn ở trên và cho phép tiếp tục.',{exact:true}).check();await card.getByRole('button',{name:'Xác nhận và tiếp tục',exact:true}).click();await expect.poll(()=>submitted).not.toBeNull();
+  await card.getByRole('button',{name:'Duyệt quy tắc và đối soát',exact:true}).click();await expect.poll(()=>submitted).not.toBeNull();
   const plan=(submitted as unknown as {decision:{plan:{left:{role:string;filters:object};right:{role:string;filters:object};allow_partial:boolean}}}).decision.plan;
   expect(plan.left.role).toBe('reference');expect(plan.right.role).toBe('counterpart');expect(plan.left.filters).toEqual({});expect(plan.right.filters).toEqual({});expect(plan.allow_partial).toBe(false);
 });

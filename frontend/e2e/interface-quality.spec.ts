@@ -1,5 +1,6 @@
+import { test } from "./project-selection";
 import { openLegacyPage } from "./project-selection";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 
 const uncaughtErrors = new WeakMap<Page, string[]>();
@@ -26,6 +27,35 @@ const projects = (count: number): Project[] =>
     business_scope: `Kho miền Nam ${String(i).padStart(3, "0")}`,
     workspace_id: "synthetic",
   }));
+
+test("mapping form never exposes a previous sheet while the next profile is delayed",async({page})=>{
+  await fixture(page,projects(1),'project-000');
+  let release:()=>void=()=>{};
+  const gate=new Promise<void>(resolve=>release=resolve);
+  const columns=[{column_id:'c1',name:'Mã giao dịch',null_count:0,empty_count:0,distinct_count:1,duplicate_count:0,samples:['000701'],type_candidates:['string'],identifier_candidate:true,evidence_ids:[]}];
+  const mapping=(id:string)=>({id:`mapping-${id}`,revision:1,status:'UNKNOWN',decision:null,proposal:{decisions:[],unresolved_questions:[],grain:'unknown',entity_kind:'unknown',status:'UNKNOWN'},schema:{id:`schema-${id}`,name:'Synthetic',revision:1,entity_kind:'unknown',grain:'unknown',fields:[],business_key_fields:[]}});
+  const source={id:'mapping-source',project_id:'project-000',name:'Synthetic two sheets.xlsx',status:'NEEDS_MAPPING_REVIEW',created_at:'2026-11-03'};
+  await page.route('**/api/**',async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path==='/api/datasets')return route.fulfill({json:{items:[source],total:1}});
+    if(path==='/api/datasets/mapping-source')return route.fulfill({json:source});
+    if(path.endsWith('/tables'))return route.fulfill({json:{items:['sheet-a','sheet-b'].map(id=>({id,sheet:id,row_count:1,active_mapping_id:null,parsed:{columns:[{id:'c1',name:'Mã giao dịch',source_index:0}],warnings:[],header_row:1}}))}});
+    if(path.endsWith('/profile')){if(path.includes('sheet-b'))await gate;return route.fulfill({json:{columns,row_count:1,key_candidates:[]}});}
+    if(path.endsWith('/mappings')){if(path.includes('sheet-b'))await gate;return route.fulfill({json:{items:[mapping(path.split('/')[3])]}});}
+    if(path.endsWith('/artifacts'))return route.fulfill({json:{canonical_datasets:[]}});
+    if(path.endsWith('/preview'))return route.fulfill({json:{items:[{c1:'000701'}],columns:['c1'],total:1}});
+    return route.fallback();
+  });
+  await page.goto('/#page=data');await page.getByRole('button').filter({hasText:source.name}).click();
+  await page.getByRole('tab',{name:'AI Smart Setup',exact:true}).click();
+  const entity=page.getByLabel('Loại dữ liệu',{exact:true});await entity.fill('Ý nghĩa của nguồn A');
+  await page.getByRole('combobox',{name:'Bảng / sheet',exact:true}).selectOption('sheet-b');
+  await expect(entity).toHaveCount(0);
+  release();await expect(entity).toBeVisible();await expect(entity).toHaveValue('');
+  await entity.fill('Ý nghĩa của nguồn B');
+  await page.getByRole('combobox',{name:'Bảng / sheet',exact:true}).selectOption('sheet-b');
+  await expect(entity).toHaveValue('Ý nghĩa của nguồn B');
+});
 
 /** Browser-only API contract fixtures never create production projects or jobs. */
 async function fixture(page: Page, items: Project[], saved?: string) {

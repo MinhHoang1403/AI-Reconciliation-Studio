@@ -36,6 +36,7 @@ class AgentIntent(Contract):
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
     run_id: Identifier | None = None
     key_value: str | None = Field(default=None, min_length=1, max_length=200)
+    result_position: int | None = Field(default=None, ge=1, le=50)
     query: DataQuery | None = None
     planning_request: PlanningRequest | None = None
     questions: list[str] = Field(default_factory=list, max_length=5)
@@ -101,6 +102,10 @@ class IntentCatalogue(Contract):
     verified_run_fields: list[str] = Field(default_factory=list)
     verified_metric_ids: list[str] = Field(default_factory=list)
     status_values: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    previous_query: DataQuery | None = None
+    previous_goal: str | None = None
+    pending_question: str | None = None
+    previous_groups: list[str] = Field(default_factory=list, max_length=50)
 
 
 class IntentBatch(Contract):
@@ -133,6 +138,7 @@ class RoutingIntent(Contract):
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
     run_id: Identifier | None = None
     key_value: str | None = Field(default=None, min_length=1, max_length=200)
+    result_position: int | None = Field(default=None, ge=1, le=50)
     query: RoutingQuery | None = None
     reconciliation: ReconciliationSelection | None = None
     questions: list[str] = Field(default_factory=list, max_length=5)
@@ -222,6 +228,14 @@ ResultBlock = Annotated[
 ]
 
 
+class ClarificationOption(Contract):
+    """A server-built choice of an existing approved query metric; never approval."""
+
+    id: str
+    label: str
+    intent: AgentIntent
+
+
 class ReviewRequest(Contract):
     id: str
     kind: Literal["MAPPING", "RECONCILIATION", "CLARIFICATION"]
@@ -244,6 +258,14 @@ class ReviewRequest(Contract):
     reply_questions: list[str] = Field(default_factory=list, max_length=5)
     reply_intent: AgentIntent | None = None
     evidence_refs: list[str] = Field(default_factory=list, max_length=30)
+    options: list[ClarificationOption] = Field(default_factory=list, max_length=5)
+
+
+class QuerySelection(Contract):
+    """Last displayed page, separate from immutable original result blocks."""
+
+    query: DataQuery
+    group_ids: list[str] = Field(default_factory=list, max_length=50)
 
 
 class WorkflowState(Contract):
@@ -256,6 +278,7 @@ class WorkflowState(Contract):
     confirmed_mapping_ids: list[str] = Field(default_factory=list, max_length=10)
     confirmed_contract_id: str | None = None
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
+    query_selection: QuerySelection | None = None
 
 
 class WorkflowView(Contract):
@@ -310,7 +333,7 @@ class ReviewReply(Contract):
 
 
 class ReviewInterpretation(Contract):
-    """Chỉ đề xuất để người dùng xem và xác nhận; không phải approval."""
+    """Mapping/rule là preview; clarification có intent phải kiểm lại, không cấp approval."""
 
     draft: NormalizationDraft | None = None
     plan: ReconciliationPlan | None = None

@@ -1,7 +1,7 @@
 """Compile truy vấn allowlist trên artifact đã kiểm quyền; không nhận SQL hoặc path."""
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, get_args
@@ -16,6 +16,7 @@ from studio.config import settings
 from studio.contracts import CanonicalDataset, SchemaDefinition
 from studio.contracts.data_query import DataQuery, QueryResult
 from studio.contracts.reconciliation import (
+    ComparisonMetric,
     ComparisonState,
     LinkageState,
     MatchGroup,
@@ -48,6 +49,7 @@ class QuerySource:
     status: str
     money: dict[str, tuple[str, str]]
     quality_status: str | None = None
+    labels: dict[str, str] = field(default_factory=dict)
 
 
 VERIFIED_FIELDS = [
@@ -66,6 +68,50 @@ STATUS_VALUES = {
     },
     "EXCEPTIONS": {"state": list(get_args(CaseState))},
 }
+
+
+def resolve_verified_metric(
+    query: DataQuery, metrics: list[ComparisonMetric], previous: DataQuery | None = None
+) -> DataQuery:
+    """Bind money only to an approved metric, never to a guessed column name.
+
+    Count/status queries need no money metric. An explicit selection wins; otherwise
+    only a unique approved metric or a still-scoped prior selection is admissible.
+    Ambiguity and absence have distinct errors; inputs and historical rules stay immutable.
+    """
+    if query.source_kind != "VERIFIED_RUN":
+        return query
+    known = {m.metric_id for m in metrics}
+    if query.metric_id:
+        if query.metric_id not in known:
+            raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ tiêu không thuộc quy tắc đã duyệt.")
+        return query
+    mentioned = {
+        *query.select_fields,
+        *query.group_by,
+        *(f.field_id for f in query.filters),
+        *(s.field_id for s in query.sort),
+        *(a.field_id for a in query.aggregations if a.field_id),
+    }
+    if not mentioned.intersection([*VERIFIED_MONEY_FIELDS, "currency", "unit", "metric_id"]):
+        return query
+    if len(known) == 1:
+        selected = next(iter(known))
+    elif (
+        previous
+        and previous.project_id == query.project_id
+        and previous.source_kind == query.source_kind
+        and previous.source_id == query.source_id
+        and previous.metric_id in known
+    ):
+        selected = previous.metric_id
+    elif known:
+        raise DomainError("QUERY_METRIC_AMBIGUOUS", "Bạn muốn xem số tiền theo chỉ tiêu nào?")
+    else:
+        raise DomainError(
+            "QUERY_METRIC_UNAVAILABLE", "Kết quả này chưa có chỉ tiêu tiền được duyệt."
+        )
+    return query.model_copy(update={"metric_id": selected})
 
 
 def validate_status_predicates(query: DataQuery) -> None:
@@ -95,6 +141,9 @@ def _verified_source(
     rule = get_scoped(db, ReconciliationContractRow, run.contract_id, actor)
     plan = ReconciliationContract.model_validate(rule.definition).plan
     assert run.metric_snapshot is not None
+    # Resolve before exposing money fields, so a unique approved metric does not
+    # become an unrelated QUERY_FIELD_INVALID later in the compiler.
+    query.metric_id = resolve_verified_metric(query, plan.comparison_metrics).metric_id
     metric = next((m for m in plan.comparison_metrics if m.metric_id == query.metric_id), None)
     if query.metric_id and metric is None:
         raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ tiêu không thuộc quy tắc đã duyệt.")
@@ -110,6 +159,7 @@ def _verified_source(
         group = MatchGroup.model_validate_json(value)
         row: dict[str, Any] = dict(
             group_id=group.id,
+            business_key=" · ".join("—" if value is None else value for value in group.key),
             linkage_state=group.linkage_state,
             comparison_state=group.comparison_state,
             left_member_count=sum(m.side == "left" for m in group.members),
@@ -139,6 +189,7 @@ def _verified_source(
         records.append(row)
     schema: dict[str, Any] = {f: pl.String for f in VERIFIED_FIELDS[:3]}
     schema.update(
+        business_key=pl.String,
         left_member_count=pl.UInt32,
         right_member_count=pl.UInt32,
         source_provenance=pl.List(
@@ -201,11 +252,13 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
             raise DomainError("ARTIFACT_CHECKSUM_FAILED", "Dữ liệu không khớp checksum.")
         frame = pl.scan_parquet(path)
         money = {}
+        labels = {}
         if canonical:
             definition = SchemaDefinition.model_validate(
                 get_scoped(db, SchemaRow, canonical.schema_id, actor).definition
             )
             fields = [f.id for f in definition.fields]
+            labels = {f.id: f.name for f in definition.fields}
             money = {
                 f.id: (f.currency, f.unit)
                 for f in definition.fields
@@ -214,6 +267,7 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
             frame = frame.unnest("record_payload")
         else:
             fields = [c["id"] for c in table.parsed_contract["columns"]]
+            labels = {c["id"]: c["name"] for c in table.parsed_contract["columns"]}
             frame = frame.with_columns(
                 pl.concat_list(
                     pl.struct(
@@ -231,6 +285,7 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
             "CANONICAL" if canonical else "RAW_UNVERIFIED",
             money,
             canonical.quality_status if canonical else None,
+            labels,
         )
     run = get_scoped(db, RunRow, query.source_id, actor)
     if run.project_id != query.project_id:
@@ -334,7 +389,7 @@ def _collect_bounded(frame: pl.LazyFrame, deadline: float) -> pl.DataFrame:
 def execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
     """Fail closed với lỗi tính toán/precision, không công bố một phần như tổng đầy đủ."""
     try:
-        return _execute_query(db, actor, query)
+        return _execute_query(db, actor, query.model_copy(deep=True))
     except pl.exceptions.PolarsError as exc:
         raise DomainError(
             "QUERY_EXECUTION_FAILED", "Truy vấn không thực hiện được an toàn."
@@ -495,6 +550,7 @@ def _execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
             "group_id",
             "case_id",
             "canonical_record_id",
+            "business_key",
         )
         if f in frame.collect_schema() and f not in fields
     ]
@@ -514,6 +570,7 @@ def _execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
         project_id=query.project_id,
         source_id=query.source_id,
         fields=fields,
+        field_labels={f: source.labels[f] for f in fields if f in source.labels},
         rows=rows,
         total_count=total,
         offset=query.offset,

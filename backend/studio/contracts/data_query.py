@@ -51,6 +51,7 @@ class QueryResult(Contract):
     project_id: str
     source_id: str
     fields: list[str]
+    field_labels: dict[str, str] = Field(default_factory=dict)
     rows: list[dict[str, JsonValue]]
     total_count: int
     offset: int

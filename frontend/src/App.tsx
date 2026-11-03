@@ -157,6 +157,7 @@ export function App() {
   }>({ datasetId: "", items: [] });
   const [tableId, setTableId] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [detailScope,setDetailScope]=useState("");
   const [mappings, setMappings] = useState<Mapping[]>([]);
   const [canonicals, setCanonicals] = useState<Canonical[]>([]);
   const [canonicalId, setCanonicalId] = useState("");
@@ -545,6 +546,7 @@ export function App() {
     )
       return;
     setProfile(p);
+    setDetailScope(`${datasetId}:${tableId}`);
     setMappings(m.items);
     setCanonicals(a.canonical_datasets);
     const candidates = a.canonical_datasets.filter(
@@ -1520,8 +1522,9 @@ export function App() {
                             ))}
                           </div>
                           <div className="tab-content">
-                            {tab === "mapping" && table && profile && (
+                            {tab === "mapping" && table && profile && detailScope===`${datasetId}:${tableId}` && (
                               <MappingStudio
+                                key={table.id}
                                 readOnly={!canEdit}
                                 table={table}
                                 profile={profile}

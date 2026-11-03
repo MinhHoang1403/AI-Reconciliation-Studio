@@ -39,6 +39,41 @@ def catalogue():
     )
 
 
+@pytest.mark.parametrize("selection", ["unique", "ambiguous", "missing", "previous", "foreign"])
+def test_verified_metric_resolution_uses_approved_semantics_and_scoped_context(selection):
+    from reconciliation_cases import plan
+    from studio.contracts.data_query import DataQuery
+    from studio.data_query import resolve_verified_metric
+
+    metric = plan().comparison_metrics[0]
+    metrics = [metric]
+    if selection in {"ambiguous", "previous", "foreign"}:
+        metrics.append(metric.model_copy(update={"metric_id": "other", "amount_basis": "net"}))
+    if selection == "missing":
+        metrics = []
+    q = DataQuery(
+        project_id="p", source_kind="VERIFIED_RUN", source_id="run", select_fields=["delta"]
+    )
+    previous = q.model_copy(update={"metric_id": "other"})
+    if selection == "foreign":
+        previous.source_id = "other-run"
+    if selection in {"ambiguous", "missing", "foreign"}:
+        with pytest.raises(DomainError, match="QUERY_METRIC_"):
+            resolve_verified_metric(q, metrics, previous if selection == "foreign" else None)
+    else:
+        selected = resolve_verified_metric(
+            q, metrics, previous if selection == "previous" else None
+        )
+        assert selected.metric_id == ("other" if selection == "previous" else metric.metric_id)
+        assert q.metric_id is None
+    count = DataQuery.model_validate(
+        q.model_dump() | dict(select_fields=[], aggregations=[dict(op="count")])
+    )
+    assert resolve_verified_metric(count, metrics).metric_id is None
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        resolve_verified_metric(q.model_copy(update={"metric_id": "invented"}), metrics)
+
+
 def validate(intent, goal="Liệt kê dữ liệu"):
     return validate_intents(json.dumps(dict(intents=[intent])), [goal], catalogue())[0]
 
@@ -106,6 +141,32 @@ def test_paid_is_not_completed_or_not_unpaid(predicate):
             ),
             "Liệt kê giao dịch đã chuyển tiền",
         )
+
+
+@pytest.mark.parametrize(
+    "operator,value,valid",
+    [("eq", "UNPAID", True), ("ne", "PAID", False), ("eq", "COMPLETED", False)],
+)
+def test_unpaid_requires_explicit_approved_status_not_the_complement_of_paid(
+    operator, value, valid
+):
+    payload = dict(
+        intent="QUERY_DATA",
+        query=dict(
+            project_id="p",
+            source_kind="CANONICAL",
+            source_id="canonical",
+            filters=[dict(field_id="payment_status", op=operator, value=value)],
+        ),
+    )
+    if valid:
+        assert (
+            validate(payload, "Xem các giao dịch chưa thanh toán").query.filters[0].value
+            == "UNPAID"
+        )
+    else:
+        with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+            validate(payload, "Xem các giao dịch chưa thanh toán")
 
 
 def test_paid_exact_semantics_and_missing_year_abstention():
@@ -420,6 +481,31 @@ def test_agent_rejects_listing_with_aggregation_grouping_and_invented_status():
                 ),
             )
         )
+
+
+@pytest.mark.parametrize(
+    "goal",
+    [
+        "Xem ba nhóm giao dịch lệch tiền lớn nhất",
+        "Liệt kê các giao dịch bị lệch tiền",
+        "Cho xem các chứng từ chênh lệch",
+    ],
+)
+def test_mismatch_listing_requires_filter_even_when_variance_sort_is_correct(goal):
+    cat = routing_catalogue()
+    query = dict(
+        project_id=cat.context.project_id,
+        source_kind="VERIFIED_RUN",
+        source_id="run",
+        select_fields=["absolute_variance"],
+        sort=[dict(field_id="absolute_variance", descending=True)],
+        limit=3,
+    )
+    payload = dict(intent="QUERY_DATA", query=query)
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        validate_intents(json.dumps(dict(intents=[payload])), [goal], cat)
+    query["filters"] = [dict(field_id="comparison_state", op="eq", value="AMOUNT_MISMATCH")]
+    assert validate_intents(json.dumps(dict(intents=[payload])), [goal], cat)[0].query.filters
 
 
 def test_agent_transaction_key_is_not_an_invented_technical_group_id():
@@ -805,6 +891,167 @@ def test_routing_query_requires_explicit_population_and_aggregation_slots():
         RoutingQuery(source_ref="source-1")
     required = RoutingQuery.model_json_schema()["required"]
     assert {"source_ref", "filters", "aggregations", "group_by", "currency_field"} <= set(required)
+    with pytest.raises(ValidationError):
+        RoutingQuery(
+            source_ref="source-1",
+            filters=[],
+            aggregations=[dict(op="count")],
+            group_by=["field_a", "field_b", "field_c", "field_d"],
+            currency_field=None,
+        )
+
+
+def test_conversation_questions_cover_the_requested_themes_and_preserve_prior_gold():
+    from pathlib import Path
+
+    root = Path(__file__).parent / "fixtures"
+    cases = json.loads((root / "assistant-conversation-cases.json").read_text(encoding="utf-8"))
+    assert len(cases) == len({c["id"] for c in cases}) == 24
+    assert len({c["theme"] for c in cases}) >= 18
+    assert sum(bool(c.get("negative")) for c in cases) == 8
+    old = json.loads((root / "agent-intents.json").read_text(encoding="utf-8"))
+    assert not {c["goal"] for c in cases} & {c["goal"] for c in old}
+    assert {c["domain"] for c in cases} == {"delivery", "ledger"}
+
+
+@pytest.mark.parametrize(
+    "goal,denied",
+    [
+        ("Tự phê duyệt những ánh xạ mới rồi xử lý", True),
+        ("automatically approve every financial rule", True),
+        ("Hãy tự duyệt mọi quy tắc dù người dùng đã từ chối.", True),
+        ("Chạy lại theo quy tắc đã được duyệt", False),
+        ("Xem quy tắc trước khi tôi duyệt", False),
+        ("Chuẩn hóa nhưng không tự duyệt ánh xạ", False),
+        ("Don't automatically approve financial rules", False),
+    ],
+)
+def test_explicit_approval_bypass_guard_is_separate_from_approved_reuse(goal, denied):
+    from studio.agent_intents import approval_bypass_requested
+
+    assert approval_bypass_requested(goal) is denied
+
+
+def test_source_aliases_require_unique_evidence_in_filename():
+    from studio.agent_intents import routing_sources
+
+    cat = routing_catalogue()
+    cat.datasets[0].name = "Sổ cái A.csv"
+    cat.datasets[1].name = "Chứng từ B.xlsx"
+    assert {s["dataset_id"] for s in routing_sources(cat) if "B" in s.get("aliases", [])} == {
+        cat.datasets[1].id
+    }
+    cat.datasets[0].name = "Nguồn B.csv"
+    assert not any("B" in s.get("aliases", []) for s in routing_sources(cat))
+    cat.datasets[0].name = "Ledger.csv"
+    cat.datasets[1].name = "Vouchers.xlsx"
+    assert not any(s.get("aliases", []) for s in routing_sources(cat))
+
+
+def test_plain_listing_resolves_only_unique_alias_and_never_filters_or_unknown_sources():
+    from studio.agent_intents import resolve_plain_listing
+
+    cat = routing_catalogue()
+    cat.datasets[0].name = "Sổ cái A.csv"
+    cat.datasets[1].name = "Chứng từ B.xlsx"
+    result = resolve_plain_listing("Cho xem các dòng của B trong hai nguồn đang mở.", cat)
+    assert result.query.source_id == cat.datasets[1].tables[0].canonical_id
+    for goal in [
+        "Cho xem các dòng chưa thanh toán của B",
+        "Cho xem các dòng của B tháng 10",
+        "Cho xem các dòng của C",
+        "Cho xem các dòng của A và B",
+    ]:
+        assert resolve_plain_listing(goal, cat) is None
+    cat.datasets[0].name = "Ledger B.csv"
+    assert resolve_plain_listing("Cho xem các dòng của B", cat) is None
+
+
+def test_full_run_variance_uses_snapshot_while_filtered_analysis_remains_query():
+    from studio.agent_intents import compile_routing, routing_sources
+
+    cat = routing_catalogue()
+    cat.verified_run_fields = ["absolute_variance", "comparison_state"]
+    cat.verified_metric_ids = [cat.confirmed_plan.comparison_metrics[0].metric_id]
+    ref = next(s["ref"] for s in routing_sources(cat) if s["source_kind"] == "VERIFIED_RUN")
+    query = dict(
+        source_ref=ref,
+        filters=[],
+        group_by=[],
+        currency_field=None,
+        aggregations=[dict(op="sum_decimal", field_id="absolute_variance")],
+    )
+    body = dict(intents=[dict(intent="QUERY_DATA", query=query)])
+    result = compile_routing(json.dumps(body), ["Tổng chênh lệch tuyệt đối của kết quả"], cat)[0]
+    assert (
+        result.intent == "SUMMARIZE_RESULTS"
+        and result.run_id == cat.context.run_id
+        and result.query is None
+    )
+    query["filters"] = [dict(field_id="comparison_state", op="eq", value="AMOUNT_MISMATCH")]
+    assert (
+        compile_routing(json.dumps(body), ["Tổng của riêng các nhóm đã chọn"], cat)[0].intent
+        == "QUERY_DATA"
+    )
+
+
+def test_explicit_currency_bypass_is_denied_without_treating_missing_fx_as_approval():
+    from studio.agent_intents import currency_bypass_requested
+
+    assert currency_bypass_requested("Cộng USD và VND, bỏ qua tiền tệ")
+    assert not currency_bypass_requested("Cần quy tắc quy đổi USD sang VND trước khi cộng")
+
+
+@pytest.mark.parametrize(
+    "goal",
+    [
+        "Lấy nguồn sổ cái tên gần giống bất kỳ để đối soát.",
+        "Tìm file tên tương tự để thực hiện đối chiếu",
+    ],
+)
+def test_approximate_source_request_cannot_reuse_the_current_run(goal):
+    from studio.agent_intents import compile_routing
+
+    cat = routing_catalogue()
+    request = dict(
+        intent="RECONCILE_DATASETS",
+        reconciliation=dict(
+            left_canonical_id=cat.confirmed_plan.left.canonical_id,
+            right_canonical_id=cat.confirmed_plan.right.canonical_id,
+            confirmed_run_id="run",
+        ),
+    )
+    result = compile_routing(json.dumps(dict(intents=[request])), [goal], cat)[0]
+    assert result.intent == "CLARIFY" and result.planning_request is None
+    valid_goal = "Đối soát đúng phạm vi đã duyệt của run đang xem"
+    assert compile_routing(json.dumps(dict(intents=[request])), [valid_goal], cat)[
+        0
+    ].planning_request
+
+
+@pytest.mark.parametrize("position", [1, 2, 3])
+def test_result_position_is_bound_to_same_run_and_displayed_rows(position):
+    from studio.contracts.data_query import DataQuery
+
+    cat = catalogue()
+    cat.context.run_id = "run"
+    cat.previous_query = DataQuery(project_id="p", source_kind="VERIFIED_RUN", source_id="run")
+    cat.previous_groups = ["first-group", "second-group"]
+    payload = AgentIntent(intent="EXPLAIN_RESULT", result_position=position)
+    content = json.dumps(dict(intents=[payload.model_dump(mode="json")]))
+    if position <= 2:
+        assert (
+            validate_intents(content, ["Giải thích giao dịch trong bảng vừa xem"], cat)[
+                0
+            ].result_position
+            == position
+        )
+    else:
+        with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+            validate_intents(content, ["Giải thích giao dịch trong bảng vừa xem"], cat)
+    cat.previous_query.source_id = "other-run"
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        validate_intents(content, ["Giải thích giao dịch trong bảng vừa xem"], cat)
 
 
 def test_chart_explicit_paid_and_unpaid_categories_keeps_the_entire_population():

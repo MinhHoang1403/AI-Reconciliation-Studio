@@ -7,14 +7,17 @@ import { api } from "./api";
 import { Badge, DataTable, Modal, Notice, Spinner } from "./components";
 import { label } from "./reconciliationTypes";
 import {statusText} from "./types";
-import type { AgentBlock, Chart, QueryResult } from "./agentTypes";
+import type { AgentBlock, Chart, Query, QueryResult } from "./agentTypes";
 import type { AssistantContext, Suggestion } from "./assistantTypes";
 import type { ColumnDef } from "@tanstack/react-table";
 echarts.use([BarChart, AriaComponent, GridComponent, TooltipComponent, SVGRenderer]);
 type SourceRef = {source_table_id:string;row:number;sheet:string};
 const transformLabels:Record<string,string>={cast_string_preserve:"Giữ nguyên văn bản và mã",parse_decimal:"Đọc số tiền theo định dạng đã duyệt",parse_date:"Đọc ngày theo định dạng và múi giờ đã duyệt",trim_if_approved:"Bỏ khoảng trắng theo quy tắc đã duyệt",normalize_enum:"Chuẩn hóa trạng thái theo quy tắc đã duyệt",coalesce_with_rule:"Chọn giá trị theo quy tắc đã duyệt",add_fields:"Cộng trường theo quy tắc đã duyệt",subtract_fields:"Trừ trường theo quy tắc đã duyệt",aggregate_by:"Gom nhóm theo quy tắc đã duyệt"};
-function QueryTable({ initial }: {
+const queryLabels:Record<string,string>={linkage_state:"Liên kết",comparison_state:"Kết quả so sánh",left_member_count:"Số dòng nguồn A",right_member_count:"Số dòng nguồn B",left_amount:"Số tiền nguồn A",right_amount:"Số tiền nguồn B",delta:"Chênh lệch có dấu",absolute_variance:"Chênh lệch tuyệt đối",tolerance:"Sai số cho phép",currency:"Tiền tệ",unit:"Đơn vị",type:"Loại ngoại lệ",state:"Xử lý ngoại lệ",notes:"Ghi chú"};
+function QueryTable({ initial, workflowId, selection }: {
     initial: QueryResult;
+    workflowId?: string;
+    selection?: Query | null;
 }) {
     const [data, setData] = useState(initial);
     const [busy, setBusy] = useState(false);
@@ -22,6 +25,10 @@ function QueryTable({ initial }: {
     const [source, setSource] = useState<Record<string, unknown>[] | null>(null);
     const [sourceRefs,setSourceRefs]=useState<SourceRef[]>([]);
     const [sourceIndex,setSourceIndex]=useState(0);
+    const restoreSelection = selection?.source_id===initial.source_id &&
+        JSON.stringify({...selection,offset:0,sort:[]})===JSON.stringify({...initial.query,offset:0,sort:[]}) &&
+        (selection.offset!==initial.query.offset || JSON.stringify(selection.sort)!==JSON.stringify(initial.query.sort));
+    const [restoring,setRestoring]=useState(!!restoreSelection);
     const scope = useRef(0);
     const alive = useRef(true);
     useEffect(() => { alive.current = true; return () => { alive.current = false; scope.current++; }; }, []);
@@ -30,7 +37,7 @@ function QueryTable({ initial }: {
         setBusy(true);
         setError("");
         try {
-            const next = await api<QueryResult>("/agent/queries", { method: "POST",
+            const next = await api<QueryResult>(workflowId?`/agent/workflows/${workflowId}/query-pages`:"/agent/queries", { method: "POST",
                 body: JSON.stringify({ ...data.query, offset, sort }) });
             if (alive.current && seq === scope.current)
                 setData(next);
@@ -69,14 +76,21 @@ function QueryTable({ initial }: {
                 setBusy(false);
         }
     }
+    useEffect(()=>{
+        if(restoreSelection && selection) void page(selection.offset,selection.sort).finally(()=>{if(alive.current)setRestoring(false);});
+    },[]);
+    if(restoring)return <Spinner/>;
+    const visibleFields=data.fields.filter(field=>!['group_id','case_id','canonical_record_id','metric_id'].includes(field));
+    const groupKey=data.query.source_kind==='VERIFIED_RUN'&&data.rows.some(row=>row.business_key!=null);
     return <section className="agent-table" aria-label="Kết quả truy vấn">
     <p><strong>{data.total_count} kết quả</strong> · {data.input_count} dòng khớp điều kiện · <Badge status={data.verification_status}/></p>
     {data.warnings.map(w => <p className="muted" key={w}>{w}</p>)}
     {!data.evidence_complete && <Notice tone="warning">Bằng chứng hiển thị bị giới hạn; lineage gốc vẫn được lưu.</Notice>}
     {error && <Notice tone="error">{error}</Notice>}
-    <DataTable rows={data.rows} columns={[...data.fields.map<ColumnDef<Record<string, unknown>>>(field => ({ id: field, accessorKey: field,
-                header: () => <button className="text-button" disabled={busy} onClick={() => void page(0, [{ field_id: field, descending: !data.query.sort.find(s => s.field_id === field)?.descending }])}>{field} ↕</button>,
-                cell: info => info.getValue() == null ? "—" : String(info.getValue()) })), {
+    <DataTable rows={data.rows} columns={[{id:'position',header:'Vị trí',cell:info=>info.row.index+1},...(groupKey?[{id:'business_key',accessorKey:'business_key',header:'Khóa giao dịch'}]:[]),...visibleFields.map<ColumnDef<Record<string, unknown>>>(field => ({ id: field, accessorKey: field,
+                header: () => <button className="text-button" disabled={busy} onClick={() => void page(0, [{ field_id: field, descending: !data.query.sort.find(s => s.field_id === field)?.descending }])}>{data.field_labels?.[field]||queryLabels[field]||field} ↕</button>,
+                cell: info => info.getValue() == null ? "—" :
+                  ['VERIFIED_RUN','EXCEPTIONS'].includes(data.query.source_kind)&&['linkage_state','comparison_state','state','type'].includes(field)?label(String(info.getValue())):String(info.getValue()) })), {
                 id: "evidence", header: () => <span>Nguồn</span>, cell: info => <button className="text-button" disabled={busy || !Array.isArray(info.row.original.source_provenance)} onClick={() => void evidence(info.row.original)}>Xem dòng gốc</button>,
             }]}/>
     <div className="agent-pagination"><button className="button secondary" disabled={busy || !data.offset} onClick={() => void page(Math.max(0, data.offset - data.limit))}>Trước</button>
@@ -123,25 +137,27 @@ function ResultChart({ data }: {
     </div>
     <details><summary>Giá trị chính xác và nguồn</summary><ul>{data.points.map(p => <li key={p.label}>{label(p.label)}: {p.value} {data.unit}</li>)}</ul><small>{data.source_refs.join(" · ")}</small></details></section>;
 }
-export function AgentResultBlocks({ blocks, context, onNavigate }: {
+export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, querySelection }: {
     blocks: AgentBlock[];
     context: AssistantContext;
     onNavigate: (target: Suggestion, context: AssistantContext) => void;
+    workflowId?: string;
+    querySelection?: Query | null;
 }) {
     return <div className="agent-results">{blocks.map((block, i) => {
             if (block.type === "progress")
                 return <p key={i}>{block.text}</p>;
             if (block.type === "table")
-                return <QueryTable key={i} initial={block.result}/>;
+                return <QueryTable key={i} initial={block.result} workflowId={workflowId} selection={querySelection}/>;
             if (block.type === "chart")
                 return <ResultChart key={i} data={block}/>;
             if (block.type === "download")
                 return <a className="button secondary" key={i} href={`/api/exports/${block.export_id}/download`}>Tải {block.format.toUpperCase()}</a>;
             if (block.type === "dataset_summary")
-                return <section className="card" key={i}><h4>{block.name}</h4><Badge status={block.status}/><p>{block.rows} dòng · {block.invalid_rows} dòng lỗi</p><p>Phép biến đổi đã duyệt: {Array.from(new Set(block.transformations)).map(t=>transformLabels[t]||t).join("; ")}</p><button className="text-button" onClick={() => onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}>Kiểm tra dữ liệu trước/sau</button></section>;
+                return <section className="agent-dataset" key={i}><h4>{block.name}</h4><Badge status={block.status}/><p>{block.rows} dòng · {block.invalid_rows} dòng lỗi</p><details><summary>Phép biến đổi đã duyệt</summary><p>{Array.from(new Set(block.transformations)).map(t=>transformLabels[t]||t).join("; ")}</p></details><button className="text-button" onClick={() => onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}>Kiểm tra dữ liệu trước/sau</button></section>;
             const snapshot = block.result.snapshot || block.result.run?.metric_snapshot;
-            return <section className="agent-facts" key={i}>{snapshot && <><h4>Kết quả đã xác minh</h4><p>Kỳ {snapshot.period_start} → {snapshot.period_end} · {snapshot.timezone}</p><details><summary>Phạm vi và mẫu số đã xác minh</summary><p>{snapshot.eligible_definition}</p></details><p>Tỷ lệ khớp: {snapshot.full_match_rate.percent ?? "N/A"}{snapshot.full_match_rate.percent !== null ? "%" : ""} ({snapshot.full_match_rate.numerator}/{snapshot.full_match_rate.denominator})</p>{snapshot.monetary.map(m => <p key={m.metric_id}>{m.metric_id}: lệch có dấu {m.signed_variance} · lệch tuyệt đối {m.absolute_variance} {m.currency}</p>)}</>}
-      {block.answer?.lines.map((line, j) => <p key={j}>{line.text}</p>)}
+            return <section className="agent-facts" key={i}>{snapshot && <><h4>{block.result.run?.status==="PARTIAL_VERIFIED"?"Kết quả đã xác minh một phần":"Kết quả đã xác minh"}</h4><p>{snapshot.comparison_counts?.EQUAL??0} nhóm khớp chính xác, {snapshot.comparison_counts?.AMOUNT_MISMATCH??0} nhóm lệch tiền và {snapshot.linkage_counts?.UNMATCHED??0} nhóm thiếu đối ứng.</p>{!!snapshot.comparison_counts?.WITHIN_TOLERANCE&&<p>{snapshot.comparison_counts.WITHIN_TOLERANCE} nhóm trong sai số đã duyệt.</p>}<p>Tỷ lệ khớp: {snapshot.full_match_rate.percent ?? "N/A"}{snapshot.full_match_rate.percent !== null ? "%" : ""} ({snapshot.full_match_rate.numerator}/{snapshot.full_match_rate.denominator})</p>{snapshot.monetary.map(m => <p key={m.metric_id}>Chênh lệch tuyệt đối: {m.absolute_variance} {m.currency} · có dấu: {m.signed_variance} {m.currency}</p>)}<details><summary>Phạm vi và mẫu số đã xác minh</summary><p>Kỳ {snapshot.period_start} → {snapshot.period_end} · {snapshot.timezone}</p><p>{snapshot.eligible_definition}</p><p>Đơn vị so sánh: {snapshot.comparison_unit}</p>{Object.entries(snapshot.excluded_counts||{}).map(([name,count])=><p key={name}>{label(name)}: {count}</p>)}{snapshot.monetary.map(m=><p key={m.metric_id}>Chỉ tiêu: {m.metric_id} · {m.currency}</p>)}</details></>}
+      {(!snapshot||block.result.group)&&block.answer?.lines.map((line, j) => <p key={j}>{line.text}</p>)}
       {block.result.group && <><p>{label(block.result.group.linkage_state)} · {label(block.result.group.comparison_state)}</p><p>Nguyên nhân nghiệp vụ chưa được chứng minh nếu thiếu chứng từ hoặc quy định.</p></>}
       <button className="text-button" onClick={() => onNavigate(block.result.group ? "OPEN_EVIDENCE" : "OPEN_REPORT", context)}>Mở kết quả và bằng chứng</button></section>;
         })}</div>;

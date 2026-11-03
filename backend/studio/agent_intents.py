@@ -13,10 +13,47 @@ from studio.contracts import WorkspacePolicy
 from studio.contracts.agent import AgentIntent, IntentBatch, IntentCatalogue, RoutingBatch
 from studio.contracts.data_query import DataQuery
 from studio.contracts.reconciliation import PlanningRequest, PlanningSource
-from studio.data_query import EXCEPTION_FIELDS, validate_status_predicates
+from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-17"
+INTENT_REVISION = "agent-intent-26"
+
+
+def approval_bypass_requested(goal: str) -> bool:
+    """Deny an explicit request to let AI grant business approval.
+
+    This is a narrow authority guard, not the natural-language router. Reusing
+    already-approved rules remains a valid request and does not match this guard.
+    """
+    normalized = plain_question(goal)
+    return any(
+        not re.search(
+            r"(?:khong|dung|cam|never|not|without|don't)\s*$", normalized[: match.start()]
+        )
+        for match in re.finditer(
+            r"\b(?:tu|auto|automatically)\s+(?:phe duyet|duyet|approve)\b", normalized
+        )
+    )
+
+
+def currency_bypass_requested(goal: str) -> bool:
+    """An explicit instruction to discard currency is not an FX approval."""
+    return bool(
+        re.search(
+            r"\b(?:bo qua|ignore|discard)\s+(?:tien te|currency|currencies)\b", plain_question(goal)
+        )
+    )
+
+
+def unresolved_source_requested(goal: str) -> bool:
+    """Approximate source selection cannot authorize reuse of the current run."""
+    return bool(
+        re.search(
+            r"\b(?:chon|lay|tim|dung)\b.{0,20}\b(?:nguon|file|tep|bang)\b"
+            r".{0,45}\b(?:gan giong|gan dung|tuong tu)\b",
+            plain_question(goal),
+        )
+    )
 
 
 def validate_intents(
@@ -32,11 +69,38 @@ def validate_intents(
     dataset_ids = {d.id for d in catalogue.datasets}
     tables = {t.table_id: t for d in catalogue.datasets for t in d.tables}
     canonical = {t.canonical_id: t for t in tables.values() if t.canonical_id}
-    for goal, intent in zip(goals, batch.intents, strict=True):
+    for index, (goal, intent) in enumerate(zip(goals, batch.intents, strict=True)):
+        if intent.intent == "CLARIFY":
+            listing = resolve_plain_listing(goal, catalogue)
+            if listing is not None:
+                batch.intents[index] = intent = listing
+        if intent.intent == "RECONCILE_DATASETS" and unresolved_source_requested(goal):
+            # A policy refusal reduces authority; it never repairs an invalid
+            # source/financial rule into an executable plan.
+            batch.intents[index] = AgentIntent(
+                intent="CLARIFY",
+                questions=[
+                    "Bạn cần chọn đúng nguồn cần đối soát; không thể dùng nguồn tên gần giống."
+                ],
+            )
+            continue
         if not set(intent.dataset_ids) <= dataset_ids:
             raise DomainError("AI_INVALID_SOURCE", "AI chọn nguồn không có trong context.")
         if intent.run_id and intent.run_id not in catalogue.run_ids:
             raise DomainError("AI_INVALID_SOURCE", "AI chọn run ngoài context.")
+        if intent.result_position is not None and (
+            intent.intent != "EXPLAIN_RESULT"
+            or intent.key_value
+            or not catalogue.previous_query
+            or catalogue.previous_query.source_kind != "VERIFIED_RUN"
+            or catalogue.previous_query.source_id != catalogue.context.run_id
+            or intent.run_id not in {None, catalogue.context.run_id}
+            or intent.result_position > len(catalogue.previous_groups)
+        ):
+            raise DomainError(
+                "INPUT_AMBIGUOUS",
+                "Chọn giao dịch trong bảng kết quả đang xem hoặc cung cấp mã giao dịch.",
+            )
         if intent.key_value and intent.key_value not in goal and not user_confirmed:
             raise DomainError("INPUT_AMBIGUOUS", "Mã cần giải thích chưa có trong yêu cầu.")
         if intent.planning_request:
@@ -125,6 +189,20 @@ def validate_intents(
                 q.source_kind != "VERIFIED_RUN" or q.metric_id not in catalogue.verified_metric_ids
             ):
                 raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ tiêu truy vấn chưa được duyệt.")
+            if q.source_kind == "VERIFIED_RUN":
+                try:
+                    intent.query = q = resolve_verified_metric(
+                        q,
+                        catalogue.confirmed_plan.comparison_metrics
+                        if catalogue.confirmed_plan
+                        else [],
+                        catalogue.previous_query,
+                    )
+                except DomainError as exc:
+                    if exc.code != "QUERY_METRIC_AMBIGUOUS":
+                        raise
+                    # Preserve the query so the workflow can offer server-built
+                    # metric choices instead of losing the request to a generic error.
             for predicate in q.filters:
                 values = predicate.value if isinstance(predicate.value, list) else [predicate.value]
                 for filter_value in values:
@@ -137,6 +215,31 @@ def validate_intents(
                     ):
                         raise DomainError("INPUT_AMBIGUOUS", "Cần xác nhận năm của điều kiện ngày.")
             normalized = plain_question(goal)
+            mismatch_listing = bool(
+                re.search(
+                    r"\b(?:giao dich|nhom|don|chung tu|but toan)(?: giao dich)? "
+                    r"(?:bi )?(?:lech tien|chenh lech|sai lech)\b",
+                    normalized,
+                )
+            )
+            if (
+                q.source_kind == "VERIFIED_RUN"
+                and mismatch_listing
+                and not any(
+                    f.field_id == "comparison_state"
+                    and f.op in {"eq", "in"}
+                    and (
+                        f.value == "AMOUNT_MISMATCH"
+                        if isinstance(f.value, str)
+                        else f.value == ["AMOUNT_MISMATCH"]
+                    )
+                    for f in q.filters
+                )
+            ):
+                raise DomainError(
+                    "QUERY_SEMANTICS_REQUIRED",
+                    "Cần lọc đúng nhóm lệch tiền trước khi liệt kê hoặc chọn giao dịch lớn nhất.",
+                )
             paid = any(
                 w in normalized for w in ("da thanh toan", "da chuyen tien", "da chuyen khoan")
             ) or bool(re.search(r"\bpaid\b", normalized))
@@ -219,15 +322,37 @@ def validate_intents(
                 raise DomainError(
                     "QUERY_SEMANTICS_REQUIRED", "Chưa có định nghĩa trạng thái đã thanh toán."
                 )
+            if (
+                intent.intent == "QUERY_DATA"
+                and q.source_kind == "VERIFIED_RUN"
+                and not q.filters
+                and not q.group_by
+                and len(q.aggregations) == 1
+                and q.aggregations[0].op == "sum_decimal"
+                and q.aggregations[0].field_id in {"delta", "absolute_variance"}
+            ):
+                batch.intents[index] = AgentIntent(intent="SUMMARIZE_RESULTS", run_id=q.source_id)
     return batch.intents
 
 
 def routing_sources(catalogue: IntentCatalogue) -> list[dict[str, Any]]:
     """Catalogue đọc có kiểu: model chọn ref, server giữ binding project/kind/ID."""
     result: list[dict[str, Any]] = []
+    aliases: dict[str, list[str]] = {}
+    for dataset in catalogue.datasets:
+        # An alias must occur in the actual filename and identify one dataset.
+        # Never assign A/B by upload order or by a model's guess.
+        stem = dataset.name.rsplit(".", 1)[0]
+        for alias in re.findall(r"(?:^|[\s_-])([A-Z])(?=[\s_.-]|$)", stem):
+            aliases.setdefault(alias, []).append(dataset.id)
     for dataset in catalogue.datasets:
         for table in dataset.tables:
-            base = dict(dataset_id=dataset.id, name=dataset.name, sheet=table.sheet)
+            base = dict(
+                dataset_id=dataset.id,
+                name=dataset.name,
+                sheet=table.sheet,
+                aliases=[alias for alias, ids in aliases.items() if ids == [dataset.id]],
+            )
             result.append(
                 dict(
                     **base,
@@ -269,6 +394,12 @@ def routing_sources(catalogue: IntentCatalogue) -> list[dict[str, Any]]:
                     source_id=catalogue.context.run_id,
                     fields=[dict(id=name) for name in fields],
                     metric_ids=catalogue.verified_metric_ids if kind == "VERIFIED_RUN" else [],
+                    metrics=[
+                        m.model_dump(mode="json")
+                        for m in catalogue.confirmed_plan.comparison_metrics
+                    ]
+                    if kind == "VERIFIED_RUN" and catalogue.confirmed_plan
+                    else [],
                     status_values=catalogue.status_values.get(kind, {}),
                     verification="VERIFIED_RUN_REQUIRED",
                     paid_status_fields=[],
@@ -284,6 +415,45 @@ def routing_sources(catalogue: IntentCatalogue) -> list[dict[str, Any]]:
                 "Đã chuẩn hóa · " if source["source_kind"] == "CANONICAL" else "Dữ liệu gốc · "
             ) + source["name"]
     return result
+
+
+def resolve_plain_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
+    """A finite, read-only shortcut for a plain row list of one named source.
+
+    It accepts only listing words plus an evidence-backed unique source alias;
+    filters, periods, money, comparisons and multi-table sources stay with the router.
+    """
+    normalized = plain_question(goal)
+    if not re.search(r"\b(?:liet ke|cho (?:toi )?xem|xem) (?:cac |nhung )?dong\b", normalized):
+        return None
+    allowed = set(
+        (
+            "liet ke cho toi xem cac nhung dong cua nguon file tep bang hai dang mo trong du lieu"
+        ).split()
+    )
+    words = set(re.findall(r"\w+", normalized))
+    matches = []
+    for source in routing_sources(catalogue):
+        if source["source_kind"] not in {"CANONICAL", "RAW_PREVIEW"}:
+            continue
+        for alias in source.get("aliases", []):
+            if alias.lower() in words and words <= allowed | {alias.lower()}:
+                matches.append(source)
+    dataset_ids = {s["dataset_id"] for s in matches}
+    if len(dataset_ids) != 1:
+        return None
+    selected_dataset = next(d for d in catalogue.datasets if d.id in dataset_ids)
+    if len(selected_dataset.tables) != 1:
+        return None
+    selected = next((s for s in matches if s["source_kind"] == "CANONICAL"), matches[0])
+    return AgentIntent(
+        intent="QUERY_DATA",
+        query=DataQuery(
+            project_id=catalogue.context.project_id,
+            source_kind=selected["source_kind"],
+            source_id=selected["source_id"],
+        ),
+    )
 
 
 def compile_routing(
@@ -303,6 +473,26 @@ def compile_routing(
     canonicals = {t.canonical_id: t for d in catalogue.datasets for t in d.tables if t.canonical_id}
     expanded: list[AgentIntent] = []
     for goal, item in zip(goals, batch.intents, strict=True):
+        listing = resolve_plain_listing(goal, catalogue)
+        if listing is not None and item.intent == "CLARIFY":
+            expanded.append(listing)
+            continue
+        if approval_bypass_requested(goal) or currency_bypass_requested(goal):
+            expanded.append(
+                AgentIntent(
+                    intent="UNSUPPORTED",
+                    questions=["Không thể bỏ qua phê duyệt nghiệp vụ hoặc ý nghĩa tiền tệ."],
+                )
+            )
+            continue
+        if item.intent == "RECONCILE_DATASETS" and unresolved_source_requested(goal):
+            expanded.append(
+                AgentIntent(
+                    intent="CLARIFY",
+                    questions=["Bạn muốn dùng nguồn nào? Hãy chọn đúng tệp thay vì tên gần giống."],
+                )
+            )
+            continue
         payload = item.model_dump(exclude={"query", "reconciliation"})
         # Không chọn tệp trùng tên cho chuẩn hóa chỉ dựa trên phỏng đoán của model.
         for dataset in catalogue.datasets:
@@ -442,7 +632,13 @@ def compile_routing(
                 "AI_INVALID_INTENT", "Yêu cầu làm rõ hoặc từ chối không được kèm action."
             )
         expanded.append(AgentIntent.model_validate(payload))
-    return validate_intents(IntentBatch(intents=expanded).model_dump_json(), goals, catalogue)
+    validation_goals = [
+        f"{catalogue.previous_goal or ''}\n{goal}" if catalogue.pending_question else goal
+        for goal in goals
+    ]
+    return validate_intents(
+        IntentBatch(intents=expanded).model_dump_json(), validation_goals, catalogue
+    )
 
 
 def interpret_requests(
@@ -462,6 +658,10 @@ def interpret_requests(
     schema["properties"]["intents"].pop("minItems", None)
     schema["properties"]["intents"].pop("maxItems", None)
     sources = routing_sources(catalogue)
+    if not catalogue.previous_groups:
+        # Without a prior displayed result, an ordinal is not an admissible slot.
+        # Keep the public DTO compatible while constraining this provider request.
+        schema["$defs"]["RoutingIntent"]["properties"]["result_position"] = {"type": "null"}
     # Grammar chỉ cho field IDs thực, không cho semantic_metric làm tên cột.
     # Server vẫn kiểm tra từng field thuộc đúng nguồn, không dựa vào enum liên nguồn.
     field_ids = sorted({f["id"] for source in sources for f in source["fields"]})
@@ -476,9 +676,26 @@ def interpret_requests(
         for key in ("select_fields", "group_by"):
             definitions["RoutingQuery"]["properties"][key]["items"]["enum"] = field_ids
     if sources:
-        schema["$defs"]["RoutingQuery"]["properties"]["source_ref"]["enum"] = [
-            s["ref"] for s in sources
-        ]
+        # Query metrics belong to a source. The earlier shared grammar allowed a
+        # canonical query to carry a verified-run metric, then fail semantics.
+        query_schema = schema["$defs"]["RoutingQuery"]
+        schema["$defs"]["RoutingQuery"] = dict(
+            anyOf=[
+                dict(
+                    query_schema,
+                    properties=query_schema["properties"]
+                    | dict(
+                        source_ref=dict(type="string", enum=[s["ref"]]),
+                        metric_id=dict(
+                            anyOf=[dict(type="string", enum=s["metric_ids"]), dict(type="null")]
+                        )
+                        if s.get("metric_ids")
+                        else dict(type="null"),
+                    ),
+                )
+                for s in sources
+            ]
+        )
     canonical_ids = [s["source_id"] for s in sources if s["source_kind"] == "CANONICAL"]
     if canonical_ids:
         for side in ("left", "right"):
@@ -502,6 +719,13 @@ def interpret_requests(
                 provider_grammar(child)
 
     provider_grammar(schema)
+    if sources:
+        for source_query in schema["$defs"]["RoutingQuery"]["anyOf"]:
+            source_query["properties"]["group_by"]["description"] = (
+                "Thống kê theo nhóm có aggregate: các trường nhóm (tối đa 3). "
+                "Liệt kê/xem dòng hoặc nhóm giao dịch: [] vì mỗi dòng VERIFIED_RUN đã là một nhóm. "
+                "Không đưa group_id vào group_by để liệt kê giao dịch."
+            )
     # Chỉ cho properties thuộc tool đã chọn; model không thể kèm query vào
     # summary/explanation/export. Server kiểm tra cùng ranh giới ở compile_routing.
     properties = schema["$defs"]["RoutingIntent"]["properties"]
@@ -512,7 +736,7 @@ def interpret_requests(
         "QUERY_DATA": ["query"],
         "CREATE_VISUALIZATION": ["query"],
         "SUMMARIZE_RESULTS": ["run_id"],
-        "EXPLAIN_RESULT": ["run_id", "key_value"],
+        "EXPLAIN_RESULT": ["run_id", "key_value", "result_position"],
         "EXPORT_RESULT": ["run_id", "export_format"],
         "CONTINUE_REVIEW": [],
         "CLARIFY": ["questions"],
@@ -524,6 +748,20 @@ def interpret_requests(
                 type="object",
                 additionalProperties=False,
                 description={
+                    "EXPLORE_DATA": (
+                        "Khám phá cấu trúc, tên cột hoặc preview nguồn; "
+                        "không dùng để đếm hoặc thống kê."
+                    ),
+                    "QUERY_DATA": (
+                        "Liệt kê/lọc/tìm dòng; câu hỏi số lượng/bao nhiêu bản ghi "
+                        "cần aggregation count. Tổng tiền cần sum_decimal "
+                        "theo metric/currency đã duyệt."
+                    ),
+                    "CREATE_VISUALIZATION": (
+                        "Vẽ/biểu diễn/trực quan hóa/phân bố dữ liệu bằng biểu đồ. "
+                        "Dùng query group_by và aggregation; không thay "
+                        "biểu đồ bằng một bảng thống kê."
+                    ),
                     "PREPARE_NORMALIZATION": (
                         "Chuẩn bị/làm sạch/đưa về cấu trúc để sử dụng sau. Mục đích tương lai "
                         "không phải lệnh chạy đối soát ngay."
@@ -539,7 +777,15 @@ def interpret_requests(
                     ),
                     "CLARIFY": (
                         "Hỏi khi chưa chọn nguồn, nguồn ngoài danh mục, tên gần giống, thiếu "
-                        "kỳ/năm hoặc nghĩa thanh toán; current run không thay lựa chọn nguồn mới."
+                        "kỳ/năm, metric phù hợp hoặc nghĩa thanh toán. Thiếu trường/định nghĩa "
+                        "không phải hành động bị cấm: báo chưa đủ dữ liệu và hỏi nguồn/chỉ tiêu "
+                        "sẵn có. Current run không thay lựa chọn nguồn mới."
+                    ),
+                    "UNSUPPORTED": (
+                        "Chỉ dành cho hành động bị cấm/ngoài khả năng thực thi: sửa raw, "
+                        "chuyển tiền thật, vượt quyền, tiết lộ secrets, tự duyệt hoặc giả kết quả. "
+                        "Không dùng cho yêu cầu đọc/tính đang thiếu dữ liệu/field/metric; "
+                        "các yêu cầu đó dùng CLARIFY."
                     ),
                 }.get(kind, kind),
                 properties={
@@ -597,6 +843,12 @@ def interpret_requests(
                 "PREPARE_NORMALIZATION là làm sạch/chuẩn bị cấu trúc để dùng sau; "
                 "RECONCILE_DATASETS là thực hiện so khớp/đối chiếu nguồn; "
                 "EXPLORE_DATA là khám phá cột hoặc xem trước; QUERY_DATA là lọc/đếm/tổng dữ liệu; "
+                "Yêu cầu liệt kê/xem các dòng giao dịch dùng QUERY_DATA; khám phá cấu trúc "
+                "dùng EXPLORE_DATA. Nguồn A/B rút gọn xác định duy nhất trong catalogue thì "
+                "chọn nguồn đó, không hỏi lại vì tên tệp có tiền tố hoặc phần mở rộng. "
+                "Hỏi cấu trúc/các trường/các cột của một tệp là EXPLORE_DATA + dataset_ids, "
+                "không phải group_by các cột. group_by chỉ dùng khi người dùng muốn thống kê "
+                "theo nhóm, không dùng để xem danh sách hoặc cấu trúc. "
                 "EXPLAIN_RESULT là giải thích một giao dịch/nhóm bằng số hai phía và bằng chứng; "
                 "Tra bằng chứng hoặc kiểm tra chênh lệch cho mã nghiệp vụ cụ thể cũng dùng "
                 "EXPLAIN_RESULT + key_value, tuyệt đối không lọc group_id theo mã nghiệp vụ. "
@@ -623,18 +875,41 @@ def interpret_requests(
                 "Mã nghiệp vụ cần giải thích đặt key_value nguyên văn, không group_id kỹ thuật. "
                 "Chỉ dùng group_id đã có trong group context. Không chọn newest run thay current "
                 "context. "
+                "Người dùng chỉ giao dịch thứ N trong bảng vừa trả: dùng EXPLAIN_RESULT "
+                "+ result_position=N (bắt đầu từ 1), không bịa key_value/group_id. "
+                "Chỉ khi previous_result_count đủ N và previous_query là VERIFIED_RUN. "
+                "Hỏi nguồn/bằng chứng của giao dịch đang xem: EXPLAIN_RESULT giữ group context. "
                 "Query field IDs khác semantic_metric. metric_id chỉ dùng cho VERIFIED_RUN tiền; "
+                "Ưu tiên chỉ tiêu người dùng nêu rõ trong metrics đã duyệt; nếu chỉ có một "
+                "chỉ tiêu phù hợp thì dùng nó, không hỏi lại tên kỹ thuật. Nhiều chỉ tiêu "
+                "khác nghĩa mà chưa chọn: giữ metric_id null để server hỏi lựa chọn. "
+                "previous_query/previous_goal chỉ là ngữ cảnh cùng hội thoại/nguồn còn hợp lệ. "
+                "Nếu có pending_question, mục tiêu hiện tại là trả lời câu hỏi bổ sung cho "
+                "previous_goal; dùng đầy đủ dữ kiện của mục tiêu gốc và câu trả lời mới. "
+                "Câu hỏi tiếp bằng đại từ có thể giữ metric/bộ lọc trước; yêu cầu mới thay "
+                "điều kiện (như chưa thanh toán thay đã thanh toán), không giữ bộ lọc mâu thuẫn. "
+                "Không suy gross=net, order=paid, không bịa tháng từ run thiếu trường ngày. "
                 "Mỗi query phải khai báo filters, aggregations, group_by, currency_field; "
+                "Giới hạn cứng: select_fields tối đa 20; filters 8; aggregations 5; "
+                "group_by 3; sort 3; limit 1–50. Không đặt toàn bộ fields vào group_by. "
                 "chỉ dùng []/null khi mục tiêu không yêu cầu điều kiện/phép tính đó. "
                 "CANONICAL/RAW_PREVIEW/EXCEPTIONS để null. Liệt kê dòng để group_by rỗng; "
                 "group_by phải có count/sum/min/max. Tổng/đếm áp dụng ALL_MATCHING trước paging. "
                 "sum_decimal cần currency_field và group_by currency để không trộn tiền tệ. "
                 "Paid filter dùng approved paid_status_fields, eq PAID hoặc in PAID/TRANSFERRED. "
+                "Chưa thanh toán dùng chính xác approved payment_status eq UNPAID; "
+                "không dùng ne PAID vì còn các trạng thái khác như COMPLETED hoặc unknown. "
+                "Thiếu trường/định nghĩa cho chỉ tiêu người dùng muốn: CLARIFY, hỏi về nguồn "
+                "hoặc chỉ tiêu sẵn có, không dùng UNSUPPORTED chỉ vì chưa có dữ liệu. "
                 "Biểu đồ toàn trạng thái dùng group_by status + count, không tự lọc PAID. "
                 "Ngoại lệ đang mở dùng EXCEPTIONS state eq OPEN; chưa xử lý dùng state in "
                 "OPEN/IN_REVIEW. "
                 "Thiếu đối ứng dùng VERIFIED_RUN linkage_state UNMATCHED; thiếu trái thêm "
                 "left_member_count eq 0 và right_member_count gt 0, ngược lại tương ứng. "
+                "Liệt kê/chọn top giao dịch lệch tiền phải filters comparison_state eq "
+                "AMOUNT_MISMATCH. Chỉ sort absolute_variance không thay cho lọc lệch tiền. "
+                "Top N lớn nhất: thêm sort absolute_variance descending true và limit N, "
+                "group_by=[]; một dòng VERIFIED_RUN đã là một nhóm giao dịch. "
                 "Dùng đúng enum từng source; không có MATCHED. Tiền là chuỗi Decimal, không tự "
                 "sinh số liệu. "
                 "Đối soát giữ phạm vi run hiện tại: dùng reconciliation.confirmed_run_id từ "
@@ -664,6 +939,12 @@ def interpret_requests(
                     ],
                     sources=sources,
                     confirmed_scope=scope,
+                    previous_query=catalogue.previous_query.model_dump(mode="json")
+                    if catalogue.previous_query
+                    else None,
+                    previous_goal=catalogue.previous_goal,
+                    pending_question=catalogue.pending_question,
+                    previous_result_count=len(catalogue.previous_groups),
                 ),
                 ensure_ascii=False,
             ),
