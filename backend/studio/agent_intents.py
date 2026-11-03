@@ -2,6 +2,7 @@
 
 import json
 import re
+import unicodedata
 from collections.abc import Callable
 from typing import Any
 
@@ -19,40 +20,43 @@ from studio.errors import DomainError
 INTENT_REVISION = "agent-intent-26"
 
 
+def _explicit_request(goal: str, pattern: str) -> bool:
+    """Match a narrow authority request, excluding an immediately negated verb."""
+    # Keep the negation "đừng" distinct from the affirmative verb "dùng"
+    # before accent folding makes both spellings "dung".
+    normalized = plain_question(
+        re.sub(r"\bđừng\b", "không", unicodedata.normalize("NFC", goal), flags=re.IGNORECASE)
+    )
+    return any(
+        not re.search(
+            r"(?:khong|dung|cam|never|not|without|don't)\s*$", normalized[: match.start()]
+        )
+        for match in re.finditer(pattern, normalized)
+    )
+
+
 def approval_bypass_requested(goal: str) -> bool:
     """Deny an explicit request to let AI grant business approval.
 
     This is a narrow authority guard, not the natural-language router. Reusing
     already-approved rules remains a valid request and does not match this guard.
     """
-    normalized = plain_question(goal)
-    return any(
-        not re.search(
-            r"(?:khong|dung|cam|never|not|without|don't)\s*$", normalized[: match.start()]
-        )
-        for match in re.finditer(
-            r"\b(?:tu|auto|automatically)\s+(?:phe duyet|duyet|approve)\b", normalized
-        )
-    )
+    return _explicit_request(goal, r"\b(?:tu|auto|automatically)\s+(?:phe duyet|duyet|approve)\b")
 
 
 def currency_bypass_requested(goal: str) -> bool:
     """An explicit instruction to discard currency is not an FX approval."""
-    return bool(
-        re.search(
-            r"\b(?:bo qua|ignore|discard)\s+(?:tien te|currency|currencies)\b", plain_question(goal)
-        )
+    return _explicit_request(
+        goal, r"\b(?:bo qua|ignore|discard)\s+(?:tien te|currency|currencies)\b"
     )
 
 
 def unresolved_source_requested(goal: str) -> bool:
     """Approximate source selection cannot authorize reuse of the current run."""
-    return bool(
-        re.search(
-            r"\b(?:chon|lay|tim|dung)\b.{0,20}\b(?:nguon|file|tep|bang)\b"
-            r".{0,45}\b(?:gan giong|gan dung|tuong tu)\b",
-            plain_question(goal),
-        )
+    return _explicit_request(
+        goal,
+        r"\b(?:chon|lay|tim|dung)\b.{0,20}\b(?:nguon|file|tep|bang)\b"
+        r".{0,45}\b(?:gan giong|gan dung|tuong tu)\b",
     )
 
 

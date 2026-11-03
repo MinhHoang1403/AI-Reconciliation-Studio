@@ -141,7 +141,20 @@ export function AssistantStudio({
   const transcript=useRef<HTMLDivElement>(null);
   const lastMessageId=messages.at(-1)?.id;
   useEffect(()=>{if(transcript.current)transcript.current.scrollTop=transcript.current.scrollHeight;},[lastMessageId]);
-  useEffect(()=>{const input=composerInput.current;if(input){input.style.height="auto";input.style.height=`${Math.min(input.scrollHeight,180)}px`;}},[text]);
+  useEffect(()=>{
+    const input=composerInput.current;
+    if(!input)return;
+    const resize=()=>{input.style.height="auto";input.style.height=`${Math.min(input.scrollHeight,180)}px`;};
+    resize();
+    let width=0;
+    // Reflow saved drafts on orientation/sidebar changes too. Ignore height-only
+    // notifications so resizing the textarea cannot trigger an observer loop.
+    const observer=new ResizeObserver(([entry])=>{
+      if(entry&&entry.contentRect.width!==width){width=entry.contentRect.width;resize();}
+    });
+    observer.observe(input);
+    return()=>observer.disconnect();
+  },[text]);
   const [draftNotice, setDraftNotice] = useState("");
   const draftKeyFor = (scope: AssistantContext, id = "new") =>
     `studio.assistant-draft.${draftOwner}.${JSON.stringify([scope.project_id, scope.run_id || "", scope.dataset_id || "", scope.group_id || "", scope.case_id || "", id])}`;

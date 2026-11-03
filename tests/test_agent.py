@@ -1000,6 +1000,10 @@ def test_explicit_currency_bypass_is_denied_without_treating_missing_fx_as_appro
 
     assert currency_bypass_requested("Cộng USD và VND, bỏ qua tiền tệ")
     assert not currency_bypass_requested("Cần quy tắc quy đổi USD sang VND trước khi cộng")
+    assert not currency_bypass_requested("Tính tổng theo từng tiền tệ, không bỏ qua tiền tệ")
+    assert not currency_bypass_requested("Đừng bỏ qua tiền tệ khi kiểm tra giao dịch")
+    assert not currency_bypass_requested("Group amounts by currency; do not ignore currency")
+    assert currency_bypass_requested("Không bỏ qua tiền tệ lúc đầu, sau đó bỏ qua tiền tệ")
 
 
 @pytest.mark.parametrize(
@@ -1010,6 +1014,8 @@ def test_explicit_currency_bypass_is_denied_without_treating_missing_fx_as_appro
     ],
 )
 def test_approximate_source_request_cannot_reuse_the_current_run(goal):
+    from unicodedata import normalize
+
     from studio.agent_intents import compile_routing
 
     cat = routing_catalogue()
@@ -1025,6 +1031,11 @@ def test_approximate_source_request_cannot_reuse_the_current_run(goal):
     assert result.intent == "CLARIFY" and result.planning_request is None
     valid_goal = "Đối soát đúng phạm vi đã duyệt của run đang xem"
     assert compile_routing(json.dumps(dict(intents=[request])), [valid_goal], cat)[
+        0
+    ].planning_request
+    negated = "Đối soát đúng phạm vi đã duyệt; đừng lấy nguồn tên gần giống"
+    assert compile_routing(json.dumps(dict(intents=[request])), [negated], cat)[0].planning_request
+    assert compile_routing(json.dumps(dict(intents=[request])), [normalize("NFD", negated)], cat)[
         0
     ].planning_request
 

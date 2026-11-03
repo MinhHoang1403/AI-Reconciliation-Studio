@@ -3,6 +3,27 @@ import {expect} from "@playwright/test";
 import {mkdir} from "node:fs/promises";
 import {createHash} from "node:crypto";
 
+test('[LOCAL] composer reflows an unchanged draft when the viewport narrows and widens',async({page})=>{
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewportSize({width:1440,height:900});await page.goto('/');
+  const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
+  await expect(input).toBeEnabled();
+  const draft='Bản nháp nghiệm thu: giữ nguyên mã và bằng chứng';
+  await input.fill(draft);
+  const wide=(await input.boundingBox())!.height;
+  await page.setViewportSize({width:390,height:900});
+  await expect.poll(()=>input.evaluate(el=>el.scrollHeight<=el.clientHeight)).toBe(true);
+  expect((await input.boundingBox())!.height).toBeGreaterThan(wide);
+  await expect(input).toHaveValue(draft);
+  await expect(page.getByRole('button',{name:'Gửi câu hỏi',exact:true})).toBeInViewport();
+  await mkdir('../runtime/assistant-conversation/after/390',{recursive:true});
+  await page.screenshot({path:'../runtime/assistant-conversation/after/390/reflow.png'});
+  await page.setViewportSize({width:1440,height:900});
+  await expect.poll(async()=>(await input.boundingBox())!.height).toBe(wide);
+  await input.fill('');
+  expect(errors).toEqual([]);
+});
+
 for(const width of [390,768,1366,1440,1920]){
   test(`[MOCK CONTRACT] clarification is a conversation and keeps approval separate at ${width}px`,async({page})=>{
     const context={project_id:'clarification-project'};

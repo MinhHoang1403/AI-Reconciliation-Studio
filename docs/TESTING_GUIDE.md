@@ -4,11 +4,15 @@ Chạy từ repository root. Các lệnh bên dưới không tạo Compose proje
 
 ## Hội thoại, clarification và metric — 03/11/2026
 
-Gate source hiện hành: **302Backend/PostgreSQL và116Playwright PASS**, gồm231offline+71PG, toàn bộ browser regression/UAT/financial oracle/export/reload. Browser chạy một worker, retries0, dist cố định tại cùng origin/API; không build hoặc chạy Playwright khác đồng thời. Bằng chứng postdeploy và source/runtime identity ghi tại [IMPLEMENTATION_STATUS mục Y](IMPLEMENTATION_STATUS.md#y-hội-thoại-clarification-và-natural-language-reliability--03112026); các số ở mục lịch sử bên dưới không thay kết quả hiện hành.
+Gate source hiện hành: **302Backend/PostgreSQL và117Playwright PASS**, gồm231offline+71PG, toàn bộ browser regression/UAT/financial oracle/export/reload. Browser chạy một worker, retries0, dist cố định tại cùng origin/API; không build hoặc chạy Playwright khác đồng thời. Bằng chứng postdeploy và source/runtime identity ghi tại [IMPLEMENTATION_STATUS mục Y](IMPLEMENTATION_STATUS.md#y-hội-thoại-clarification-và-natural-language-reliability--03112026); các số ở mục lịch sử bên dưới không thay kết quả hiện hành.
 
 Regression PostgreSQL tái hiện money fields thiếu metric (`QUERY_FIELD_INVALID` trước sửa), kiểm unique metric/Decimal2,75VND, nhiều/không metric, reply clarification tiếp tục đúng workflow, ambiguous giữ chờ, dữ kiện coverage do model bịa bị chặn, mapping mới vẫn cần approval. Follow-up theo vị trí dùng trang/sort đã lưu, run/case được kiểm lại; bảng gốc không bị sửa và conversation khác không kế thừa lựa chọn. Public fields additive/defaults, không migration/dependency mới.
 
 `assistant-experience.spec.ts` có năm viewport kiểm clarification không checkbox/enum/approval, chọn tùy chọn, trả lời qua composer/reload, một panel cho workflow sau reply, đồng thời Enter/click chỉ gửi một request và spinner không thay kích thước. Bộ layout cũ giữ23trạng thái; bổ sung screenshots hỏi bổ sung/loading. Keyboard viewport mô phỏng không chứng minh thiết bị di động vật lý hoặc screen-reader certification. Focus được chuyển sang bề mặt composer, theo [W3C Focus Visible](https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html); controlled textarea và accessible label đối chiếu [React textarea](https://react.dev/reference/react-dom/components/textarea), đã mở03/11/2026.
+
+Regression đổi1440→390→1440với draft không thay đổi kiểm textarea tăng/giảm chiều cao, không cuộn nội bộ trước180px, giữ text/nút gửi và không pageerror. Đã FAIL trên source1ac2139trước sửa; width observer không phản ứng với height-only notifications để tránh vòng lặp đo kích thước.
+
+Guard tests phân biệt yêu cầu thật với “không/đừng bỏ qua tiền tệ”, “đừng lấy nguồn tên gần giống”, kể cả Unicode decomposed. Không bỏ dấu trước khi phân biệt “đừng”/“dùng”; câu phủ định rồi có yêu cầu vượt gate thật vẫn bị chặn. Đây là guard hẹp, không thay thế xác minh source/currency/FX/approval ở Backend.
 
 Trước thay release, có thể chạy UI dist candidate với API hiện hành, cùng origin/Compose, không dựng app/server thứ hai:
 
