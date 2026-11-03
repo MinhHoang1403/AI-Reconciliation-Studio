@@ -26,6 +26,8 @@ Remove-Item Env:STUDIO_FRONTEND_DIST
 
 Fixture trong `e2e/project-selection.ts` chỉ đọc dist đã build và intercept HTML/assets tại browser; API thật/mocks vẫn theo từng test, không có cloud request để test CSS. Sau deploy chạy lại trên assets/runtime thật, không dùng cờ candidate.
 
+Runtime `dac8dd1` đã chốt thêm38browser smoke và1UAT1000PASS trên assets thật; nguồn/API/persistence/read-back/backup checks ghi tại mụcY.Ibáo cáo. Đây là replay của các trường hợp trong bộ117, không cộng thành156cases. Backup sau nghiệm thu restore24tables/2.709filesPASS và host checksumsPASS; dữ liệu public không overwrite. Một full run bị gián đoạn dài có1timeout được giữFAIL; ca đóPASS riêng và trong full117liên tục, không tăng timeout/retries để che.
+
 `tests/fixtures/assistant-conversation-cases.json` bổ sung24câu mới/24chủ đề, giữ nguyên80gold và24variants cũ. Benchmark dùng cùng rubric/ledger production, mở rộng kiểm UNPAID và định dạng export, không đổi oracle cũ. Bộ câu mới có thể chạy bằng `benchmark-agent.py --suite variants --gold <fixture-mới> ...` do cùng shape24/8negative; đây là tập conversation mới, không đổi tên thành24variants lịch sử trong báo cáo. Routing LIVE không là workflow completion; cached revalidation không là inference mới. Kiểm multiple metrics/absence/mixed currency còn có deterministic/PG guards riêng.
 
 ## Nghiệm thu demo và khôi phục môi trường — 02/11/2026
