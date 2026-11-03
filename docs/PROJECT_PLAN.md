@@ -12,6 +12,10 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Giao diện tối giản và đồng bộ Docker — 04/11/2026
+
+Chủ dự án yêu cầu kiểm chứng Git/build/image/HTTP/Chromium trước khi kết luận giao diện cũ do Docker. Nếu đã khớp thì sửa CSS/UI: bề mặt composer trung tính không border/outline ngoài khi click chuột; chỉ báo bàn phím vẫn nhìn rõ; ghost actions, typography/spacing thống nhất cho App Shell, Settings/History, review, kết quả và manual fallback. Hợp nhất selectors/tokens tại rule gốc, không thêm framework/dependency hoặc thay Backend/financial/approval contracts. Không inference mới, tăng quota hay reset Gemini ledger để test UI. Sau quality gates và deploy đúng frontend source mới, dọn từng image ID đã xác minh thuộc riêng Studio, không có container tham chiếu; giữ release hiện hành, PostgreSQL, cặp rollback `dac8dd1`, hai volumes và mọi backup/dữ liệu. Không dùng global prune hoặc tác động dự án khác. Kết quả và giới hạn tại IMPLEMENTATION_STATUS mục Z.
+
 ### Hoàn thiện hội thoại và độ tin cậy — 03/11/2026
 
 Chủ dự án yêu cầu phân biệt hỏi bổ sung (`CLARIFICATION`) với phê duyệt nghiệp vụ (`MAPPING`/`RECONCILIATION`). Hỏi bổ sung có câu hỏi và lựa chọn từ Backend hoặc trả lời qua composer, không checkbox approval. Câu trả lời hợp lệ tiếp tục cùng workflow sau kiểm tra quyền, nonce, expiry, fingerprint và intent; mapping/rule mới vẫn dừng ở approval chuyên biệt. Nút duyệt nói rõ tác động: lưu ánh xạ rồi chuẩn hóa, hoặc lưu quy tắc rồi đối soát. Các mô tả nút xác nhận chung trong tài liệu cũ được thay bằng hợp đồng này; không bỏ các xác nhận extraction/currency/coverage bắt buộc.

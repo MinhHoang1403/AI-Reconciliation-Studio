@@ -2,6 +2,16 @@
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
+## Giao diện tối giản và đồng bộ runtime — 04/11/2026
+
+Trước sửa, đối chiếu build từ Git với asset trong Nginx, HTTP và Chromium profile mới/disabled cache; kiểm service worker registrations, computed styles khi pointer và Tab. Baseline composer có border 1px + outline 2px cả khi click vì textarea vẫn `:focus-visible`; đây là lỗi CSS khi hashes đã khớp. Sau sửa phải xác minh lại trên asset production, không chỉ fixture dist.
+
+Các ca `Compact composer` tại năm widths giữ toàn bộ kiểm tra upload/draft/Settings và thêm: empty height ≤64px; pointer không border/outline/inset focus; Tab có underline nhìn thấy, textarea không outline riêng; quay lại pointer bỏ underline; placeholder contrast ≥4,5:1 trên nền computed. Không xóa focus bàn phím hoặc nới oracle để PASS. Giữ 117 browser cases; các screenshot mới trong approval, data drawer và verified report là evidence, không cases mới. Các states khác dùng layout matrix 23×5, kèm clarification/loading/IME/unknown-delivery/reload/manual fallback. Baseline/failure/after images và hash receipts nằm tại `runtime/minimal-interface/`, ngoài Git.
+
+Full regression đã tái hiện focus sau gửi bị mất trên390px: `requestAnimationFrame` có thể chạy trước React commit bật lại textarea. Phục hồi focus bằng `useLayoutEffect` sau commit, giữ guard component còn mounted và sequence request hiện hành; không đổi HTTP/approval contracts. Cơ sở: [React useLayoutEffect](https://react.dev/reference/react/useLayoutEffect), đã kiểm04/11/2026. Giữ assertion focus cũ, kiểm lại năm widths nhiều lượt và full suite; không tăng timeout/retry để che lỗi. Pointer/Tab phân biệt tại App Shell vì Chromium vẫn coi textarea click chuột là focus-visible; chỉ composer dùng chỉ báo inset, controls khác giữ focus outline.
+
+Sau quality gates, build/recreate frontend qua Compose hiện có rồi kiểm cache sạch/CSS computed/hash, regression nghiệp vụ, persistence và ledger. Cleanup chỉ sau deploy gate; inventory phải gồm OCI source/revision, refs từ mọi container kể cả stopped, cùng image IDs/volumes ngoài Studio để so trước/sau. Giữ rollback `dac8dd1`; không global prune hoặc dọn shared build cache. Sau cleanup chạy lại full browser/backend gate phù hợp và checksums/health, báo đúng dung lượng Docker đo được thay vì cộng virtual sizes. Không gọi AI mới hoặc mở thêm allowance.
+
 ## Hội thoại, clarification và metric — 03/11/2026
 
 Gate source hiện hành: **302Backend/PostgreSQL và117Playwright PASS**, gồm231offline+71PG, toàn bộ browser regression/UAT/financial oracle/export/reload. Browser chạy một worker, retries0, dist cố định tại cùng origin/API; không build hoặc chạy Playwright khác đồng thời. Bằng chứng postdeploy và source/runtime identity ghi tại [IMPLEMENTATION_STATUS mục Y](IMPLEMENTATION_STATUS.md#y-hội-thoại-clarification-và-natural-language-reliability--03112026); các số ở mục lịch sử bên dưới không thay kết quả hiện hành.

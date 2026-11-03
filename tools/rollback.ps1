@@ -1,4 +1,4 @@
-param([ValidatePattern('^[a-f0-9]{7,40}$')][string]$ReleaseRevision = '5f358c4')
+param([ValidatePattern('^[a-f0-9]{7,40}$')][string]$ReleaseRevision = 'dac8dd1')
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $taskImages = @{}
@@ -18,15 +18,15 @@ with SessionFactory() as db:
     assert db.scalar(text("SELECT count(*) FROM jobs WHERE status IN ('QUEUED','RUNNING','RETRYABLE_FAILURE')")) == 0, 'Wait for active jobs'
     if revision == 'create_agent_workflows':
         assert db.scalar(text("SELECT count(*) FROM agent_workflows WHERE state IN ('CREATED','RUNNING')")) == 0, 'Wait for workflows to settle'
-        # Old code cannot resume Agent reviews. Preserve them, then return to the candidate.
-        print('Agent reviews are retained but cannot resume in the accepted legacy UI')
+        # Reviews remain untouched; resumption requires a compatible accepted source.
+        print('Agent reviews are retained; resumption depends on the selected accepted source')
     assert db.scalar(text("SELECT count(*) FROM workspaces WHERE id='demo'")) == 1
     print('PASS compatible additive schema and no active jobs', revision)
 '@
 $taskGuard | docker compose exec -T backend python -
 if ($LASTEXITCODE -ne 0) { throw 'Rollback compatibility gate failed.' }
-# Main cũ không nhận revision Alembic mới. Khởi tạo proof riêng rồi chạy cùng API cũ;
-# không chạy upgrade/downgrade hoặc sửa database. Override thuộc đúng Compose hiện có.
+# Giữ schema hiện hành đã qua compatibility gate; không chạy upgrade/downgrade.
+# Khởi tạo proof riêng rồi chạy API của image đã chọn trong cùng Compose hiện có.
 $taskStartup = "import os,secrets; from studio.config import settings; assert len(settings.session_secret.get_secret_value())>=32; settings.instance_path.parent.mkdir(parents=True,exist_ok=True); settings.instance_path.write_text(secrets.token_urlsafe(32)); settings.demo_proof_path.unlink(missing_ok=True); os.execvp('uvicorn',['uvicorn','studio.api:app','--host','0.0.0.0','--port','8000','--no-proxy-headers','--no-access-log'])"
 $taskOverride = @{services=@{
     backend=@{image=$taskImages.backend; command=@('python','-c',$taskStartup)}

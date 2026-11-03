@@ -1642,3 +1642,43 @@ Image manifest IDs: Backend/Worker `sha256:798c2afbe2f11a3c0583bbb2e024cee5c2057
 **Kết luận:** đủ bằng chứng dùng local cho luồng CSV/XLSX đã nghiệm thu và **READY_FOR_GUIDED_DEMO**; không còn P0/P1/P2 đã biết làm hỏng các hành trình trong phạm vi này. Phân biệt hỏi bổ sung/phê duyệt, query metric/context, số tiền, nguồn, export và persistence đã qua native regressions. Các yêu cầu thiếu semantic/currency/coverage hoặc ngoài quyền vẫn hỏi lại/chặn; không coi đó là lỗi và không hạ gate để cho chạy. Lịch sử lỗi kiểm thử/AI được giữ, không tuyên bố mọi request lịch sử thành công.
 
 Chưa đủ bằng chứng gọi production-ready hoặc bảo đảm mọi câu tự nhiên đều đúng: gold strict 79/80; variants/raw LIVE 23/24, conversation/raw LIVE 22/24 trước native policy, sau sửa CACHED 24/24 mỗi bộ (0 HTTP). Không đánh đồng native repair với model accuracy 100%. Internet/nhiều người dùng, soak dài hạn, off-host restore, thiết bị thật/screen-reader, billed cloud cost và inference mọi loại câu không nằm trong nghiệm thu này. Một Starlette/httpx test deprecation warning còn nguyên, không phải lỗi chức năng đã quan sát. Giới hạn này phải đi cùng kết luận sử dụng, không che bằng tổng số tests PASS.
+
+## Z. Giao diện tối giản, source/runtime và Docker cleanup — 04/11/2026
+
+### A. Docker/source audit
+
+Baseline local/main/origin `519a44b08a7ea0da11777f40b9e217022ca5926c`, chỉ tài liệu sau application `dac8dd179fe9cd57bf5e86abae8d4784103c0d6b`. Fresh production build từ source baseline khớp bytes trong frontend image, HTTP và Chromium profile mới với cache disabled. Năm resources thực sự tải khi mở Assistant khớp SHA256; không service worker hoặc bằng chứng cache cũ. **Không có lỗi đồng bộ Docker ở baseline.** Composer xấu do CSS thật: border1px và `:has(textarea:focus-visible)` outline2px; Chromium vẫn đánh dấu textarea focus-visible khi click chuột. Desktop empty height70px, mobile64px.
+
+Baseline Backend/Worker image `sha256:798c2afbe2f11a3c0583bbb2e024cee5c205729eb388022ad0ac3d23b29f615e`; frontend `sha256:e843ee4440308349746cd155ebc5762f53c195b543aaa96607b64de0fee68a73`, đều OCI revisionDAC. Chỉ frontend source thay đổi; Backend/Worker không rebuild hoặc đổi tag giả thành revisionUI. Cần chứng minh lại source42files và assets production sau release.
+
+### B. UI trước/sau và khả năng dùng bàn phím
+
+Sửa tại selectors gốc trong `styles.css`: bề mặt trắng/neutral gray, blue accent; sidebar/header ít đường kẻ, project/history/menu dùng vùng nhấn nhẹ; Settings, review/fieldset/manual fallback/result/evidence bỏ khung ngoài lồng nhau. Bảng và controls vẫn có ranh giới khi cần. Hợp nhất tokens màu/border/radius/shadow, selectors bảng/checkbox/rule-builder và media query Assistant768px; không nối override cuối file, thêm dependency/framework hoặc thay contracts.
+
+Composer là một bề mặt neutral bo24px, border0, empty60pxdesktop/56pxmobile. Click chuột không outline hay underline; Tab có inset underline2px nhìn rõ, textarea không khung riêng. App Shell theo dõi pointer/Tab/Escape chỉ để hiển thị focus; controls khác giữ focus indicator. Placeholder kiểm contrast≥4,5:1; icon/send/spinner giữ40px, auto-grow/reflow/IME/Enter/Shift+Enter/draft/upload/reply binding giữ nguyên. Cơ sở thiết kế: [Fluent2 elevation](https://fluent2.microsoft.design/elevation) và [W3C Focus Visible](https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html), kiểm04/11/2026; không nhận là chứng nhận WCAG.
+
+Ảnh trước từ assets runtime cũ: `runtime/minimal-interface/before/{empty,pointer,keyboard}-{width}.png`, layout/settings cùng thư mục; ảnh bổ sung native drawer/report/Planner tại `detail-before-artifacts/`. Candidate mới tại `candidate/`, `focus/` và layout matrix có23states×5widths390/768/1366/1440/1920. Đã xem trực quan composer1440, keyboard390, Settings1440 và mapping mobile; ảnh runtime sau deploy được bổ sung khi gates đạt. Browser baseline10/10 và detail3/3; candidate targeted16/16PASS. Đây là replay/capture, không tăng117cases độc lập.
+
+### C. Chất lượng nghiệp vụ và dữ liệu
+
+Backend/PostgreSQL **302/302PASS,0FAIL/SKIP,103,37giây** trên hạ tầng sẵn có, UUID schemas/storage tạm. Ruff/mypy47files/TypeScript/ESLint/build/repository checksPASS. Chưa đổi Backend/worker/engine/verifier/Decimal/parsing/approvals/nonces/leases hoặc migrations/dependencies. Giữ oracle966EQUAL/19AMOUNT_MISMATCH/15UNMATCHED và absolute variance7,03VND; CSV/XLSX/reload kiểm snapshot độc lập.
+
+Full candidate đầu **115/117PASS,2FAIL,22,1phút**, logs/failure screenshots/trace được giữ, không gọi là fullPASS. Một failure mobile390 là race focus: animation frame có thể chạy trước React commit bật lại textarea. Sửa bằng `useLayoutEffect` sau commit với mounted/sequence guard, giữ assertion và timeout. Cơ sở [React useLayoutEffect](https://react.dev/reference/react/useLayoutEffect), kiểm04/11. Failure còn lại ở upload C Gộp vận đơn: agent job chờ14,842giây mới claim, xử lý1,123giây, SUCCEEDED lần đầu; vượt assertion15giây trước UI panel. Không chứng minh lỗi financial/AI hoặc quy hết cho CSS; phải kiểm lại ca và full suite, không tăng timeout/retry hoặc đổi oracle.
+
+Sau sửa, năm ca clarification/focus lặp3lượt **15/15PASS,51,6giây**; ca C Gộp vận đơn **1/1PASS,35giây**, không sửa test/timeout/worker cho ca này. Đây là targeted rechecks, chưa thay full suite. Xem trực quan thêm chart768/history1366/evidence1920/table390/Settings nâng cao1440: không thấy khung chồng, modal clipping hoặc lệch composer; bảng rộng vẫn cuộn ngang trong vùng riêng.
+
+Gate source chốt: **117/117PlaywrightPASS,0FAIL/SKIP/retry,13,0phút** trên dist cố định sau sửa focus, cùng API thật; `full-candidate-accepted.log`. Toàn bộ11UAT cases gồm1000giao dịch, Decimal oracle, hai exports/reloadPASS; C Gộp vận đơn18,6giâyPASS cả hành trình. Mock contract và native/manual fallback được phân biệt theo tên case;0inference mới. Không cộng15+1rechecks vào117cases độc lập.
+
+Backup trước nhiệm vụ `backup_48ed66d5c7c249afa3cd8b596c7dbbea`:24tables/2.709files, metadata SHA256 `3dbd965ffc1f37ee5e817e39e63090ed771657a7932477993e100d45c510fce3`. Backup28,579giây/restore19,776giây trong UUID schemaPASS, corruption/path-traversal từ chối đúng, public không overwrite; host copy kiểm độc lập toàn bộ checksumsPASS. So toàn bộ original primary keys/full metadata và2.709file hashes sau candidate:0missing/0changed/0checksumfail, không ngoại lệ policy. Các project TEST mới được phép bổ sung. Không inference mới/tăng quota/reset ledger;203/210 còn7 tại baseline và các browser audits.
+
+### D. Docker cleanup
+
+Chưa cleanup tại lúc ghi source. Inventory baseline:57uniqueimages,10Studio-owned theo OCI/source/Compose labels,31containers gồm4Studio,36volumes gồm2Studio. Giữ cặp rollbackDAC, currentPG và release mới; từng image cũ chỉ được xóa sau deploy gates, git-source ownership và không container tham chiếu. Không global prune/build-cache cleanup hoặc xóa volume/backup. Số đo sau cleanup và IDs thực tế được ghi tiếp khi có receipts.
+
+### E. GitHub và release
+
+Feature `codex/minimal-interface` trong repository chính; chưa nghiệm thu runtime mới tại lúc ghi phần này. Commit/source SHA, frontend image/assets HTTP/Chromium, persistence qua recreate và đồng bộ origin/main sẽ ghi sau gates. Không dùng docsHEAD để giả nhận Backend image đã rebuild.
+
+### F. Trạng thái nghiệm thu
+
+**IN_PROGRESS_DEPLOYMENT**: gates source302Backend/117browser đã đạt; runtimeDAC ổn định trước vẫn đang phục vụ. Chưa dọn images hoặc đánh dấu releaseUI mới READY. Sau deploy/cleanup phải chạy lại full117browser/302Backend, checksums/metadata/ledger/health trước kết luận. Giới hạn LIVE/model accuracy/physical keyboard/screen-reader/nhiều người dùng/off-host restore ở mụcY vẫn áp dụng; kiểm CSS không mở rộng bằng chứng AI.

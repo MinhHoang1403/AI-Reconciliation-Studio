@@ -58,7 +58,7 @@ Tool dùng transaction PostgreSQL `REPEATABLE READ`, chụp metadata và copy m�
 
 Copy cả thư mục backup theo ID được trả về ra host bằng `docker compose cp backend:/var/lib/studio/backups/backup_<UUID> runtime/backups/`, sau đó lưu bản sao mã hóa/off-host và cấu hình bí mật riêng theo quyền vận hành. Bản trên cùng volume hoặc GitHub không thay backup độc lập. Khôi phục production cần chọn backup đã xác minh và kế hoạch quyền/cấu hình riêng; chưa có thao tác tự ghi đè DB thật.
 
-Để quay lại image main đã nghiệm thu: `./tools/rollback.ps1 -ReleaseRevision 5f358c4`. Script kiểm source/labels, schema additive tương thích và không có job active; dùng cùng Compose/volumes, không downgrade. Override nằm ngoài Git tại `runtime/rollback-compose.json`; dùng cả hai file Compose khi vận hành bản rollback. `start.ps1 -SkipBuild` với Compose chuẩn quay lại candidate `local`. Bộ `accepted-main-5f358c4` và `rollback-e025094` được giữ; không tag đè hoặc xóa. Đây là demo loopback; chưa cấp quyền triển khai public/production.
+Để quay lại bộ image đã giữ cho rollback: `./tools/rollback.ps1 -ReleaseRevision dac8dd1` (cũng là mặc định hiện hành). Script kiểm source/labels, schema additive tương thích và không có job active; dùng cùng Compose/volumes, không downgrade. Override nằm ngoài Git tại `runtime/rollback-compose.json`; dùng cả hai file Compose khi vận hành bản rollback. `start.ps1 -SkipBuild` với Compose chuẩn quay lại release `local`. Chỉ dẫn cleanup ngày 04/11 cho phép bỏ những image cũ đã chứng minh không còn cần; luôn giữ cặp `accepted-main-dac8dd1`, release đang chạy, PostgreSQL và backups. Đây là demo loopback; chưa cấp quyền triển khai public/production.
 
 ## Cấu hình
 

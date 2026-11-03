@@ -168,6 +168,7 @@ export function App() {
   const [search, setSearch] = useState("");
   const [workspace, setWorkspace] = useState<WorkspaceSettings | null>(null);
   const [ready, setReady] = useState(false);
+  const [focusMode, setFocusMode] = useState<"pointer" | "keyboard">("pointer");
   const [actorRole, setActorRole] = useState("");
   const [draftOwner, setDraftOwner] = useState("");
   const [error, setError] = useState("");
@@ -924,7 +925,14 @@ export function App() {
   }, [previewRows, preview, view, table, mappings, currentCanonical]);
 
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      data-focus-mode={focusMode}
+      onPointerDownCapture={() => setFocusMode("pointer")}
+      onKeyDownCapture={event => {
+        if (event.key === "Tab" || event.key === "Escape") setFocusMode("keyboard");
+      }}
+    >
       {sidebar && (
         <button
           className="sidebar-scrim"

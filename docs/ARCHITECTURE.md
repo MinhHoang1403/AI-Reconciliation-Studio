@@ -4,6 +4,8 @@ Data Foundation và Reconciliation đã nghiệm thu theo [kế hoạch](PROJECT
 
 ## Contextual Assistant
 
+Giao diện tối giản 04/11/2026 chỉ bổ sung input modality ở App Shell: pointer và Tab/Escape cập nhật thuộc tính trình bày, không gửi API hoặc thay orchestration. Composer không dùng `:focus-visible` đơn lẻ để suy bàn phím vì Chromium cũng áp dụng trạng thái này cho textarea được click chuột; keyboard focus dùng một inset underline, các controls/dialogs giữ focus indicator. CSS dùng chung neutral surface/border/shadow tokens; ranh giới trường nhập và bảng còn nguyên. Backend/Worker giữ image `dac8dd1` nếu source bytes vẫn khớp; chỉ frontend được build/recreate khi TypeScript/CSS thay đổi. Không gắn revision giả lên image cũ để tạo cảm giác đồng bộ.
+
 Hoàn thiện giao diện 02/11/2026: `WorkspaceSettings.tsx` tách phần trình bày chỉ đọc khỏi App, gom tài khoản/quyền riêng tư/giới hạn theo một cột; owner mở thông tin vận hành. Composer một hàng tự giãn, focus bàn phím tại control, dùng giới hạn chat từ Settings API chung với server validation. Không thêm service/framework, không thay orchestration, matcher/verifier, storage hoặc approvals.
 
 Upload chưa nhận được phản hồi giữ idempotency key và chữ ký SHA256 theo actor/project trong sessionStorage. Hash tuần tự từng tệp, giữ thứ tự/tên trong chữ ký, không lưu raw bytes; refresh cần đính kèm lại đúng tệp rồi mới reuse key. Server tiếp tục kiểm bytes/scope và trả cùng bootstrap project/dataset. Biểu đồ có tên nhóm dài/nhiều nhóm dùng thanh ngang, nhãn xuống dòng và vùng cuộn bàn phím; giá trị chính xác/đơn vị vẫn từ DTO, không tính lại bằng frontend.

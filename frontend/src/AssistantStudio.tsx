@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, lazy, Suspense, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense, type RefObject } from "react";
 import { MessageSquarePlus, Send, Trash2, Paperclip, MoreHorizontal, Sparkles, X, LoaderCircle } from "lucide-react";
 import { AgentWorkflowPanel } from "./AgentWorkflowPanel";
 import type { Review } from "./agentTypes";
@@ -113,6 +113,7 @@ export function AssistantStudio({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const sendLock = useRef(false);
+  const focusAfterSend = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingJob, setPendingJob] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -183,6 +184,15 @@ export function AssistantStudio({
   const storageKey = `studio.conversation.${initialContext.project_id}`;
   const requestStorageKey = `studio.assistant-request.${draftOwner}.${initialContext.project_id}`;
   const getOptions = () => ({ signal: controller.current.signal });
+  useLayoutEffect(() => {
+    if (busy || loading || focusAfterSend.current === null) return;
+    const request = focusAfterSend.current;
+    focusAfterSend.current = null;
+    // Focus only after React has committed the enabled textarea. An animation
+    // frame can run before that commit when concurrent rendering is delayed.
+    if (alive.current && request === sequence.current)
+      composerInput.current?.focus({ preventScroll: true });
+  }, [busy, loading]);
   useEffect(() => {
     onContextChange(context);
   }, [context]);
@@ -496,8 +506,8 @@ export function AssistantStudio({
     } finally {
       sendLock.current = false;
       if (alive.current && request === sequence.current) {
+        focusAfterSend.current = request;
         setBusy(false);
-        requestAnimationFrame(()=>composerInput.current?.focus({preventScroll:true}));
       }
     }
   }
