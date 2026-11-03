@@ -1651,6 +1651,17 @@ Baseline local/main/origin `519a44b08a7ea0da11777f40b9e217022ca5926c`, chỉ tà
 
 Baseline Backend/Worker image `sha256:798c2afbe2f11a3c0583bbb2e024cee5c205729eb388022ad0ac3d23b29f615e`; frontend `sha256:e843ee4440308349746cd155ebc5762f53c195b543aaa96607b64de0fee68a73`, đều OCI revisionDAC. Chỉ frontend source thay đổi; Backend/Worker không rebuild hoặc đổi tag giả thành revisionUI. Cần chứng minh lại source42files và assets production sau release.
 
+Runtime mới: frontend source `18706a7864871bfeddd65570c88348676ceb5bba`, image/manifest `sha256:d04074feee418e6e8ae0cadb762b15fbea32aec5c6e673fe24710924fd603d53`, container `21d5f1c49d81d070968fc1050d04dca04939241e456e3615099fa03f916f5150`. OCI source đúng origin và revision18706a7. Backend/Worker vẫn cùng IDs/images DAC; SHA256 toàn bộ42Python files khớp workspace và Git diff backendDAC→18706a7rỗng. Không rebuild Backend/Worker/PG. Bảy HTML/assets khớp host production build=image=HTTP;5resources Chromium tải từ profile mới/cache disabled khớp ba lớp,0serviceworker/0pageerror, usage203→203. Không suy runtime từ tên tag.
+
+| Asset production | SHA256 host/image/HTTP khớp |
+|---|---|
+| index.html | `ee4984588272c3c9ed7e20cc577eeab3777ee1ee52fdecdabc4951dae6e2b216` |
+| index-CpPUh-E_.css | `e8fce3f861ad3ec227c15881f41e9ab15ec55bdf6f4ad67757aa228c470ed247` |
+| index-kJphbDMg.js | `81bd22057062eafa4cb98233df06ac4b797546295f0f11013fae2bae1e0657f2` |
+| AssistantStudio-BuiYjGA5.js | `de93b6bdc16036a50086383a512f2216fd0c5aaef5c60d4e90bb1f88729e6b18` |
+
+Ba lazy assets DataDrawer/ReconciliationStudio/Evidence còn lại cũng khớp trong `runtime/minimal-interface/component-identity.json`. Computed runtime tại năm widths: pointer border0/outline none/noinset, keyboard inset2px/textareaoutline none; empty60desktop/56mobile. Đã xem ảnh production `after/pointer-1440.png` và `after/keyboard-390.png`, khác baseline thực tế.
+
 ### B. UI trước/sau và khả năng dùng bàn phím
 
 Sửa tại selectors gốc trong `styles.css`: bề mặt trắng/neutral gray, blue accent; sidebar/header ít đường kẻ, project/history/menu dùng vùng nhấn nhẹ; Settings, review/fieldset/manual fallback/result/evidence bỏ khung ngoài lồng nhau. Bảng và controls vẫn có ranh giới khi cần. Hợp nhất tokens màu/border/radius/shadow, selectors bảng/checkbox/rule-builder và media query Assistant768px; không nối override cuối file, thêm dependency/framework hoặc thay contracts.
@@ -1667,18 +1678,52 @@ Full candidate đầu **115/117PASS,2FAIL,22,1phút**, logs/failure screenshots/
 
 Sau sửa, năm ca clarification/focus lặp3lượt **15/15PASS,51,6giây**; ca C Gộp vận đơn **1/1PASS,35giây**, không sửa test/timeout/worker cho ca này. Đây là targeted rechecks, chưa thay full suite. Xem trực quan thêm chart768/history1366/evidence1920/table390/Settings nâng cao1440: không thấy khung chồng, modal clipping hoặc lệch composer; bảng rộng vẫn cuộn ngang trong vùng riêng.
 
+Đối chiếu `job_attempts` đúng cửa sổ failure cho thấy worker đang lần lượt parse hai tệp:18:12:26,175→33,566UTC (7,390giây),18:12:34,010→42,111UTC (8,101giây), rồi Agent42,190→43,313UTC. Cả baSUCCEEDED, không retry/error/lease expiry. Đây là thời gian chờ sau hai parse jobs trong worker tuần tự hiện có, không job bị mất hoặc deadlock. Không đổi concurrency/worker architecture, bỏ queue gates hoặc nới assertion để che failure; không cam kết SLA15giây trên host dùng chung. Receipt chỉ chứa loại job/timestamps/status, không payload.
+
 Gate source chốt: **117/117PlaywrightPASS,0FAIL/SKIP/retry,13,0phút** trên dist cố định sau sửa focus, cùng API thật; `full-candidate-accepted.log`. Toàn bộ11UAT cases gồm1000giao dịch, Decimal oracle, hai exports/reloadPASS; C Gộp vận đơn18,6giâyPASS cả hành trình. Mock contract và native/manual fallback được phân biệt theo tên case;0inference mới. Không cộng15+1rechecks vào117cases độc lập.
+
+Sau deploy **8/8checksPASS,2,7phút** trên assets Nginx thật, không cờ dist candidate:5composer/Settings,1Planner mock contract,1native CSV/XLSX journey và1UAT1000. Persistence trước/sau chỉ recreate frontend khớp toàn bộ20bảng nghiệp vụ/23nhóm metadata+artifact hashes:295projects/655datasets/1.190mappings/519canonicals/242runs/432exports/638conversations/1.336messages/402workflows;2.359artifact files/242run files/432exports. Đây là so original IDs/full row digests/file hashes, không chỉ counts. Local proof và4serviceshealthyPASS.
 
 Backup trước nhiệm vụ `backup_48ed66d5c7c249afa3cd8b596c7dbbea`:24tables/2.709files, metadata SHA256 `3dbd965ffc1f37ee5e817e39e63090ed771657a7932477993e100d45c510fce3`. Backup28,579giây/restore19,776giây trong UUID schemaPASS, corruption/path-traversal từ chối đúng, public không overwrite; host copy kiểm độc lập toàn bộ checksumsPASS. So toàn bộ original primary keys/full metadata và2.709file hashes sau candidate:0missing/0changed/0checksumfail, không ngoại lệ policy. Các project TEST mới được phép bổ sung. Không inference mới/tăng quota/reset ledger;203/210 còn7 tại baseline và các browser audits.
 
 ### D. Docker cleanup
 
-Chưa cleanup tại lúc ghi source. Inventory baseline:57uniqueimages,10Studio-owned theo OCI/source/Compose labels,31containers gồm4Studio,36volumes gồm2Studio. Giữ cặp rollbackDAC, currentPG và release mới; từng image cũ chỉ được xóa sau deploy gates, git-source ownership và không container tham chiếu. Không global prune/build-cache cleanup hoặc xóa volume/backup. Số đo sau cleanup và IDs thực tế được ghi tiếp khi có receipts.
+Inventory baseline57uniqueimages/10Studio-owned; sau build frontend58/11, sau cleanup **50/3**. Có31containers gồm4Studio,36volumes gồm2Studio. Đã xóa chính xác8manifest IDs dưới đây bằng `docker image rm <ID>`, không force. Mỗi ID có OCI source chính thức, revision là ancestor của main, chỉ accepted tagsStudio, không container nào tham chiếu kể cả stopped; kiểm lại refs ngay trước từng lần xóa. Source/deploy8checks đãPASS trước cleanup.
+
+| Bộ cũ | Frontend image ID đã xóa | Backend image ID đã xóa |
+|---|---|---|
+|34c0ff1|`b1a4d9e2151c3c68dd98edfa31c8913709d7480bc6f7f1dd6948124fc1bfb349`|`e2b5cabd53cec8ca519c51b3d07abeb6e5ec1973db71f860a28664b5a04edfac`|
+|d392c4a|`484acae401f9c6ecfcfde3c983fee8e7ac2dc6a50f99df6ae3eb2d03810bd935`|`2260ad5ee96d75a1cdb8db8fe76a56ba5f56dea041a12e87b302c156e12fe902`|
+|f1ad9f1|`73c6716d779626de3ee852ab3e6eaced98957ba5fb3a6e038b88d05975ba3028`|`f70deb47f560e1a41d33f35051ea16afed697c78586ecebc8bd1d4e1415cba49`|
+|5f358c4|`1049ba4457ebad8971d0be29cb523b7429714fb2c3dc1abcd28a9ef1a40ab215`|`7a00801051416c143e0d0199919bb9a43fa319a01fd01b1a8010b1d5d8781e29`|
+
+Giữ frontend18706a7/current tag, frontendDAC rollback và BackendDAC dùng chung current/rollback (full IDs ởA); tags`accepted-main-18706a7`/`accepted-main-dac8dd1` không tag đè. PG hiện hành giữ `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7`. DAC đã là runtime ổn định ngay trước phát hành, cùng schema/Backend bytes; không chạy rollback drill mới hoặc giả nhận đã restore production. `rollback.ps1` mặc địnhDAC, syntaxPASS và giữ compatibility/active-job guards.
+
+`cleanup-verification.json` chứng minh toàn bộ47image ngoàiStudio (IDs/tags/digests),31containers (IDs/image refs/health/restarts/mounts) và36volumes (name/driver/creation/ownership) **không đổi trong bước cleanupStudio**. Hai volumes `ai-reconciliation-studio_postgres_data`/`ai-reconciliation-studio_artifacts`, backups/raw/canonical/runs/exports/conversations/workflows/audit/ledger giữ nguyên. Không có stopped Studio container dư để xóa; không xóa container hoặc volume.
+
+`docker system df`: Images38,91→38,90GB, giảm xấp xỉ0,01GB ở độ chính xác hiển thị; reclaimable13,87→13,86GB. Build cache490entries/38,51GB không bị dọn (reclaimable classification12,54→12,55GB). Không cộng virtual image sizes để báo giải phóng vật lý, không xác minh VHDX thu nhỏ. Volumes9,737→9,754GB do dữ liệu/hoạt động hiện hành,36volumes vẫn nguyên; không dùng prune/cache cleanup để ép con số giảm lớn hơn. Receipts inventory/plan/deletion outputs lưu tại `runtime/minimal-interface/` ngoài Git.
 
 ### E. GitHub và release
 
-Feature `codex/minimal-interface` trong repository chính; chưa nghiệm thu runtime mới tại lúc ghi phần này. Commit/source SHA, frontend image/assets HTTP/Chromium, persistence qua recreate và đồng bộ origin/main sẽ ghi sau gates. Không dùng docsHEAD để giả nhận Backend image đã rebuild.
+Feature `codex/minimal-interface` trong repository chính đã commit/push rồi fast-forward main/origin tại source `18706a7864871bfeddd65570c88348676ceb5bba`. Runtime mới được build sau commit sạch và chỉ recreate frontend; identity/persistence/postdeploy gates ở phầnA/C. Các commit báo cáo sau mốc này chỉ tài liệu; phải kiểm application diff rỗng, không dùng docsHEAD để giả nhận Backend image đã rebuild.
+
+Source repository hiện không có `.github/workflows`; các gates nêu ở đây chạy local/Docker/Chromium, không báo CI remotePASS hoặc tự thêm pipeline ngoài phạm vi. Sau cleanup Backend302/302PASS,0FAIL/SKIP,116,39giây; browser runtime đầy đủ117/117PASS,0FAIL/SKIP/retry,14,8phút. Các logs trước bịFAIL vẫn được giữ riêng, không sửa timeout/retries/oracles.
 
 ### F. Trạng thái nghiệm thu
 
-**IN_PROGRESS_DEPLOYMENT**: gates source302Backend/117browser đã đạt; runtimeDAC ổn định trước vẫn đang phục vụ. Chưa dọn images hoặc đánh dấu releaseUI mới READY. Sau deploy/cleanup phải chạy lại full117browser/302Backend, checksums/metadata/ledger/health trước kết luận. Giới hạn LIVE/model accuracy/physical keyboard/screen-reader/nhiều người dùng/off-host restore ở mụcY vẫn áp dụng; kiểm CSS không mở rộng bằng chứng AI.
+**READY_FOR_GUIDED_DEMO**, trong phạm vi local CSV/XLSX đã nghiệm thu. Giao diện mới, runtime thật và gates sau cleanup đềuPASS:
+
+| Gate cuối | Kết quả |
+|---|---|
+|Backend/PostgreSQL|302/302PASS,116,39giây;0FAIL/SKIP|
+|Full browser runtime|117/117PASS,14,8phút;0FAIL/SKIP/retry, gồm11UAT cases/1000giao dịch/CSV/XLSX/reload|
+|Source/runtime sau cleanup|42Backend files và7HTML/assets khớp source/image/HTTP;5resources Chromium cache disabled khớp,0serviceworkers/pageerrors|
+|CSS/ảnh production|5widths390/768/1366/1440/1920, pointer khôngborder/outline, Tab cóinsetfocus; screenshots thật và matrix/layout/settings/native tại`after/`|
+|Tài chính|966EQUAL/19AMOUNT_MISMATCH/15UNMATCHED, absolute variance7,03VND; independent checks và hai exports khớp snapshot|
+|Original data sau toàn bộ tests/cleanup|Mọi primary key/full metadata24bảng và2.709file hashes so backup trước:0missing/changed/checksumfail; không ngoại lệ policy|
+|Health/queue/ledger|4/4healthy,0restart/OOM;`/`, `/health`, `/api/live`, `/api/ready`, `/api/session`HTTP200;0activejobs;Gemini203/210 còn7,0inference mới|
+|Logs|0ERROR/traceback matches trong Backend/Worker10phút cuối; không dùng thống kê này thay functional gates|
+
+Hiện có312projects/691datasets/551canonicals/257runs/461exports/665conversations/417workflows sau các native tests, tăng do project TEST hợp lệ. Không dùng counts để thay chứng minh full row/hash preservation. Hai volumes và tất cả backups còn nguyên; backup trước nhiệm vụ đã restore UUID và kiểm host copy, không mới restore production hoặc off-host drill.
+
+Đã sửa race focus thực tế và thiết kế composer/card/focus tại nguồn; không còn regression đã biết làm hỏng các hành trình trong phạm vi nghiệm thu. Độ trễ queue phụ thuộc hai parse jobs và tải host, không có SLA15giây; các gates còn thiếu semantic/currency/coverage/permission vẫn chặn/hỏi lại đúng hợp đồng. Giới hạn LIVE/model accuracy/physical keyboard/screen-reader/nhiều người dùng/soak/off-host restore ở mụcY vẫn áp dụng; kiểm CSS không mở rộng bằng chứng AI hoặc chứng minh phần mềm không thể có lỗi. Không gọi production-ready hoặc đổi allowance7lượt thành khả năng dùng cloud không giới hạn.
