@@ -1500,3 +1500,31 @@ Docker Engine29.7.2/Compose5.5.0 và WSL2 hoạt động. WSLSvc/WSLService ch�
 Python nền dùng chung được xác minh ở ngoài repository và ngoài MSIX, nhưng mỗi dự án vẫn phải có venv/dependencies phù hợp. Không tự sửa các venv/lockfile của dự án cũ hoặc cam kết mọi phiên bản Python khác đã phục hồi. Các terminal đã mở từ trước có thể báo environment stale; mở terminal mới để nạp môi trường mới. Trong hai IDE đã quan sát được prompt `.venv`; không nhập lệnh Windows qua tự động hóa UI. Cấu hình mới sẵn sàng cho phát triển và kiểm thử local trong phạm vi đã xác minh.
 
 Lượt này không gọi Gemini/Qwen/LlamaParse hoặc thay đổi cấu hình công cụ AI. Không chạy lại full265Backend/109E2E vì chỉ sửa môi trường và thiết lập editor; kết quả nghiệm thu mụcV là bằng chứng của lượt trước. Lượt203unit mới có một StarletteDeprecationWarning về testclient/httpx từ dependencies đã khóa; không tự cài thêm httpx2 hoặc thay lockfile để che cảnh báo. Receipts môi trường mới nằm tại `runtime/ide-environment/`, ngoài Git; đây là bằng chứng local, không phải CI hoặc bảo đảm đã phục hồi mọi dữ liệu AppData bị xóa.
+
+## X. Kiểm tra lại môi trường sau khi mở lại máy — 03/11/2026
+
+Chủ dự án yêu cầu rà soát lại và báo cáo kết quả kiểm thử. Bắt đầu tại main163b7e9 sạch, đúng repository/origin; không thay đổi mã nghiệp vụ, lockfiles, cấu hình AI hay dự án khác. Python nền dùng chung vẫn ở `C:/Users/admin/.local/share/uv/python`, venv Studio trỏ đúng bản3.12.14; aliases3.11.9/3.12.14, biến UV_PYTHON_INSTALL_DIR của tài khoản, cấu hình người dùng của hai IDE và đường dẫn tương thích AppData còn hoạt động. Đã kiểm tra lại từ tiến trình Windows ngoài MSIX Codex (GetCurrentPackageFullName=15700), không chỉ dựa vào kết quả trong Codex.
+
+**Điểm đã xử lý:** Docker Desktop/WSL2 chạy nhưng cả bốn container ứng dụng đang dừng từ lượt tắt trước: Backend/frontend/PostgreSQL exit0, worker exit137; OOMKilled=false ở cả bốn, chưa đủ bằng chứng gọi worker là lỗi thiếu RAM. Hai volumes và bốn container/images cũ còn nguyên. Chạy `docker compose start --wait --wait-timeout 90`, không build/pull/recreate hoặc tạo hạ tầng khác. Đủ4healthy với chính các IDs cũ e32d2ba31703/9597a1e33d2c/22fa413d2693/c66ce610a473. Session ban đầu403 đúng cơ chế fail-closed sau khởi động; `tools/verify-local.ps1` xác minh published ports loopback rồi `/api/session`200. Khi tự mở lại ứng dụng, dùng `tools/start.ps1 -SkipBuild` như README; restart policy unless-stopped giữ nguyên ý nghĩa không tự bật container đã bị dừng thủ công.
+
+| Xác minh mới ngày03/11 | Kết quả |
+|---|---|
+| Python dùng chung ngoài repository, ngoài Codex | 3.12.14 và3.11.9 chạy được; đường dẫn base3.12 cũ chạy được |
+| Hai phiên bản PowerShell: mở trong/ngoài/thư mục con, vào/rời dự án | 10/10PASS; đúng `.venv`3.12.14 trong Studio |
+| `uv sync --locked --offline`, `uv pip check` | PASS;51gói tương thích, không đổi lock |
+| Unit offline/mock chạy bằng Python ngoài MSIX | 203PASS,62deselected,9,17giây;1deprecation warning |
+| Toàn bộ backend/PostgreSQL trong backend hiện có | 265PASS,0FAIL/SKIP,57,15giây;1deprecation warning |
+| Playwright MANUAL, nhóm hồi quy sau sửa UI/workflow | 19/19PASS,0FAIL/SKIP/flaky,77,40giây |
+| Ruff / mypy / TypeScript / ESLint / npm dependency tree | PASS; mypy47source files |
+| Chromium của Playwright khởi chạy ngoài MSIX | PASS; executable hiện hữu, launch headless thành công, không cần tải lại |
+| GitHub CLI ngoài Codex | PASS đúng tài khoản, repository chính thức, quyền ADMIN |
+| Docker Desktop/Engine/Compose, bốn healthchecks | PASS; desktop-linux,29.7.2/5.5.0, một Compose của Studio |
+| HTTP `/`, `/health`, `/api/live`, `/api/ready`, `/api/session` | HTTP200 sau xác minh loopback |
+
+Không cộng203unit Windows vào265backend vì đó là phần chồng lắp chạy trên hai môi trường. Bộ265 dùng `tools/test-postgres.ps1 -All`, tests trong `/tmp` của backend hiện có, schema UUID `test_*` và storage tạm; không chạy tests phá hủy trên bảng public. Nhóm19browser có cả mock contracts và luồng CSV/XLSX local thật qua verified exceptions/exports/reopen; dữ liệu tổng hợp phục vụ kiểm thử được giữ theo quy tắc hiện có. Chế độ provider MANUAL, không bấm gọi model trả phí. Bộ109Playwright đầy đủ ở mụcV là kết quả ngày02/11, không trình bày như đã replay cả109 ở lượt này. Đợt môi trường trước ở mụcW đạt203unit/10shell; lượt này bổ sung full backend/PostgreSQL và19browser sau mở lại.
+
+Log VS Code phiên153900 và Antigravity phiên153950/window2 của Studio chọn đúng `.venv`3.12.14; Mypy/Ruff/Pylance/Pyrefly hoạt động. Mở Studio trong cửa sổ Antigravity riêng để bảo toàn project khác đang mở. Không tái hiện `No Python at`, EPIPE, lỗi khởi động Mypy hoặc thông báo không phân giải được defaultInterpreterPath trong các log workspace này. Còn dòng log của PET về cancelRequest/cache/không có HKLM Python; registry/discovery theo người dùng và việc phân giải cuối vẫn thành công. Antigravity còn telemetry cảnh báo bản ghi khám phá ban đầu thiếu version, rồi resolve thành công3.12.14/x64; không coi là mất interpreter. Không tạo registry máy giả, xóa cache, sửa mã extension hoặc ép nâng extension không tương thích để làm log trống.
+
+Giới hạn cũ được giữ rõ: hai cảnh báo Pyrefly về bool dư thừa và deprecation TestClient/httpx không phải lỗi cài đặt; không đổi dependency hoặc tắt kiểm tra để che chúng. Chưa kiểm thử mọi dự án cũ/phiên bản Python khác. Không thay hạn mức/công cụ AI; API Settings cuối lượt vẫn Agent/Assistant/Qwen/Gemini configured/enabled tương ứng, Gemini154/200, bằng số cuối mụcV nên không phát sinh lượt Gemini mới. Không lấy cờ configured làm bằng chứng live inference mới. Không thực hiện prune/xóa volumes, không restart Docker engine hoặc tác động Compose dự án khác; Backend/frontend giữ runtime revision34c0ff1 vì application source không đổi. C: còn khoảng128,2GiB tại kiểm tra.
+
+Kết luận trong phạm vi kiểm tra: môi trường phát triển và ứng dụng local hoạt động, không phát hiện lỗi chức năng môi trường còn chặn các checks trên. Cảnh báo/giới hạn không bị gọi là đã hết tuyệt đối. Receipts mới tại `runtime/ide-environment/recheck-20261103/` ngoài Git; log/test artifacts trước đó được giữ riêng. Thay đổi Git của lượt này chỉ bổ sung báo cáo kiểm chứng.
