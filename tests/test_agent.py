@@ -1083,3 +1083,84 @@ def test_chart_explicit_paid_and_unpaid_categories_keeps_the_entire_population()
     intent["query"]["filters"] = [dict(field_id="payment_status", op="eq", value="PAID")]
     with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
         validate(intent, "Vẽ phân bố cả PAID và UNPAID theo trạng thái thanh toán")
+
+
+def test_new_reconciliation_scope_keeps_explicit_source_and_effective_facts():
+    from studio.agent_intents import compile_routing
+    from studio.contracts.reconciliation import PlanningRequest
+
+    cat = routing_catalogue()
+    expected = PlanningRequest.from_plan(cat.confirmed_plan)
+    selection = dict(
+        left_canonical_id=expected.left.canonical_id,
+        right_canonical_id=expected.right.canonical_id,
+        left_source=expected.left.model_dump(mode="json"),
+        right_source=expected.right.model_dump(mode="json"),
+        period_start=str(expected.period_start),
+        period_end=str(expected.period_end),
+        timezone=expected.timezone,
+        effective_from=str(expected.effective_from),
+    )
+    goal = "Đối soát hai nguồn đầy đủ trong kỳ " + json.dumps(selection, ensure_ascii=False)
+    before = cat.model_dump_json()
+    routed = compile_routing(
+        json.dumps({"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": selection}]}),
+        [goal],
+        cat,
+    )[0]
+    assert routed.planning_request.model_dump(
+        exclude={"intent", "allow_partial"}
+    ) == expected.model_dump(exclude={"intent", "allow_partial"})
+    assert cat.model_dump_json() == before
+    assert routed.planning_request.allow_partial is None
+    for side in ("left", "right"):
+        changed = json.loads(json.dumps(selection))
+        changed[side + "_source"]["canonical_id"] = "foreign-source"
+        with pytest.raises(DomainError, match="AI_INVALID_SOURCE"):
+            compile_routing(
+                json.dumps(
+                    {"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": changed}]}
+                ),
+                [goal],
+                cat,
+            )
+    changed = json.loads(json.dumps(selection))
+    changed["left_source"]["coverage_start"] = "2027-01-01"
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        compile_routing(
+            json.dumps({"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": changed}]}),
+            [goal],
+            cat,
+        )
+    minimal = {
+        k: v for k, v in selection.items() if k in {"left_canonical_id", "right_canonical_id"}
+    }
+    result = compile_routing(
+        json.dumps({"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": minimal}]}),
+        ["Đề xuất đối soát hai nguồn"],
+        cat,
+    )[0]
+    assert result.planning_request.left.coverage_start is None
+    assert result.planning_request.right.completeness is None
+    assert result.planning_request.effective_from is None
+
+
+def test_reuse_scope_rejects_new_source_facts_instead_of_silently_discarding_them():
+    from studio.agent_intents import compile_routing
+
+    cat = routing_catalogue()
+    plan = cat.confirmed_plan
+    selection = dict(
+        left_canonical_id=plan.left.canonical_id,
+        right_canonical_id=plan.right.canonical_id,
+        confirmed_run_id="run",
+        left_source={"canonical_id": plan.left.canonical_id, "completeness": "INCOMPLETE"},
+    )
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        compile_routing(
+            json.dumps(
+                {"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": selection}]}
+            ),
+            ["Đối soát theo phạm vi đã duyệt"],
+            cat,
+        )

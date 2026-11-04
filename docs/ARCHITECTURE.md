@@ -1,5 +1,7 @@
 # Kiến trúc ứng dụng
 
+**Bổ sung04/11/2026 — product polish:** request ceilings local có kiểu nullable, audit và quyền cloud độc lập; per-attempt receipts giữ token/status/latency/model, delivery chưa rõ không resend. Routing27 giữ source/effective facts vào PlanningRequest, không suy coverage từ kỳ; reuse từ chối facts mâu thuẫn. Chat nền trắng, menu tin nhắn dùng grid thay float; preview10dòng và chi tiết cùng query, pagination/source provenance không đổi. Backend/Worker phải build lại vì source đã đổi trong nhiệm vụ này; các mốc giữDAC bên dưới là lịch sử, không là runtime hiện tại. Matcher/Verifier/Decimal/storage/approvals không đổi.
+
 Data Foundation và Reconciliation đã nghiệm thu theo [kế hoạch](PROJECT_PLAN.md). Assistant đã hợp nhất main tiêu thụ các contracts hiện có; không viết lại engine hay verifier. Bằng chứng, giới hạn và trạng thái release hiện hành tại [báo cáo triển khai](IMPLEMENTATION_STATUS.md).
 
 ## Contextual Assistant

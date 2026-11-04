@@ -329,7 +329,7 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
             kind="RECONCILIATION",
             resource_id=result["plan_id"],
             question="Xác nhận khóa, số tiền, kỳ và phạm vi đối soát.",
-            reason="Rule mới cần quyết định của bạn trước khi chạy.",
+            reason="Quy tắc mới cần bạn kiểm tra và duyệt trước khi đối soát.",
         )
     elif child.kind == "reconcile":
         step.result_id = result["run_id"]

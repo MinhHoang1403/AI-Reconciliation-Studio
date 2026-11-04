@@ -17,7 +17,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-26"
+INTENT_REVISION = "agent-intent-27"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -611,7 +611,13 @@ def compile_routing(
                 if any(
                     getattr(selection, key) is not None
                     and getattr(selection, key) != getattr(plan, key)
-                    for key in ("period_start", "period_end", "timezone")
+                    for key in (
+                        "period_start",
+                        "period_end",
+                        "timezone",
+                        "effective_from",
+                        "effective_to",
+                    )
                 ):
                     raise DomainError(
                         "INPUT_AMBIGUOUS", "Kỳ hoặc múi giờ mới cần được kiểm tra và duyệt."
@@ -619,14 +625,27 @@ def compile_routing(
                 # Copy toàn bộ facts đã duyệt, gồm filters/snapshot/effective dates;
                 # không yêu cầu model dựng lại hoặc tự thêm defaults.
                 request = PlanningRequest.from_plan(plan)
+                for side in ("left", "right"):
+                    supplied = getattr(selection, f"{side}_source")
+                    if supplied and any(
+                        getattr(getattr(request, side), key) != value
+                        for key, value in supplied.model_dump(exclude_unset=True).items()
+                    ):
+                        raise DomainError(
+                            "INPUT_AMBIGUOUS", "Phạm vi nguồn mới cần bạn kiểm tra lại."
+                        )
             else:
                 request = PlanningRequest(
-                    left=PlanningSource(canonical_id=left),
-                    right=PlanningSource(canonical_id=right),
+                    left=selection.left_source or PlanningSource(canonical_id=left),
+                    right=selection.right_source or PlanningSource(canonical_id=right),
                     period_start=selection.period_start,
                     period_end=selection.period_end,
                     timezone=selection.timezone,
+                    effective_from=selection.effective_from,
+                    effective_to=selection.effective_to,
                 )
+                if request.left.canonical_id != left or request.right.canonical_id != right:
+                    raise DomainError("AI_INVALID_SOURCE", "Dữ kiện không thuộc nguồn đã chọn.")
             request.intent = goal
             payload["planning_request"] = request
         elif item.intent == "RECONCILE_DATASETS":
@@ -922,8 +941,11 @@ def interpret_requests(
                 "coverage/filters/role/effective dates. "
                 "Yêu cầu dùng đúng contract/quy tắc của kết quả hiện tại cũng là reuse phạm vi "
                 "đã duyệt: confirmed_run_id phải là run_id trong confirmed_scope. "
-                "Kỳ/nguồn mới: confirmed_run_id null, chỉ đưa dates/timezone người dùng đã cung "
-                "cấp; "
+                "Kỳ/nguồn mới: confirmed_run_id null. Chuyển đầy đủ dữ kiện người dùng đã nêu "
+                "vào left_source/right_source (canonical_id đúng nguồn, date_field, time_basis, "
+                "currency_field, coverage_start/end, completeness, snapshot_at), "
+                "period_start/end, timezone và effective_from/to. Không bỏ dữ kiện đã rõ; "
+                "chưa được nêu thì null, không lấy kỳ làm coverage hay mặc định đầy đủ. "
                 "server sẽ review facts thiếu, không tự xác nhận. Không thêm "
                 "query/reconciliation cho "
                 "intent khác. Trả JSON đúng schema, không prose: " + json.dumps(schema)

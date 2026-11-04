@@ -14,7 +14,12 @@ from studio.contracts.data_query import (
     QueryOperations,
     QueryResult,
 )
-from studio.contracts.reconciliation import PlanningRequest, PlanningSuggestions, ReconciliationPlan
+from studio.contracts.reconciliation import (
+    PlanningRequest,
+    PlanningSource,
+    PlanningSuggestions,
+    ReconciliationPlan,
+)
 
 IntentName = Literal[
     "EXPLORE_DATA",
@@ -131,6 +136,10 @@ class ReconciliationSelection(Contract):
     period_start: date | None = None
     period_end: date | None = None
     timezone: str | None = Field(default=None, max_length=100)
+    left_source: PlanningSource | None = None
+    right_source: PlanningSource | None = None
+    effective_from: date | None = None
+    effective_to: date | None = None
 
 
 class RoutingIntent(Contract):

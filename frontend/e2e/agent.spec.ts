@@ -29,7 +29,7 @@ test("Agent inline upload bootstraps once, profiles real files and reopens witho
   await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();
   const receipt=await(await attachment).json();expect(receipt.items).toHaveLength(2);expect(receipt.scope_confirmed).toBe(false);
   const pid=receipt.project_id;
-  await expect(page.getByRole("region",{name:"Công việc của AI Assistant",exact:true})).toContainText("Đã hoàn thành",{timeout:45000});
+  await expect(page.getByRole("region",{name:"Công việc của AI Assistant",exact:true})).toContainText("Đã đọc dữ liệu; chưa chuẩn hóa",{timeout:45000});
   await expect(page.locator(".agent-table")).toHaveCount(2);
   await expect(page.locator(".agent-table").first()).toContainText("000701");
   await expect(page.locator(".agent-table").first()).toContainText("000702");

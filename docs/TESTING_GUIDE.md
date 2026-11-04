@@ -355,3 +355,13 @@ Main release f1ad9f1 có application diff rỗng so với dc8fcc5 đã full regr
 Bốn ca bootstrap trong `interface-quality.spec.ts` dùng mock GET: lỗi proof/mạng/timeout/settings, header và quyền không còn chờ vô hạn, retry giữ draft/tải project/history, không navigation reload hoặc mutation; reload sau phục hồi vẫn kết nối. Ca timeout rút thời gian bằng shim chỉ trong browser test, không tăng timeout ứng dụng.
 
 Chạy `./tools/test-postgres.ps1 -All`, frontend check/lint/build và toàn bộ Playwright khi đổi bootstrap/startup. Candidate dùng `STUDIO_FRONTEND_DIST=1` để kiểm dist qua origin hiện có; nghiệm thu sau deploy bỏ biến này để tải assets Nginx thật. Sau thao tác Docker cuối phải chạy `./tools/start.ps1 -SkipBuild`, xác minh session/settings200 và browser usable. Kiểm thử recreate chỉ khi queue không còn jobs; giữ hai volumes và cookie, chứng minh403 trước re-verification và200 sau đó, so metadata/checksums. Không gọi model hoặc tăng/reset quota để kiểm kết nối.
+
+## Product polish và AI local không giới hạn — 04/11/2026
+
+Regression mới kiểm nullable ceilings/local-only config, quyền cloud/key/finite workspace, reservations vượt mốc cũ vẫn giữ lịch sử, Agent/Planner/Assistant và không resend khi recovery/unknown delivery.429 là giới hạn provider, không tăng quota hoặc đổi key để vượt. Transport receipts giữ từng attempt/status/tokens/latency; lỗi chứa safe receipt cho trace, không công khai raw response hoặc credentials.
+
+Routing27 kiểm giữ source coverage/snapshot/date/effective facts đã nêu, từ chối canonical ID lệch hoặc facts không được xác nhận, reuse không bỏ qua facts mới mâu thuẫn. Missing vẫn null, Planner/approval validators không nới. Live retest dùng cách diễn đạt mới và dữ liệu tổng hợp có đáp án độc lập, không gọi cùng câu để làm tăng số PASS.
+
+Năm browser cases mới kiểm composer/tin nhắn nền trắng, menu không làm hẹp chữ, xuống dòng chủ động, preview10so với25/trang và75tổng, NULL khác0, mã có0đầu, mở chi tiết không phát request mới, phân trang rồi evidence đúng dòng nguồn. Giữ nguyên bộ cases cũ, chỉ cập nhật assertion trạng thái upload thành “Đã đọc dữ liệu; chưa chuẩn hóa” theo hợp đồng hiển thị mới. Full browser sau lần Docker mutation cuối dùng assets thật, rồi smoke sau cleanup.
+
+Với image rollback cũ trước nullable budgets, phải khôi phục cấu hình/policy hữu hạn đã lưu trước thay đổi và giữ mọi reservations mới. Không dùng trực tiếp `rollback.ps1` cũ với env `unlimited` hoặc policy null. Kiểm tra tương thích và backup trước mọi rollback; không downgrade DB hoặc reset quota/history.

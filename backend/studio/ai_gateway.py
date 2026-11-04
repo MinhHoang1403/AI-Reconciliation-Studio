@@ -7,6 +7,7 @@ transformation suggestions). Provider output never grants approval or tool acces
 import hashlib
 import json
 import re
+import time
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -146,7 +147,13 @@ class QwenProvider:
         self.client = client or httpx.Client(
             timeout=config.ai_timeout_seconds, follow_redirects=False
         )
-        self.usage: dict[str, Any] = {"ai_calls": 0, "tokens": None, "cloud_requests": 0}
+        self.usage: dict[str, Any] = {
+            "ai_calls": 0,
+            "tokens": None,
+            "cloud_requests": 0,
+            "model": config.qwen_model,
+            "attempts": [],
+        }
 
     def close(self) -> None:
         self.client.close()
@@ -162,6 +169,9 @@ class QwenProvider:
         messages = build_prompt(profile, schema, task_id)
         for attempt in range(2):
             response_received = False
+            started = time.monotonic()
+            self.usage["tokens"] = None
+            self.usage.pop("http_status", None)
             self.usage["ai_calls"] += 1
             try:
                 response = self.client.post(
@@ -173,6 +183,7 @@ class QwenProvider:
                         "max_tokens": 6000,
                     },
                 )
+                self.usage["http_status"] = response.status_code
                 if response.status_code in {401, 403}:
                     raise DomainError(
                         "QWEN_ACCESS_DENIED",
@@ -213,6 +224,17 @@ class QwenProvider:
             except DomainError as exc:
                 if exc.code != "AI_INVALID_JSON" or attempt == 1:
                     raise
+            finally:
+                self.usage["attempts"].append(
+                    {
+                        "attempt": attempt + 1,
+                        "http_status": self.usage.get("http_status"),
+                        "tokens": self.usage.get("tokens"),
+                        "latency_ms": int((time.monotonic() - started) * 1000),
+                    }
+                )
+            if attempt < 1:
+                time.sleep(0.25 * (2**attempt))
         raise DomainError("QWEN_UNAVAILABLE", "Qwen chưa phản hồi.", 503)
 
 
@@ -224,7 +246,13 @@ class GeminiProvider:
         self.client = client or httpx.Client(
             timeout=config.ai_timeout_seconds, follow_redirects=False
         )
-        self.usage: dict[str, Any] = {"ai_calls": 0, "tokens": None, "cloud_requests": 0}
+        self.usage: dict[str, Any] = {
+            "ai_calls": 0,
+            "tokens": None,
+            "cloud_requests": 0,
+            "model": config.gemini_model,
+            "attempts": [],
+        }
 
     def close(self) -> None:
         self.client.close()
@@ -265,6 +293,9 @@ class GeminiProvider:
             raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Ngân sách AI cloud toàn hệ thống bằng 0.")
         for attempt in range(max_attempts):
             response_received = False
+            started = time.monotonic()
+            self.usage["tokens"] = None
+            self.usage.pop("http_status", None)
             if not reserve_request():
                 raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Đã hết ngân sách request AI cloud.")
             self.usage["ai_calls"] += 1
@@ -380,6 +411,17 @@ class GeminiProvider:
                 exc.provider_usage = dict(self.usage)
                 if exc.code != "AI_INVALID_JSON" or attempt == max_attempts - 1:
                     raise
+            finally:
+                self.usage["attempts"].append(
+                    {
+                        "attempt": attempt + 1,
+                        "http_status": self.usage.get("http_status"),
+                        "tokens": self.usage.get("tokens"),
+                        "latency_ms": int((time.monotonic() - started) * 1000),
+                    }
+                )
+            if attempt + 1 < max_attempts:
+                time.sleep(0.25 * (2**attempt))
         raise DomainError("GEMINI_UNAVAILABLE", "Gemini không phản hồi.")
 
 

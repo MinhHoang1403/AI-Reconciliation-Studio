@@ -164,8 +164,8 @@ function ReviewCard({ review, workflow, canEdit, refresh, onReply }: {
     {review.pending_reply_job_id && <Spinner />}<p className="muted">Câu trả lời được diễn giải để bạn kiểm tra; hệ thống chưa phê duyệt thay bạn.</p>
     {draft && <label><input type="checkbox" checked={extraction} disabled={disabled} onChange={e => setExtraction(e.target.checked)}/>Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.</label>}
     {!ready && <p className="muted">Mở phần chỉnh sửa hoặc bổ sung bằng tiếng Việt để hoàn tất các điều kiện còn thiếu.</p>}
-    <p className="muted">{review.kind === "MAPPING" ? "Khi duyệt, hệ thống sẽ lưu ánh xạ và chuẩn hóa theo các lựa chọn này." : "Khi duyệt, hệ thống sẽ lưu quy tắc và bắt đầu đối soát trong phạm vi trên."}</p>
-    <button className="button primary" disabled={disabled || !ready} onClick={() => void action()}>{review.kind === "MAPPING" ? "Duyệt ánh xạ và chuẩn hóa" : "Duyệt quy tắc và đối soát"}</button>
+    <p className="muted">{review.kind === "MAPPING" ? "Khi duyệt, hệ thống sẽ lưu cách ghép cột và chuẩn hóa theo các lựa chọn này." : "Khi duyệt, hệ thống sẽ lưu quy tắc và bắt đầu đối soát trong phạm vi trên."}</p>
+    <button className="button primary" disabled={disabled || !ready} onClick={() => void action()}>{review.kind === "MAPPING" ? "Duyệt cách ghép cột và chuẩn hóa" : "Duyệt quy tắc và đối soát"}</button>
   </section>;
 }
 export function AgentWorkflowPanel({ id, canEdit, onNavigate, onContext, onReply }: {

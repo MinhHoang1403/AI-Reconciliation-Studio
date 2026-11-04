@@ -32,7 +32,7 @@ for(const scenario of manifest.datasets){
     await page.locator('.assistant-composer input[type=file]').setInputFiles(scenario.files.map(f=>`${data}/${f.name}`));
     const received=page.waitForResponse(r=>r.url().endsWith('/agent/attachments')&&r.request().method()==='POST');
     await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();const attachments=await(await received).json();
-    await expect(page.getByRole('region',{name:'Công việc của AI Assistant',exact:true}).last()).toContainText('Đã hoàn thành');
+    await expect(page.getByRole('region',{name:'Công việc của AI Assistant',exact:true}).last()).toContainText('Đã đọc dữ liệu; chưa chuẩn hóa');
     const uploadMs=Date.now()-start;
     for(let i=0;i<2;i++){
       const f=scenario.files[i],dataset=attachments.items[i];

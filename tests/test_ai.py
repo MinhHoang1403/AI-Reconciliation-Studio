@@ -47,7 +47,12 @@ def test_T09_qwen_invalid_json_retry_bounded(config, profile, schema):
 
 @pytest.mark.parametrize(
     "status,expected,count",
-    [(403, "QWEN_ACCESS_DENIED", 1), (500, "QWEN_UNAVAILABLE", 2), (400, "QWEN_HTTP_ERROR", 1)],
+    [
+        (403, "QWEN_ACCESS_DENIED", 1),
+        (429, "QWEN_RATE_LIMITED", 1),
+        (500, "QWEN_UNAVAILABLE", 2),
+        (400, "QWEN_HTTP_ERROR", 1),
+    ],
 )
 def test_qwen_http_contract(status, expected, count, config, profile, schema):
     calls = []
@@ -515,6 +520,8 @@ def test_unlimited_keeps_provider_permissions_receipts_and_bounded_delivery(conf
                 == {}
             )
             assert provider.usage["tokens"]["totalTokenCount"] == 12
+            assert provider.usage["attempts"][0]["tokens"]["totalTokenCount"] == 12
+            assert provider.usage["attempts"][0]["latency_ms"] >= 0
         else:
             with pytest.raises(DomainError):
                 provider.request_typed(
