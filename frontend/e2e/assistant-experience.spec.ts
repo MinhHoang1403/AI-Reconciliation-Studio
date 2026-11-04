@@ -88,7 +88,7 @@ for(const width of [390,768,1366,1440,1920]) {
     await expect(send).toHaveText('');await expect(send).toBeDisabled();
     await input.click();
     await expect(page.locator('.app-shell')).toHaveAttribute('data-focus-mode','pointer');
-    expect(await form.evaluate(el=>getComputedStyle(el).borderTopWidth)).toBe('0px');
+    expect(await form.evaluate(el=>getComputedStyle(el).borderTopWidth)).toBe('1px');
     expect(await form.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
     expect(await form.evaluate(el=>getComputedStyle(el).boxShadow)).not.toContain('inset');
     expect(await input.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');

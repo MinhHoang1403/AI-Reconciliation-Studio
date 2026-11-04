@@ -122,7 +122,7 @@ for(const width of [390,768,1366,1440,1920]){
 
 
 for (const width of [390, 768, 1366, 1440, 1920]) {
-  test(`[MOCK CONTRACT] product reading: white chat, exact preview and full page preserve source at ${width}px`, async ({page}) => {
+  test(`[MOCK CONTRACT] product reading: white chat with visible edges, exact preview and full page preserve source at ${width}px`, async ({page}) => {
     await page.setViewportSize({width,height:900});
     const writes:string[]=[];
     let selectedOffset=0;
@@ -166,6 +166,13 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     await expect(page.getByRole('article',{name:'Tin nhắn của bạn'}).nth(1).locator('p')).toHaveText(multiline);
     expect(await user.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)');
     const composer=page.locator('.assistant-composer');expect(await composer.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)');
+    const response=page.getByRole('article',{name:'Phản hồi của trợ lý'});
+    for(const surface of [user,response,composer]){
+      const appearance=await surface.evaluate(el=>{const s=getComputedStyle(el);return{background:s.backgroundColor,border:s.borderTopWidth,color:s.borderTopColor,shadow:s.boxShadow};});
+      expect(appearance.background).toBe('rgb(255, 255, 255)');
+      expect(appearance.border).toBe('1px');expect(appearance.color).not.toBe('rgb(255, 255, 255)');
+      expect(appearance.shadow).not.toBe('none');
+    }
     expect(await user.locator('.message-metadata').evaluate(el=>getComputedStyle(el).float)).toBe('none');
     await expect(page.locator('.agent-workflow-state')).toHaveText('Đã đọc dữ liệu; chưa chuẩn hóa');
     const result=page.getByRole('region',{name:'Kết quả truy vấn',exact:true});
