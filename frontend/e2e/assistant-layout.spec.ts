@@ -122,7 +122,7 @@ for(const width of [390,768,1366,1440,1920]){
 
 
 for (const width of [390, 768, 1366, 1440, 1920]) {
-  test(`[MOCK CONTRACT] product reading: white chat with visible edges, exact preview and full page preserve source at ${width}px`, async ({page}) => {
+  test(`[MOCK CONTRACT] product reading: open responses and white question bubbles, exact preview and full page preserve source at ${width}px`, async ({page}) => {
     await page.setViewportSize({width,height:900});
     const writes:string[]=[];
     let selectedOffset=0;
@@ -185,13 +185,28 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     const composer=page.locator('.assistant-composer');expect(await composer.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)');
     const response=page.getByRole('article',{name:'Phản hồi của trợ lý'});
     for(const text of [user.locator('p'),composer.locator('textarea')])expect(await text.evaluate(el=>getComputedStyle(el).fontSize)).toBe('16px');
-    for(const surface of [user,response,composer]){
+    for(const surface of [user,composer]){
       const appearance=await surface.evaluate(el=>{const s=getComputedStyle(el);return{background:s.backgroundColor,border:s.borderTopWidth,color:s.borderTopColor,shadow:s.boxShadow};});
       expect(appearance.background).toBe('rgb(255, 255, 255)');
       expect(appearance.border).toBe('1px');expect(appearance.color).not.toBe('rgb(255, 255, 255)');
       expect(appearance.shadow).not.toBe('none');
     }
+    expect(await response.evaluate(el=>getComputedStyle(el).borderTopWidth)).toBe('0px');
+    expect(await response.evaluate(el=>getComputedStyle(el).boxShadow)).toBe('none');
+    const contentBox=(await response.locator('.agent-workflow').boundingBox())!;
+    const metadataBox=(await response.locator('.message-metadata').boundingBox())!;
+    expect(metadataBox.y).toBeGreaterThanOrEqual(contentBox.y+contentBox.height-1);
     expect(await user.locator('.message-metadata').evaluate(el=>getComputedStyle(el).float)).toBe('none');
+    const userTextBefore=await user.locator('p').boundingBox();
+    await user.getByLabel('Thông tin tin nhắn',{exact:true}).click();
+    await expect(user.locator('.message-metadata small')).toBeVisible();
+    expect(await user.locator('p').boundingBox()).toEqual(userTextBefore);
+    const timestamp=(await user.locator('.message-metadata small').boundingBox())!;
+    expect(timestamp.x).toBeGreaterThanOrEqual(0);expect(timestamp.x+timestamp.width).toBeLessThanOrEqual(width);
+    await user.getByLabel('Thông tin tin nhắn',{exact:true}).press('Escape');
+    await expect(user.locator('.message-metadata small')).not.toBeVisible();
+    await expect(user.getByLabel('Thông tin tin nhắn',{exact:true})).toBeFocused();
+
     await expect(page.locator('.agent-workflow-state')).toHaveText('Đã đọc dữ liệu; chưa chuẩn hóa');
     const result=page.getByRole('region',{name:'Kết quả truy vấn',exact:true});
     await expect(result).toContainText('75 dòng dữ liệu');await expect(result).toContainText('Đang xem 10 dòng');

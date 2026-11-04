@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense, type RefObject, type ReactNode } from "react";
-import { MessageSquarePlus, Send, Trash2, Paperclip, MoreHorizontal, Sparkles, X, LoaderCircle, Files, SlidersHorizontal } from "lucide-react";
+import { MessageSquarePlus, ArrowUp, Trash2, Plus, MoreHorizontal, Sparkles, X, LoaderCircle, Files, SlidersHorizontal } from "lucide-react";
 import { AgentWorkflowPanel } from "./AgentWorkflowPanel";
 import type { Review } from "./agentTypes";
 import { api, ApiError } from "./api";
@@ -48,6 +48,10 @@ const labels: Record<string, string> = {
 };
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Không tải được hội thoại.";
+
+function MessageInfo({createdAt}: {createdAt: string}) {
+  return <details className="message-metadata" onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.currentTarget.open=false;event.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="Thông tin tin nhắn"><MoreHorizontal size={16} aria-hidden="true"/></summary><small>{new Date(createdAt).toLocaleString("vi-VN")}</small></details>;
+}
 
 /** Chỉ lưu chữ ký, không lưu bytes; hash tuần tự để giới hạn bộ nhớ khi nhiều tệp. */
 async function attachmentSignature(files: File[]): Promise<string> {
@@ -696,7 +700,7 @@ export function AssistantStudio({
                   key={message.id}
                   aria-label={message.role === "user" ? "Tin nhắn của bạn" : "Phản hồi của trợ lý"}
                 >
-                  <details className="message-metadata"><summary aria-label="Thông tin tin nhắn"><MoreHorizontal size={14} aria-hidden="true"/></summary><small>{new Date(message.created_at).toLocaleString("vi-VN")}</small></details>
+                  {message.role==="user"&&<MessageInfo createdAt={message.created_at}/>}
                   {message.role === "user" ? (
                     <p>{message.text}</p>
                   ) : (
@@ -810,6 +814,7 @@ export function AssistantStudio({
                     const binding={workflowId,id:review.id,nonce:review.nonce,fingerprint:review.fingerprint,question:review.question};
                     setReviewReply(binding);sessionStorage.setItem(replyKeyFor(context,conversation.id),JSON.stringify(binding));composerInput.current?.focus();}}/>}
                   {message.role==="assistant"&&!message.answer&&!message.workflow_id&&<p>{message.text}</p>}
+                  {message.role==="assistant"&&<MessageInfo createdAt={message.created_at}/>}
                 </article>
               ))}
             </div>
@@ -879,7 +884,7 @@ export function AssistantStudio({
           >
             {reviewReply&&<div className="review-reply-binding" role="status">Đang bổ sung: {reviewReply.question}<button type="button" className="icon-button" aria-label="Hủy trả lời xác nhận" onClick={()=>{setReviewReply(null);if(conversation)sessionStorage.removeItem(replyKeyFor(context,conversation.id));}}><X size={14}/></button></div>}
             <input ref={fileInput} type="file" accept=".csv,.xlsx" multiple hidden onChange={e=>{attach(e.target.files);e.target.value="";}}/>
-            <button type="button" className="icon-button" aria-label="Đính kèm CSV hoặc Excel" disabled={!canEdit||busy||!!reviewReply} onClick={()=>fileInput.current?.click()}><Paperclip size={20}/></button>
+            <button type="button" className="icon-button" aria-label="Đính kèm CSV hoặc Excel" disabled={!canEdit||busy||!!reviewReply} onClick={()=>fileInput.current?.click()}><Plus size={22}/></button>
             {files.length>0&&<div className="agent-file-chips">{files.map((file,i)=><span key={`${file.name}:${i}`}>{file.name} · {Math.ceil(file.size/1024)}KB<button type="button" className="icon-button" aria-label={`Bỏ ${file.name}`} disabled={busy} onClick={()=>setFiles(files.filter((_,n)=>n!==i))}><X size={14}/></button></span>)}</div>}
             <label>
               <span className="visually-hidden">Giao việc cho AI Assistant</span>
@@ -913,7 +918,7 @@ export function AssistantStudio({
               {busy ? (
                 <LoaderCircle size={18} className="spin" aria-label="Đang gửi" />
               ) : (
-                <Send size={18} aria-hidden="true" />
+                <ArrowUp size={20} aria-hidden="true" />
               )}
             </button>
           </form>

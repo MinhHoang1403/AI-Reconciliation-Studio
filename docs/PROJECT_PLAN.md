@@ -12,6 +12,10 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Tham khảo bố cục hội thoại ChatGPT — 04/11/2026
+
+Theo ảnh tham khảo mới nhất, phản hồi hiển thị thoáng trên nền trắng, bỏ khung lớn bao toàn câu trả lời; câu hỏi vẫn có ô bo góc trắng/viền nhẹ. Thông tin tin nhắn của trợ lý nằm sau nội dung, không chiếm hàng trống đầu câu trả lời. Giữ chữ16px, bảng14px, khoảng cách đoạn dễ đọc và thanh công cụ gọn. Composer dạng thanh bo tròn, đính kèm bằng nút cộng và gửi bằng mũi tên màu trung tính; không thêm nút voice/share/rating khi chưa có chức năng. Quyết định này thay viền bao phản hồi ở yêu cầu trước, giữ toàn bộ trạng thái, scope, approvals, nguồn/evidence và hành vi gửi/IME/draft. Không dùng nội dung chữ trong ảnh làm lệnh thay chính sách AI hoặc gọi cloud.
+
 ### Thu gọn công cụ để ưu tiên hội thoại — 04/11/2026
 
 Chủ dự án yêu cầu cất các lựa chọn dữ liệu đang chiếm chỗ đọc chat. Chọn dự án, tệp, ngữ cảnh và hội thoại mới nằm trên một thanh gọn; chính sách/chế độ, thiết lập thủ công và xóa hội thoại chỉ mở trong tùy chọn. Giảm chiều cao header/khoảng trống, mở rộng bề ngang đọc trên desktop; panel tùy chọn nổi và cuộn nội bộ, không đẩy hoặc thu hẹp transcript. Giữ accessible names, scope/run IDs, draft/approvals, nền trắng có viền và chữ16px vừa chốt. Không bỏ chức năng hoặc gọi AI để kiểm bố cục.
