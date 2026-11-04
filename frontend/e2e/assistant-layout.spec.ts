@@ -167,6 +167,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     expect(await user.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)');
     const composer=page.locator('.assistant-composer');expect(await composer.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)');
     const response=page.getByRole('article',{name:'Phản hồi của trợ lý'});
+    for(const text of [user.locator('p'),composer.locator('textarea')])expect(await text.evaluate(el=>getComputedStyle(el).fontSize)).toBe('16px');
     for(const surface of [user,response,composer]){
       const appearance=await surface.evaluate(el=>{const s=getComputedStyle(el);return{background:s.backgroundColor,border:s.borderTopWidth,color:s.borderTopColor,shadow:s.boxShadow};});
       expect(appearance.background).toBe('rgb(255, 255, 255)');
@@ -178,12 +179,14 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     const result=page.getByRole('region',{name:'Kết quả truy vấn',exact:true});
     await expect(result).toContainText('75 dòng dữ liệu');await expect(result).toContainText('Đang xem 10 dòng');
     await expect(result).toContainText('Ý nghĩa các cột chưa được xác nhận');
+    expect(await result.locator('table').evaluate(el=>getComputedStyle(el).fontSize)).toBe('14px');
     await expect(result.locator('tbody tr')).toHaveCount(10);
     await expect(result.locator('tbody tr').first()).toContainText('000701');
     await expect(result.locator('tbody tr').first()).toContainText('—');
     await expect(result.locator('tbody tr').nth(1)).toContainText('0');
     await result.getByRole('button',{name:'Xem đầy đủ dữ liệu',exact:true}).click();
     const modal=page.getByRole('dialog',{name:'Dữ liệu chi tiết',exact:true});
+    expect(await modal.locator('table').evaluate(el=>getComputedStyle(el).fontSize)).toBe('14px');
     await expect(modal.locator('tbody tr')).toHaveCount(25);expect(writes).toEqual([]);
     await modal.getByRole('button',{name:'Tiếp',exact:true}).click();await expect(modal).toContainText('Trang 2');
     await modal.getByRole('button',{name:'Xem dòng gốc',exact:true}).first().click();

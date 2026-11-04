@@ -1853,7 +1853,7 @@ pre {
 .assistant-controls select { width: 100%; min-width: 0; }
 .assistant-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .assistant-messages { display: grid; gap: 24px; overflow-wrap: anywhere; padding-top: 12px; }
-.assistant-message { min-width: 0; padding: 16px; background: #fff; border: 1px solid var(--chat-border); border-radius: 16px; box-shadow: 0 2px 8px #00000006; }
+.assistant-message { min-width: 0; font-size: 16px; padding: 16px; background: #fff; border: 1px solid var(--chat-border); border-radius: 16px; box-shadow: 0 2px 8px #00000006; }
 .assistant-message.user { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 12px; background: #fff; border-radius: 14px; padding: 12px 8px 12px 16px; width: fit-content; max-width: min(76ch, 88%); justify-self: end; }
 .assistant-message.user > p { grid-column: 1; grid-row: 1; min-width: 0; margin: 0; }
 .assistant-message.user > .message-metadata { grid-column: 2; grid-row: 1; }
@@ -1863,6 +1863,7 @@ pre {
 .message-metadata[open] { max-width: 170px; }
 .assistant-message p { white-space: pre-wrap; color: #334155; line-height: 1.7; }
 .assistant-message > p, .assistant-claim { max-width: 78ch; }
+.assistant-message :is(.button, .text-button), .assistant-message .table-scroll table, .modal .table-scroll table { font-size: 14px; }
 .assistant-mode, .claim-label { font-size: 12px; color: #334155; }
 .assistant-claim { padding-block: 10px; }
 .assistant-claim p { margin-block: 6px; }
@@ -1875,6 +1876,7 @@ pre {
 .assistant-composer {
   flex-shrink: 0;
   display: grid;
+  font-size: 16px;
   grid-template-columns: 40px minmax(0,1fr) 40px;
   gap: 8px;
   align-items: end;
@@ -1886,8 +1888,8 @@ pre {
   border-radius: var(--composer-radius);
   box-shadow: var(--shadow-composer);
 }
-.assistant-composer > label { display: block; min-width: 0; grid-column: 2; grid-row: 1; }
-.assistant-composer textarea { display: block; width: 100%; min-width: 0; height: 40px; min-height: 40px; max-height: 180px; padding: 9px 4px; border: 0; border-radius: 6px; background: transparent; resize: none; line-height: 22px; color: #334155; }
+.assistant-composer > label { display: block; font-size: inherit; min-width: 0; grid-column: 2; grid-row: 1; }
+.assistant-composer textarea { display: block; width: 100%; min-width: 0; height: 40px; min-height: 40px; max-height: 180px; padding: 8px 4px; border: 0; border-radius: 6px; background: transparent; resize: none; line-height: 24px; color: #334155; }
 .assistant-composer:hover { background: #fff; border-color: #9ca3af; }
 .app-shell[data-focus-mode="keyboard"] .assistant-composer:has(textarea:focus) { box-shadow: var(--shadow-composer), inset 0 -2px 0 var(--focus-ring); }
 .assistant-composer textarea:focus-visible { outline: none; }
@@ -1930,7 +1932,7 @@ pre {
 .agent-processing {font-size:12px; color:var(--text-muted); margin-bottom:12px;}
 .agent-review-fields {display:grid; gap:.8rem;}
 .agent-form-grid {display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr)); gap:.8rem;}
-.agent-form-grid label, .agent-review-fields>label {display:grid; gap:.35rem; font-size:.85rem;}
+.agent-form-grid label, .agent-review-fields>label {display:grid; gap:.35rem; font-size:14px;}
 .agent-field {padding:1rem 0;}
 .agent-field summary {cursor:pointer; font-weight:600;}
 .agent-review input:not([type=checkbox]), .agent-review select {min-width:0;}
@@ -1940,7 +1942,7 @@ pre {
 .agent-table, .agent-chart, .agent-facts, .agent-dataset {padding:1.25rem 0; min-width:0; max-width:100%;}
 .agent-table small, .agent-chart small, .agent-review p {overflow-wrap:anywhere;}
 .agent-chart-scroll { max-height: 420px; overflow: auto; scrollbar-gutter: stable; }
-.agent-steps {padding-left:1.25rem; color:#475569; font-size:.85rem;}
+.agent-steps {padding-left:1.25rem; color:#475569; font-size:14px;}
 .agent-file-chips {display:flex; flex-wrap:wrap; gap:.4rem; grid-column:1 / -1; width:100%;}
 .agent-file-chips>span {display:flex; align-items:center; gap:.25rem; overflow-wrap:anywhere; max-width:100%; padding:.35rem .6rem; background:var(--surface-hover); border-radius:.5rem; font-size:.8rem;}
 .assistant-message:has(.agent-workflow) {max-width:100%; width:100%; min-width:0;}
@@ -1962,8 +1964,8 @@ pre {
 .is-welcome .assistant-messages {display:block;padding:0;}
 .is-welcome .agent-empty {text-align:center;margin:0;max-width:none;}
 .is-welcome .agent-empty>svg {color:#2563eb;margin-bottom:8px;margin-inline:auto;}
-.review-summary {display:grid;gap:7px;padding-left:18px;font-size:13px;}
-.agent-review-editor>summary {cursor:pointer;color:#475569;padding-block:7px;font-size:12px;}
+.review-summary {display:grid;gap:7px;padding-left:18px;font-size:14px;}
+.agent-review-editor>summary {cursor:pointer;color:#475569;padding-block:7px;font-size:14px;}
 .is-welcome .agent-empty h2 {font-size:clamp(1.6rem,2vw,2rem);font-weight:600;letter-spacing:-.025em;margin-bottom:10px;}
 .is-welcome .agent-empty p {font-size:14px;color:var(--text-muted);}
 .assistant-history>label {display:grid;gap:7px;font-size:12px;}

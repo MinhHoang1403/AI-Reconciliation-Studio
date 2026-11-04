@@ -14,7 +14,7 @@
 
 ### Làm rõ bề mặt hội thoại — 04/11/2026
 
-Chỉ dẫn mới nhất của chủ dự án giữ **nền trắng**, không dùng nền xanh cho các ô chat hoặc composer. Để không hòa vào nền trang, tin nhắn người dùng/trợ lý và ô gửi câu hỏi có viền xám trung tính cùng bóng đổ nhẹ; giữ menu riêng, căn phải câu hỏi, focus bàn phím và responsive. Quyết định này thay thiết kế không viền/transparent của các mốc trước, không đổi màu dữ liệu/trạng thái, contracts hoặc gọi AI để thử CSS.
+Chỉ dẫn mới nhất của chủ dự án giữ **nền trắng**, không dùng nền xanh cho các ô chat hoặc composer. Để không hòa vào nền trang, tin nhắn người dùng/trợ lý và ô gửi câu hỏi có viền xám trung tính cùng bóng đổ nhẹ; giữ menu riêng, căn phải câu hỏi, focus bàn phím và responsive. Quyết định này thay thiết kế không viền/transparent của các mốc trước, không đổi màu dữ liệu/trạng thái, contracts hoặc gọi AI để thử CSS. Sau khi chốt màu trắng, chủ dự án yêu cầu tăng nhẹ cỡ chữ: nội dung hội thoại/composer16px, bảng và thao tác chính trong chat14px; giữ xuống dòng, cuộn bảng nội bộ, bố cục và quyền nghiệp vụ.
 
 ### Hoàn thiện sản phẩm và AI local không giới hạn số lượt nội bộ — 04/11/2026
 
