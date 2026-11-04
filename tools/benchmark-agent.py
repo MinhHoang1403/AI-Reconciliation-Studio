@@ -240,6 +240,13 @@ def main() -> None:
     parser.add_argument("--contexts", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--execute-live", action="store_true")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        choices=range(1, 11),
+        default=10,
+        help="One goal matches the user request; larger batches measure batch routing",
+    )
     parser.add_argument("--suite", choices=["gold", "variants"], default="gold")
     parser.add_argument("--cases", nargs="+", help="Canary IDs; never changes the full gold rubric")
     parser.add_argument("--repair-known", choices=["payment-status-grouping"])
@@ -282,8 +289,8 @@ def main() -> None:
         cases = [
             g for g in gold if g["domain"] == domain and (not args.cases or g["id"] in args.cases)
         ]
-        for offset in range(0, len(cases), 10):
-            subset = cases[offset : offset + 10]
+        for offset in range(0, len(cases), args.batch_size):
+            subset = cases[offset : offset + args.batch_size]
             selection_hash = digest([g["id"] for g in subset])[:12]
             key = f"nl-gold:{INTENT_REVISION}:{version[:12]}:{context_hash[:12]}:{selection_hash}"
             token = str(uuid5(NAMESPACE_URL, key + ":claim"))
@@ -496,6 +503,7 @@ def main() -> None:
     measured = [r for r in results if not r.get("blocked")]
     summary = dict(
         suite=args.suite,
+        batch_size=args.batch_size,
         prompt_revision=INTENT_REVISION,
         stopped_on_block=stopped,
         requested_total=sum(1 for g in gold if not args.cases or g["id"] in args.cases),
