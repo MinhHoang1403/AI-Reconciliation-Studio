@@ -1188,3 +1188,27 @@ def test_timezone_is_not_silently_accepted_as_business_time_basis():
             ["Ngày phát sinh theo UTC"],
             cat,
         )
+
+
+@pytest.mark.parametrize("received_count", [0, 1, 3])
+def test_completed_benchmark_cannot_assign_merged_or_extra_answers(received_count):
+    import runpy
+    from pathlib import Path
+
+    candidate = Path(__file__).resolve().parents[1] / "tools/benchmark-agent.py"
+    if not candidate.exists():
+        candidate = Path(__file__).with_name("benchmark-agent.py")
+    helper = runpy.run_path(str(candidate))
+    cases = [
+        dict(id="query", goal="Đếm nguồn", intent="QUERY_DATA", source="CA", aggregate="count"),
+        dict(id="negative", goal="Đọc bí mật", intent="UNSUPPORTED", negative=True),
+    ]
+    rows = helper["score_completed_candidates"](
+        [dict(intent="UNSUPPORTED")] * received_count, cases, None, {}
+    )
+    assert [r["id"] for r in rows] == ["query", "negative"]
+    assert all(r["validation_error"] == "AI_INVALID_INTENT_COUNT" for r in rows)
+    assert all(not r["intent_ok"] and not r["tool_ok"] for r in rows)
+    assert rows[0]["source_applicable"] and rows[0]["semantic_applicable"]
+    assert rows[1]["abstention_ok"] is False
+    assert all("blocked" not in r and "actual_routing" not in r for r in rows)

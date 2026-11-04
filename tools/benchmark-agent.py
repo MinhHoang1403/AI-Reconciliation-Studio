@@ -69,7 +69,27 @@ def score_completed_candidates(candidates, cases, catalogue, ids):
     This never executes or repairs an action. The original batch/job remains BLOCKED.
     Other items use the same production validator independently, not an LLM judge.
     """
-    assert len(candidates) == len(cases)
+    if len(candidates) != len(cases):
+        # No positional attribution is trustworthy after a merged/missing reply.
+        # Keep every requested case in the denominator without inventing an answer.
+        return [
+            dict(
+                id=case["id"],
+                intent_ok=False,
+                source_applicable=case.get("source") is not None,
+                source_ok=False,
+                semantic_applicable=any(
+                    case.get(k) for k in ("key", "aggregate", "filter", "group", "scope", "format")
+                ),
+                semantic_ok=False,
+                tool_ok=False,
+                abstention_ok=False if case.get("negative") else None,
+                validation_error="AI_INVALID_INTENT_COUNT",
+                received_count=len(candidates),
+                expected_count=len(cases),
+            )
+            for case in cases
+        ]
     results = []
     for candidate, case in zip(candidates, cases, strict=True):
         try:
@@ -528,6 +548,8 @@ def main() -> None:
         encoding="utf-8",
     )
     print(json.dumps(summary))
+    if stopped:
+        raise SystemExit(2)  # Propagate provider stop to callers; never start the next suite.
 
 
 if __name__ == "__main__":
