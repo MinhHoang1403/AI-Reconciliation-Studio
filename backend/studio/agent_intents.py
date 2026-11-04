@@ -17,7 +17,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-31"
+INTENT_REVISION = "agent-intent-32"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -905,8 +905,11 @@ def interpret_requests(
                 "cầu "
                 "thực hiện chuyển tiền: dùng QUERY_DATA khi có approved paid semantics. "
                 "Nguồn thiếu bằng chứng trả tiền phải CLARIFY, không suy COMPLETED=PAID. "
-                "Chọn dataset_ids cho explore/normalize. Chọn source_ref đúng tên/loại từ "
-                "sources cho query; "
+                "Chọn dataset_ids cho explore/normalize. "
+                "Câu hỏi trạng thái đọc/ghép cột/chuẩn hóa nguồn dùng "
+                "CHECK_DATASET_STATUS, không SUMMARIZE_RESULTS và không chạy chuẩn hóa. "
+                "Trạng thái nguồn không chứng minh readiness của một quy tắc đối soát. "
+                "Chọn source_ref đúng tên/loại từ sources cho query; "
                 "Đối soát chọn left_canonical_id/right_canonical_id bằng source_id của hai "
                 "mục source_kind=CANONICAL trong sources, không dùng ref, dataset_id hoặc "
                 "source_id của RAW_PREVIEW. Hai nguồn phải khác nhau. "

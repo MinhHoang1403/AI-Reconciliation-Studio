@@ -62,6 +62,8 @@ export type Conversation = {
   archived: boolean;
 };
 export type AssistantMessage = {
+  job_status?: string | null;
+  error_code?: string | null;
   workflow_id?: string | null;
   id: string;
   job_id: string;

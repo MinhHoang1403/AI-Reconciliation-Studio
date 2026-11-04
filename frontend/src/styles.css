@@ -1846,8 +1846,9 @@ pre {
 .history-item { display: block; width: 100%; border: 0; background: none; border-radius: 8px; padding: 12px; text-align: left; color: #475569; font-size: 12px; overflow-wrap: anywhere; }
 .history-item:hover, .history-item.selected { background: var(--surface-subtle); color: #0f172a; }
 .history-item.selected { font-weight: 600; }
-.assistant-conversation { min-height: 0; min-width: 0; display: flex; flex-direction: column; width:100%; max-width:1120px; margin-inline:auto; overflow: hidden; }
-.assistant-scroll { flex: 1; min-height: 0; overflow: auto; padding: 8px; scrollbar-gutter: stable; }
+.assistant-conversation { position:relative; min-height: 0; min-width: 0; display: flex; flex-direction: column; width:100%; max-width:1120px; margin-inline:auto; overflow: hidden; }
+.assistant-scroll { flex: 1; min-height: 0; overflow: auto; overflow-anchor:none; padding: 8px; scrollbar-gutter: stable; }
+.assistant-jump {position:absolute;right:24px;bottom:100px;z-index:3;background:#fff;border:1px solid #d1d5db;border-radius:20px;padding:8px 14px;box-shadow:0 2px 8px #0000000d;}
 .assistant-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 12px; }
 .assistant-controls > label { flex: 1 1 280px; min-width: 0; }
 .assistant-controls label { display: grid; gap: 6px; min-width: 0; }

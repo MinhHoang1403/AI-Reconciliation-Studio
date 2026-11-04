@@ -207,4 +207,6 @@ class MessageView(Contract):
     context: AssistantContext
     answer: AssistantAnswer | None = None
     workflow_id: str | None = None
+    job_status: str | None = None
+    error_code: str | None = None
     created_at: datetime

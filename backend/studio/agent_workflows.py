@@ -358,6 +358,65 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
         return
     intent = state.intent
     context = AssistantContext.model_validate(row.context)
+    if intent.intent == "CHECK_DATASET_STATUS":
+        from studio.dataset_status import read_processing_status, status_description
+
+        try:
+            statuses = read_processing_status(
+                db, actor, context, state.dataset_ids or intent.dataset_ids, row.goal
+            )
+        except DomainError as exc:
+            if exc.code != "INPUT_AMBIGUOUS":
+                raise
+            make_review(
+                db,
+                row,
+                state,
+                kind="CLARIFICATION",
+                resource_id=row.id,
+                question=exc.message_vi,
+                reason="Cần chọn đúng nguồn để kiểm tra trạng thái.",
+            )
+            save(row, state)
+            return
+        if not statuses:
+            state.blocks.append(
+                ProgressBlock(
+                    text="Dự án chưa có tệp dữ liệu. Hãy dùng dấu cộng để tải CSV hoặc XLSX."
+                )
+            )
+        elif (
+            not state.dataset_ids
+            and not intent.dataset_ids
+            and not context.dataset_id
+            and len({s.dataset_id for s in statuses}) > 2
+            and any(w in row.goal.lower().split() for w in ["hai", "2", "này", "trên"])
+        ):
+            make_review(
+                db,
+                row,
+                state,
+                kind="CLARIFICATION",
+                resource_id=row.id,
+                question="Bạn muốn kiểm tra nguồn nào? Các tệp trong dự án: "
+                + "; ".join(dict.fromkeys(s.name for s in statuses)),
+                reason="Cần xác định đúng nguồn trước khi trả lời về hai bộ dữ liệu.",
+            )
+            save(row, state)
+            return
+        else:
+            state.blocks.extend(ProgressBlock(text=status_description(s)) for s in statuses)
+            state.blocks.append(
+                ProgressBlock(
+                    text=(
+                        "Đây là trạng thái chuẩn hóa, chưa xác nhận các điều kiện của một q"
+                        "uy tắc đối soát hoặc kết quả đối soát."
+                    )
+                )
+            )
+        row.state = "COMPLETED"
+        save(row, state)
+        return
     catalogue = agent_catalogue(
         db, actor, context, state.dataset_ids or intent.dataset_ids, workflow_id=row.id
     )
@@ -691,6 +750,22 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
         row.state = "COMPLETED"
     elif intent.intent in {"EXPLAIN_RESULT", "SUMMARIZE_RESULTS"}:
         context.run_id = intent.run_id or context.run_id
+        if context.run_id is None:
+            make_review(
+                db,
+                row,
+                state,
+                kind="CLARIFICATION",
+                resource_id=row.id,
+                question=(
+                    "Bạn muốn xem kết quả đối soát nào? Hãy chọn một kết quả đã xác min"
+                    "h trong ngữ cảnh. Nếu chưa đối soát, hãy kiểm tra chuẩn hóa nguồn "
+                    "trước."
+                ),
+                reason="Chưa có kết quả đối soát được chọn; không thể đưa ra kết luận tài chính.",
+            )
+            save(row, state)
+            return
         if intent.intent == "SUMMARIZE_RESULTS":
             context.group_id = context.case_id = None
         if intent.result_position is not None:

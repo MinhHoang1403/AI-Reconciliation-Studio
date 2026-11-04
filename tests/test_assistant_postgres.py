@@ -228,7 +228,10 @@ def test_assistant_worker_crash_fencing_and_unknown_delivery_hold(pg, monkeypatc
     drain(factory, worker)
     job = client.get(f"/api/jobs/{two['job_id']}").json()
     assert (job["status"], job["error_code"]) == ("BLOCKED", "AI_DELIVERY_UNKNOWN")
-    assert len(client.get(f"/api/conversations/{cid}").json()["items"]) == 3
+    messages = client.get(f"/api/conversations/{cid}").json()["items"]
+    assert len(messages) == 4
+    assert messages[-1]["error_code"] == "AI_DELIVERY_UNKNOWN"
+    assert "Không tự gửi lại" in messages[-1]["text"]
 
 
 def test_language_request_checks_preparation_and_never_auto_runs(pg):  # noqa: F811

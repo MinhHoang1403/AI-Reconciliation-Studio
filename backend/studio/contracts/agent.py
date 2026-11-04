@@ -22,6 +22,7 @@ from studio.contracts.reconciliation import (
 )
 
 IntentName = Literal[
+    "CHECK_DATASET_STATUS",
     "EXPLORE_DATA",
     "PREPARE_NORMALIZATION",
     "RECONCILE_DATASETS",

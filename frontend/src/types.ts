@@ -235,6 +235,14 @@ export const jobKind: Record<string, string> = {
   assistant: "AI Assistant có bằng chứng",
 };
 export const errorText: Record<string, string> = {
+  INSUFFICIENT_EVIDENCE: "Chưa đủ bằng chứng cho yêu cầu này. Hãy kiểm tra nguồn đã chọn; kết quả đối soát cần được xác minh trước khi dùng.",
+  AI_INVALID_SOURCE: "AI chưa chọn đúng nguồn. Hãy kiểm tra dữ liệu trong ngữ cảnh trước khi tiếp tục.",
+  AUTH_REQUIRED: "Phiên truy cập chưa hợp lệ. Hãy kết nối lại để tiếp tục.",
+  FORBIDDEN: "Bạn không có quyền thực hiện thao tác này. Hãy liên hệ chủ không gian làm việc.",
+  LOCAL_DEMO_NOT_VERIFIED: "Kết nối local cần được kiểm tra lại sau khi dịch vụ khởi động. Hãy chạy quy trình khởi động ứng dụng.",
+  AI_DELIVERY_UNKNOWN: "Chưa xác định dịch vụ AI đã nhận yêu cầu hay chưa. Không tự gửi lại để tránh xử lý trùng; hãy cập nhật hội thoại.",
+  WORKER_INTERNAL_ERROR: "Xử lý nền gặp lỗi. Kết quả đã lưu được giữ; hãy cập nhật hội thoại và liên hệ hỗ trợ nếu lỗi tiếp tục.",
+  JOB_RETRY_EXHAUSTED: "Công việc đã dừng sau các lần phục hồi không thành công. Hãy kiểm tra kết quả đã lưu trước khi tạo yêu cầu mới.",
   QUERY_FIELD_INVALID: "Trường được yêu cầu không có trong nguồn đang chọn. Hãy kiểm tra nguồn và chỉ tiêu cần xem.",
   QUERY_METRIC_AMBIGUOUS: "Có nhiều chỉ tiêu tiền phù hợp. Hãy chọn chỉ tiêu bạn muốn xem.",
   QUERY_METRIC_UNAVAILABLE: "Nguồn này chưa có chỉ tiêu tiền được duyệt để tính kết quả.",

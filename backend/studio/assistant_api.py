@@ -148,6 +148,17 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             )
         )
 
+        jobs_by_id = {
+            j.id: j
+            for j in db.scalars(
+                select(JobRow).where(
+                    JobRow.id.in_([r.job_id for r in rows]),
+                    JobRow.workspace_id == actor.workspace_id,
+                    JobRow.project_id == conversation.project_id,
+                )
+            )
+        }
+
         def workflow_for_message(message: MessageRow) -> str | None:
             job = db.get(JobRow, message.job_id)
             condition = AgentWorkflowRow.parent_job_id == message.job_id
@@ -174,6 +185,8 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                     context=AssistantContext.model_validate(r.context),
                     answer=AssistantAnswer.model_validate(r.answer) if r.answer else None,
                     workflow_id=workflow_for_message(r),
+                    job_status=jobs_by_id[r.job_id].status,
+                    error_code=jobs_by_id[r.job_id].error_code,
                     created_at=r.created_at,
                 )
                 for r in reversed(rows[:limit])

@@ -154,8 +154,51 @@ export function AssistantStudio({
   const deleteTrigger=useRef<HTMLElement|null>(null);
   const composerInput=useRef<HTMLTextAreaElement>(null);
   const transcript=useRef<HTMLDivElement>(null);
+  const transcriptContent=useRef<HTMLDivElement>(null);
+  const followTail=useRef(true);
+  const forceTail=useRef(false);
+  const prependAnchor=useRef<{height:number;top:number}|null>(null);
+  const loadingOlder=useRef(false);
+  const [olderLoading,setOlderLoading]=useState(false);
+  const [newContent,setNewContent]=useState(false);
   const lastMessageId=messages.at(-1)?.id;
-  useEffect(()=>{if(transcript.current)transcript.current.scrollTop=transcript.current.scrollHeight;},[lastMessageId]);
+  function scrollToTail(smooth=false){
+    const pane=transcript.current;
+    followTail.current=true;
+    setNewContent(false);
+    if(pane)pane.scrollTo({top:pane.scrollHeight,behavior:smooth&&!matchMedia("(prefers-reduced-motion: reduce)").matches?"smooth":"instant"});
+  }
+  useLayoutEffect(()=>{
+    const pane=transcript.current;
+    if(!pane)return;
+    if(prependAnchor.current){
+      const anchor=prependAnchor.current;
+      pane.scrollTop=anchor.top+pane.scrollHeight-anchor.height;
+      prependAnchor.current=null;
+    }else if(forceTail.current||followTail.current){
+      pane.scrollTop=pane.scrollHeight;
+      forceTail.current=false;
+    }
+  });
+  useEffect(()=>{
+    const pane=transcript.current,content=transcriptContent.current;
+    if(!pane||!content)return;
+    let lastHeight=content.getBoundingClientRect().height;
+    let lastPaneHeight=pane.clientHeight;
+    const observer=new ResizeObserver(()=>{
+      const height=content.getBoundingClientRect().height;
+      if(height===lastHeight&&pane.clientHeight===lastPaneHeight)return;
+      lastHeight=height;
+      lastPaneHeight=pane.clientHeight;
+      if(prependAnchor.current||loadingOlder.current)return;
+      if(followTail.current)pane.scrollTop=pane.scrollHeight;
+      else setNewContent(true);
+    });
+    observer.observe(content);
+    observer.observe(pane);
+    return()=>observer.disconnect();
+  },[]);
+  useEffect(()=>{if(lastMessageId&&!followTail.current)setNewContent(true);},[lastMessageId]);
   useEffect(()=>{
     const input=composerInput.current;
     if(!input)return;
@@ -271,8 +314,8 @@ export function AssistantStudio({
         ["SUCCEEDED", "BLOCKED", "FAILED", "CANCELLED"].includes(job.status)
       ) {
         setPendingJob("");
-        await refreshMessages(id, request);
-        if (job.status !== "SUCCEEDED")
+        const page=await refreshMessages(id, request);
+        if (job.status !== "SUCCEEDED"&&!page?.items.some(message=>message.job_id===jobId&&(message.role==="assistant"||message.error_code)))
           setError(
             `${jobErrors[job.error_code||""]||"Yêu cầu chưa có kết quả hợp lệ."} Lịch sử được giữ; không tự gửi lại nhà cung cấp AI.`,
           );
@@ -286,6 +329,9 @@ export function AssistantStudio({
       );
   }
   async function openConversation(id: string, cached?: ConversationPage) {
+    followTail.current=true;
+    forceTail.current=true;
+    setNewContent(false);
     const request = ++sequence.current;
     evidenceSequence.current++;
     setEvidence(null);
@@ -373,6 +419,9 @@ export function AssistantStudio({
   }, []);
 
   function newConversation(next = context) {
+    followTail.current=true;
+    forceTail.current=true;
+    setNewContent(false);
     sequence.current++;
     evidenceSequence.current++;
     setEvidence(null);
@@ -398,6 +447,9 @@ export function AssistantStudio({
   async function send() {
     if ((!text.trim() && !files.length) || busy || pendingJob || sendLock.current) return;
     sendLock.current = true;
+    forceTail.current=true;
+    followTail.current=true;
+    setNewContent(false);
     const request = sequence.current;
     setBusy(true);
     setError("");
@@ -526,7 +578,10 @@ export function AssistantStudio({
     }
   }
   async function olderMessages() {
-    if (!conversation || !messages.length) return;
+    if (!conversation || !messages.length || loadingOlder.current) return;
+    loadingOlder.current=true;
+    setOlderLoading(true);
+    followTail.current=false;
     const request = sequence.current;
     try {
       const page = await api<ConversationPage>(
@@ -534,10 +589,14 @@ export function AssistantStudio({
         getOptions(),
       );
       if (!alive.current || request !== sequence.current) return;
+      if(transcript.current)prependAnchor.current={height:transcript.current.scrollHeight,top:transcript.current.scrollTop};
       setMessages((old) => [...page.items, ...old]);
       setMoreMessages(page.has_more);
     } catch (err) {
       if (alive.current) setError(errorText(err));
+    } finally {
+      loadingOlder.current=false;
+      if(alive.current)setOlderLoading(false);
     }
   }
   async function openCitation(
@@ -657,7 +716,13 @@ export function AssistantStudio({
       <div className="assistant-layout">
 
         <div className="assistant-conversation">
-          <div className="assistant-scroll" ref={transcript}>
+          <div className="assistant-scroll" ref={transcript} onScroll={()=>{
+            const pane=transcript.current;
+            if(!pane||loadingOlder.current||prependAnchor.current)return;
+            followTail.current=pane.scrollHeight-pane.scrollTop-pane.clientHeight<64;
+            if(followTail.current)setNewContent(false);
+          }}>
+            <div ref={transcriptContent}>
 
             {error && (
               <Notice tone="error">
@@ -686,6 +751,7 @@ export function AssistantStudio({
               {moreMessages && (
                 <button
                   className="text-button"
+                  disabled={olderLoading}
                   onClick={() => void olderMessages()}
                 >
                   Xem tin nhắn cũ hơn
@@ -814,6 +880,7 @@ export function AssistantStudio({
                     const binding={workflowId,id:review.id,nonce:review.nonce,fingerprint:review.fingerprint,question:review.question};
                     setReviewReply(binding);sessionStorage.setItem(replyKeyFor(context,conversation.id),JSON.stringify(binding));composerInput.current?.focus();}}/>}
                   {message.role==="assistant"&&!message.answer&&!message.workflow_id&&<p>{message.text}</p>}
+                  {message.role==="user"&&message.error_code&&["FAILED","BLOCKED","CANCELLED"].includes(message.job_status||"")&&!messages.some(m=>m.role==="assistant"&&m.job_id===message.job_id)&&<Notice tone="error">{jobErrors[message.error_code]||"Yêu cầu này chưa hoàn tất. Hãy kiểm tra dữ liệu và kết quả đã lưu trước khi tạo yêu cầu mới."}<details><summary>Chi tiết hỗ trợ</summary>{message.error_code} · {message.job_id}</details></Notice>}
                   {message.role==="assistant"&&<MessageInfo createdAt={message.created_at}/>}
                 </article>
               ))}
@@ -867,7 +934,9 @@ export function AssistantStudio({
                 </button>
               </Notice>
             )}
+            </div>
           </div>
+          {newContent&&<button type="button" className="assistant-jump text-button" onClick={()=>scrollToTail(true)}>Tin nhắn mới · Xuống cuối</button>}
           {draftNotice && (
             <p className="draft-notice" role="status">
               {draftNotice}

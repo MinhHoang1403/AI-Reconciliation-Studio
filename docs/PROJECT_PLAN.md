@@ -12,6 +12,12 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Kiểm toán độ tin cậy, trạng thái nguồn và cuộn hội thoại — 04/11/2026
+
+Chủ dự án giao truy vết job lỗi thực tế, sửa phản hồi khi thiếu bằng chứng, bảo đảm trạng thái kết thúc được lưu/hiển thị, kiểm tra gửi trùng và cuộn Chat; đồng thời nghiệm thu lại hành trình nghiệp vụ và viết hướng dẫn người mới. Câu hỏi trạng thái chuẩn hóa dùng metadata scoped của phiên bản nguồn/ánh xạ/bản chuẩn hóa hiện hành, không yêu cầu VerifiedRun và không tự chạy chuẩn hóa. Không suy READY từ việc đã đọc tệp; bản cũ, một phần và lỗi phải được nêu riêng. Nguồn mơ hồ hỏi lại; thiếu kết quả tài chính vẫn fail-closed.
+
+Mỗi job câu hỏi được chấp nhận có câu trả lời, clarification, approval hoặc lỗi kết thúc rõ ràng, bền vững sau reload. Không dùng lỗi hạ tầng như clarification; không retry unknown delivery hoặc nhân đôi yêu cầu. Gửi câu mới luôn về cuối transcript; đang theo dõi cuối thì theo thay đổi chiều cao; chủ động đọc lịch sử thì giữ vị trí và có hành động xuống cuối. Prepend lịch sử giữ anchor, không cuộn window, không mất focus/IME/draft. Kiểm thử bằng vị trí thực và browser production. Gemini còn429 thì hoàn tất phần độc lập, không reset ledger/đổi provider/key/né quota; chỉ tiếp tục LIVE có mục đích khi thực sự khả dụng. Hướng dẫn `USER_TEST_GUIDE.md` phải đối chiếu nút thật, dữ liệu tổng hợp/oracle và trạng thái nghiệm thu, không xem kết quả cached là LIVE mới.
+
 ### Phân biệt dự án với tệp và cân đối ô chọn — 04/11/2026
 
 Chủ dự án làm rõ “Dữ liệu mới” là tên dự án, không phải tệp bị mất tên. Trong Chat, ô chọn có nhãn “Dự án”, chiều rộng tự nhiên theo tên thay vì giữ420px; badge/mũi tên đi sát nội dung. Tên dài chỉ ellipsis khi chạm giới hạn chiều rộng hoặc màn hình nhỏ; title và danh sách chọn giữ đầy đủ tên. Không đổi tên dữ liệu/dự án hoặc tự chọn một tệp để đặt làm tên chung. Giữ một hàng công cụ, quyền phân loại và scope hiện hành.

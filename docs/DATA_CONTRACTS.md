@@ -2,6 +2,12 @@
 
 Định nghĩa thực thi nằm trong `backend/studio/contracts/`. OpenAPI tại `/openapi.json` và `/docs` mô tả request/response; endpoint này không cấp quyền đọc dữ liệu. Error envelope: `code`, `message_vi`, `details` đã redacted, `retryable`, `correlation_id`.
 
+## Trạng thái chuẩn hóa và phản hồi kết thúc — 04/11/2026
+
+`CHECK_DATASET_STATUS` là intent chỉ đọc metadata, không chuẩn hóa và không đọc số tiền. `read_processing_status` kiểm workspace/project, nguồn explicit hoặc ngữ cảnh, phiên bản cao nhất, bảng, ánh xạ đang dùng và revision chuẩn hóa hiện hành. DTO nội bộ `ProcessingStatus` giữ dataset/table/version/mapping/canonical refs và trạng thái `UPLOADED/PARSING/PARSE_FAILED/PARSED/MAPPING_REVIEW/MAPPED/READY/PARTIAL/FAILED/STALE`. Các trạng thái này chỉ thuộc DTO này; không thêm chúng vào enum Dataset hay Run. READY của nguồn không chứng minh contract readiness, coverage hoặc kết quả đối soát. Không phụ thuộc VerifiedRun. Hỏi mơ hồ trả clarification, không lấy hai nguồn đầu tiên khi có nhiều nguồn. Giới hạn ngữ cảnh được giữ; không dùng lịch sử văn bản để chứng minh trạng thái hiện hành.
+
+`MessageView` thêm `job_status` và `error_code` nullable, additive, đọc từ job cùng scope. Terminal failure của câu hỏi/Agent/reply công bố tối đa một assistant message với UUID ổn định và constraint `(job_id, role)`, cùng transaction với lỗi; chỉ dùng thông báo đã redacted. Không hồi sinh hội thoại đã xóa hoặc quyền đã thu hồi. Lỗi unknown delivery/rate limit không tự gửi lại; lỗi kỹ thuật giữ trạng thái lỗi, không giả success. Exhausted lease thông báo kết thúc và giải phóng pending reply đúng workflow. Lịch sử lỗi cũ chưa có assistant reply vẫn hiển thị lỗi từ job DTO, không sửa nội dung lịch sử gốc. Phản hồi mới đã lưu không bị lặp thành hai thông báo lỗi trên giao diện.
+
 ## Hội thoại: bổ sung thông tin và phê duyệt — 03/11/2026
 
 `ReviewRequest.kind` quyết định hành vi, không phân loại bằng CSS. `CLARIFICATION` nhận `options` optional (mặc định rỗng): mỗi lựa chọn do server tạo gồm id/label/typed intent của metric đã duyệt. Chọn qua decisions hoặc trả lời qua replies đều giữ owner/project/conversation/nonce/fingerprint/expiry, idempotency và pending-job guards. Lựa chọn có options phải khớp nguyên intent được cung cấp; không dùng một lựa chọn để đổi nguồn/filter tùy ý. Không gắn `user_confirmed=true` cho câu chat.

@@ -62,11 +62,54 @@ from studio.database import (
     WorkspaceRow,
     now,
 )
-from studio.errors import DomainError
+from studio.errors import DomainError, request_failure_message
 from studio.repository import get_scoped, project_for_table, reserve_gemini_request
 
 Fence = Callable[[Session, str, str], JobRow]
 Finish = Callable[[Session, JobRow, dict[str, Any]], None]
+
+
+def persist_request_failure(db: Session, job: JobRow) -> None:
+    """Publish one durable terminal reply in the same transaction as job failure.
+
+    The stable response ID and (job, role) constraint make recovery idempotent.
+    Deleted conversations and revoked membership never resurrect private history.
+    """
+    if job.kind not in {"agent", "agent_review", "assistant"}:
+        return
+    message = db.scalar(
+        select(MessageRow).where(MessageRow.job_id == job.id, MessageRow.role == "user")
+    )
+    if message is None or message.job_id != job.id:
+        return
+    conversation = db.get(ConversationRow, message.conversation_id, with_for_update=True)
+    if (
+        conversation is None
+        or conversation.deleted_at
+        or conversation.workspace_id != job.workspace_id
+        or conversation.project_id != job.project_id
+        or (job.payload.get("actor_id") and conversation.actor_id != job.payload["actor_id"])
+        or db.get(MembershipRow, (job.workspace_id, conversation.actor_id)) is None
+    ):
+        return
+    response_id = str(uuid5(NAMESPACE_URL, f"assistant-response:{job.id}"))
+    if (
+        db.scalar(
+            select(MessageRow.id).where(MessageRow.job_id == job.id, MessageRow.role == "assistant")
+        )
+        is None
+    ):
+        db.add(
+            MessageRow(
+                id=response_id,
+                conversation_id=conversation.id,
+                job_id=job.id,
+                role="assistant",
+                text=request_failure_message(job.error_code or ""),
+                context=message.context,
+                answer=None,
+            )
+        )
 
 
 def selection_fingerprint(catalogue: IntentCatalogue) -> str:
@@ -195,6 +238,13 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
         }:
             return
         context = AssistantContext.model_validate(row.context)
+        from studio.dataset_status import asks_processing_status
+
+        if asks_processing_status(row.goal):
+            state.intent = AgentIntent(intent="CHECK_DATASET_STATUS", dataset_ids=state.dataset_ids)
+            save(row, state)
+            db.commit()
+            return
         catalogue = agent_catalogue(db, actor, context, state.dataset_ids, workflow_id=row.id)
         expected_selection = selection_fingerprint(catalogue)
         ids = [d.id for d in catalogue.datasets]
