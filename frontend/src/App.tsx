@@ -1159,8 +1159,8 @@ export function App() {
           )}
           {success && <Notice tone="success">{success}</Notice>}
           {!ready && !bootstrapError && <Spinner />}
-          {ready && page !== "settings" && (
-            <div className={`project-bar ${page==="assistant"?"assistant-project-bar":""}`}>
+          {ready && !["settings","assistant"].includes(page) && (
+            <div className="project-bar">
               <ProjectSelector
                 project={project}
                 onSelect={chooseProject}
@@ -1299,6 +1299,14 @@ export function App() {
                 <Suspense fallback={<Spinner />}>
                   <AssistantStudio
                     key={JSON.stringify(assistantContext)}
+                    projectSelector={<ProjectSelector
+                      project={project}
+                      onSelect={chooseProject}
+                      disabled={busy}
+                      canClassify={actorRole === "owner"}
+                      onCreate={canEdit ? openNewProject : undefined}
+                      onClassificationChange={(value) => setProject((current) => current?.id === value.id ? value : current)}
+                    />}
                     initialContext={assistantContext || {project_id:projectId}}
                     projectName={project?.name || "Chưa chọn dự án · tải file để bắt đầu"}
                     draftOwner={draftOwner}

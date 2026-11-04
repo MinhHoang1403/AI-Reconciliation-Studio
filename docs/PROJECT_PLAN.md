@@ -12,6 +12,10 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Thu gọn công cụ để ưu tiên hội thoại — 04/11/2026
+
+Chủ dự án yêu cầu cất các lựa chọn dữ liệu đang chiếm chỗ đọc chat. Chọn dự án, tệp, ngữ cảnh và hội thoại mới nằm trên một thanh gọn; chính sách/chế độ, thiết lập thủ công và xóa hội thoại chỉ mở trong tùy chọn. Giảm chiều cao header/khoảng trống, mở rộng bề ngang đọc trên desktop; panel tùy chọn nổi và cuộn nội bộ, không đẩy hoặc thu hẹp transcript. Giữ accessible names, scope/run IDs, draft/approvals, nền trắng có viền và chữ16px vừa chốt. Không bỏ chức năng hoặc gọi AI để kiểm bố cục.
+
 ### Làm rõ bề mặt hội thoại — 04/11/2026
 
 Chỉ dẫn mới nhất của chủ dự án giữ **nền trắng**, không dùng nền xanh cho các ô chat hoặc composer. Để không hòa vào nền trang, tin nhắn người dùng/trợ lý và ô gửi câu hỏi có viền xám trung tính cùng bóng đổ nhẹ; giữ menu riêng, căn phải câu hỏi, focus bàn phím và responsive. Quyết định này thay thiết kế không viền/transparent của các mốc trước, không đổi màu dữ liệu/trạng thái, contracts hoặc gọi AI để thử CSS. Sau khi chốt màu trắng, chủ dự án yêu cầu tăng nhẹ cỡ chữ: nội dung hội thoại/composer16px, bảng và thao tác chính trong chat14px; giữ xuống dòng, cuộn bảng nội bộ, bố cục và quyền nghiệp vụ.

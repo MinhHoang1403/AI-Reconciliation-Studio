@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense, type RefObject } from "react";
-import { MessageSquarePlus, Send, Trash2, Paperclip, MoreHorizontal, Sparkles, X, LoaderCircle } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense, type RefObject, type ReactNode } from "react";
+import { MessageSquarePlus, Send, Trash2, Paperclip, MoreHorizontal, Sparkles, X, LoaderCircle, Files, SlidersHorizontal } from "lucide-react";
 import { AgentWorkflowPanel } from "./AgentWorkflowPanel";
 import type { Review } from "./agentTypes";
 import { api, ApiError } from "./api";
@@ -72,8 +72,9 @@ export function AssistantStudio({
   onUploadProject,
   agentEnabled = false,
   historyOpen, setHistoryOpen, historyReturnFocus, aiRequestsRemaining,
-  uploadLimits,
+  uploadLimits, projectSelector,
 }: {
+  projectSelector?: ReactNode;
   initialContext: AssistantContext;
   onNavigate: (target: Suggestion, context: AssistantContext) => void;
   cloudEnabled?: boolean;
@@ -90,6 +91,15 @@ export function AssistantStudio({
   setHistoryOpen: (open: boolean) => void;
   historyReturnFocus: RefObject<HTMLElement | null>;
 }) {
+  const toolbarOptions = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !toolbarOptions.current?.contains(event.target) && toolbarOptions.current)
+        toolbarOptions.current.open = false;
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, []);
   const [context, setContext] = useState(initialContext);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
@@ -621,28 +631,23 @@ export function AssistantStudio({
   }
   return (
     <section className={`assistant-studio ${messages.length?"has-conversation":"is-welcome"}`} aria-label="Hội thoại AI Assistant">
-      <div className="assistant-toolbar">
+      <div className="assistant-toolbar" aria-label="Công cụ hội thoại">
+        {projectSelector&&<div className="assistant-project-picker">{projectSelector}</div>}
         <div className="assistant-toolbar-actions">
-          {context.project_id&&<button className="text-button" onClick={()=>openDetail("OPEN_DATA",displayContext)}>Tệp đã tải</button>}
-          {context.project_id&&<button className="context-chip" data-run-id={displayContext.run_id||""} data-dataset-id={displayContext.dataset_id||""} aria-label="Đổi ngữ cảnh phân tích" title={displayContext.dataset_id&&sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:undefined} onClick={()=>setContextOpen(true)}>{displayContext.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:displayContext.dataset_id?(sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Nguồn đang xem"):"Dữ liệu dự án"}</button>}
+          {context.project_id&&<button className="icon-button" aria-label="Tệp đã tải" title="Tệp đã tải" onClick={()=>openDetail("OPEN_DATA",displayContext)}><Files size={18}/></button>}
+          {context.project_id&&<button className="icon-button context-chip" data-run-id={displayContext.run_id||""} data-dataset-id={displayContext.dataset_id||""} aria-label="Đổi ngữ cảnh phân tích" title={displayContext.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:displayContext.dataset_id?(sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Nguồn đang xem"):"Chọn dữ liệu phân tích"} onClick={()=>setContextOpen(true)}><SlidersHorizontal size={18}/><span className="visually-hidden">{displayContext.dataset_id&&sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Chọn dữ liệu phân tích"}</span></button>}
           {context.project_id&&<button className="icon-button" aria-label="Hội thoại mới" title="Hội thoại mới" disabled={busy||loading} onClick={()=>newConversation()}><MessageSquarePlus size={18}/></button>}
-          {conversation&&<details className="assistant-menu"><summary aria-label="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary><button className="text-button" disabled={busy||!!pendingJob} onClick={event=>{deleteTrigger.current=event.currentTarget;setConfirmDelete(true);}}><Trash2 size={15}/>Xóa hội thoại</button></details>}
-        <details className="assistant-policy">
-          <summary>
-            {(mode==="AGENT"?agentEnabled:cloudEnabled)
-              ? "AI theo chính sách dữ liệu"
-              : "Chế độ dữ kiện"}
-          </summary>
-          <p>
-            Dữ kiện lấy từ backend đã xác minh.{" "}
-            {(mode==="AGENT"?agentEnabled:cloudEnabled)
-              ? "Suy luận cloud cần policy và reservation riêng cho từng request."
-              : "Suy luận cloud của AI Assistant hiện chưa khả dụng theo chính sách hoặc hạn mức."}
-          </p>
-          {typeof aiRequestsRemaining==="number"&&<p>Bạn còn {aiRequestsRemaining} lượt hỗ trợ AI theo quyền hiện tại.</p>}
-          {context.project_id&&<button className="text-button" onClick={()=>onNavigate("OPEN_RECONCILIATION",displayContext)}>Thiết lập đối soát thủ công</button>}
-          <label>Xử lý yêu cầu<select aria-label="Chế độ hội thoại" value={mode} disabled={busy||!!pendingJob} onChange={e=>setMode(e.target.value as "AGENT"|"LEGACY")}><option value="AGENT">Thực hiện tác vụ dữ liệu</option><option value="LEGACY">Chỉ hỏi dữ kiện đã xác minh</option></select></label>
-        </details>
+          <details ref={toolbarOptions} className="assistant-policy assistant-menu" onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
+            <summary aria-label="Tùy chọn hội thoại" title="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary>
+            <div className="assistant-options">
+              <strong>Tùy chọn hội thoại</strong>
+              <p>{(mode==="AGENT"?agentEnabled:cloudEnabled)?"AI hỗ trợ theo quyền và chính sách dữ liệu của bạn.":"Chế độ dữ kiện đã xác minh đang được sử dụng; suy luận AI chưa khả dụng theo quyền hiện tại."}</p>
+              {typeof aiRequestsRemaining==="number"&&<p>Bạn còn {aiRequestsRemaining} lượt hỗ trợ AI theo quyền hiện tại.</p>}
+              <label>Xử lý yêu cầu<select aria-label="Chế độ hội thoại" value={mode} disabled={busy||!!pendingJob} onChange={e=>setMode(e.target.value as "AGENT"|"LEGACY")}><option value="AGENT">Thực hiện tác vụ dữ liệu</option><option value="LEGACY">Chỉ hỏi dữ kiện đã xác minh</option></select></label>
+              {context.project_id&&<button className="text-button" onClick={()=>onNavigate("OPEN_RECONCILIATION",displayContext)}>Thiết lập đối soát thủ công</button>}
+              {conversation&&<button className="text-button" disabled={busy||!!pendingJob} onClick={event=>{deleteTrigger.current=event.currentTarget;setConfirmDelete(true);}}><Trash2 size={15}/>Xóa hội thoại</button>}
+            </div>
+          </details>
         </div>
       </div>
       <div className="assistant-layout">
