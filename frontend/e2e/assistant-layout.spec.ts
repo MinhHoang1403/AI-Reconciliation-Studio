@@ -136,6 +136,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     block.result.rows[0].amount=null;
     block.result.rows[1].amount="0";
     let countMode=false;
+    let projectName="Dữ liệu mới";
     const aggregate={...block,result:{...block.result,query:{...block.result.query,aggregations:[{op:'count',field_id:null}]},fields:['count_rows_0'],field_labels:{count_rows_0:'Số dòng'},rows:[{count_rows_0:75}],total_count:1,truncated:false}};
     const short="Xem dữ liệu nguồn A";
     const multiline="Giữ nguyên mã 000701\nĐây là dòng thứ hai, có đủ dấu tiếng Việt.";
@@ -144,7 +145,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
       if(route.request().method()!=="GET")writes.push(path);
       if(path==='/api/session')return route.fulfill({json:{workspace_id:'synthetic',actor_id:'reader',role:'owner'}});
       if(path==='/api/settings')return route.fulfill({json:{policy:{mode:'LOCAL_ONLY',allow_external_ai:false},gemini_requests_remaining:null}});
-      if(path==='/api/projects/visual-project')return route.fulfill({json:{id:'visual-project',name:'Dữ liệu tổng hợp',business_scope:'synthetic',classification:'TEST'}});
+      if(path==='/api/projects/visual-project')return route.fulfill({json:{id:'visual-project',name:projectName,business_scope:'synthetic',classification:'TEST'}});
       if(path==='/api/conversations/visual-conversation')return route.fulfill({json:{conversation,has_more:false,items:[{id:'short',role:'user',text:short,context,created_at:conversation.created_at},{id:'long',role:'user',text:multiline,context,created_at:conversation.created_at},{id:'response',role:'assistant',workflow_id:'reading-workflow',context,created_at:conversation.created_at}]}});
       if(path==='/api/agent/workflows/reading-workflow')return route.fulfill({json:{id:'reading-workflow',conversation_id:conversation.id,context,state:'COMPLETED',updated_at:'reading',detail:{intent:{intent:'EXPLORE_DATA'},reviews:[],steps:[],blocks:[countMode?aggregate:block]}}});
       if(path.endsWith('/query-pages')){
@@ -159,6 +160,11 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
       return route.fulfill({json:{items:[],total:0,has_more:false}});
     });
     await page.goto('/');
+    const projectPicker=page.locator('#project-select');
+    await expect(projectPicker.getByText('Dự án',{exact:true})).toBeVisible();
+    await expect(projectPicker).toHaveAttribute('title',projectName);
+    const shortProjectWidth=(await projectPicker.boundingBox())!.width;
+    if(width>=1366)expect(shortProjectWidth).toBeLessThan(300);
     const toolbar=page.getByLabel('Công cụ hội thoại',{exact:true});
     expect((await toolbar.boundingBox())!.height).toBeLessThanOrEqual(44);
     const transcript=page.locator('.assistant-scroll');
@@ -234,6 +240,16 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     await expect(result).not.toContainText('1 nhóm kết quả');
     aggregate.result.rows[0].count_rows_0=0;await page.reload();
     await expect(result).toContainText('Kết quả đếm: 0 dòng dữ liệu');
+    projectName='UAT F Biên & bảo mật — Nguồn giao dịch khu vực miền Nam tháng 10 năm 2026';
+    await page.reload();await expect(projectPicker).toHaveAttribute('title',projectName);
+    await expect(projectPicker.locator('strong')).toHaveText(projectName);
+    const longProjectBox=(await projectPicker.boundingBox())!;
+    if(width>=1366)expect(longProjectBox.width).toBeGreaterThan(shortProjectWidth);
+    const controls=(await page.locator('.assistant-toolbar-actions').boundingBox())!;
+    expect(longProjectBox.x+longProjectBox.width).toBeLessThanOrEqual(controls.x);
+    expect(longProjectBox.height).toBeLessThanOrEqual(44);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+
 
   });
 }

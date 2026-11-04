@@ -19,7 +19,9 @@ export function ProjectSelector({
   canClassify = false,
   onClassificationChange,
   onCreate,
+  showLabel = false,
 }: {
+  showLabel?: boolean;
   project: Project | null;
   onSelect: (project: Project) => void;
   disabled?: boolean;
@@ -176,6 +178,7 @@ export function ProjectSelector({
         className="project-trigger"
         disabled={disabled}
         data-project-id={project?.id || ""}
+        title={project?.name || "Chọn dự án"}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`Dự án: ${project?.name || "Chọn dự án"}`}
@@ -186,10 +189,11 @@ export function ProjectSelector({
       >
         <FolderOpen size={17} />
         <span>
+          {showLabel&&<small className="project-picker-caption">Dự án</small>}
           <strong>{project?.name || "Chọn dự án"}</strong>
-          <small>
+          {!showLabel&&<small>
             {project?.business_scope || "Tìm theo tên hoặc phạm vi nghiệp vụ"}
-          </small>
+          </small>}
         </span>
         {project?.classification === "TEST" && (
           <span className="project-test-badge" title="Dự án dùng để thử nghiệm">Thử nghiệm</span>

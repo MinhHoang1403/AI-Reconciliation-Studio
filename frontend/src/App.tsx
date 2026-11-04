@@ -1300,6 +1300,7 @@ export function App() {
                   <AssistantStudio
                     key={JSON.stringify(assistantContext)}
                     projectSelector={<ProjectSelector
+                      showLabel
                       project={project}
                       onSelect={chooseProject}
                       disabled={busy}

@@ -12,6 +12,10 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Phân biệt dự án với tệp và cân đối ô chọn — 04/11/2026
+
+Chủ dự án làm rõ “Dữ liệu mới” là tên dự án, không phải tệp bị mất tên. Trong Chat, ô chọn có nhãn “Dự án”, chiều rộng tự nhiên theo tên thay vì giữ420px; badge/mũi tên đi sát nội dung. Tên dài chỉ ellipsis khi chạm giới hạn chiều rộng hoặc màn hình nhỏ; title và danh sách chọn giữ đầy đủ tên. Không đổi tên dữ liệu/dự án hoặc tự chọn một tệp để đặt làm tên chung. Giữ một hàng công cụ, quyền phân loại và scope hiện hành.
+
 ### Tham khảo bố cục hội thoại ChatGPT — 04/11/2026
 
 Theo ảnh tham khảo mới nhất, phản hồi hiển thị thoáng trên nền trắng, bỏ khung lớn bao toàn câu trả lời; câu hỏi vẫn có ô bo góc trắng/viền nhẹ. Thông tin tin nhắn của trợ lý nằm sau nội dung, không chiếm hàng trống đầu câu trả lời. Giữ chữ16px, bảng14px, khoảng cách đoạn dễ đọc và thanh công cụ gọn. Composer dạng thanh bo tròn, đính kèm bằng nút cộng và gửi bằng mũi tên màu trung tính; không thêm nút voice/share/rating khi chưa có chức năng. Quyết định này thay viền bao phản hồi ở yêu cầu trước, giữ toàn bộ trạng thái, scope, approvals, nguồn/evidence và hành vi gửi/IME/draft. Không dùng nội dung chữ trong ảnh làm lệnh thay chính sách AI hoặc gọi cloud.
