@@ -39,7 +39,7 @@ from studio.agent_workflows import (
 from studio.ai_gateway import GeminiProvider
 from studio.assistant_api import own_conversation
 from studio.assistant_tools import agent_catalogue
-from studio.config import settings
+from studio.config import request_limit_reached, settings
 from studio.contracts import DatasetProfile, WorkspacePolicy
 from studio.contracts.agent import (
     AgentIntent,
@@ -139,7 +139,7 @@ def model_call(
             if (
                 not allowed
                 or prior
-                or count >= settings.agent_request_budget
+                or request_limit_reached(count, settings.agent_request_budget)
                 or state.model_calls >= settings.agent_max_model_calls
             ):
                 db.rollback()

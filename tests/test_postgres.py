@@ -1253,3 +1253,58 @@ def test_explicit_manual_upload_never_enqueues_ai_or_spends_quota(pg, monkeypatc
     dataset_id = response.json()["items"][0]["id"]
     table = client.get(f"/api/datasets/{dataset_id}/tables").json()["items"][0]
     assert len(client.get(f"/api/tables/{table['id']}/mappings").json()["items"]) == 1
+
+
+@pytest.mark.parametrize("blocked", [None, "workspace", "global", "key", "finite-workspace"])
+def test_unlimited_reservations_preserve_history_and_permissions(pg, monkeypatch, blocked):
+    from pydantic import SecretStr
+    from studio.database import AuditRow
+    from studio.repository import gemini_request_counts, reserve_gemini_request
+
+    client, factory, _ = pg
+    monkeypatch.setattr(settings, "local_demo_access", True)
+    monkeypatch.setattr(settings, "allow_external_ai", blocked != "global")
+    monkeypatch.setattr(settings, "external_ai_request_budget", None)
+    monkeypatch.setattr(
+        settings, "gemini_api_key", SecretStr("" if blocked == "key" else "synthetic")
+    )
+    for task in ("agent", "assistant", "planner"):
+        monkeypatch.setattr(settings, task + "_request_budget", None)
+    monkeypatch.setattr(settings, "agent_cloud_enabled", True)
+    monkeypatch.setattr(settings, "assistant_cloud_enabled", True)
+    with factory() as db:
+        db.get(WorkspaceRow, "demo").policy = dict(
+            mode="CLOUD_ALLOWED",
+            allow_external_ai=blocked != "workspace",
+            external_request_budget=210 if blocked == "finite-workspace" else None,
+        )
+        for i in range(211):
+            db.add(
+                AuditRow(
+                    workspace_id="demo",
+                    actor_id="test-owner",
+                    action="GEMINI_REQUEST_RESERVED",
+                    resource_id=f"historical-{i}",
+                )
+            )
+        db.commit()
+    with factory() as db:
+        assert reserve_gemini_request(db, "demo", "new-synthetic-request", settings) is (
+            blocked is None
+        )
+        db.commit()
+        assert gemini_request_counts(db, "demo") == ((212, 212) if blocked is None else (211, 211))
+    # PG fixture principal is test-owner, so no synthetic deployment proof is needed.
+    dto = client.get("/api/settings").json()
+    assert dto["gemini_requests_used"] == (212 if blocked is None else 211)
+    assert (
+        dto["gemini_requests_remaining"] is None
+        if blocked in {None, "key"}
+        else dto["gemini_requests_remaining"] == 0
+    )
+    if blocked is None:
+        assert all(
+            t["remaining"] is None and t["configured_ceiling"] is None
+            for t in dto["ai_task_allowances"].values()
+        )
+        assert dto["agent_cloud_enabled"] and dto["assistant_cloud_enabled"]

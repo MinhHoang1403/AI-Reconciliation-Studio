@@ -16,6 +16,13 @@ import {
 import type { ReactNode, RefObject } from "react";
 import { statusText, type Dataset } from "./types";
 
+/** Chỉ định dạng chuỗi Decimal để đọc; không qua float hoặc tính lại tiền. */
+export function formatDecimal(value: string): string {
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
+  if (!match) return value;
+  return `${match[1]}${match[2].replace(/\B(?=(\d{3})+(?!\d))/g, ".")}${match[3] ? `,${match[3]}` : ""}`;
+}
+
 export function Badge({ status }: { status: string }) {
   return (
     <span className={`badge badge-${status.toLowerCase()}`}>

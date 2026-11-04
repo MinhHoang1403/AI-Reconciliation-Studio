@@ -80,7 +80,7 @@ def validate_answer(content: str, facts: AnswerFactSet) -> list[AnswerLine]:
                     fact_id=fact.id,
                     reference_ids=fact.reference_ids,
                     text=(
-                        "Kết quả xác nhận có chênh lệch theo rule đã duyệt; "
+                        "Kết quả xác nhận có chênh lệch theo quy tắc đã duyệt; "
                         "chưa chứng minh nguyên nhân hoặc khoản phí."
                     ),
                 )
@@ -223,12 +223,15 @@ def workflow_proposal(
         questions.append("Chưa xác nhận năm; không tự suy ra kỳ theo ngày hệ thống.")
     if status.ready_canonical_count < required:
         questions.append(
-            f"Chưa đủ {required} nguồn canonical READY; hoàn tất mapping/chuẩn hóa trước."
+            f"Cần {required} nguồn dữ liệu đã chuẩn hóa; "
+            "hãy kiểm tra và chuẩn hóa các nguồn còn thiếu."
         )
     if status.mapping_review_count:
         questions.append("Còn ánh xạ cần người dùng xác nhận.")
     if not status.approved_rule_ids:
-        questions.append("Chưa có rule được duyệt phù hợp; cần tạo và review kế hoạch.")
+        questions.append(
+            "Chưa có quy tắc đối soát phù hợp đã được duyệt; cần đề xuất quy tắc để bạn kiểm tra."
+        )
     return AssistantAnswer(
         status="REVIEW_REQUIRED",
         mode="DETERMINISTIC",
@@ -276,8 +279,8 @@ def answer_question(
                 AnswerLine(
                     classification="INSUFFICIENT_EVIDENCE",
                     text=(
-                        "Chưa có fact phù hợp hoặc tác vụ suy luận cloud chưa được cấp phép. "
-                        "Không gửi request provider."
+                        "Chưa có thông tin phù hợp hoặc chưa được phép dùng AI bên ngoài. "
+                        "Bạn có thể xem dữ liệu và kiểm tra các kết quả đã lưu."
                     ),
                 )
             ],

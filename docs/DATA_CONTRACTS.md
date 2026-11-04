@@ -183,3 +183,11 @@ Một child job SUCCEEDED không đủ kết luận toàn workflow COMPLETED. H�
 - EXCEPTION_FIELDS dùng chung giữa catalogue và native query: case_id/group_id/type/state/notes. Catalogue nguồn có kind/schema/readiness/project scope/current run; tệp trùng tên cần context/ID.
 
 Không migration mới trong nhiệm vụ này. API query, MetricSnapshot, Decimal/null/provenance, mappings/reviews/permissions và dataset/run revisions giữ nguyên.
+
+## Trần request AI local và trình bày kết quả — 04/11/2026
+
+`WorkspacePolicy.external_request_budget` nhận integer không âm hoặc `null`; null bỏ trần tích lũy, không bật cloud. Global/task config tương ứng nhận null qua `unlimited` chỉ trong local demo explicit. Settings DTO `gemini_requests_remaining`, `ai_task_allowances.*.remaining/configured_ceiling` nullable: remaining là min các trần hữu hạn còn hiệu lực; tất cả unlimited thì null, permissionOFF thì0. Ledger/reservations cũ giữ nguyên. Parser request/credit/SHA và workflow caps không đổi. Không có schema migration vì policy là JSONB; cập nhật policy local phải audit quyền mới, không dùng null cho workspace chưa được cấp quyền.
+
+Query/MetricSnapshot/Decimal/provenance không đổi: Chat xem trước10dòng của trang, chế độ chi tiết dùng chính query/page hiện có. Mở rộng không gửi inference hoặc query mới; pagination/sort vẫn qua API được kiểm scope, lưu selection và kiểm ordinal đúng trang. NULL hiển thị dấu gạch, không thành0; IDs và tên cột không dịch bằng replace-all. Định dạng tiền trong tóm tắt chỉ thao tác chuỗi Decimal, không float/tính lại. Dữ liệu gốc đã đọc không được gọi đã chuẩn hóa; PARTIAL luôn nói rõ dữ liệu chưa đầy đủ.
+
+Rollback về image trước khi hỗ trợ null cần khôi phục **cấu hình hạn mức hữu hạn và policy tương thích từ backup/audit**, giữ mọi reservations phát sinh; không chạy image cũ trực tiếp với `unlimited`/null hoặc reset ledger. Raw/canonical/runs/exports không cần chuyển đổi.

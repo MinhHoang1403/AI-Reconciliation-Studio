@@ -12,6 +12,10 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Hoàn thiện sản phẩm và AI local không giới hạn số lượt nội bộ — 04/11/2026
+
+Chủ dự án giao hoàn thiện ngôn ngữ/trải nghiệm Chat, kiểm toán nghiệp vụ, kiểm thử live có mục đích, README và release sạch. Chỉ dẫn bổ sung thay toàn bộ trần Gemini/Knowledge/task và yêu cầu giữ5lượt trước đây: môi trường local được cấp quyền dùng `null`/`unlimited` cho trần request nội bộ, không dùng số cực lớn và không reset203reservations lịch sử. Giữ permission/cloud policy, key/provider mặc định, provider quota/rate limits, ledger/tokens/latency, idempotency, unknown-delivery, timeout và giới hạn an toàn của từng workflow/payload. LlamaParse vẫn theo allowance/credits/SHA đã duyệt; không mở parser mới. Không cấp cloud cho workspace chưa được phép. Các yêu cầu Composer nền trung tính ở mốc trước được thay bằng **nền trắng**, tin nhắn căn phải nền trắng/menu riêng không làm hẹp text; bảng có preview10dòng và chi tiết cùng query. Số liệu/lineage vẫn từ Backend; không đổi công thức, verifier hoặc tự phê duyệt. READY_FOR_FINAL_USER_TEST chỉ sau language/business/regression/data/repository/Docker gates thật.
+
 ### Cài đặt dành cho người sử dụng — 04/11/2026
 
 Chủ dự án yêu cầu bỏ hẳn **Thông tin nâng cao** trong Cài đặt, kể cả đối với owner. Thay yêu cầu mở thông tin vận hành dành cho chủ không gian ở bổ sung02/11: trang chỉ trình bày tài khoản/quyền sử dụng, chia sẻ dữ liệu và hỗ trợ AI bằng ngôn ngữ người dùng, cùng giới hạn tệp trong hội thoại. Không hiển thị provider/model, cấu hình/kết nối kiểm thử, ledger/quota nội bộ hoặc phân bổ từng tác vụ. Khả dụng vẫn lấy từ DTO và các gates hiện có, không đổi policy, quota, API hay quyền Backend. Không thêm controls cấu hình chưa được triển khai. Nghiệm thu responsive/keyboard và đồng bộ đúng image đã kiểm thử, giữ dữ liệu và rollback khi dọn Docker.

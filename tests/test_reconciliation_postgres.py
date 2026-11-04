@@ -671,3 +671,80 @@ def test_source_evidence_real_columns_multisheet_prefix_and_viewer(pg):  # noqa:
         ).status_code
         == 403
     )
+
+
+def test_planner_unlimited_reserves_beyond_historical_ceiling(pg, monkeypatch):  # noqa: F811
+    from pydantic import SecretStr
+    from sqlalchemy import func
+    from studio import reconciliation_jobs
+    from studio.config import settings
+    from studio.database import AuditRow, TraceRow, WorkspaceRow
+    from studio.errors import DomainError
+
+    client, factory, worker = pg
+    pid, plan = prepare_pair(pg)
+    monkeypatch.setattr(settings, "allow_external_ai", True)
+    monkeypatch.setattr(settings, "external_ai_request_budget", None)
+    monkeypatch.setattr(settings, "planner_request_budget", None)
+    monkeypatch.setattr(settings, "gemini_api_key", SecretStr("synthetic"))
+    with factory() as db:
+        row = db.get(WorkspaceRow, "demo")
+        row.policy = dict(
+            row.policy, mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=None
+        )
+        for i in range(31):
+            db.add(
+                AuditRow(
+                    workspace_id="demo",
+                    actor_id="test-owner",
+                    action="RECONCILIATION_PLANNER_ATTEMPT",
+                    resource_id=f"historical-{i}",
+                )
+            )
+        db.commit()
+    attempts = []
+
+    def propose(provider, catalogue, draft, policy, reserve, *args):
+        attempts.append(reserve())
+        raise DomainError("GEMINI_UNAVAILABLE", "Synthetic provider unavailable after reservation")
+
+    monkeypatch.setattr(reconciliation_jobs, "propose_plan", propose)
+    response = client.post(
+        "/api/reconciliation-plans/ai",
+        json={
+            "project_id": pid,
+            "request": {
+                "left": {"canonical_id": plan.left.canonical_id},
+                "right": {"canonical_id": plan.right.canonical_id},
+            },
+        },
+        headers={"Idempotency-Key": "unlimited-planner"},
+    )
+    assert response.status_code == 202
+    assert (
+        client.post(
+            "/api/reconciliation-plans/ai",
+            json={
+                "project_id": pid,
+                "request": {
+                    "left": {"canonical_id": plan.left.canonical_id},
+                    "right": {"canonical_id": plan.right.canonical_id},
+                },
+            },
+            headers={"Idempotency-Key": "unlimited-planner"},
+        ).json()
+        == response.json()
+    )
+    drain(factory, worker)
+    assert attempts == [True]
+    with factory() as db:
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(AuditRow)
+                .where(AuditRow.action == "RECONCILIATION_PLANNER_ATTEMPT")
+            )
+            == 32
+        )
+        trace = db.scalar(select(TraceRow).where(TraceRow.job_id == response.json()["job_id"]))
+        assert trace.outcome == "GEMINI_UNAVAILABLE"

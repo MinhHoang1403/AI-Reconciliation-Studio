@@ -84,7 +84,7 @@ export function AssistantStudio({
   onContextChange: (context: AssistantContext) => void;
   onUploadProject: (id: string) => Promise<void>;
   agentEnabled?: boolean;
-  aiRequestsRemaining?: number;
+  aiRequestsRemaining?: number | null;
   uploadLimits?: { maxBytes: number; maxFiles: number; extensions: string[] };
   historyOpen: boolean;
   setHistoryOpen: (open: boolean) => void;
@@ -639,7 +639,7 @@ export function AssistantStudio({
               ? "Suy luận cloud cần policy và reservation riêng cho từng request."
               : "Suy luận cloud của AI Assistant hiện chưa khả dụng theo chính sách hoặc hạn mức."}
           </p>
-          {typeof aiRequestsRemaining==="number"&&<p>Gemini còn {aiRequestsRemaining} lượt theo chính sách hiện tại.</p>}
+          {typeof aiRequestsRemaining==="number"&&<p>Bạn còn {aiRequestsRemaining} lượt hỗ trợ AI theo quyền hiện tại.</p>}
           {context.project_id&&<button className="text-button" onClick={()=>onNavigate("OPEN_RECONCILIATION",displayContext)}>Thiết lập đối soát thủ công</button>}
           <label>Xử lý yêu cầu<select aria-label="Chế độ hội thoại" value={mode} disabled={busy||!!pendingJob} onChange={e=>setMode(e.target.value as "AGENT"|"LEGACY")}><option value="AGENT">Thực hiện tác vụ dữ liệu</option><option value="LEGACY">Chỉ hỏi dữ kiện đã xác minh</option></select></label>
         </details>

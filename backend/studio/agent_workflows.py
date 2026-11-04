@@ -789,8 +789,11 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                     row.id,
                 )
                 assert isinstance(result, QueryResult)
+                count = f"{table.row_count:,}".replace(",", ".")
                 state.blocks.append(
-                    ProgressBlock(text=f"{dataset.name} · {table.sheet}: {table.row_count} dòng.")
+                    ProgressBlock(
+                        text=f"Tôi đã đọc {count} dòng từ {dataset.name} · {table.sheet}."
+                    )
                 )
                 state.blocks.append(TableBlock(result=result))
                 tools_used += 1

@@ -74,7 +74,7 @@ def test_qwen_timeout_bounded(config, profile, schema):
     with httpx.Client(transport=httpx.MockTransport(transport)) as client:
         with pytest.raises(DomainError, match="QWEN_UNAVAILABLE"):
             QwenProvider(config, client).propose(profile, schema)
-    assert len(calls) == 2
+    assert len(calls) == 1  # Read timeout: delivery is unknown, so never resend blindly.
 
 
 @pytest.mark.parametrize(
@@ -437,3 +437,93 @@ def test_gemini_schema_error_keeps_only_safe_status_not_provider_message(config)
     assert provider.usage["provider_error_status"] == "INVALID_ARGUMENT"
     assert provider.usage["schema_complexity_rejected"] is True
     assert "Synthetic-private-marker" not in json.dumps(provider.usage)
+
+
+@pytest.mark.parametrize("value", [None, "unlimited", "UNLIMITED"])
+def test_explicit_unlimited_configuration_is_local_only(value):
+    from pydantic import ValidationError
+    from studio.config import Settings, remaining_requests, request_limit_reached
+
+    config = Settings(
+        _env_file=None,
+        local_demo_access=True,
+        external_ai_request_budget=value,
+        agent_request_budget=value,
+        planner_request_budget=value,
+        assistant_request_budget=value,
+    )
+    assert config.external_ai_request_budget is None
+    assert config.agent_request_budget is None
+    assert not request_limit_reached(211, None)
+    assert request_limit_reached(211, 210)
+    assert remaining_requests((None, 211), (None, 184)) is None
+    assert remaining_requests((None, 211), (2, 1)) == 1
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, local_demo_access=False, external_ai_request_budget=value)
+
+
+@pytest.mark.parametrize("error", [None, 403, 429, "timeout", "cloud-off", "missing-key"])
+def test_unlimited_keeps_provider_permissions_receipts_and_bounded_delivery(config, error):
+    from pydantic import SecretStr
+    from studio.ai_gateway import GeminiProvider
+
+    config.local_demo_access = True
+    config.allow_external_ai = error != "cloud-off"
+    config.external_ai_request_budget = None
+    config.gemini_api_key = SecretStr("" if error == "missing-key" else "synthetic-key")
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=None
+    )
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        if error == "timeout":
+            raise httpx.ReadTimeout("synthetic unknown delivery", request=request)
+        if isinstance(error, int):
+            return httpx.Response(
+                error,
+                json={
+                    "error": {
+                        "status": "PERMISSION_DENIED" if error == 403 else "RESOURCE_EXHAUSTED"
+                    }
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [{"content": {"parts": [{"text": "{}"}]}}],
+                "usageMetadata": {
+                    "promptTokenCount": 9,
+                    "candidatesTokenCount": 3,
+                    "totalTokenCount": 12,
+                },
+            },
+        )
+
+    provider = GeminiProvider(config, httpx.Client(transport=httpx.MockTransport(transport)))
+    try:
+        if error is None:
+            assert (
+                provider.request_typed(
+                    [{"content": "test"}, {"content": "synthetic"}],
+                    policy,
+                    lambda: True,
+                    json.loads,
+                    max_attempts=2,
+                )
+                == {}
+            )
+            assert provider.usage["tokens"]["totalTokenCount"] == 12
+        else:
+            with pytest.raises(DomainError):
+                provider.request_typed(
+                    [{"content": "test"}, {"content": "synthetic"}],
+                    policy,
+                    lambda: True,
+                    json.loads,
+                    max_attempts=2,
+                )
+        assert len(calls) == (0 if error in {"cloud-off", "missing-key"} else 1)
+    finally:
+        provider.close()

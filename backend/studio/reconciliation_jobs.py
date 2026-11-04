@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from studio.access import Actor
 from studio.ai_gateway import GeminiProvider
-from studio.config import settings
+from studio.config import request_limit_reached, settings
 from studio.contracts import WorkspacePolicy
 from studio.contracts.reconciliation import (
     ExceptionCase,
@@ -218,7 +218,7 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
                 )
                 or 0
             )
-            if count >= settings.planner_request_budget:
+            if request_limit_reached(count, settings.planner_request_budget):
                 return False
             allowed = reserve_gemini_request(db, workspace_id, job_id, settings)
             if allowed:

@@ -13,7 +13,7 @@ from studio.ai_gateway import route_ai_task
 from studio.assistant import PROMPT_REVISION, answer_question, plain_question, workflow_proposal
 from studio.assistant_api import own_conversation
 from studio.assistant_tools import build_fact_set, read_tool
-from studio.config import settings
+from studio.config import request_limit_reached, settings
 from studio.contracts import WorkspacePolicy
 from studio.contracts.assistant import AssistantAnswer, AssistantContext, ToolRequest
 from studio.database import AuditRow, JobRow, MembershipRow, MessageRow, TraceRow, WorkspaceRow
@@ -122,7 +122,7 @@ def execute_assistant(
                     AuditRow.action == "ASSISTANT_REQUEST_RESERVED", AuditRow.resource_id == job_id
                 )
             )
-            if count >= settings.assistant_request_budget or previous:
+            if request_limit_reached(count, settings.assistant_request_budget) or previous:
                 db.rollback()
                 return False
             db.add(
@@ -160,7 +160,8 @@ def execute_assistant(
                     provider="GEMINI" if reserved else "NONE",
                     task_id="answer_verified_question",
                     prompt_revision=PROMPT_REVISION,
-                    usage=dict(reserved_attempts=int(reserved), tokens=None, cost_estimate=None),
+                    usage=dict(reserved_attempts=int(reserved), tokens=None, cost_estimate=None)
+                    | (exc.provider_usage or {}),
                     latency_ms=int((time.monotonic() - started) * 1000),
                     outcome=exc.code,
                 )

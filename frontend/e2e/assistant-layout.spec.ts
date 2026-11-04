@@ -119,3 +119,71 @@ for(const width of [390,768,1366,1440,1920]){
     expect(errors).toEqual([]);
   });
 }
+
+
+for (const width of [390, 768, 1366, 1440, 1920]) {
+  test(`[MOCK CONTRACT] product reading: white chat, exact preview and full page preserve source at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width,height:900});
+    const writes:string[]=[];
+    let selectedOffset=0;
+    await page.addInitScript(()=>{
+      localStorage.setItem("studio.project","visual-project");
+      localStorage.setItem("studio.conversation.visual-project","visual-conversation");
+    });
+    const block=table();block.result.query.source_kind="RAW_PREVIEW";
+    block.result.verification_status="UNVERIFIED";
+    block.result.rows[0].transaction_id="000701";
+    block.result.rows[0].amount=null;
+    block.result.rows[1].amount="0";
+    const short="Xem dữ liệu nguồn A";
+    const multiline="Giữ nguyên mã 000701\nĐây là dòng thứ hai, có đủ dấu tiếng Việt.";
+    await page.route('**/api/**', async route=>{
+      const path=new URL(route.request().url()).pathname;
+      if(route.request().method()!=="GET")writes.push(path);
+      if(path==='/api/session')return route.fulfill({json:{workspace_id:'synthetic',actor_id:'reader',role:'owner'}});
+      if(path==='/api/settings')return route.fulfill({json:{policy:{mode:'LOCAL_ONLY',allow_external_ai:false},gemini_requests_remaining:null}});
+      if(path==='/api/projects/visual-project')return route.fulfill({json:{id:'visual-project',name:'Dữ liệu tổng hợp',business_scope:'synthetic',classification:'TEST'}});
+      if(path==='/api/conversations/visual-conversation')return route.fulfill({json:{conversation,has_more:false,items:[{id:'short',role:'user',text:short,context,created_at:conversation.created_at},{id:'long',role:'user',text:multiline,context,created_at:conversation.created_at},{id:'response',role:'assistant',workflow_id:'reading-workflow',context,created_at:conversation.created_at}]}});
+      if(path==='/api/agent/workflows/reading-workflow')return route.fulfill({json:{id:'reading-workflow',conversation_id:conversation.id,context,state:'COMPLETED',updated_at:'reading',detail:{intent:{intent:'EXPLORE_DATA'},reviews:[],steps:[],blocks:[block]}}});
+      if(path.endsWith('/query-pages')){
+        const q=route.request().postDataJSON();selectedOffset=q.offset;
+        return route.fulfill({json:{...block.result,query:q,offset:q.offset,rows:block.result.rows.map((r,i)=>({...r,transaction_id:`000${726+i}`,source_provenance:[{source_table_id:'visual-table',row:q.offset+i+2,sheet:'Sheet1'}]}))}});
+      }
+      if(path==='/api/agent/source-rows'){
+        const body=route.request().postDataJSON();expect(body.row).toBe(selectedOffset+2);
+        return route.fulfill({json:{rows:[{reference:'000726',amount:'0'}]}});
+      }
+      if(route.request().method()!=='GET')throw Error('Unexpected product write '+path);
+      return route.fulfill({json:{items:[],total:0,has_more:false}});
+    });
+    await page.goto('/');
+    const user=page.getByRole('article',{name:'Tin nhắn của bạn'}).first();
+    await expect(user).toContainText(short);
+    const typography=await user.locator('p').evaluate(el=>{const s=getComputedStyle(el);return{height:el.getBoundingClientRect().height,line:parseFloat(s.lineHeight),text:el.textContent};});
+    if(width>=768)expect(typography.height).toBeLessThanOrEqual(typography.line+1);
+    await expect(page.getByRole('article',{name:'Tin nhắn của bạn'}).nth(1).locator('p')).toHaveText(multiline);
+    expect(await user.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)');
+    const composer=page.locator('.assistant-composer');expect(await composer.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)');
+    expect(await user.locator('.message-metadata').evaluate(el=>getComputedStyle(el).float)).toBe('none');
+    await expect(page.locator('.agent-workflow-state')).toHaveText('Đã đọc dữ liệu; chưa chuẩn hóa');
+    const result=page.getByRole('region',{name:'Kết quả truy vấn',exact:true});
+    await expect(result).toContainText('75 dòng dữ liệu');await expect(result).toContainText('Đang xem 10 dòng');
+    await expect(result).toContainText('Ý nghĩa các cột chưa được xác nhận');
+    await expect(result.locator('tbody tr')).toHaveCount(10);
+    await expect(result.locator('tbody tr').first()).toContainText('000701');
+    await expect(result.locator('tbody tr').first()).toContainText('—');
+    await expect(result.locator('tbody tr').nth(1)).toContainText('0');
+    await result.getByRole('button',{name:'Xem đầy đủ dữ liệu',exact:true}).click();
+    const modal=page.getByRole('dialog',{name:'Dữ liệu chi tiết',exact:true});
+    await expect(modal.locator('tbody tr')).toHaveCount(25);expect(writes).toEqual([]);
+    await modal.getByRole('button',{name:'Tiếp',exact:true}).click();await expect(modal).toContainText('Trang 2');
+    await modal.getByRole('button',{name:'Xem dòng gốc',exact:true}).first().click();
+    const source=page.getByRole('dialog',{name:'Dòng dữ liệu nguồn',exact:true});await expect(source).toContainText('000726');
+    await page.keyboard.press('Escape');await expect(modal).toContainText('Trang 2');
+    await page.keyboard.press('Escape');await expect(result).toContainText('Trang 2');
+    expect(writes).toEqual(['/api/agent/workflows/reading-workflow/query-pages','/api/agent/source-rows']);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await mkdir(`../runtime/product-polish/candidate/${width}`,{recursive:true});
+    await page.screenshot({path:`../runtime/product-polish/candidate/${width}/reading.png`,fullPage:true});
+  });
+}

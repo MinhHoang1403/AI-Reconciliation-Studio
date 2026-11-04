@@ -249,7 +249,7 @@ def main() -> None:
         help="Score known HTTP200/STOP typed candidates per case; keep original failed jobs",
     )
     args = parser.parse_args()
-    assert args.execute_live and settings.agent_cloud_enabled and settings.agent_request_budget > 0
+    assert args.execute_live and settings.agent_cloud_enabled and settings.agent_request_budget != 0
     gold = json.loads(args.gold.read_text(encoding="utf-8"))
     contexts = json.loads(args.contexts.read_text(encoding="utf-8"))
     expected_count, expected_negative = (80, 20) if args.suite == "gold" else (24, 8)

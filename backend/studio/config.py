@@ -3,10 +3,21 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AGENT_UPLOAD_EXTENSIONS = (".csv", ".xlsx")
+
+
+def request_limit_reached(used: int, ceiling: int | None) -> bool:
+    """None bỏ trần số lượt nội bộ; không cấp quyền cloud hoặc thay quota provider."""
+    return ceiling is not None and used >= ceiling
+
+
+def remaining_requests(*limits: tuple[int | None, int]) -> int | None:
+    """Lấy giới hạn còn hiệu lực; null chỉ khi mọi trần đều được bỏ rõ ràng."""
+    finite = [max(0, ceiling - used) for ceiling, used in limits if ceiling is not None]
+    return min(finite) if finite else None
 
 
 class Settings(BaseSettings):
@@ -33,12 +44,12 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.5-flash-lite"
     allow_external_ai: bool = False
-    external_ai_request_budget: int = Field(default=0, ge=0)
+    external_ai_request_budget: int | None = Field(default=0, ge=0)
     assistant_cloud_enabled: bool = False
-    assistant_request_budget: int = Field(default=0, ge=0)
-    planner_request_budget: int = Field(default=2, ge=0, le=50)
+    assistant_request_budget: int | None = Field(default=0, ge=0)
+    planner_request_budget: int | None = Field(default=2, ge=0, le=50)
     agent_cloud_enabled: bool = False
-    agent_request_budget: int = Field(default=0, ge=0)
+    agent_request_budget: int | None = Field(default=0, ge=0)
     agent_max_steps: int = Field(default=12, ge=1, le=12)
     agent_max_model_calls: int = Field(default=6, ge=0, le=8)
     agent_max_tool_calls: int = Field(default=5, ge=1, le=5)
@@ -49,6 +60,31 @@ class Settings(BaseSettings):
     cloud_parser_credit_budget: int = Field(default=0, ge=0, le=20)
     worker_lease_seconds: int = Field(default=300, ge=120)
     worker_poll_seconds: float = 1
+
+    @field_validator(
+        "external_ai_request_budget",
+        "assistant_request_budget",
+        "planner_request_budget",
+        "agent_request_budget",
+        mode="before",
+    )
+    @classmethod
+    def parse_request_ceiling(cls, value: object) -> object:
+        return None if isinstance(value, str) and value.strip().lower() == "unlimited" else value
+
+    @model_validator(mode="after")
+    def unlimited_is_local_only(self) -> "Settings":
+        if not self.local_demo_access and any(
+            value is None
+            for value in (
+                self.external_ai_request_budget,
+                self.assistant_request_budget,
+                self.planner_request_budget,
+                self.agent_request_budget,
+            )
+        ):
+            raise ValueError("Unlimited AI request ceilings require explicit local demo mode")
+        return self
 
     @property
     def agent_max_upload_files(self) -> int:

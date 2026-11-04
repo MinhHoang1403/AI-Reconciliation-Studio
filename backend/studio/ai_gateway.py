@@ -13,7 +13,7 @@ from typing import Any, Literal
 import httpx
 from pydantic import ValidationError
 
-from studio.config import Settings
+from studio.config import Settings, request_limit_reached
 from studio.contracts import (
     DatasetProfile,
     MappingDecision,
@@ -48,7 +48,7 @@ def route_ai_task(
         request_gemini
         and policy.mode == "CLOUD_ALLOWED"
         and policy.allow_external_ai
-        and policy.external_request_budget > 0
+        and not request_limit_reached(0, policy.external_request_budget)
     ):
         return "GEMINI"
     return "REVIEW"
@@ -161,6 +161,7 @@ class QwenProvider:
             )
         messages = build_prompt(profile, schema, task_id)
         for attempt in range(2):
+            response_received = False
             self.usage["ai_calls"] += 1
             try:
                 response = self.client.post(
@@ -178,8 +179,12 @@ class QwenProvider:
                         "Qwen từ chối truy cập; kiểm tra allowlist của endpoint.",
                         503,
                     )
+                response_received = True
                 self.usage["http_status"] = response.status_code
-                if response.status_code in {429, 500, 502, 503, 504}:
+                if response.status_code == 429:
+                    self.usage["provider_error_status"] = "RESOURCE_EXHAUSTED"
+                    raise DomainError("QWEN_RATE_LIMITED", "Dịch vụ AI đang giới hạn yêu cầu.", 503)
+                if response.status_code in {500, 502, 503, 504}:
                     raise httpx.TransportError("transient")
                 if not response.is_success:
                     raise DomainError(
@@ -197,7 +202,11 @@ class QwenProvider:
                     ) from exc
                 return validate_ai_output(content, profile, schema)
             except httpx.TransportError as exc:
-                if attempt == 1:
+                self.usage["transport_error"] = type(exc).__name__
+                self.usage["delivery_unknown"] = not response_received and not isinstance(
+                    exc, httpx.ConnectError | httpx.ConnectTimeout
+                )
+                if self.usage["delivery_unknown"] or attempt == 1:
                     raise DomainError(
                         "QWEN_UNAVAILABLE", "Qwen chưa phản hồi; hãy dùng ánh xạ thủ công.", 503
                     ) from exc
@@ -252,9 +261,10 @@ class GeminiProvider:
             raise DomainError("CLOUD_AI_DISABLED", "AI cloud chưa được cấp phép.")
         if not self.config.gemini_api_key.get_secret_value():
             raise DomainError("GEMINI_KEY_MISSING", "Chưa cấu hình khóa Gemini.")
-        if self.config.external_ai_request_budget <= 0:
+        if request_limit_reached(0, self.config.external_ai_request_budget):
             raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Ngân sách AI cloud toàn hệ thống bằng 0.")
         for attempt in range(max_attempts):
+            response_received = False
             if not reserve_request():
                 raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Đã hết ngân sách request AI cloud.")
             self.usage["ai_calls"] += 1
@@ -275,8 +285,14 @@ class GeminiProvider:
                     },
                     timeout=self.config.ai_timeout_seconds,
                 )
+                response_received = True
                 self.usage["http_status"] = response.status_code
-                if response.status_code in {429, 500, 502, 503, 504}:
+                if response.status_code == 429:
+                    self.usage["provider_error_status"] = "RESOURCE_EXHAUSTED"
+                    raise DomainError(
+                        "GEMINI_RATE_LIMITED", "Dịch vụ AI đang giới hạn yêu cầu.", 503
+                    )
+                if response.status_code in {500, 502, 503, 504}:
                     raise httpx.TransportError("transient")
                 if not response.is_success:
                     try:
@@ -352,9 +368,16 @@ class GeminiProvider:
                         ]
                     raise
             except httpx.TransportError as exc:
-                if attempt == max_attempts - 1:
-                    raise DomainError("GEMINI_UNAVAILABLE", "Gemini không phản hồi.") from exc
+                self.usage["transport_error"] = type(exc).__name__
+                self.usage["delivery_unknown"] = not response_received and not isinstance(
+                    exc, httpx.ConnectError | httpx.ConnectTimeout
+                )
+                if self.usage["delivery_unknown"] or attempt == max_attempts - 1:
+                    error = DomainError("GEMINI_UNAVAILABLE", "Gemini không phản hồi.")
+                    error.provider_usage = dict(self.usage)
+                    raise error from exc
             except DomainError as exc:
+                exc.provider_usage = dict(self.usage)
                 if exc.code != "AI_INVALID_JSON" or attempt == max_attempts - 1:
                     raise
         raise DomainError("GEMINI_UNAVAILABLE", "Gemini không phản hồi.")

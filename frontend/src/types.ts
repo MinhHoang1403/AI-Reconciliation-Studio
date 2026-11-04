@@ -168,7 +168,7 @@ export interface Preview {
   view: string;
 }
 export interface WorkspaceSettings {
-  ai_task_allowances?: Record<"agent" | "planner" | "assistant", {workspace_used:number; configured_ceiling:number; remaining:number}>;
+  ai_task_allowances?: Record<"agent" | "planner" | "assistant", {workspace_used:number; configured_ceiling:number | null; remaining:number | null}>;
   agent_cloud_enabled?: boolean;
   assistant_cloud_enabled?: boolean;
   workspace_name: string;
@@ -178,7 +178,7 @@ export interface WorkspaceSettings {
   gemini_model: string;
   gemini_configured: boolean;
   gemini_requests_used: number;
-  gemini_requests_remaining: number;
+  gemini_requests_remaining: number | null;
   max_upload_bytes: number;
   max_upload_files: number;
   agent_max_upload_files?: number;
@@ -189,7 +189,7 @@ export interface WorkspaceSettings {
     mode: string;
     allow_external_ai: boolean;
     allow_cloud_parsing: boolean;
-    external_request_budget: number;
+    external_request_budget: number | null;
     parser_request_budget: number;
   };
 }
@@ -225,9 +225,9 @@ export const statusText: Record<string, string> = {
   DRAFT: "Chờ chạy",
 };
 export const jobKind: Record<string, string> = {
-  document_parse: "Đọc tài liệu có allowance",
+  document_parse: "Đọc tài liệu được cấp phép",
   parse: "Đọc và phân tích",
-  mapping: "AI đề xuất ánh xạ",
+  mapping: "AI đề xuất cách ghép cột",
   normalize: "Chuẩn hóa dữ liệu",
   reconciliation_plan: "AI đề xuất quy tắc đối soát",
   reconcile: "Đối soát và kiểm chứng",
@@ -244,25 +244,27 @@ export const errorText: Record<string, string> = {
   AI_INVALID_INTENT_COUNT: "AI chưa phân chia yêu cầu đúng cách; hệ thống đã dừng trước khi thực hiện.",
   INVALID_SOURCE_FIELD: "Đề xuất AI chưa khớp các cột nguồn; hệ thống đã dừng trước khi chuẩn hóa.",
   PARSER_BUDGET_EXHAUSTED:
-    "Hết allowance LlamaParse. Không tạo thêm job tính phí.",
+    "Đã hết lượt đọc tài liệu được cấp phép. Kết quả đã lưu vẫn được giữ.",
   PARSER_CREDITS_NOT_VERIFIED:
-    "Chưa xác minh được credits LlamaParse. Tệp gốc được giữ nguyên.",
+    "Chưa kiểm tra được quyền sử dụng dịch vụ đọc tài liệu. Tệp gốc được giữ nguyên.",
   CLOUD_PARSING_DISABLED:
-    "Chưa có quyền tạo job LlamaParse. Kết quả đã lưu vẫn đọc được.",
+    "Chưa được phép đọc tài liệu mới qua dịch vụ bên ngoài. Bạn vẫn có thể xem kết quả đã lưu.",
   LLAMAPARSE_POLL_TIMEOUT:
-    "Tài liệu chưa hoàn tất trong thời gian chờ. Không gửi lại job tính phí.",
-  GEMINI_KEY_MISSING: "Chưa cấu hình khóa Gemini. Có thể dùng ánh xạ thủ công.",
+    "Tài liệu vẫn chưa có kết quả trong thời gian chờ. Yêu cầu đã gửi được giữ lại để tránh xử lý trùng.",
+  GEMINI_RATE_LIMITED: "Dịch vụ AI đang giới hạn yêu cầu. Hãy thử lại sau; dữ liệu và kết quả đã lưu vẫn được giữ.",
+  QWEN_RATE_LIMITED: "Dịch vụ AI đang giới hạn yêu cầu. Hãy thử lại sau.",
+  GEMINI_KEY_MISSING: "Hỗ trợ AI hiện chưa được thiết lập. Bạn vẫn có thể kiểm tra và ghép cột thủ công.",
   GEMINI_HTTP_ERROR:
-    "Gemini từ chối yêu cầu. Cần kiểm tra khóa, model hoặc quyền truy cập.",
-  GEMINI_UNAVAILABLE: "Gemini chưa phản hồi. Có thể dùng ánh xạ thủ công.",
-  CLOUD_AI_DISABLED: "Workspace chưa được cấp quyền AI cloud.",
+    "Dịch vụ AI chưa chấp nhận yêu cầu. Bạn có thể tiếp tục xem dữ liệu và kiểm tra quyền sử dụng.",
+  GEMINI_UNAVAILABLE: "Dịch vụ AI chưa phản hồi. Yêu cầu đã gửi không được tự gửi lại; dữ liệu của bạn vẫn được giữ.",
+  CLOUD_AI_DISABLED: "Không gian làm việc chưa cho phép sử dụng dịch vụ AI bên ngoài.",
   CLOUD_BUDGET_EXHAUSTED:
-    "Đã hết ngân sách request Gemini. Có thể duyệt ánh xạ thủ công.",
+    "Tác vụ AI hiện chưa được phép tiếp tục. Bạn vẫn có thể xem dữ liệu và dùng quy tắc đã duyệt.",
   QWEN_ACCESS_DENIED:
-    "Qwen từ chối IP truy cập. Bạn vẫn có thể xác nhận ánh xạ thủ công.",
-  QWEN_UNAVAILABLE: "Qwen chưa phản hồi. Bạn vẫn có thể chỉnh ánh xạ thủ công.",
-  QWEN_NOT_CONFIGURED: "Chưa cấu hình Qwen. Có thể dùng ánh xạ thủ công.",
-  AI_INVALID_JSON: "Phản hồi AI sai định dạng. Cần kiểm tra ánh xạ thủ công.",
+    "Dịch vụ AI chưa cho phép kết nối từ ứng dụng. Bạn vẫn có thể ghép cột thủ công.",
+  QWEN_UNAVAILABLE: "Dịch vụ AI chưa phản hồi. Bạn vẫn có thể ghép cột thủ công.",
+  QWEN_NOT_CONFIGURED: "Dịch vụ AI hiện chưa được thiết lập. Bạn vẫn có thể ghép cột thủ công.",
+  AI_INVALID_JSON: "Đề xuất AI chưa đủ rõ để sử dụng an toàn. Hãy kiểm tra dữ liệu hoặc bổ sung yêu cầu.",
   INVALID_EVIDENCE:
     "AI trả bằng chứng không hợp lệ. Đề xuất chưa được sử dụng.",
 };

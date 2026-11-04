@@ -859,7 +859,8 @@ def test_agent_mock_exact_key_explanation_preserves_zero_prefix_and_evidence(pg,
                 )
 
 
-def test_agent_durable_unknown_delivery_reserves_once_and_never_resends(pg, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("ceiling", [2, None])
+def test_agent_durable_unknown_delivery_reserves_once_and_never_resends(pg, monkeypatch, ceiling):  # noqa: F811
     import studio.agent_jobs as agents
     from pydantic import SecretStr
     from studio.config import settings
@@ -870,12 +871,12 @@ def test_agent_durable_unknown_delivery_reserves_once_and_never_resends(pg, monk
     pid = project(client)
     monkeypatch.setattr(settings, "allow_external_ai", True)
     monkeypatch.setattr(settings, "gemini_api_key", SecretStr("synthetic-test-only"))
-    monkeypatch.setattr(settings, "external_ai_request_budget", 2)
+    monkeypatch.setattr(settings, "external_ai_request_budget", ceiling)
     monkeypatch.setattr(settings, "agent_cloud_enabled", True)
-    monkeypatch.setattr(settings, "agent_request_budget", 2)
+    monkeypatch.setattr(settings, "agent_request_budget", ceiling)
     with factory() as db:
         db.get(WorkspaceRow, "demo").policy = WorkspacePolicy(
-            mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=2
+            mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=ceiling
         ).model_dump(mode="json")
         db.commit()
     calls = []
