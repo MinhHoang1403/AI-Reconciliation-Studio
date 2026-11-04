@@ -1806,3 +1806,155 @@ Source `a7c1e8b` đã commit/push lên `origin/codex/local-session-recovery` c�
 ### G. Điều kiện sử dụng
 
 **READY_FOR_LOCAL_TEST**: root/health/live/ready/session/settings/projects đều200 sau cleanup, đúng demo/demo-owner/owner. Assistant, History, Settings, chart/evidence/XLSX và reload đã được kiểm lại trên browser thật sau cleanup, không uncaught page errors hoặc mutation từ Settings/readback. Phạm vi sẵn sàng là local CSV/XLSX và các luồng đã kiểm; không phải bảo đảm mọi câu tự nhiên hoặc deployment Internet/nhiều người dùng. Sau reboot/Docker/Backend restart hoặc Frontend recreate, dùng `./tools/start.ps1 -SkipBuild` rồi **Thử kết nối lại**; không bỏ bảo mật để tự cấp proof từ browser.
+
+## AC. Hoàn thiện sản phẩm, AI local và nghiệm thu — 04/11/2026
+
+### A. Tình trạng sản phẩm
+
+**Chưa đạt `READY_FOR_FINAL_USER_TEST`: phần nghiệm thu AI còn `BLOCKED_AI_PROVIDER`.** Gemini đã trả HTTP 429 thực tế. Dừng gọi mới, không đổi tài khoản/key/model hoặc tăng quota nội bộ để vượt giới hạn nhà cung cấp. Những cổng local bên dưới được kiểm chứng riêng; không dùng chúng để tuyên bố AI đã hoàn tất.
+
+Giao diện và các luồng dữ liệu local có thể mở để kiểm tra. Bản Docker hiện tại là candidate đã qua kiểm tra local, chưa phát hành lên `main`. Không phát hiện lỗi P0/P1 trong các luồng đã kiểm tra; còn các giới hạn hiểu ngôn ngữ và coverage LIVE chưa đủ, nên không khẳng định phần mềm không còn lỗi. Không nghiệm thu triển khai Internet, nhiều người dùng đồng thời hoặc nghiên cứu người dùng độc lập.
+
+Giữ kiến trúc, Matcher/Verifier, công thức, Decimal, migrations và dependencies. Không tạo service, framework, worktree hoặc môi trường Docker thứ hai. Các mục trước của tài liệu là snapshots lịch sử; trạng thái hiện hành được mô tả trong mục AC này.
+
+### B. Ngôn ngữ và các lỗi đã sửa
+
+| Nguyên nhân | Thay đổi và kiểm chứng |
+| --- | --- |
+| Trạng thái đọc tệp dễ bị hiểu thành đã chuẩn hóa | Hiển thị “Đã đọc dữ liệu; chưa chuẩn hóa”; dataset READY/PARTIAL, đề xuất và verified được phân biệt. Nút duyệt nói rõ việc lưu ánh xạ và chuẩn hóa, hoặc lưu quy tắc và chạy đối soát. |
+| DTO định tuyến làm mất phạm vi người dùng đã nêu | Thêm source facts có kiểu, giữ coverage/snapshot/date/effective dates sang Planner; kiểm canonical IDs và từ chối facts mới mâu thuẫn khi reuse. Missing vẫn null, không nới gates. |
+| UTC bị dùng làm ý nghĩa ngày | `time_basis` tách khỏi timezone; yêu cầu mới không được dùng UTC thay ngày phát sinh/hạch toán. Run mới đã kiểm tra dùng `event_date`, UTC riêng. |
+| Count kèm tổng lệch toàn run bị dựng lại bằng query | Chuyển sang MetricSnapshot đã verified khi không có filter/group; truy vấn phạm vi con vẫn dùng typed query. Có regression cho cả sum riêng và count kèm sum. |
+| AI tự điền currency vào danh sách ngoại lệ | Prompt nhắc fields phải thuộc đúng source; unknown field vẫn bị Backend chặn. Không tự bỏ validation hoặc bịa trường tiền tệ. |
+| “Kết quả đang mở” bị hiểu là ngoại lệ OPEN | Prompt phân biệt tổng quan run đang xem với công việc xử lý ngoại lệ; còn phải xác minh nốt các cách nói sau blocker provider. Không tuyên bố đã hết lỗi NLP. |
+| Timeout/429 và usage lỗi dễ bị hiểu sai | Không resend read/write timeout hoặc delivery chưa rõ; known connect failure/5xx mới retry có giới hạn và backoff. 429 có mã rate-limit riêng; safe usage của lỗi Assistant được giữ trong trace. |
+| Harness trả exit thành công khi provider đã dừng | CLI nay trả exit 2 khi stopped. Launcher phải lưu/kiểm exitcode ngay, trước bước copy receipts. Thiếu/thừa/gộp replies được ghi FAIL cho toàn bộ ca không gán được, giữ mẫu số; ba regression cho số reply 0/1/3 khi yêu cầu 2 đều đạt. |
+
+Files chính: `agent_intents.py`, `contracts/agent.py`, `contracts/reconciliation.py`, `agent_workflows.py`, `assistant.py`, `ai_gateway.py`, `assistant_jobs.py`, `errors.py`; các job handlers/config/repository/API và tests được cập nhật tương ứng. Không sửa raw/canonical hoặc lịch sử để che các lần thử thất bại.
+
+### C. Giao diện và yêu cầu màu trắng mới nhất
+
+Chủ dự án đã yêu cầu giữ **nền trắng**, không dùng nền xanh cho ô chat hoặc ô gửi câu hỏi. Commit `2ab64e0` áp dụng:
+
+- Tin nhắn người dùng, phản hồi trợ lý và composer có nền trắng, viền xám trung tính 1px và bóng nhẹ để tách khỏi nền trang. Hover composer chỉ làm đậm viền; bàn phím vẫn có chỉ báo focus riêng.
+- Tin nhắn người dùng căn phải; nội dung/menu dùng grid riêng, không float làm ép chữ. Giữ xuống dòng chủ động, mã có số 0 đầu và chữ tiếng Việt.
+- Preview 10 dòng; “Dữ liệu chi tiết” mở toàn bộ trang của cùng query/result, không gọi AI hoặc fetch lại chỉ vì mở. Pagination/sort/evidence giữ nguồn và trang đang xem.
+- Kết quả count lấy giá trị Backend, kể cả 0; không nhầm một dòng tổng hợp là một giao dịch. Số dòng đầu vào, tổng nhóm và trang hiện tại được tách rõ.
+- Decimal được định dạng bằng chuỗi, không qua float; chỉ áp dụng với trường có kiểu. NULL khác 0; giá trị nguồn/evidence giữ nguyên để truy vết.
+- Settings chỉ có thông tin sử dụng, quyền và riêng tư; không có panel provider/model/ledger/kiểm thử nâng cao.
+
+Sau khi chốt màu trắng, chủ dự án yêu cầu chữ lớn hơn. Commit `e9867ab` tăng chữ câu hỏi/phản hồi lên 16px, bảng và thao tác trong chat lên 14px. Ô nhập vốn kế thừa 12px từ label toàn cục, nay được kế thừa đúng 16px từ composer; giữ chiều cao một dòng và không che nút gửi. Bảng chi tiết cũng dùng 14px.
+
+TypeScript, ESLint và production build đạt. Trước deploy: 11 ca viền trắng đạt trong 32,8 giây; sau sửa cỡ chữ, 16 ca liên quan đạt trong 2,0 phút trên 5 viewport: 390/768/1366/1440/1920. Ảnh hội thoại thật `after/white-chat-*.png`, `white-answer-*.png` và receipt `white-surfaces.json` nằm trong `runtime/product-polish` tại máy nghiệm thu. Đã xác minh cả ba bề mặt là trắng, có viền và bóng, không tràn ngang; ledger không tăng khi kiểm màu.
+
+Ảnh baseline của release a7c1e8b còn tại `runtime/session-recovery/after`. Bộ chụp “before” đầu đợt này dừng vì local proof đã hết hiệu lực sau restart; không trình bày bộ chụp thất bại đó là baseline thành công. Ảnh sau và hashes được chụp lại trên chính assets Docker hiện tại.
+
+#### Thu gọn công cụ theo yêu cầu tiếp theo
+
+Commit `7157f6a` gộp chọn dự án và các thao tác vào một thanh cao tối đa 40px. Tệp đã tải, chọn ngữ cảnh và hội thoại mới dùng nút biểu tượng có tên truy cập/title; chính sách/chế độ, thiết lập thủ công và xóa hội thoại nằm trong menu ba chấm. Escape đóng và trả focus về nút mở; bấm ra ngoài đóng menu. Menu nổi và cuộn nội bộ, không làm co/đẩy transcript. Project picker vẫn tìm kiếm/chọn/phân loại theo cùng quyền, không tạo nguồn “latest” mới hoặc bỏ kiểm tra scope/run.
+
+Giảm topbar/khoảng trống và tăng bề ngang đọc desktop tối đa 1.120px. Đo cùng hội thoại ở 1.440px: vùng đọc rộng 920→1.120px, bắt đầu y179,5→114px, thêm 65,5px chiều cao đọc; ở 1.366px rộng 920→1.064px. Mobile 390px vẫn rộng 358px, bắt đầu y174→112px. Không thay sidebar của các trang khác; giữ chữ 16px, bảng 14px và nền trắng đã duyệt.
+
+Mười ca bố cục gồm 23 trạng thái và đọc bảng ở 5 viewport đạt trong 1,6 phút trên candidate. Đã kiểm menu không đổi bounding box transcript, nằm trong viewport, Escape/focus, bấm ra ngoài, không tràn ngang và mở đúng dữ liệu. Một lượt candidate trước đó có navigation ERR_ABORTED khi build assets đang thay; giữ log và chạy lại trên dist ổn định, không gọi đó là lỗi nghiệp vụ hoặc bỏ ca. `compact-before.json`, `compact-after.json`, screenshots `compact-after/chat-*.png` và `options-*.png` giữ bằng chứng thực tế trên máy nghiệm thu.
+
+### D. Nghiệp vụ, hành trình và bảo toàn dữ liệu
+
+| Hành trình | Bằng chứng |
+| --- | --- |
+| A — Tải và đọc tệp | Browser thật tải CSV/XLSX tổng hợp, giữ bytes/hash và báo trạng thái đọc; full UAT kiểm tệp hỏng/quá dung lượng, multi-sheet và dòng nguồn. |
+| B — Chuẩn hóa | LIVE đề xuất mapping, người kiểm thử duyệt 2 nguồn rồi chuẩn hóa 5+5 dòng. Có kiểm mã 0 đầu, số âm/0, locale và COMPLETED khác PAID. Không tự duyệt. |
+| C — Đối soát | LIVE tạo đề xuất; xác nhận completeness còn thiếu bằng UI, duyệt quy tắc rồi Matcher và Verifier chạy. Run `be230b6f-d0b3-4246-9b76-7f83564ef63d`: 3 EQUAL, 1 AMOUNT_MISMATCH, 2 UNMATCHED; signed/absolute variance 0.50 VND, đúng oracle tính tay. |
+| D — Tra cứu/phân tích | LIVE count lệch, top 1, hỏi tiếp theo vị trí, UNPAID riêng, chart đủ 5 dòng và thiếu đối ứng. G 1000 được đọc lại bằng typed query: top 3 trong 19 nhóm lệch, evidence đúng dòng thứ hai; chart 686 PAID + 200 UNPAID + 114 COMPLETED. |
+| E — Xuất/khôi phục | Tải XLSX thật qua browser và đọc lại đúng run/snapshot; CSV/XLSX của UAT so với oracle, không có formula injection. Reload, History, Settings, draft/cookie và recreate đều được kiểm riêng. |
+
+Giữ nguyên 11 tình huống, 24 tệp, 2.131 dòng UAT: đơn hàng/thanh toán, thu chia kỳ, chi gộp ngân hàng, ngày ghi sổ, khóa composite vận đơn, nhiều lần xử lý, gộp vận đơn, cấu trúc khác, không tương thích, biên/bảo mật và 1.000 giao dịch. G 1000: **966 khớp / 19 lệch tiền / 15 thiếu đối ứng / 7.03 VND**. Kết quả đọc lại run cũ là LOCAL/CACHED, không phải inference mới.
+
+Run tổng hợp trước dùng `time_basis=UTC` được giữ là lịch sử chẩn đoán; run mới dùng `event_date`, timezone UTC riêng. Model có thể để completeness null dù câu tự nhiên đã nói đầy đủ; UI buộc xác nhận, không tự điền để chạy.
+
+Backup trước đổi policy: `backup_d66ade0c9753404ea12dc99938051927`, 24 bảng; metadata SHA256 `9f56d8058d7c64757b68acd48acb973827d0fd786e2f84234d1e4d25d4393e0a`. Backup 21,971 giây, restore UUID schema trong cùng PostgreSQL 16,231 giây đạt; phát hiện checksum hỏng và chặn path traversal, không overwrite public. Bản sao host đã kiểm metadata và 3.712 tệp theo manifest. Đây vẫn là backup cùng máy, chưa phải phục hồi thảm họa ngoài máy.
+
+So nguyên PK/full rows của 24 bảng gốc và checksum mọi tệp cũ: không mất/đổi dữ liệu; chỉ một thay đổi được cấp quyền là demo policy.external_request_budget từ 210 thành null. Giữ nguyên 203 reservations gốc. Snapshot/verify khi recreate kiểm 20 bảng nghiệp vụ và 3 nhóm artifact/run/export, không chỉ counts; HttpOnly/SameSite Strict cookie và draft được giữ. Trước/sau deploy màu trắng cũng kiểm lại toàn bộ metadata/artifact hiện tại và đạt.
+
+### E. AI không còn trần nội bộ, nhưng còn giới hạn provider
+
+Global, Agent, Planner, Assistant và workspace demo dùng `unlimited` → typed null, không số cực lớn và không reset usage. Chỉ cấu hình unlimited trong local demo được cấp quyền; default cài mới vẫn cloud OFF/0. Null không cấp permission/key. `.env` và policy có backup riêng ngoài Git cùng audit thay đổi. LlamaParse giữ nguyên request/credit/SHA allowance; không mở parser cloud mới.
+
+Giữ reservation lock, quyền cloud, privacy, idempotency, timeout, giới hạn của workflow/model/tool/payload, backoff và stop khi unknown delivery. Provider 429 không được coi là cần tăng quota nội bộ. Không đổi Gemini mặc định, key hoặc account; Knowledge không bị dùng để vượt blocker Gemini.
+
+| Phép đo | Intent | Nguồn | Slots | Dispatch | Abstention | Giới hạn |
+| --- | --- | --- | --- | --- | --- | --- |
+| Routing 30, 80 gold LIVE theo lô | 79/80 | 60/60 | 34/34 | 80/80 | 20/20 | N08 hỏi lại thay vì UNSUPPORTED; không tính EBITDA |
+| Routing 30, 24 variants đo đủ | 23/24 | 15/16 | 10/10 | 23/24 | 8/8 | Giữ V16 sai; một batch gộp 2 câu bị chặn, các ca còn lại được đo riêng, không bỏ failure |
+| Routing 31, 80 gold observed | 79/80 | 59/60 | 33/34 | 79/80 | 20/20 | Một batch bị chặn; chỉ chấm từng response đã biết HTTP200/STOP. L14 đảo PAID/UNPAID bị guard chặn, không thực thi |
+| Routing 31, 24 variants theo lô | Chưa đủ | Chưa đủ | Chưa đủ | Chưa đủ | Chưa đủ | Có trộn/gộp câu; không lấy kết quả revision cũ thay revision mới |
+| Routing 31, 1 goal/request, gold | 26/26 đã đo | 26/26 | 15/15 | 26/26 | Chưa đo | D27 nhận 429; 54 ca chưa validated |
+| Routing 31, 1 goal/request, variants | 15/15 đã đo | 11/11 | 7/7 | 15/15 | 4/4 | V12 nhận 429; 9 ca chưa validated |
+
+Một goal/request khớp cách Chat gửi yêu cầu. Giữ nguyên 104 ca gốc: **41 ca đo đơn đã validated, 63 ca còn thiếu**, gồm 2 ca bị 429 và 61 ca chưa gửi theo phép đo một goal/request. Không báo 104/104. IDs và receipts tại `runtime/product-polish/provider-blocker-pending.json`; V16 chưa được chốt lại bằng phép đo đơn. Benchmark chỉ đo router, không chứng minh 80/24 workflow đã thực thi, không phải accuracy tổng quát.
+
+Các revisions 28–29 và failure cũ vẫn còn receipts: gold 28 intent 78/80, variants 28 intent 23/24; gold 29 dừng vì unknown field, variants 29 đạt 24/24 trong một lượt. Không xóa hoặc sửa expected output để tăng tỷ lệ.
+
+Ledger Gemini **203 → 311**, thêm **108 HTTP attempts: 106 HTTP200 và 2 HTTP429**. Token đo được: prompt 1.617.148, output 48.860, total 1.666.008; cached content 15.042 thuộc usage, không tự trừ thành hóa đơn. Latency 108 receipts/trace: p50 4.140ms, p95 7.396ms, không phải latency toàn hành trình. 103 attempts có receipt từng lần; 5 lần đầu chỉ có receipt tổng của một call. Những trace Assistant xác định không gọi HTTP được tách riêng. **Chi phí hóa đơn NOT VERIFIED.**
+
+D27 chạm 429 trước; harness lúc đó trả exit 0 khiến launcher tiếp tục variants thêm 16 attempts trước 429 ở V12. Đây là lỗi orchestration của Codex, không phải Gateway tự retry D27. CLI đã sửa exit 2 và evaluator giữ các ca lỗi trong mẫu số. Không gọi provider tiếp để retest 429. Chưa đủ bằng chứng xác định đây là quota ngày, RPM hay token quota. Sau khi điều kiện provider được khôi phục mới đo nốt với attempt IDs mới có audit; không overwrite failure hoặc resend delivery chưa rõ.
+
+Knowledge: `/models` HTTP200, model `knowledge` có mặt; mapping tổng hợp LIVE qua JSON/semantic validators, 2 decisions PROPOSED, không tự duyệt. Có 2 HTTP attempts; receipt cũ chỉ giữ token lần cuối: prompt 2.497, output 1.390, total 3.887, trong đó reasoning 1.048 đã nằm trong output. Tổng token của cả 2 attempts và latency Knowledge chưa đo; billed cost NOT VERIFIED. Không coi đây là đã nghiệm thu mọi workflow Knowledge.
+
+### F. Kiểm chứng và gates
+
+Backend/PostgreSQL đầy đủ **337 PASS / 82,01 giây**, tăng 25 ca so baseline 312: 22 ca cho runtime và 3 ca cho harness. Một deprecation warning từ Starlette TestClient/httpx; không có test failure. Ruff đạt, mypy 47 files đạt; TypeScript/ESLint/production build đạt.
+
+Frontend giữ 121 ca cũ, thêm 5 ca đọc dữ liệu thành 126. Các vòng trước đổi viền đều 126/126, vòng cuối 11,8 phút; sau cleanup 8/8 smoke trong 55,5 giây. Một vòng kiểm viền trắng có 123 PASS/3 FAIL do harness chạy chồng: hai runners dùng chung thư mục trace gây ENOENT khi teardown; việc collection chạy lại generator tệp UAT làm SHA256 XLSX không còn khớp manifest đã nạp ở runner trước. Candidate cỡ chữ vòng đầu còn bắt được textarea vẫn 12px; đã sửa label inheritance, không đổi expected để che lỗi. Lượt candidate tách output đạt 16/16. Giữ đầy đủ log/trace; lượt full sau tăng chữ chạy riêng sau khi mọi runner khác kết thúc đạt 126/126 trong 11,8 phút. Không tăng timeout hoặc gọi AI để chữa các lỗi này. Lượt full trên thanh công cụ gọn ghi bên dưới. Không cộng replay thành test độc lập.
+
+Security và các bất biến được kiểm: CSRF/Host/origin, viewer/isolation, cloud OFF, unknown delivery, zero-prefix, NULL/âm/locale, Decimal, grouping/cardinality/coverage, export injection và preservation. Tests có cả MOCK CONTRACT và LOCAL; chỉ những hành trình có receipt provider mới gọi là LIVE. Chưa có nghiên cứu screen-reader/thiết bị vật lý hoặc soak/multi-user mới trong đợt này.
+
+#### Kết quả bàn giao local sau thanh công cụ gọn
+
+- Full Playwright **126/126 PASS trong 11,7 phút** trên assets Docker của `7157f6a`, một runner, output riêng; không xen build hoặc regenerate fixtures. Đủ 11 tình huống UAT, kể cả F biên/bảo mật và G 1.000 giao dịch, tệp hỏng/quá dung lượng; các ca lỗi harness trước đã được chạy lại trong full suite này.
+- Kiểm trình duyệt thật ở 5 viewport đạt: nền trắng/viền/bóng, chữ 16px, một thanh công cụ, menu không đẩy khung chat, Escape/focus/click ngoài, không page errors hoặc tràn ngang. Cached readback của run LIVE mới và G 1000 cùng tải/đọc lại Excel tiếp tục đạt; không gọi model mới để kiểm CSS.
+- So 24 bảng/tất cả PK gốc và 3.712 tệp gốc: không missing/changed/checksum failure; chỉ đúng policy demo 210→null được cấp quyền. Toàn bộ metadata hiện tại và **3.502 artifacts + 364 run artifacts + 663 exports = 4.529 tệp** cũng qua checksum/snapshot/verify. Số dự án hiện tại 440, datasets 961, canonicals 780, runs 364; 78 dự án phát sinh trong đợt này đều TEST, giữ để audit thay vì xóa lịch sử nhằm làm counts nhỏ đi.
+- Không có job đang queued/running/retryable khi snapshot bàn giao. Ledger vẫn 311, bốn config ceilings và workspace limit đều null; parser request allowance vẫn 2. Các traces tăng do regression xác định được tách khỏi 108 HTTP attempts đã đo. Không có inference mới sau khi dừng vì 429.
+- Docker hiện 4/4 Studio healthy, chỉ 4 images riêng Studio: cặp current và cặp rollback; PostgreSQL và 2 volumes ứng dụng giữ nguyên. Toàn host có 51 images/31 containers/36 volumes; 27 containers ngoài Studio và mọi volumes đối chiếu nguyên trạng. Shared build cache không dọn toàn host. Langfuse 6/6 healthy; UI/health/ready/đọc observation cũ HTTP200.
+- Source/OCI/HTTP hashes và phiên demo-owner/demo/owner được kiểm lại sau lần frontend recreate cuối. Frontend container/image revision `7157f6a`, Backend/Worker `98d93c9`; không thay backend code khi làm UI. Tài liệu và harness mới hơn không cần recreate Backend.
+
+**Kết luận:** giao diện và các cổng kỹ thuật/nghiệp vụ local đã đạt trong phạm vi đo. Cổng AI live đầy đủ và phát hành main còn BLOCKED do HTTP429 cùng 63 ca đo đơn chưa hoàn tất; không gán nhãn READY_FOR_FINAL_USER_TEST. Hệ thống không bị trần request nội bộ cũ chặn, nhưng không thể cam kết provider khả dụng hoặc hiểu đúng mọi câu.
+
+### G. KEEP / DELETE / ARCHIVE
+
+Inventory có trước xóa tại `runtime/product-polish/cleanup-inventory.json`. 20/21 TS/TSX modules reachable; `vite-env.d.ts` là ambient type declaration cần giữ. Không có production component đủ bằng chứng để xóa. Bỏ các declarations CSS float/nền cũ đã được thay; giữ contracts, migrations, tests, manual fallback, security, lockfiles, `.venv`, node_modules, current dist và mọi backup.
+
+Đã xóa đúng Frontend a7c1e8b không còn container tham chiếu; giữ current và cặp rollback dac8dd1. Đã xóa 3 nhánh local/remote `assistant-automation`, `assistant-conversation`, `demo-acceptance` sau khi xác minh SHA remote khớp và đã merge origin/main. Giữ `product-polish` để xử lý AI gate. Không xóa container nghiệp vụ hoặc tệp dữ liệu để giảm counts.
+
+Xóa cache bị kiểm duyệt tự động chặn với lý do “blocked by policy”; 6 thư mục cache khoảng 30MB được giữ, không lách qua công cụ khác. Shared build cache và tài nguyên dự án khác được giữ; không global prune. Tài liệu/receipts lịch sử giữ để audit trong các vị trí sẵn có, không tạo archive framework mới.
+
+27 containers ngoài Studio và toàn bộ 36 volumes được đối chiếu nguyên trạng. Langfuse có 6 dịch vụ healthy; UI/health/ready và đọc observation cũ HTTP200, không restart hoặc đổi deployment của Langfuse.
+
+### H. README và khởi động
+
+README được viết lại thành giới thiệu giá trị, hành trình sử dụng, phạm vi/quyền riêng tư và **2 lệnh**: `tools/start.ps1` hoặc `tools/start.ps1 -SkipBuild`. Thông tin backup/tests/usage ở tài liệu kỹ thuật. Build chuẩn tự giữ nhãn Git và khôi phục biến môi trường trước đó; cả hai lệnh kiểm HTTP/session/identity sau healthcheck và đã chạy thực tế.
+
+Sau máy/Docker/Backend khởi động lại, dùng `-SkipBuild`, rồi bấm “Thử kết nối lại” nếu trang đang mở. Không xóa cookie hoặc dữ liệu để sửa kết nối. Không đưa request ledger hoặc biến môi trường lên Settings.
+
+### I. GitHub, Docker và khả năng khôi phục
+
+Các nhóm source đã push trên `codex/product-polish`: `0285d0a`, `2bcf27a`, `d32c488`, `ef966fc`, `fb76d10`, `75cfb16`, `98d93c9`, `1f82518`, `210f75b`, `2ab64e0`, `e9867ab`, `7157f6a`. **Main giữ `a4f70b2`** vì AI gate còn blocker; chưa fast-forward, không force-push. Commit bàn giao docs và SHA local/remote báo riêng để tránh hash tự tham chiếu. Không commit runtime, backups, `.env` hoặc keys.
+
+Một Compose `ai-reconciliation-studio`, 4 services, 2 persistent volumes. Backend/Worker dùng source `98d93c9`, Frontend `7157f6a`; app code không đổi trong các commits harness/docs về sau. 42 Backend Python files khớp host/image ở cả hai dịch vụ; 7 frontend files khớp host/image/HTTP; Chromium resources được so SHA256 với cache tắt, không service worker. Proof/session được xác minh sau lần đổi container identity cuối.
+
+Giữ cặp rollback `dac8dd1` cùng backup env/policy trước unlimited. Image cũ cần khôi phục cấu hình/policy hữu hạn tương thích, giữ mọi reservations mới. Script chặn trước Docker mutation nếu đang null/unlimited; negative compatibility test đạt. Không gọi đó là đã diễn tập rollback thực về mã cũ trong đợt này; không downgrade schema hoặc reset ledger. Candidate hiện tại chưa gắn nhãn accepted khi AI gate chưa đủ.
+
+#### Định danh bản Docker đã đối chiếu
+
+| Dịch vụ | Source revision | Image ID/digest |
+| --- | --- | --- |
+| frontend | `7157f6a8dc0a18d12458f2b695b625eca497f4a1` | `sha256:a1a9639479953e52415dbc5554b98a39ab685e1060657c86d5cee536fd92248a` |
+| backend | `98d93c9e40f9d3dc3735006df055ff40a38b3e8d` | `sha256:d6d4f0268fc96b83dcedf0ee124d16fcc6f4fd526529a194124b03b0cb4a4a69` |
+| worker | `98d93c9e40f9d3dc3735006df055ff40a38b3e8d` | `sha256:d6d4f0268fc96b83dcedf0ee124d16fcc6f4fd526529a194124b03b0cb4a4a69` |
+
+Các image local có RepoDigest cùng SHA256 ở bảng; không có digest registry mới vì không publish image ra registry. Metadata container và 7 hashes assets trong receipt local `components-compact-release.log`. Git commit docs có thể mới hơn source image; diff app source giữa HEAD và từng image phải rỗng.
+
+### J. Chủ dự án kiểm tra tiếp
+
+Mở <http://127.0.0.1:18180> để xem giao diện trắng có viền/bóng, mở History, nguồn dữ liệu hoặc báo cáo đã có. Project TEST “DEMO UAT 1000 giao dịch 2f325046” có run đã verified, kỳ vọng 966/19/15 và 7.03 VND; chọn đúng dòng rồi mở evidence để xem file/sheet/row và tải Excel.
+
+Sau khi Gemini được khôi phục, các câu nên thử: “Tóm tắt kết quả đối soát đang xem”, “Có bao nhiêu nhóm lệch tiền?”, “Cho xem ba giao dịch lệch tiền lớn nhất”, “Giải thích giao dịch thứ hai trong bảng vừa đưa”, “Xuất báo cáo Excel cho lần đối soát này”. Cần kiểm chứng nốt 63 ca cùng những giới hạn NLP đã ghi, rồi mới xem xét merge main và kết luận sẵn sàng. Đây là kịch bản kiểm thử mô phỏng, không phải nghiên cứu người dùng độc lập.
