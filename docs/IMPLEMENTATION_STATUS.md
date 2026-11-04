@@ -1743,3 +1743,66 @@ Inventory VS Code 1.144.1: **36 extensions trước sửa khớp danh sách inst
 `.vscode/extensions.json` ghi mười recommendations phù hợp dự án. Settings/profiles/danh sách extensions trước sửa được sao lưu ngoài Git, pointer tại `runtime/vscode-repair/backup-pointer.json`; profiles cá nhân và user settings không commit. `uv sync --locked --check` xác nhận 51 packages không cần thay đổi; `uv pip check`, frontend dependency tree, TypeScript, ESLint và repository/secrets/Markdown paths PASS. Không cần chạy lại financial/E2E hoặc build Docker cho thay đổi tài liệu/editor khi application diff rỗng.
 
 Nguồn đã đối chiếu: [Python Environments](https://code.visualstudio.com/docs/python/environments), [Settings Sync](https://code.visualstudio.com/docs/configure/settings-sync), [CLI VS Code](https://code.visualstudio.com/docs/configure/command-line), [ESLint extension](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) và README/schema của các extensions đang cài. Các receipts ở `runtime/vscode-repair/`, ngoài Git.
+
+## AB. Khôi phục phiên local và Cài đặt dành cho người dùng — 04/11/2026
+
+**READY_FOR_LOCAL_TEST — nghiệm thu trên Docker thật sau recreate, re-verification và cleanup.** Source ứng dụng `a7c1e8bebec34db5eeb14b0e606df8bb117f6635`, Backend/Worker giữ `dac8dd179fe9cd57bf5e86abae8d4784103c0d6b`. Phần này bổ sung mốc Z/AA và chỉ dẫn Cài đặt mới; không thay nghiệp vụ hoặc policy AI.
+
+### A. Nguyên nhân kết nối và trình tự khôi phục
+
+Frontend vẫn trả200, Backend live/ready200 và đủ4services healthy nhưng session403 `LOCAL_DEMO_NOT_VERIFIED`; API dữ liệu anonymous401. Windows khởi động lại lúc **10:10:07**, Docker backend processes lúc10:10:58, container Backend lúc10:11:46 và nonce mới ghi10:11:53 ngày04/11, giờ Việt Nam. IDs/images trước sửa trùng bản nghiệm thu trước; đây là restart sau reboot, không phải các container đã bị thay nhầm. Lúc kiểm tra, proof không tồn tại trong tmpfs. `startup.py` tạo nonce mới/xóa proof theo thiết kế; session cũ trong DB vẫn bị kiểm lại proof. Không có bằng chứng Langfuse rename gây lỗi và Studio không có phụ thuộc vận hành vào Langfuse. Docker events hữu hạn không đủ xác định ai đã bấm restart; không suy đoán lệnh của operator.
+
+`./tools/start.ps1 -SkipBuild` khôi phục thành công trên bốn containers đang có, không reset DB/cookie/role. Khoảng trống vận hành trước sửa: verify chỉ chứng minh published ports/proof, chưa kiểm xuyên Nginx tới session/settings. Docker tự khởi động healthy sau reboot không thay thế bước xác minh host.
+
+### B. Sửa đổi và hợp đồng được bảo toàn
+
+- `tools/start.ps1`: `-SkipBuild` dùng `--no-build`; giữ một Compose project, `.env` hiện có và exit-on-failure.
+- `tools/verify-local.ps1`: đủ4services healthy, host proof, Frontend HTTP identity, root/live/ready/session/settings/projects cùng cookie; xác minh actor/workspace/role, cookie HttpOnly/path; so lại IDs/StartedAt/health trước khi báo success. Startup process với session403 mô phỏng trả exit1 và không in success; script thật chạy được trên Windows PowerShell và PowerShell7.
+- `frontend/src/App.tsx`: bootstrap có tổng thời hạn30giây và abort khi unmount/retry; phân biệt proof local với offline, kết thúc loading và trạng thái xác minh quyền; retry chỉ GET, không reload trang hoặc phát lại mutation. Giữ draft và history. Hướng dẫn operator chỉ nằm trong disclosure ở lỗi proof.
+- `WorkspaceSettings.tsx`: bỏ hoàn toàn **Thông tin nâng cao**, kể cả owner. Ba phần dành cho người dùng: tài khoản/quyền, AI/quyền riêng tư, giới hạn tệp. Không trình bày provider/model, cấu hình/kết nối kiểm thử, bộ đếm ledger hoặc phân bổ từng task. Trạng thái AI dùng DTO/quyền/hạn mức thật, không nhận cấu hình là kết nối đã kiểm chứng. Không thêm nút cài đặt giả.
+- `styles.css`: màu trạng thái kết nối đúng và bỏ selector của phần nâng cao đã xóa. Các tests hiện có được cập nhật theo yêu cầu Cài đặt mới; thêm regression proof/bootstrap, giữ mọi ca cũ.
+- README, ARCHITECTURE, PROJECT_PLAN, TESTING_GUIDE và báo cáo này ghi quy trình/ủy quyền mới. Yêu cầu owner xem thông tin vận hành ngày02/11 được thay rõ bằng chỉ dẫn04/11, không sửa lịch sử nghiệm thu.
+
+Không thay source Backend/auth/session policy, CSRF, Host/Origin, workspace permissions, TTL, Decimal, engine/verifier, migrations, model/key, quota hoặc `.env`. Không mount Docker socket, tự bật proof từ HTTP/browser, xóa session hoặc tự đổi role. Chỉ build Frontend mới; Backend/Worker có42source hashes khớp code hiện hành.
+
+### C. Kết nối và trình duyệt sau recreate
+
+Recreate Frontend lúc11:09:04 và Backend lúc11:09:41; trước mỗi lần re-verification, session bị chặn403 đúng. Lệnh startup chính thức sau thao tác cuối đã đạt session200 `workspace=demo / actor=demo-owner / role=owner`, settings200. Cookie cũ được giữ qua recreate Backend, draft giữ qua reload, Lịch sử/Cài đặt/Assistant mở được; không mutation hoặc uncaught page error trong recovery drill. Snapshot metadata và toàn bộ artifact bytes không đổi qua cả hai lần recreate.
+
+Cài đặt thật đã kiểm ở390/768/1366/1440/1920px: ba nhóm nội dung, không tràn ngang, không có thông tin vận hành cho owner; keyboard mở phần giải thích quyền riêng tư. Mock kiểm thêm owner/editor/viewer và các trạng thái quyền/cấu hình/hết lượt tổng hoặc từng tác vụ. Không gửi request ghi để mở Cài đặt. Receipts/screenshots ở `runtime/session-recovery/`, ngoài Git.
+
+### D. Docker và source/runtime
+
+| Service | Container ID (rút gọn) | Source revision |
+| --- | --- | --- |
+| Frontend | `d2f2c30e85a9` | `a7c1e8b` |
+| Backend | `2650558bff90` | `dac8dd1` |
+| Worker | `fede0f52b473` | `dac8dd1` |
+| PostgreSQL | `22fa413d2693` | PostgreSQL18.3, image giữ nguyên |
+
+Image Frontend: `sha256:d07d753c4f7490e768e465719eac2b3864d70caf226c4d8a0db2ca1f3c303eff`; Backend/Worker: `sha256:798c2afbe2f11a3c0583bbb2e024cee5c205729eb388022ad0ac3d23b29f615e`; PostgreSQL: `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7`. Bảy HTML/assets host build=image=HTTP; năm tài nguyên Chromium tải khớp cả ba, không service worker. Hai component khác revision là có chủ đích, không phải runtime drift; commit tài liệu sau đó không phải image revision.
+
+Bốn services healthy, RestartCount0/OOMfalse; Worker/PostgreSQL không recreate trong vòng này. Chỉ publish Studio127.0.0.1:18180. Hai volumes giữ nguyên `ai-reconciliation-studio_postgres_data` và `ai-reconciliation-studio_artifacts`.
+
+Langfuse được kiểm chỉ đọc:6/6healthy, RestartCount0/OOMfalse, UI/health/ready200 và API đọc quan sát cũ200. Không restart/build/deploy/đổi credentials hoặc dữ liệu Langfuse. Giữ nguyên5volumes, networks và các backup trước; tên storage còn prefix cũ là external refs được bảo toàn. Ports3000/9090 vẫn loopback, không phụ thuộc vào phiên Studio. Cửa sổ log10phút của6services không có ERROR hoặc socket timeout; hai networks external vẫn là `shopquery-observability_default` và `shopquery-observability_ingestion`.
+
+Dọn Docker sau121/121PASS: gỡ image Frontend18706a7 `sha256:d04074feee418e6e8ae0cadb762b15fbea32aec5c6e673fe24710924fd603d53` sau xác minh không container nào tham chiếu; bỏ tag candidate, giữ local/accepted-main-a7c1e8b. Studio còn đúng3images: Frontend hiện hành, Frontend rollbackDAC, Backend hiện hành/rollbackDAC dùng chung; PostgreSQL giữ nguyên. Không container Studio thừa. IDs/images của mọi container dự án khác và toàn bộ36volumes trước đó được giữ nguyên; không global prune. Docker host hiện50images/31containers, image size38,9GB, volumes9,3GB; phần reclaimable toàn host gồm dự án khác nên không coi là tài nguyên được phép xóa. Cặp rollback và mọi backup vẫn tồn tại.
+
+### E. Kiểm thử và bảo toàn dữ liệu
+
+- Backend/PostgreSQL đầy đủ: **312 PASS/139,63giây**, gồm10ca bổ sung so với302; PostgreSQL tests dùng UUID schema cô lập trong server hiện có. Một warning deprecation từ thư viện TestClient, không có test failure. Ruff/mypy47source files, TypeScript/ESLint/build, repository/secrets/paths và Markdown11tài liệu đạt.
+- Candidate trước chỉ dẫn Cài đặt mới:120/121PASS; một ca late-report chờ request không chắc phát sinh khi run đã cache. Sửa thiết lập chọn run khác và đợi route callbacks kết thúc; không bỏ test/tăng timeout/đổi expected data. Vòng tập trung sau sửa Cài đặt và fixture: **13/13PASS**. Không cộng replay vào catalogue.
+- Playwright toàn bộ trên assets Docker sau recreate: vòng đầu119PASS/2FAIL khi kiểm tra bổ sung của Codex giả lập Docker sai, làm activation nhận stdin rỗng và thu hồi proof. Đây là nhiễu từ test harness chạy xen, không phải thay source ứng dụng; đã sửa harness, kiểm startup403/exit1 và khôi phục bằng verifier chính thức. **Vòng chạy lại không gián đoạn:121/121PASS trong12,8phút**, không xen thao tác proof. Sau cleanup thêm **8/8smoke PASS/43giây**, gồm bootstrap/proof/network/settings, CSRF/Host, landing và journey CSV/XLSX thật; không cộng replay vào catalogue. Cả11journeys dữ liệu tổng hợp, bộ1000 và ca tệp hỏng/quá dung lượng đã qua trong full run; CSV/XLSX được so với Snapshot JSON và oracle độc lập.
+- LOCAL thật: hai lần recreate/proof403/reverify200, cookie/draft/reload/History/Settings; negative verification403 có kiểm soát. MOCK: các trạng thái proof, mạng, timeout/settings, deadline, quyền và UI retry không mutation.
+- Demo hiện có **DEMO UAT1000** đúng run cũ:966EQUAL,19AMOUNT_MISMATCH,15UNMATCHED, absolute7,03VND. LOCAL typed query dùng intent đã kiểm để lấy top3/19 và evidence đúng group thứ hai; query UNPAID trả200giao dịch. CACHED browser mở hội thoại/biểu đồ1000 =686PAID +200UNPAID +114COMPLETED, evidence và tải XLSX có Snapshot JSON đúng/không formulas; reload giữ kết quả. Không nhận là fresh NLP inference.
+- Backup/restore trước sửa:24bảng, metadata SHA256 `3bc297745a03b4419a6fb9f759d7260e39f18b5ce3985c088d0980682959318a`; restore UUID schema PASS, checksum corruption/path traversal bị chặn, production unchanged. Host copy195.103.109bytes/3.216files đã kiểm metadata và **3.214artifact checksums**. Backup giữ trên volume và host; không nhận là off-host backup.
+- Đối chiếu bản ghi gốc24bảng và3.214files trước deploy:0missing/0changed/0file failures; bài kiểm tra chỉ thêm dữ liệu tổng hợp, không đổi bản ghi gốc. Đối chiếu lại sau toàn bộ tests/cleanup vẫn0missing/0changed/0file failures trên bản gốc; kiểm thêm toàn bộ metadata và checksum artifacts/results/exports hiện có cũng PASS. Số lượng tăng chỉ do bài kiểm tra tổng hợp và các phiên mới, không thay bản ghi gốc.
+- Gemini ledger **203/210, còn7** trước/sau recovery, Settings và demo readback; không inference mới, tăng hoặc reset quota. Traces từ các bài LOCAL/MANUAL không được nhận là cloud calls.
+
+### F. GitHub
+
+Source `a7c1e8b` đã commit/push lên `origin/codex/local-session-recovery` của repository chính thức; các quality gates đạt trước khi tích hợp. Bàn giao dùng fast-forward main gồm source và commit báo cáo, xác minh SHA local/remote rồi dọn đúng nhánh công việc đã tích hợp. SHA main cuối được báo trong kết quả Git bàn giao; image revision tiếp tục là application sourcea7c, không build lại vì commit tài liệu. Không có worktree/repository hoặc Compose project bổ sung; receipts, backup, cookies và runtime data không vào Git.
+
+### G. Điều kiện sử dụng
+
+**READY_FOR_LOCAL_TEST**: root/health/live/ready/session/settings/projects đều200 sau cleanup, đúng demo/demo-owner/owner. Assistant, History, Settings, chart/evidence/XLSX và reload đã được kiểm lại trên browser thật sau cleanup, không uncaught page errors hoặc mutation từ Settings/readback. Phạm vi sẵn sàng là local CSV/XLSX và các luồng đã kiểm; không phải bảo đảm mọi câu tự nhiên hoặc deployment Internet/nhiều người dùng. Sau reboot/Docker/Backend restart hoặc Frontend recreate, dùng `./tools/start.ps1 -SkipBuild` rồi **Thử kết nối lại**; không bỏ bảo mật để tự cấp proof từ browser.
