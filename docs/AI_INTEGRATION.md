@@ -22,9 +22,9 @@ Planner gửi DTO nhỏ `PlannerReply` bằng GenerateContent `responseJsonSchem
 
 ## Routing và usage hiện hành — 04/11/2026
 
-`agent-intent-30` giữ source/date/coverage/snapshot/effective facts đã nêu qua DTO sang Planner, chặn việc dùng múi giờ thay ý nghĩa ngày. Facts thiếu vẫn cần người dùng bổ sung; model không tự xác nhận độ đầy đủ hoặc phê duyệt quy tắc. Truy vấn tổng chênh lệch toàn run, kể cả đi cùng count, dùng MetricSnapshot đã verified; phân tích có filter/group vẫn là typed query. Tổng quan run đang mở không tự trở thành lọc ngoại lệ OPEN. Các revision và hạn mức trong những mục lịch sử bên dưới không thay cấu hình hiện hành ở đầu tài liệu.
+`agent-intent-31` giữ source/date/coverage/snapshot/effective facts đã nêu qua DTO sang Planner, chặn việc dùng múi giờ thay ý nghĩa ngày. Facts thiếu vẫn cần người dùng bổ sung; model không tự xác nhận độ đầy đủ hoặc phê duyệt quy tắc. Truy vấn tổng chênh lệch toàn run, kể cả đi cùng count, dùng MetricSnapshot đã verified; phân tích có filter/group vẫn là typed query. Tổng quan run đang mở không tự trở thành lọc ngoại lệ OPEN. Các revision và hạn mức trong những mục lịch sử bên dưới không thay cấu hình hiện hành ở đầu tài liệu.
 
-Routing30 nhắc rõ optional currency_field chỉ thuộc catalogue của đúng nguồn; danh sách/đếm EXCEPTIONS không có trường tiền tệ. Unknown fields vẫn bị từ chối, không tự bỏ validation.
+Routing31 nhắc rõ optional currency_field chỉ thuộc catalogue của đúng nguồn; danh sách/đếm EXCEPTIONS không có trường tiền tệ. Unknown fields vẫn bị từ chối, không tự bỏ validation.
 
 Gateway ghi model, từng HTTP attempt, status, tokens và latency khi provider trả được. Read/write timeout hoặc delivery chưa rõ dừng, không gửi lại mù; connect failure/known5xx mới retry có giới hạn và backoff.429 dừng bằng mã rate-limit riêng; unlimited nội bộ không thay quota thật. Usage của lỗi Assistant được giữ trong trace, không trả nội dung nhạy cảm ra UI.
 

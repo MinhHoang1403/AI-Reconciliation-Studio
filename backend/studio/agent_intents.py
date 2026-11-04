@@ -17,7 +17,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-30"
+INTENT_REVISION = "agent-intent-31"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -974,7 +974,13 @@ def interpret_requests(
                 "chưa được nêu thì null, không lấy kỳ làm coverage hay mặc định đầy đủ. "
                 "server sẽ review facts thiếu, không tự xác nhận. Không thêm "
                 "query/reconciliation cho "
-                "intent khác. Trả JSON đúng schema, không prose: " + json.dumps(schema)
+                "intent khác. Kiểm tra mục đích cuối của từng goal trước khi xuất: cần bức "
+                "tranh chung/các tỷ lệ của kết quả thì SUMMARIZE_RESULTS; chỉ liệt kê các "
+                "trường hợp chưa xử lý khi yêu cầu nói rõ ngoại lệ hoặc công việc xử lý. "
+                "Đang mở/đang xem gắn với kết quả là ngữ cảnh màn hình, không phải state OPEN "
+                "của case. Hai goal cùng cần CLARIFY vẫn phải có hai intents riêng theo đúng "
+                "thứ tự, không gộp thành một intent với hai questions. "
+                "Trả JSON đúng schema, không prose: " + json.dumps(schema)
             ),
         ),
         dict(

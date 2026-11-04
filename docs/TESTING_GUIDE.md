@@ -366,4 +366,4 @@ Năm browser cases mới kiểm composer/tin nhắn nền trắng, menu không l
 
 Với image rollback cũ trước nullable budgets, phải khôi phục cấu hình/policy hữu hạn đã lưu trước thay đổi và giữ mọi reservations mới. Không dùng trực tiếp `rollback.ps1` cũ với env `unlimited` hoặc policy null. Kiểm tra tương thích và backup trước mọi rollback; không downgrade DB hoặc reset quota/history.
 
-Routing30 kiểm truy vấn count kèm tổng chênh lệch toàn run lấy snapshot; các bộ lọc hoặc group vẫn dùng typed query. Chạy lại cả80gold/24variants trên revision mới, giữ failures/replies cũ và báo strict intent riêng với safe abstention. Không coi benchmark router là đã thực thi toàn bộ workflow.
+Routing31 kiểm truy vấn count kèm tổng chênh lệch toàn run lấy snapshot; các bộ lọc hoặc group vẫn dùng typed query. Chạy lại cả80gold/24variants trên revision mới, giữ failures/replies cũ và báo strict intent riêng với safe abstention. Không coi benchmark router là đã thực thi toàn bộ workflow.
