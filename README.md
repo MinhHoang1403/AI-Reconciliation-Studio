@@ -148,13 +148,18 @@ npm --prefix frontend exec -- playwright install chromium
 $env:STUDIO_EXPECT_AI_PROVIDER='MANUAL' # Regression mặc định không tiêu quota AI
 npm --prefix frontend run test:e2e
 uv run python tools/check_repository.py
+npm exec --yes --package markdownlint-cli2@0.23.2 -- markdownlint-cli2
 ```
 
 Gemini E2E live chỉ khi explicit đặt `STUDIO_EXPECT_AI_PROVIDER=GEMINI`; có tiêu quota hiện hữu. LlamaParse không phải regression tự động: hai tài liệu thử đã lưu tại runtime và `tools/check-document-acceptance.py` đọc lại/reuse đúng refs. Không mở allowance hoặc tạo tài liệu/job khác chỉ để chạy lại tests.
 
 PostgreSQL tests chạy trong schema UUID `test_*` của server hiện tại rồi dọn đúng schema tổng hợp đó; không dùng bảng dữ liệu ứng dụng hoặc Compose test project. Chi tiết, catalogue T01–T16, benchmark và trạng thái live/mock nằm trong [hướng dẫn kiểm thử](docs/TESTING_GUIDE.md).
 
-Trong VS Code hoặc Antigravity IDE, mở đúng thư mục repository và chọn terminal **PowerShell (AI Reconciliation Studio)**. Workspace đặt terminal này làm mặc định để tránh dùng profile của dự án khác. Máy hiện tại có profile PowerShell 7/Windows PowerShell tự kích hoạt `.venv` khi vào repository hoặc thư mục con và tự tắt khi rời ra ngoài; profile cá nhân này không nằm trong Git. Trong dự án, `python -c "import sys; print(sys.executable)"` phải trỏ tới `.venv/Scripts/python.exe`, Python 3.12.14. Terminal cũ cần đóng/mở lại để nạp profile mới; máy khác cần cài dependencies theo hướng dẫn ở trên.
+Trong VS Code hoặc Antigravity IDE, mở đúng thư mục repository và chọn terminal **PowerShell (AI Reconciliation Studio)**. Workspace đặt terminal này làm mặc định để tránh dùng profile của dự án khác. VS Code dùng Python Environments để kích hoạt môi trường đã chọn; profile cá nhân bỏ qua hook tự kích hoạt khi `TERM_PROGRAM=vscode` để tránh hai lần `(.venv)`. Ngoài terminal IDE, profile PowerShell 7/Windows PowerShell vẫn tự kích hoạt `.venv` khi vào repository hoặc thư mục con và tự tắt khi rời ra ngoài. Profile cá nhân không nằm trong Git. Trong dự án, `python -c "import sys; print(sys.executable)"` phải trỏ tới `.venv/Scripts/python.exe`, Python 3.12.14. Terminal đang mở giữ trạng thái cũ, cần đóng/mở lại để nạp profile mới; máy khác cần cài dependencies theo hướng dẫn ở trên.
+
+Các extensions dùng cho repository được liệt kê tại [.vscode/extensions.json](.vscode/extensions.json): Python/Environments/Pylance/Ruff/mypy, ESLint, Markdownlint, PowerShell, Containers và YAML. VS Code đã có sẵn hỗ trợ TypeScript/JavaScript, JSON, HTML/CSS, Markdown preview và Git; không cần cài lại chúng như npm packages. ESLint dùng dependency/config hiện có trong `frontend`; workspace chọn đúng working directory. Không bật formatter toàn dự án để tự viết lại source khi lưu.
+
+Markdown dùng [.markdownlint-cli2.jsonc](.markdownlint-cli2.jsonc), cùng engine Markdownlint 0.41.1/CLI2 0.23.2 của extension 0.62.1 đang kiểm. Bảng dùng khoảng trắng kiểu compact, labels trùng chỉ được phép dưới các sections khác nhau, các `<a>` anchors của Rules giữ hợp lệ. MD013 giữ OFF như mặc định extension cho các đoạn tiếng Việt/bảng dài; các quy tắc về bảng, URLs, heading và khoảng trắng vẫn bật. Markdownlint là formatter mặc định cho `.md`, sửa lỗi có thể tự sửa khi lưu explicit. Cấu hình và bộ kiểm CLI giúp phát hiện lỗi lại được sau khi mất AppData; không tắt Problems để che cảnh báo.
 
 Workspace ưu tiên trình quản lý venv, dùng Ruff/mypy từ môi trường dự án, thêm `backend` vào đường dẫn phân tích và bỏ thư mục runtime/dependencies khỏi việc quét mã nguồn. Nếu IDE còn giữ lựa chọn cũ, dùng **Python: Select Interpreter → Enter interpreter path** và chọn `.venv\Scripts\python.exe`. Không đặt `${workspaceFolder}` vào đường dẫn interpreter dự phòng ở cấu hình người dùng: Python Environments của Antigravity hiện tại còn thử phân giải giá trị đó ở phạm vi toàn cục và báo lỗi.
 

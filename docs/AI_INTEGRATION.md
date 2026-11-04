@@ -91,7 +91,6 @@ Bằng chứng lịch sử prompt `reconciliation-planning-1`: **PASS LIVE** tr�
 
 LlamaParse vẫn tạo job OFF, usage lịch sử 2 documents/2 pages/6 credits; không gọi lại trong Giai đoạn 2. Qwen vẫn BLOCKED_EXTERNAL_DEPENDENCY HTTP 403. Gemini mapping prompt/revision không đổi; mọi regression/E2E thông thường chạy MANUAL/mock, không tiêu quota.
 
-
 ## Nghiệm thu Gemini giới hạn — 30/10/2026
 
 Assistant `answer_verified_question` / `assistant-grounded-1`: **PASS LIVE**, một HTTP attempt, `gemini-3.5-flash-lite`, 1.564ms; usage 3.454 input/155 output tokens, thinking/cache không có receipt để xác nhận. FactSet/run/snapshot/citations và 12.75 / 10.00 / delta2.75 VND khớp oracle tổng hợp; model chỉ chọn facts, Backend render số, không thực thi workflow.
@@ -122,7 +121,6 @@ Intent 6 phân biệt canonical field ID với approved metric ID, listing với
 
 Receipts local ngoài Git và bảng đầy đủ ở IMPLEMENTATION_STATUS mục S. Mọi số tiền/chart points do native tools/snapshot tính và kiểm chứng; model không là oracle, không tự approve hoặc sinh SQL/Python.
 
-
 ### Assistant experience — routing contract 7 (02/11/2026)
 
 `agent-intent-7` đưa `RoutingBatch` hữu hạn vào `responseJsonSchema`. Model chọn `source_ref` từ catalogue; server bind project, loại nguồn và ID, kiểm trường trước khi gọi native query. `QueryOperations` dùng chung giữ nguyên public `DataQuery`. Catalogue có tên, project scope, kind, schema, readiness, paid semantics và current run; trường ngoại lệ dùng chung `EXCEPTION_FIELDS` với bộ truy vấn. Tệp trùng tên phải có lựa chọn context/ID; không đoán bằng tên gần giống.
@@ -131,7 +129,6 @@ Receipts local ngoài Git và bảng đầy đủ ở IMPLEMENTATION_STATUS mụ
 
 Sau chỉ dẫn bổ sung của chủ dự án “cứ gọi Gemini … nếu cần”, được phép phân bổ thêm request cần thiết, giữ nguyên toàn bộ 50 reservations lịch sử. Kế hoạch đầu: 1 canary, 8 batch gold gốc 80 câu, 4 batch biến thể 24 câu; tối đa 13 attempts, mỗi batch tối đa 10 câu, không retry tự động. Benchmark dừng khi transport/schema/semantic gate lỗi; successes cùng prompt/gold/context/subset được cache, không gán cache prompt cũ thành kết quả prompt mới. Chất lượng live chỉ kết luận theo receipts của lượt đo, không từ unit/MOCK.
 
-
 #### Kết quả sửa và đo tiếp: routing 15
 
 Sau canary và các lượt chẩn đoán có dừng khi lỗi, `agent-intent-15` là revision hiện hành. Bắt buộc khai báo filters/aggregation/group/currency trong routing query; enum field IDs lấy từ catalogue thực. Provider grammar tách thuộc tính theo intent và bỏ array bounds gây HTTP 400; Pydantic/exact-count/source/field/cap checks ở server giữ nguyên. Source refs/nhãn phân biệt canonical với raw, ưu tiên canonical khi có schema đã duyệt. Prompt phân biệt mục tiêu ngay với mục đích tương lai, kể cả khi nguồn đã READY; ví dụ hướng dẫn độc lập, không chép câu gold vào bộ nhận dạng regex.
@@ -139,6 +136,5 @@ Sau canary và các lượt chẩn đoán có dừng khi lỗi, `agent-intent-15
 Gemini LIVE trên code này: **80/80 measured**, intent **79/80 (98,75%)**, nguồn **59/60 (98,33%)**, slots **34/34 (100%)**, inferred dispatch **79/80**, safe/strict abstention **20/20**. Bộ 24 biến thể riêng: intent **24/24**, nguồn **16/16**, slots **10/10**, safe/strict abstention **8/8**. D04 còn hỏi lại khi tên rút gọn, không chọn nguồn sai hoặc tự chạy. Giữ nguyên 80 gold và rubric gốc. Batch router không chứng minh workflow execution/latency từng câu; kiểm tra native workflow và test kỹ thuật được báo riêng ở IMPLEMENTATION_STATUS mục T.
 
 Ceiling demo được chủ dự án cho phép tăng tiếp có audit (không reset 50 requests cũ); default cài mới vẫn cloud OFF/0. Gỡ cap cấu hình cố định 50 của Agent để dùng lifetime ceiling được cấp, tương tự global budget; reservation workspace/global/task và max model/tool calls mỗi workflow vẫn giữ. Chi phí tiền thực phải ghi NOT VERIFIED nếu không có hóa đơn/pricing receipt.
-
 
 Routing 15 giữ nguyên prompt/schema sau khi sửa thêm guard population: biểu đồ trạng thái nêu cả PAID và UNPAID giữ toàn bộ nhóm, không bị ép thành hai predicate đơn trạng thái; vẫn từ chối self-filter. Regression tái hiện FAIL trước sửa và PASS sau sửa. Toàn bộ 104 replies đã đo được revalidate bằng validator hiện hành trên catalogue PostgreSQL thực, **0 HTTP/reservations mới**; AST prompt/schema/catalogue/compiler giống source 5a7eebc, không gọi đây là một lượt model inference mới. Cache benchmark nay luôn chạy lại semantic validator trước reuse, không bỏ qua guard mới.

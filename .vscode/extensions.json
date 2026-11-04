@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-python-envs",
+    "ms-python.vscode-pylance",
+    "ms-python.mypy-type-checker",
+    "charliermarsh.ruff",
+    "dbaeumer.vscode-eslint",
+    "davidanson.vscode-markdownlint",
+    "ms-vscode.powershell",
+    "ms-azuretools.vscode-containers",
+    "redhat.vscode-yaml"
+  ]
+}

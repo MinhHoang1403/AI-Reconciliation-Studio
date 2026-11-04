@@ -31,7 +31,7 @@ API bổ sung: `POST /api/assistant/tools`, `POST /api/conversations`, `GET /api
 ## Handoff
 
 | Đối tượng | Ref/API | Bất biến |
-|---|---|---|
+| --- | --- | --- |
 | `FileArtifact` | Raw artifact thuộc `DatasetVersion` | SHA256 trên bytes gốc; owner/workspace; không path do client cung cấp |
 | `ParsedTableArtifact` | `GET /api/datasets/{id}/tables` | Cột c1/c2 có tên/vị trí nguồn; row identity độc lập business key; warnings không mất |
 | `DatasetProfile` | `GET /api/tables/{id}/profile` | Thống kê bằng code; evidence từng cột; không bịa grain |
@@ -110,7 +110,7 @@ Null/empty khi parse Decimal tạo null, giữ raw và `value_state=NULL`; chu�
 Pydantic contracts ở `contracts/reconciliation.py`: ReconciliationPlan/Contract/Run, MatchGroup/Member/ComparisonResult, ExceptionCase, MetricSnapshot và VerifiedRun. Plan/AI JSON không cấp quyền chạy. Approve tạo contract bất biến có actor/time/revision; sửa kế hoạch tạo proposal/approval mới, không ghi đè lịch sử. SourceSelection có canonical ID, role, date/time basis, explicit filters, coverage/completeness/snapshot/due date. Metric có fields/semantic ID/basis/currency/unit/SOURCE_SIGNED, tolerance và rounding. Không chạy Python/SQL tùy ý.
 
 | Route | Contract/gate |
-|---|---|
+| --- | --- |
 | GET /api/projects/{id}/canonical-catalogue | Scoped canonical/schema/profile/mapping/identifier refs; stale không được chạy |
 | GET /api/projects/{id}/domain-schema-templates | Order/OrderLine/FinancialEvent đề xuất; Settlement/Payout chỉ khi có nguồn entity thật; không approval |
 | POST /api/reconciliation-plans/validate | Metadata/type/semantics/readiness; key uniqueness chỉ trên IN_SCOPE sau cùng partition của engine; trả riêng invalid/out-of-scope/in-scope và coverage_complete |
@@ -145,7 +145,6 @@ Report mới dùng **report-2**, giữ nguyên report-1 và bytes/checksum đã 
 
 UI đọc tối đa 20 ô nguồn mỗi lần mở chi tiết và báo khi giới hạn; tên cột/giá trị/file/sheet/row hiển thị dạng bảng, không JSON. Transform nhiều inputs hiển thị các ô input, aggregate giữ các source members. Không sửa raw/canonical để khớp hiển thị.
 
-
 ## Nghiệm thu hợp đồng AI ngày 30/10/2026
 
 Không đổi schema hay semantic contracts. `POST /api/reconciliation-plans/ai` nhận `{project_id, request: PlanningRequest}`, không nhận trường `plan`; công cụ nghiệm thu đã sửa theo contract này và regression bảo toàn source IDs/period/timezone/coverage. Không gọi live khi chạy regression. Đọc proposal cached được ghi PASS CACHED, không PASS LIVE mới.
@@ -157,7 +156,7 @@ Assistant live đã chọn comparison/comparison_0 của đúng FactSet/run/snap
 Contracts hiện có tại `backend/studio/contracts/agent.py` và `data_query.py`, không thay raw/canonical/VerifiedRun/MetricSnapshot contracts đã nghiệm thu. Trạng thái live/mock và giới hạn quality ở [báo cáo mục S](IMPLEMENTATION_STATUS.md).
 
 | DTO | Ràng buộc |
-|---|---|
+| --- | --- |
 | `AgentIntent` | 11 intents hữu hạn; tối đa 5 dataset IDs; explicit run/query/planning input; không nhận actor/approval/SQL/path. Source, schema, metric và quyền kiểm lại server-side |
 | `WorkflowView` / `WorkflowState` | Context/state theo owner; tối đa 12 steps, 30 result blocks, 10 review lịch sử/3 OPEN; phân biệt CREATED/RUNNING/WAITING_REVIEW/COMPLETED/PARTIAL/FAILED/BLOCKED/CANCELLED_BEFORE_NEXT_STEP |
 | `ReviewRequest` | Resource refs, nonce, expiry, source fingerprint, evidence, typed draft/plan và planning facts đã xác nhận; fingerprint gồm source/schema/mapping/canonical/rule revisions liên quan |
@@ -175,7 +174,6 @@ Linkage/comparison/exception workflow predicates dùng enum đúng chiều, ch�
 Result blocks có kiểu: progress/dataset_summary/table/facts/chart/download. Points/units/population/verification/completeness do backend trả. Phân bố tất cả groups không dùng nhầm eligible denominator của full-match KPI. `AssistantAnswer` legacy vẫn đọc được; message có optional workflow_id. Latest workflow chip chỉ là display context, không âm thầm sửa conversation/request/draft context khi phản hồi đến muộn.
 
 Một child job SUCCEEDED không đủ kết luận toàn workflow COMPLETED. Hủy chỉ dừng bước tiếp, không xóa published artifacts. Resume và review đều kiểm lại quyền/revision; stale trả lỗi có nghĩa, không tự sửa dữ liệu/approval để tiếp tục.
-
 
 ## Assistant experience — bổ sung hợp đồng đọc và routing
 

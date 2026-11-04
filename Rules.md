@@ -22,6 +22,7 @@ Tài liệu quy tắc kỹ thuật và làm việc duy nhất của dự án, á
 16. [Điểm cần làm rõ khi triển khai](#can-lam-ro)
 
 <a id="quan-ly"></a>
+
 ## 1. Quản lý tài liệu và phạm vi
 
 - Trước **mỗi nhiệm vụ**, đọc toàn bộ `Rules.md`; đọc `AGENTS.md`, `docs/PROJECT_PLAN.md` và các hợp đồng/tài liệu nghiệp vụ liên quan. Phiên mới hoặc ngữ cảnh bị đặt lại phải đọc lại các quy tắc, không chỉ dựa vào tóm tắt cũ.
@@ -33,6 +34,7 @@ Tài liệu quy tắc kỹ thuật và làm việc duy nhất của dự án, á
 - Nhiệm vụ thiết lập quy tắc chỉ tạo `Rules.md`, `AGENTS.md`, kiểm tra tài liệu và Git local phù hợp. Các quy tắc triển khai dưới đây có hiệu lực cho nhiệm vụ sau, không phải lệnh bắt đầu viết ứng dụng, tạo Docker, gọi AI hoặc cài dependency ngay.
 
 <a id="kien-truc"></a>
+
 ## 2. Kiến trúc và công nghệ
 
 ### 2.1. Ranh giới thành phần
@@ -46,7 +48,7 @@ Tài liệu quy tắc kỹ thuật và làm việc duy nhất của dự án, á
 ### 2.2. Stack được quy định
 
 | Phần | Công nghệ và ràng buộc |
-|---|---|
+| --- | --- |
 | Frontend | React, TypeScript, Vite; Tailwind CSS; shadcn/ui hoặc **một** bộ component phù hợp; Lucide |
 | Bảng/biểu đồ | TanStack Table; virtualization khi cần; Apache ECharts; lọc/phân trang phía server |
 | Backend | Python, FastAPI, Pydantic |
@@ -69,6 +71,7 @@ Không tự thêm microservices, Kafka/message broker, Kubernetes, Redis/Celery,
 Trước khi đề xuất công nghệ/abstraction mới, chứng minh nhu cầu, khả năng tận dụng thành phần sẵn có, phương án đơn giản hơn, lợi ích đo được, chi phí vận hành/bảo trì và cách kiểm thử. Không chứng minh được lợi ích thì không thêm. Với thay đổi kiến trúc do lỗi thực tế, phải nêu nguyên nhân gốc, vì sao thiết kế hiện tại không đủ, cách sửa nhỏ hơn, modules bị ảnh hưởng, tests, chi phí và rủi ro; không tự triển khai ngoài phạm vi được giao.
 
 <a id="code"></a>
+
 ## 3. Code, tài liệu và đặt tên
 
 ### 3.1. Code rõ ràng
@@ -90,6 +93,7 @@ Hàm nghiệp vụ quan trọng có docstring/mô tả tương đương về m�
 - Giữ nguyên định danh bắt buộc của API, thư viện, model, protocol, migrations và công nghệ ngoài. Không nhầm quy tắc đặt tên với quản lý phiên bản: database schema, parser, prompts, mapping, normalization và reconciliation rules vẫn có revision/version để tái lập và truy vết; dependency/image vẫn pin phiên bản đúng.
 
 <a id="thuat-toan"></a>
+
 ## 4. Thuật toán, nguồn và công thức
 
 ### 4.1. Cơ sở phương pháp
@@ -108,6 +112,7 @@ Với mỗi thuật toán, ghi nhận: **tên, mục đích, nguồn, input, out
 Mỗi công thức đối soát, KPI và tài chính phải định nghĩa chính xác: biến đầu vào, kiểu dữ liệu, đơn vị, null/invalid, dấu âm/dương, Decimal/precision, làm tròn, tolerance (sai số cho phép), phạm vi thời gian, hiệu lực và tests có kết quả mong đợi. Ngày dùng khoảng `[start, end)` với timezone được xác nhận. Không tự tạo công thức phí Shopee/TikTok/ngân hàng hoặc FX nếu chưa có nguồn nghiệp vụ đáng tin cậy, ngày hiệu lực hoặc định nghĩa được người dùng xác nhận.
 
 <a id="du-lieu"></a>
+
 ## 5. Toàn vẹn dữ liệu và database
 
 Toàn vẹn dữ liệu là ưu tiên cao nhất trong các module xử lý dữ liệu.
@@ -138,6 +143,7 @@ Normalization chỉ chạy DSL/AST (cây biểu diễn phép biến đổi) đã
 - Kết quả/tool request phải xác định `run_id`; không dùng “latest” mơ hồ. FactSet/câu trả lời của run cũ không được trình bày như số liệu hiện tại khi run thay đổi.
 
 <a id="doi-soat"></a>
+
 ## 6. Đối soát, kiểm chứng và KPI
 
 ### 6.1. Gates và trạng thái
@@ -173,7 +179,7 @@ Verifier độc lập với Matcher: kiểm tra partition, membership/cardinalit
 Mọi KPI phải có comparison unit (CU: đơn vị so sánh nghiệp vụ), population, eligible denominator, metric/currency/period và revision. Theo kế hoạch §20:
 
 | KPI | Cách tính |
-|---|---|
+| --- | --- |
 | Verified full match rate | CU `LINKED` và `EQUAL/WITHIN_TOLERANCE` đã verified / eligible CU |
 | Linkage rate | CU `LINKED` / eligible CU |
 | Exception rate | Eligible CU có ít nhất một active exception / eligible CU |
@@ -187,6 +193,7 @@ Mẫu số 0 ⇒ `N/A`; không 0%/100%. Liệt kê excluded/pending/invalid riê
 Exception cases phải có run/group/CU, type, severity basis, evidence, workflow state, actor/timestamp/rule liên quan. Giải thích nguyên nhân phân biệt `HYPOTHESIS`, `SUPPORTED`, `UNKNOWN`; không gọi sort theo số tiền/tuổi case là AI risk score chưa benchmark. Không tự sửa tiền.
 
 <a id="ai"></a>
+
 ## 7. AI, chính sách cloud và bộ nhớ
 
 ### 7.1. Vai trò và providers
@@ -217,6 +224,7 @@ Nếu provider không hỗ trợ Structured Outputs theo contract thật, hỗ t
 - Assistant chỉ dùng typed read-only tools ở kế hoạch §34 trên verified facts đúng `run_id`. Mọi phát biểu định lượng phải có metric/run/evidence refs; thiếu dữ liệu thì nói rõ. Chạy run/review/approve qua API riêng và xác nhận user đúng workflow, không trao quyền tự duyệt cho model.
 
 <a id="bao-mat"></a>
+
 ## 8. API, bảo mật và quyền truy cập
 
 - API REST theo resource và prefix `/api` theo kế hoạch §27; DTO/enum ổn định. Error envelope thống nhất: `code`, `message_vi`, `details` đã redacted, `retryable`, `correlation_id`. Không trả stack trace, secret hoặc raw storage path cho FE; không nuốt lỗi, giả success hoặc dùng review như exception lỗi chung.
@@ -228,6 +236,7 @@ Nếu provider không hỗ trợ Structured Outputs theo contract thật, hỗ t
 - Đây là sản phẩm hỗ trợ đối soát/kiểm tra sai lệch; không tự tuyên bố kết luận kiểm toán độc lập, độ chính xác tuyệt đối hoặc không bao giờ hallucinate từ vài tests.
 
 <a id="giao-dien"></a>
+
 ## 9. Giao diện và demo local
 
 ### 9.1. Trải nghiệm thống nhất
@@ -249,6 +258,7 @@ Backend tạo/khôi phục session same-origin cho demo principal, HttpOnly, Sam
 Phải test local Dashboard, non-local fail closed, anonymous API bị chặn ngoài demo, viewer không approve, CSRF write bị từ chối, isolation và restart. Nếu không bảo đảm auto-session an toàn, dùng phương án demo one-time server-initiated session trong loopback hoặc báo giới hạn; không lách bằng tắt bảo mật.
 
 <a id="docker"></a>
+
 ## 10. Docker và tài nguyên
 
 ### 10.1. Một Compose project chính
@@ -267,6 +277,7 @@ Không chạy test có thể sửa/xóa dữ liệu thật trên dữ liệu đ�
 - Không tự dọn cache/images toàn Docker host bằng lệnh global. Không chạy `docker compose down -v`, `docker volume prune`, `docker system prune --volumes` hoặc thao tác xóa dữ liệu tương đương. Restart/recreate phải giữ dữ liệu.
 
 <a id="git"></a>
+
 ## 11. Git, GitHub và khôi phục
 
 ### 11.1. Repository và branches
@@ -289,6 +300,7 @@ Trước public push phải kiểm tra cả nội dung tài liệu, metadata và
 GitHub lưu source/history, **không thay backup PostgreSQL, uploads, Parquet hoặc Docker volumes**. Trước thay đổi ảnh hưởng dữ liệu: xác định scope, kiểm tra backup, bảo vệ nguồn, chuẩn bị rollback code/schema và cách khôi phục phù hợp. `git checkout` không khôi phục database. Không migration phá hủy nếu chưa có phương án bảo toàn dữ liệu; xác minh backup/restore bằng kiểm tra phù hợp, không chỉ nói đã có file backup.
 
 <a id="kiem-thu"></a>
+
 ## 12. Sửa lỗi và kiểm thử
 
 ### 12.1. Sửa từ nguyên nhân gốc
@@ -307,6 +319,7 @@ Phân biệt unit, property-based, contract, integration, golden, E2E, security,
 - Mục tiêu ở kế hoạch §36 (mapping precision ≥98%, auto linkage precision ≥99.5%/recall ≥95% trong phạm vi hỗ trợ) là mục tiêu đánh giá, không kết quả đã đạt. Báo riêng recall/abstention/auto-approve population; không tuyên bố 99% khi chưa có labeled evaluation.
 
 <a id="quy-trinh"></a>
+
 ## 13. Quy trình thực hiện nhiệm vụ
 
 1. **Đọc nguồn:** thực hiện mục 1; không bỏ `Rules.md` hoặc mặc định báo cáo cũ còn đúng.
@@ -319,12 +332,13 @@ Phân biệt unit, property-based, contract, integration, golden, E2E, security,
 8. **Báo cáo:** tiếng Việt theo mục 15, kèm mức sẵn sàng cho nhiệm vụ tiếp theo; không tự bắt đầu giai đoạn mới.
 
 <a id="nghiem-thu"></a>
+
 ## 14. Nghiệm thu và bàn giao ba giai đoạn
 
 Chỉ có ba giai đoạn theo kế hoạch §§32–34; không đổi tên thực thể/hợp đồng ở giai đoạn sau để làm lại engine trước đó.
 
 | Giai đoạn | Phạm vi và bàn giao bắt buộc | Giới hạn |
-|---|---|---|
+| --- | --- | --- |
 | 1. Nền tảng dữ liệu + AI Smart Setup + UI cơ sở | Raw → Parsed → Proposal → Approved Mapping → Canonical; auth/local demo, upload, parser adapters/policy, profiling, Qwen Gateway, normalization, memory/restart; bàn giao `CanonicalDataset`, `DatasetProfile`, `SchemaDefinition`, `MappingRevision`, `EvidenceRef`, `JobStatus`, `WorkspacePolicy`, artifacts scoped/quality và contract tests | Không xây matcher, dashboard tài chính hoặc chatbot đầy đủ |
 | 2. AI Planning + Matching/Verification + Results | Consume contracts giai đoạn 1; approved reconciliation rules, exact/group/controlled candidates/conflicts, Decimal comparison, independent verification, MetricSnapshot, Exception Inbox/evidence, exports; demo 3-file ecommerce có nhãn và bộ 2-file ngoài ecommerce | Không viết parser/mapping thứ hai; chưa cần Assistant chat hoàn chỉnh |
 | 3. Contextual Assistant + tự động hóa + release | Consume `VerifiedRun`, `MetricSnapshot`, `EvidenceRef`, `ExceptionCase` qua typed read-only tools; hội thoại/policy/cost, worker recovery, security/performance, backup/restore, full E2E và release sanitization | Không tự tính tiền/KPI trong LLM hoặc tự duyệt rule tài chính |
@@ -336,6 +350,7 @@ Một nhiệm vụ chỉ hoàn thành khi deliverable đúng phạm vi đã có,
 Nghiệm thu ứng dụng cuối cùng phải chạy luồng kế hoạch §41: local Dashboard → upload → Smart Setup/review → normalization → approved plan → verified run → Dashboard/Exceptions/evidence → Assistant có facts → export → restart/reopen bảo toàn dữ liệu → thử ngành khác. Golden/property/security/E2E và monetary invariants phải đạt; không coi đủ số modules là DONE. Báo trung thực mọi partial/live/mock/blocked và known limits.
 
 <a id="bao-cao"></a>
+
 ## 15. Ngôn ngữ và báo cáo
 
 Mọi giải thích cho người dùng bằng **tiếng Việt**, giữ tên kỹ thuật khi cần và giải nghĩa lần đầu. Dùng từ dễ hiểu và ví dụ thực tế: schema là cấu trúc dữ liệu, mapping là ánh xạ trường, profiling là phân tích đặc điểm dữ liệu, normalization là chuẩn hóa, regression test là kiểm tra chức năng cũ không bị hỏng, rollback là khôi phục trạng thái phù hợp. Không lạm dụng tiếng Anh.
@@ -343,6 +358,7 @@ Mọi giải thích cho người dùng bằng **tiếng Việt**, giữ tên k�
 Báo cáo ngắn, tránh lặp; gồm: việc đã làm, files thay đổi và lý do, checks/lệnh/kết quả (phân biệt live/mock/chưa chạy), Docker nếu liên quan, commit hash/remote/push status, lỗi/giới hạn/mâu thuẫn còn lại và điều kiện chuyển việc tiếp theo. Báo cáo giai đoạn bổ sung APIs/migrations/test counts và screenshots UI không secrets khi phù hợp. Không nói “PASS”, “verified”, “đã push” hoặc “sẵn sàng release” khi thiếu bằng chứng tương ứng.
 
 <a id="can-lam-ro"></a>
+
 ## 16. Điểm cần làm rõ khi triển khai
 
 Các lưu ý dưới đây ghi nhận cách diễn đạt trong kế hoạch, không sửa kế hoạch hoặc tự tạo nghiệp vụ mới:

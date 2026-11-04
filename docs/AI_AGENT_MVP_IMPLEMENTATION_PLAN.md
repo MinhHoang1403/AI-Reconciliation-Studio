@@ -31,7 +31,7 @@
 ### 1.2. Bốn năng lực MUST của MVP
 
 | Năng lực | Ví dụ yêu cầu bằng tiếng Việt | Kết quả | Trường hợp phải hỏi |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Chuẩn bị / chuẩn hóa | “Chuẩn hóa 2 file mới tải lên giúp tôi” | Bản chuẩn hóa, tóm tắt phép biến đổi, lỗi và chứng cứ | Ý nghĩa khóa/tiền/ngày, biến đổi có thể đổi ID, extraction mơ hồ |
 | Đối soát | “Đối soát sổ cái với chứng từ tháng 10” | VerifiedRun, tóm tắt khớp/thiếu/lệch, ngoại lệ, biểu đồ | Rule mới, kỳ/timezone/coverage/basis chưa rõ, hai nguồn không tương thích |
 | Tra cứu dữ liệu | “Liệt kê các giao dịch đã chuyển tiền ở file A” | Bảng lọc có phân trang, tổng số bản ghi, nguồn và điều kiện thực thi | “Đã chuyển tiền” không có cột/trạng thái chứng minh được |
@@ -65,7 +65,7 @@
 ### 2.1. Công nghệ đang dùng — giữ và tái sử dụng
 
 | Lớp | Công nghệ / source | Định hướng |
-|---|---|---|
+| --- | --- | --- |
 | UI | React, TypeScript, Vite, `frontend/src/App.tsx`, `AssistantStudio.tsx`, `navigation.ts`, `styles.css`; ECharts 6, Lucide, TanStack Table, Radix Dialog | Giữ App Shell & theme, mở rộng UI chat |
 | API & validation | Python FastAPI, Pydantic, Pydantic Settings, SQLAlchemy | Giữ; bổ sung DTO/tools typed |
 | Storage | PostgreSQL 18 image đang cấu hình trong `compose.yaml`; artifacts files/Parquet; SQLAlchemy models `backend/studio/database.py` | Giữ schema hiện có, migration additive tối thiểu |
@@ -108,7 +108,7 @@ Không thêm dependency mới nếu thư viện đang có đáp ứng. Không n�
 ### 3.2. Điều hướng mới — chỉ tổ chức lại
 
 | Vị trí | Trước | Sau (đề xuất) | Ghi chú |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Trang khi mở | Tổng quan | **Trợ lý AI** | Nếu URL chỉ định trang hợp lệ, tôn trọng deep link |
 | Sidebar mục đầu | Tổng quan | **Trợ lý AI** | Luôn mở được khi session ready; không cần project để xem empty chat |
 | Sidebar mục 2 | Dữ liệu | Dữ liệu | Chi tiết, kiểm tra nguồn khi cần |
@@ -196,7 +196,7 @@ AI **không trực tiếp thực thi SQL/code** và không được quyết đ�
 Tên module là gợi ý, Codex phải đối chiếu trách nhiệm tránh trùng:
 
 | Module đề xuất | Vai trò | Tái sử dụng |
-|---|---|---|
+| --- | --- | --- |
 | `backend/studio/agent_intents.py` | Parse/validate intent và tham số; deterministic fast path; Gemini typed routing | AI Gateway, Pydantic |
 | `backend/studio/agent_workflows.py` | State machine điều phối nhiều job và resume | JobRow/Worker, conversations, audit |
 | `backend/studio/agent_policy.py` | Quy tắc khi nào auto execute hoặc cần review; **code deterministic**, không do prompt quyết định | Approved Mapping/Rules, workspace permissions |
@@ -227,7 +227,7 @@ Tên module là gợi ý, Codex phải đối chiếu trách nhiệm tránh trù
 ### 5.1. Intent taxonomy hữu hạn
 
 | Intent | Ví dụ | Loại | Điều kiện |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `EXPLORE_DATA` | “File này có những cột nào?” | Read | Project/file đã tồn tại |
 | `PREPARE_NORMALIZATION` | “Chuẩn hóa file A” | Workflow | File/profile hợp lệ |
 | `RECONCILE_DATASETS` | “So khớp A và B trong tháng 10” | Workflow | Nguồn READY và rule/scope |
@@ -293,7 +293,7 @@ Thiết kế `max_steps_per_workflow`, `max_model_calls_per_workflow`, `max_tool
 ### 6.1. Read-only tools (kế thừa + bổ sung)
 
 | Tool | Trạng thái | Đầu vào giới hạn | Đầu ra quan trọng |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `list_datasets` | Có | project, pagination | Danh sách nguồn, status |
 | `get_workflow_status` | Có | project | READY/review/active job |
 | `get_run_summary` | Có | verified run | VerifiedRun |
@@ -311,7 +311,7 @@ Tất cả tool phải re-authorize scope **bên server trên mỗi call**, khô
 ### 6.2. Write/workflow tools — chỉ gọi qua policy executor
 
 | Action gợi ý | Server thực hiện | Cho phép tự chạy khi | Cần review khi |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `start_upload_parse` | Existing upload/parser job | Người dùng đã đính kèm và gửi, file hợp lệ | Parsing/extraction region ambiguous; PDF policy |
 | `prepare_mapping_proposal` | Mapping proposal job | File hợp lệ, AI quota policy | Cần quyết định mới về field/grain |
 | `apply_approved_mapping` | Existing approval/service reuse | Chỉ khi có **explicit approved reuse policy** và chữ ký/schema/semantics khớp; không tự đóng dấu người duyệt mới | Mapping mới/khác nghĩa/không chứng minh equivalence |
@@ -330,7 +330,7 @@ Tất cả tool phải re-authorize scope **bên server trên mỗi call**, khô
 ### 7.1. Ma trận quyết định bắt buộc
 
 | Tình huống | Hành động Agent | Lý do |
-|---|---|---|
+| --- | --- | --- |
 | Chỉ đọc/profile/null/count/preview | Tự làm | Không đổi dữ liệu |
 | Có approved mapping **đúng chữ ký** và phép biến đổi đã được chấp nhận | Tự normalize | User đã xác nhận semantic tại revision tương thích |
 | Cột tiền `amount` chưa biết gross/net/paid/due | **WAITING_REVIEW** | Nghĩa tiền ảnh hưởng công thức |
@@ -532,7 +532,7 @@ Existing `POST /api/assistant/messages`, conversation endpoints, upload, mapping
 ### 12.2. API mới đề xuất (cần review trước khi code)
 
 | Endpoint gợi ý | Mục tiêu | Trả về |
-|---|---|---|
+| --- | --- | --- |
 | `POST /api/agent/attachments` hoặc mở rộng upload workflow phù hợp | Upload từ chat, bootstrap project an toàn | project/dataset/file refs + parse jobs |
 | `POST /api/agent/workflows` | Giao mục tiêu tự động hóa đã được hiểu/validated | `workflow_id`, state, next action |
 | `GET /api/agent/workflows/{id}` | Poll state, steps, review + result blocks | typed workflow view |
@@ -622,7 +622,7 @@ Xem nguồn [OWASP LLM06 Excessive Agency](https://genai.owasp.org/llmrisk/llm06
 ### 15.1. Test pyramid
 
 | Lớp | Test bắt buộc |
-|---|---|
+| --- | --- |
 | Contracts | Typed intent/tool params, enum/null/extra, invalid IDs, read/write permissions |
 | Policy engine | Bảng quyết định Auto/Review/Reject, approved template drift, partial/unknown, no fake approval |
 | Workflow unit | Step transitions, review/resume, cancellation, stale revisions, idempotency, max steps |
@@ -663,27 +663,27 @@ Tối thiểu đề xuất **60 câu** qua ít nhất 2 miền dữ liệu (đơ
 
 ### 15.3. Golden demo E2E MUST
 
-**Journey 1 — Normalization có điểm mơ hồ**
+#### Journey 1 — Normalization có điểm mơ hồ
 
 - Tạo conversation khi chưa có project → upload hai Excel/CSV tổng hợp → yêu cầu chuẩn hóa.
 - AI tự profile; tìm 1 trường tiền ambiguous; gửi đúng review card; người dùng xác nhận; workflow resume; canonical READY/PARTIAL đúng oracle; raw hashes không đổi.
 
-**Journey 2 — Reconciliation**
+#### Journey 2 — Reconciliation
 
 - Hai canonical READY → yêu cầu đối soát.
 - Nếu rule approved phù hợp: tự enqueue; nếu rule mới: review đúng các trường; approved mới chạy.
 - Independent Verifier PASS; KPI, biểu đồ, unmatched/mismatch đúng fixtures; không bịa nguyên nhân.
 
-**Journey 3 — Data Q&A**
+#### Journey 3 — Data Q&A
 
 - “Liệt kê đơn đã chuyển tiền” trên source có trạng thái chứng minh được → filter + total + page + evidence đúng.
 - Trên source chỉ có `completed` nhưng không chứng minh `paid` → hỏi/từ chối suy luận.
 
-**Journey 4 — Multi-turn context**
+#### Journey 4 — Multi-turn context
 
 - “Các trường hợp thiếu?” → “Còn những đơn lệch trên 100.000?” → “Vì sao đơn đó lệch?”; giữ đúng run/source/case sau back/forward/reload.
 
-**Journey 5 — Robustness/security**
+#### Journey 5 — Robustness/security
 
 - Client gửi lại cùng action sau timeout → không thêm job; worker SIGKILL/reclaim → không duplicate canonical/run; viewer không approve; cross-project data inaccessible; fake evidence; prompt injection trong cell.
 
@@ -788,7 +788,7 @@ Không thêm hàng chục Markdown trùng lặp, không xóa audit history hay a
 ## 18. Rủi ro cần chốt trước khi giao Codex
 
 | Rủi ro | Cách kiểm soát | Mức ưu tiên |
-|---|---|---|
+| --- | --- | --- |
 | Agent tạo approved mapping/rule từ prompt | Policy gate server + review decision binding | P0 |
 | Planner Gemini sai schema | Chẩn đoán typed output + regression + live oracle | P0 |
 | Chat bootstrap project scope giả dẫn đến reuse nhầm | `UNCONFIRMED` scope, forbid template reuse | P0 |
@@ -872,18 +872,18 @@ Không thêm hàng chục Markdown trùng lặp, không xóa audit history hay a
 
 > Các đường dẫn sau hỗ trợ các quyết định kỹ thuật; chúng **không thay thế kiểm tra version/model/API/driver đang dùng**. Tài liệu source trong repository là cơ sở xác minh code thực tế, còn phần này là nguồn tham khảo bên ngoài.
 
-1. **Google Gemini — Function calling:** https://ai.google.dev/gemini-api/docs/function-calling — model tạo tool request, ứng dụng thực thi công cụ thực, không giao quyền trực tiếp cho model.
-2. **Google Gemini — Structured output:** https://ai.google.dev/gemini-api/docs/structured-output — supported subset JSON Schema, kiểm output bằng validators.
-3. **Google — GenerateContent API:** https://ai.google.dev/api/generate-content — kiểm request/response format đúng transport endpoint.
-4. **Microsoft Finance Agent — Reconcile data:** https://learn.microsoft.com/en-us/copilot/finance/reconcile/reconcile-data — AI đề xuất đối soát, assisted/autonomous mode và template review.
-5. **Microsoft Finance Agent — Create reconciliation agent:** https://learn.microsoft.com/en-us/copilot/finance/reconcile/create-reconciliation-agent — tái sử dụng template để tự động hóa, không sao chép enterprise scope.
-6. **Polars Lazy API:** https://docs.pola.rs/user-guide/lazy/using/ — lazy scan, tối ưu và kiểm tra schema.
-7. **Polars optimization:** https://docs.pola.rs/user-guide/lazy/optimizations/ — predicate/projection pushdown.
-8. **PostgreSQL SELECT / SKIP LOCKED:** https://www.postgresql.org/docs/current/sql-select.html — kiểm ngữ nghĩa row locking/queue.
-9. **PostgreSQL explicit locking:** https://www.postgresql.org/docs/current/explicit-locking.html — advisory/transaction locks.
-10. **OWASP LLM06 Excessive Agency:** https://genai.owasp.org/llmrisk/llm062025-excessive-agency/?lang=us — least privilege, hạn quyền tự động hóa.
-11. **OWASP LLM01 Prompt Injection:** https://genai.owasp.org/llmrisk/llm01-prompt-injection/ — uploaded data là dữ liệu không tin cậy.
-12. **W3C ARIA Combobox Pattern:** https://www.w3.org/WAI/ARIA/apg/patterns/combobox/ — chọn project/nguồn, keyboard & accessibility.
+1. **Google Gemini — Function calling:** <https://ai.google.dev/gemini-api/docs/function-calling> — model tạo tool request, ứng dụng thực thi công cụ thực, không giao quyền trực tiếp cho model.
+2. **Google Gemini — Structured output:** <https://ai.google.dev/gemini-api/docs/structured-output> — supported subset JSON Schema, kiểm output bằng validators.
+3. **Google — GenerateContent API:** <https://ai.google.dev/api/generate-content> — kiểm request/response format đúng transport endpoint.
+4. **Microsoft Finance Agent — Reconcile data:** <https://learn.microsoft.com/en-us/copilot/finance/reconcile/reconcile-data> — AI đề xuất đối soát, assisted/autonomous mode và template review.
+5. **Microsoft Finance Agent — Create reconciliation agent:** <https://learn.microsoft.com/en-us/copilot/finance/reconcile/create-reconciliation-agent> — tái sử dụng template để tự động hóa, không sao chép enterprise scope.
+6. **Polars Lazy API:** <https://docs.pola.rs/user-guide/lazy/using/> — lazy scan, tối ưu và kiểm tra schema.
+7. **Polars optimization:** <https://docs.pola.rs/user-guide/lazy/optimizations/> — predicate/projection pushdown.
+8. **PostgreSQL SELECT / SKIP LOCKED:** <https://www.postgresql.org/docs/current/sql-select.html> — kiểm ngữ nghĩa row locking/queue.
+9. **PostgreSQL explicit locking:** <https://www.postgresql.org/docs/current/explicit-locking.html> — advisory/transaction locks.
+10. **OWASP LLM06 Excessive Agency:** <https://genai.owasp.org/llmrisk/llm062025-excessive-agency/?lang=us> — least privilege, hạn quyền tự động hóa.
+11. **OWASP LLM01 Prompt Injection:** <https://genai.owasp.org/llmrisk/llm01-prompt-injection/> — uploaded data là dữ liệu không tin cậy.
+12. **W3C ARIA Combobox Pattern:** <https://www.w3.org/WAI/ARIA/apg/patterns/combobox/> — chọn project/nguồn, keyboard & accessibility.
 
 ### Tham chiếu nội bộ bắt buộc
 
@@ -919,7 +919,6 @@ Empty chat không có khung chat trống hoặc cột lịch sử thường tr�
 Nghiệm thu bổ sung ít nhất 15 trạng thái ở 5 widths 390/768/1366/1440/1920: empty/short/long/upload/running/review/completed/wide table/chart/evidence/history/multiline/mobile keyboard/sidebar/loading-error-permission. Chụp và xem trước/sau, giữ regression cũ bằng thao tác phù hợp UI mới, không xóa oracle. Không đổi backend/security/approvals/ledger vì layout. Tệp bổ sung nhận được hiện chỉ chứa văn bản, chưa có hai ảnh phác thảo trong attachment; kiểm chứng bố cục theo mô tả chi tiết và screenshots thực tế, không tuyên bố đã đối chiếu ảnh chưa nhận. Toàn bộ gate Agent/live/release của nhiệm vụ trước vẫn tiếp tục.
 
 Kết quả bổ sung UI: **PASS LOCAL/MOCK CONTRACT** theo mô tả, 18 trạng thái × 5 widths = 90 screenshots, trong 5 visual tests của full 72 E2E PASS. Ảnh trước/sau đã xem; exact sketch comparison NOT VERIFIED vì attachment chỉ chứa văn bản. Không suy UI PASS thành broad Agent LIVE hoặc quyền merge. Chi tiết source SHA, bằng chứng và các gate chưa đạt ở IMPLEMENTATION_STATUS mục S.
-
 
 ## 24. Chỉ dẫn tiếp theo — Assistant Experience & NLP Quality Finalization
 

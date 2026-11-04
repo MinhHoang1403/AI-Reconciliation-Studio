@@ -11,7 +11,7 @@ Ngày kiểm tra: **29/10/2026**. **RESEARCH COMPLETE — IMPLEMENTATION DEFERRE
 Tất cả liên kết sau được mở ngày **29/10/2026**; đây là ngày nghiên cứu, không phải ngày phát hành của từng trang.
 
 | Nguồn | Nội dung đối chiếu |
-|---|---|
+| --- | --- |
 | [S1 — Argon model][s1] | ID, context, modalities, capabilities |
 | [S2 — Latest model][s2] | Migration, sampling, thinking/output và timeout |
 | [S3 — Thinking][s3] | Levels, hard cutoff, signatures |
@@ -32,7 +32,7 @@ Tất cả liên kết sau được mở ngày **29/10/2026**; đây là ngày n
 ## 3. Thông số Argon
 
 | Thuộc tính [S] | Kết quả |
-|---|---|
+| --- | --- |
 | Stable ID | `gemini-4-argon`, cập nhật model tháng 10/2026 |
 | Input/output | Text, image, video, audio, PDF → text |
 | Unified context | **1.048.576** tokens chung input + thinking + answer |
@@ -44,7 +44,7 @@ Nguồn: [model specification][s1]. Paid Tier bắt buộc, không có Free Tier
 ## 4. So sánh với Flash-Lite
 
 | Tiêu chí | Flash-Lite | Argon |
-|---|---|---|
+| --- | --- | --- |
 | Model | `gemini-3.5-flash-lite` | `gemini-4-argon` |
 | Context | Input tối đa 1.048.576 | Unified 1.048.576 |
 | Output model | Tối đa 65.536 | 65.536 mặc định; long decode có điều kiện |
@@ -57,7 +57,7 @@ Thông số Flash-Lite từ [S12][s12], levels từ [S3][s3]. Không cấu hình
 ## 5. Tác vụ → tuyến đề xuất [D]
 
 | Nhóm | Tuyến khi policy cho phép |
-|---|---|
+| --- | --- |
 | Dataset classification, schema understanding, mapping | Flash-Lite sau reuse/rules |
 | Simple grain và simple reconciliation planning | Flash-Lite |
 | Giải thích ngoại lệ đơn giản | Flash-Lite; chức năng AI này chỉ triển khai khi được giao riêng |
@@ -74,7 +74,7 @@ Routing dùng task đã đăng ký + điều kiện nghiệp vụ được phê 
 Đã đọc các module được giao; đây là hiện trạng source được nghiệm thu, không phải thiết kế Argon đã có.
 
 | Module | Hiện trạng và điểm cần chú ý |
-|---|---|
+| --- | --- |
 | [ai_gateway.py](../backend/studio/ai_gateway.py) | `route_ai_task`, context che mẫu và `GeminiProvider.request_typed`; model duy nhất từ settings, REST/httpx, tối đa 2 attempts, reservation trước mỗi POST; `maxOutputTokens=6000`, `temperature=0`, đọc `parts[0].text` |
 | [config.py](../backend/studio/config.py) | `gemini_model` Flash-Lite; timeout mặc định 45s, schema trần 120s; worker lease 300s; chưa có reasoning profile |
 | [repository.py](../backend/studio/repository.py) | `reserve_gemini_request`: global advisory lock, lifetime global/workspace attempt caps, AuditRow; caller commit trước gửi |
@@ -150,7 +150,7 @@ Interactions là phương án khác, không trộn snake_case của nó với ca
 Giá **USD/1M tokens, Standard**, kiểm tra ngày 29/10/2026:
 
 | Model/thời gian | Input | Cached input | Output gồm thinking |
-|---|---:|---:|---:|
+| --- | ---: | ---: | ---: |
 | Argon đến 30/11/2026 | 2 | 0,10 | 10 |
 | Argon từ 01/12/2026 | 4 | 0,20 | 20 |
 | Flash-Lite hiện tại | 0,30 | 0,03 | 2,50 |
@@ -160,7 +160,7 @@ Giá **USD/1M tokens, Standard**, kiểm tra ngày 29/10/2026:
 Ví dụ tự tính bằng Decimal, **không phải usage/hóa đơn thực**: 10.000 input + 2.000 answer + 8.000 thinking, không cache/tools/tax/FX:
 
 | Model/rate | Phép tính USD | Tổng |
-|---|---|---:|
+| --- | --- | ---: |
 | Flash-Lite | 0,01×0,30 + 0,01×2,50 | **0,028** |
 | Argon ưu đãi | 0,01×2 + 0,01×10 | **0,12** |
 | Argon từ 01/12 | 0,01×4 + 0,01×20 | **0,24** |
@@ -188,7 +188,7 @@ Reuse scope checks/masking/prompt-injection boundaries. Evidence từ đúng wor
 ## 12. Acceptance dự kiến, chưa chạy Argon
 
 | Lớp kiểm thử tương lai | Điều kiện cần chứng minh |
-|---|---|
+| --- | --- |
 | Mock routing | Disabled/request 0/USD 0/exhausted/policy OFF → 0 HTTP; không unauthorized fallback; model chọn đúng task |
 | Contract | Typed output, schema subset, unknown fields/IDs/evidence, đổi confirmed facts, incomplete coverage → reject/review; không auto-approve |
 | Transport | Thought part trước text, empty/blocked/MAX_TOKENS/CONTINUATION, HTTP 402/403/429/5xx, timeout, usage thiếu/cumulative; no blind resend |

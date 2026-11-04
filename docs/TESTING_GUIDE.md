@@ -96,7 +96,7 @@ uv run mypy backend/studio
 Ngày 28/10/2026: **79 tests offline PASS**, 12 integration deselected; Ruff/mypy PASS. Có một cảnh báo deprecation từ Starlette về TestClient/httpx; không phải lỗi ứng dụng. Chưa chuyển test client transport trong đợt này vì contract tests hiện chạy đúng với lock đã chọn.
 
 | Catalogue | Bằng chứng thực thi |
-|---|---|
+| --- | --- |
 | T01 | size, extension/MIME/signature, archive/XML entity và tên path không hợp lệ bị từ chối |
 | T02 | hash/raw bytes không đổi; integration kiểm tra upload scoped dedup và project khác không reuse dataset |
 | T03 | route document/cloud OFF và mock transport khẳng định 0 HTTP cloud calls |
@@ -183,7 +183,7 @@ uv run python tools/benchmark-foundation.py
 Đã đo trên Windows/Ryzen 5 7535HS, 16 GB RAM, Python 3.12.14, hai Polars threads; không dùng GPU. Mỗi cỡ chạy ba subprocess mới, CSV hai cột tổng hợp, mỗi 1.000 dòng có một invalid amount. Không gọi AI. Kết quả đo trong phiên nghiệm thu:
 
 | Dòng | Parse p50 / p95 ms | Profile p50 / p95 ms | Normalize + write p50 / p95 ms | Peak process MiB |
-|---:|---:|---:|---:|---:|
+| ---: | ---: | ---: | ---: | ---: |
 | 1.000 | 22,53 / 96,36 | 2,93 / 16,26 | 38,36 / 81,17 | 77,59 |
 | 10.000 | 35,00 / 36,93 | 14,13 / 14,89 | 232,91 / 234,77 | 92,84 |
 | 50.000 | 57,87 / 58,77 | 65,14 / 65,28 | 1.228,25 / 1.420,63 | 172,71 |
@@ -230,7 +230,7 @@ uv run python tools/check_repository.py
 ```
 
 | Golden catalogue | Evidence |
-|---|---|
+| --- | --- |
 | T17–T20 | Invented source/field/evidence/AI APPROVED rejected; gross/net/stale/wrong scope/expired dates/cardinality blocked; incomplete coverage explicit partial; unapproved ID cannot execute |
 | T21–T24 | Manual oracle Internal/Shopee partition 11 = 1 invalid + 5 outside + 5 inside; zero-prefix/composite linkage; duplicate reviews; same ID amount diff LINKED/AMOUNT_MISMATCH |
 | T25–T26 | TikTok 1:N 20+30=50 with both members; inverse N:1; mixed currency NOT_COMPARABLE, no delta; signed refund retained |
@@ -262,7 +262,6 @@ Lệnh chuẩn ở trên chạy cùng Docker project. Sau recreate phải chạy
 
 So sánh baseline 121 backend/14 E2E với kết quả thật ở mục K của báo cáo; không cộng các lần replay hoặc PASS LIVE lịch sử vào số cases hiện tại. Prompt planner sửa đổi chưa test live theo chỉ định 0 cloud requests.
 
-
 ## Assistant contracts và hội thoại
 
 `tools/test-postgres.ps1 -All -Source` chạy nguồn feature trong thư mục tạm của Backend hiện có và UUID schema trên PostgreSQL hiện có; không sửa `/app`, không tạo Compose/server riêng. Khi đã deploy đúng image dùng `-All` để kiểm runtime thực. Suite bổ sung T36–T40, privacy actor/project/run, ID giả, KPI thiếu, idempotency, concurrent pending requests, cache FactSet, xóa hội thoại đang chờ, lease/fencing và durable task reservation. Transport provider dùng MOCK; không dùng quota live.
@@ -272,7 +271,7 @@ Frontend Assistant thêm contextual panel, citations/source evidence, khôi ph�
 Nguồn candidate đã replay toàn bộ: **176 backend (138 offline/38 PostgreSQL)** và **54 Playwright (9 foundation/25 interface/7 reconciliation/13 Assistant)**; bằng chứng và revision cụ thể tại mục P của [báo cáo](IMPLEMENTATION_STATUS.md). T36–T40 nằm trong các suite, không cộng thêm số cases. Backend ở `9c565a6` không đổi byte sang `9802545`; E2E cuối chạy trên images `9802545` đã đối chiếu source và assets.
 
 | Catalogue | Bằng chứng Assistant |
-|---|---|
+| --- | --- |
 | T36 | LOCAL_ONLY/task OFF không reserve/gọi cloud; adapter Qwen HTTP 403 MOCK vẫn giữ tests cũ, không fallback live |
 | T37 | fake FactSet/fact/evidence, extra amount/prose và claim không hỗ trợ bị reject |
 | T38 | context/project/workspace/actor/run/case/group và cursor sai bị từ chối; E2E chặn response hội thoại muộn sau đổi project |
@@ -333,7 +332,6 @@ Native read-back sau live: 2 domains giữ raw SHA/canonical/snapshot; paid/miss
 - 3 samples/mốc 1k/10k/50k trên Ryzen 5 7535HS, khoảng 16 GB/Polars 2 threads, không GPU/AI. Foundation 50k normalize+write p50/p95 1.153,76/1.260,90 ms, peak 166,42 MiB; exact recon 50k total match 1.473,57/1.474,98 ms, verify 1.192,72/1.214,17 ms, peak 319,06 MiB. Chi tiết đủ stages/mốc ở `runtime/benchmarks.json`, `reconciliation-benchmark.json`; không suy SLA hoặc fuzzy/100k/production load.
 
 Bảng PASS LOCAL/MOCK/LIVE/FAIL/BLOCKED/NOT VERIFIED/DEFERRED, Git/Docker identity và paths receipts ở [IMPLEMENTATION_STATUS mục S](IMPLEMENTATION_STATUS.md). Merge/release/image cleanup chỉ sau quality gates, không dựa riêng số tests PASS.
-
 
 ## Assistant Experience — kết quả hiện hành, mục T
 

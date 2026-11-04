@@ -2,12 +2,21 @@
   "python.terminal.useEnvFile": true,
   "python-envs.defaultEnvManager": "ms-python.python:venv",
   "python.terminal.activateEnvironment": true,
-  "python-envs.terminal.autoActivationType": "command",
-  "ruff.path": ["${workspaceFolder}\\.venv\\Scripts\\ruff.exe"],
-  "mypy-type-checker.interpreter": ["${workspaceFolder}\\.venv\\Scripts\\python.exe"],
+  "ruff.path": [
+    "${workspaceFolder}\\.venv\\Scripts\\ruff.exe"
+  ],
+  "mypy-type-checker.interpreter": [
+    "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+  ],
   "mypy-type-checker.importStrategy": "fromEnvironment",
-  "python.analysis.extraPaths": ["${workspaceFolder}/backend"],
-  "python.analysis.include": ["backend", "tests", "tools"],
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/backend"
+  ],
+  "python.analysis.include": [
+    "backend",
+    "tests",
+    "tools"
+  ],
   "python.analysis.exclude": [
     "**/.venv",
     "**/node_modules",
@@ -29,8 +38,24 @@
   "terminal.integrated.profiles.windows": {
     "PowerShell (AI Reconciliation Studio)": {
       "path": "${env:windir}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-      "args": ["-NoLogo"]
+      "args": [
+        "-NoLogo"
+      ]
     }
   },
-  "terminal.integrated.defaultProfile.windows": "PowerShell (AI Reconciliation Studio)"
+  "terminal.integrated.defaultProfile.windows": "PowerShell (AI Reconciliation Studio)",
+  "python.terminal.activateEnvInCurrentTerminal": false,
+  "eslint.workingDirectories": [
+    {
+      "directory": "./frontend",
+      "changeProcessCWD": true
+    }
+  ],
+  "[markdown]": {
+    "editor.defaultFormatter": "davidanson.vscode-markdownlint",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.markdownlint": "explicit"
+    },
+    "editor.wordWrap": "on"
+  }
 }

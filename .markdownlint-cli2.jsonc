@@ -1,0 +1,12 @@
+{
+  // Match the VS Code extension's default for long Vietnamese paragraphs/tables.
+  "config": {
+    "MD013": false,
+    // Repeated labels such as Deliverables are valid under different sections.
+    "MD024": { "siblings_only": true },
+    "MD060": { "style": "compact" },
+    // Preserve the explicit navigation anchors used by Rules.md.
+    "MD033": { "allowed_elements": ["a"] }
+  },
+  "globs": ["*.md", "docs/**/*.md"]
+}

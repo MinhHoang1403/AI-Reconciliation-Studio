@@ -87,9 +87,9 @@ Tài liệu này là **nguồn yêu cầu thống nhất** cho dự án mới. T
 
 ---
 
-# I. MỤC TIÊU VÀ GIỚI HẠN SẢN PHẨM
+## I. MỤC TIÊU VÀ GIỚI HẠN SẢN PHẨM
 
-## 1. Bài toán người dùng
+### 1. Bài toán người dùng
 
 Người dùng có một vài nguồn CSV/XLSX/PDF/DOCX khác tên cột, cấu trúc và ngữ nghĩa. Họ muốn biết nguồn nào tương ứng, giao dịch nào khớp, khoản nào lệch, vì sao lệch và nên kiểm tra gì tiếp theo, mà không cần tự lập bảng mapping hoặc viết SQL. Ứng dụng phải lưu lại quyết định đã xác nhận để tháng sau tự tái sử dụng.
 
@@ -97,10 +97,10 @@ Người dùng có một vài nguồn CSV/XLSX/PDF/DOCX khác tên cột, cấu 
 
 **Đầu ra**: run summary, các trạng thái linkage/comparison, Exception Inbox, KPI theo phạm vi, evidence tới nguồn, exports CSV/XLSX và diễn giải AI được ràng buộc vào dữ liệu đã xác minh.
 
-## 2. Giá trị từ sản phẩm tham khảo (không sao chép giao diện hoặc mã nguồn)
+### 2. Giá trị từ sản phẩm tham khảo (không sao chép giao diện hoặc mã nguồn)
 
 | Nguồn tham khảo | Điểm rút ra có kiểm chứng | Áp dụng trong MVP | Không sao chép/mở rộng |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Microsoft Financial Reconciliation Agent [S01] | AI gợi ý nguồn, mapping keys và monetary keys; người dùng giữ/sửa, template tái sử dụng | AI Reconciliation Planner + duyệt trước khi chạy | Không tích hợp Excel add-in hoặc Microsoft 365 |
 | Kosh AI [S02,S03] | Dashboard tập trung, no-code rules, exception tracking, drilldown | Giao diện **lấy cảm hứng**, light-blue, thẻ KPI, bảng run, Exception Inbox | Không copy pixel, assets, branding, claim 100% accuracy |
 | Ledge [S04] | Hệ thống chuẩn bị công việc và bằng chứng, con người duyệt | AI Smart Setup + Review Center | Không làm tự động ghi sổ/financial close |
@@ -109,7 +109,7 @@ Người dùng có một vài nguồn CSV/XLSX/PDF/DOCX khác tên cột, cấu 
 | Rahm–Bernstein [S07] | Schema matching kết hợp tên, kiểu, cấu trúc và dữ liệu mẫu | Candidate → Qwen → constraint checks | Không bắt buộc embeddings/vector DB |
 | MaDI-Bench (2026) [S08] | Phải chấm riêng và end-to-end các bước mapping, normalization, blocking, matching, integration | Golden tests xuyên pipeline | Benchmark data integration không thay thế oracle đối soát tiền |
 
-## 3. Chức năng cốt lõi và không làm
+### 3. Chức năng cốt lõi và không làm
 
 **MUST:** upload CSV/XLSX; PDF/DOCX qua adapter có policy; profilng; schema/grain detection; AI mapping đề xuất; review; normalization; persist; AI Planner; exact/composite/group match; verified comparison; Exception Inbox; result/evidence; exports; contextual Assistant; template reuse; Docker Compose full-stack; local demo truy cập thẳng **an toàn**.
 
@@ -117,7 +117,7 @@ Người dùng có một vài nguồn CSV/XLSX/PDF/DOCX khác tên cột, cấu 
 
 **OUT:** kết nối trực tiếp tất cả sàn/ngân hàng, OCR bảo đảm tuyệt đối, ERP accounting entries, nộp chứng từ, approval đa cấp, auto-remittance, Kafka/Kubernetes/microservices, vector database mặc định, fine-tuning, N–M subset-sum không giới hạn, SQL/Python tùy ý do LLM sinh và thực thi.
 
-## 4. UX nguyên tắc
+### 4. UX nguyên tắc
 
 1. Trang chủ local vào **thẳng Dashboard**, không bắt nhập `DEMO_ACCESS_TOKEN` (xem kiểm soát an toàn §31).
 2. Một sidebar gọn: `Tổng quan`, `Dữ liệu`, `Đối soát`, `Ngoại lệ`, `Báo cáo`, `Trợ lý AI`, `Cài đặt`.
@@ -130,12 +130,12 @@ Người dùng có một vài nguồn CSV/XLSX/PDF/DOCX khác tên cột, cấu 
 
 ---
 
-# II. STACK VÀ KIẾN TRÚC KHÔNG OVERENGINEER
+## II. STACK VÀ KIẾN TRÚC KHÔNG OVERENGINEER
 
-## 5. Stack đề xuất (pin bản phát hành khi khởi tạo)
+### 5. Stack đề xuất (pin bản phát hành khi khởi tạo)
 
 | Thành phần | Công nghệ | Vai trò / vì sao |
-|---|---|---|
+| --- | --- | --- |
 | FE | React + TypeScript + Vite | SPA đơn giản, build được bằng Nginx |
 | UI | Tailwind CSS + shadcn/ui hoặc thư viện component **một bộ duy nhất**; Lucide | Giao diện nhất quán, dễ đổi tone |
 | Tables | TanStack Table + virtualization chỉ khi cần | Phân trang/filter server side |
@@ -156,7 +156,7 @@ Người dùng có một vài nguồn CSV/XLSX/PDF/DOCX khác tên cột, cấu 
 
 **Phiên bản:** khi Codex triển khai, kiểm tra **bản stable cùng khả năng tương thích thực tế**, chốt version trong lockfiles và image tags/digests; ghi phiên bản vào tài liệu. Không ghi số version tưởng tượng trong đặc tả. Nhãn `v1`, `v2`, `s1`, `freeze` v.v. **không được đặt cho tên file, class, module, nhánh code do dự án tự tạo**; các phiên bản **dữ liệu/migration/protocol** là thuộc tính hợp đồng cần thiết, không phải nhãn giai đoạn trong tên code.
 
-## 6. Sơ đồ thành phần
+### 6. Sơ đồ thành phần
 
 ```mermaid
 flowchart LR
@@ -175,12 +175,12 @@ flowchart LR
 
 **Không** tạo thêm Redis/Celery/Kafka/MinIO ngay. PostgreSQL job table có `SKIP LOCKED` phù hợp số lượng worker nhỏ [S14]. DuckDB dùng cho truy vấn/processing trên Parquet; PostgreSQL là nguồn sự thật cho các quyết định và trạng thái, tránh DuckDB file ghi đồng thời đa worker.
 
-## 7. Hợp đồng giao tiếp giữa modules (bắt buộc ổn định)
+### 7. Hợp đồng giao tiếp giữa modules (bắt buộc ổn định)
 
 Mọi module chỉ giao tiếp qua **Pydantic domain objects và ID/versioned artifact refs**. Không nhận raw DataFrame/LLM JSON tùy tiện xuyên API boundary. FE nhận các DTO có tên rõ ràng, enum trạng thái cố định và error codes; FE không tính lại số tiền hoặc trạng thái nghiệp vụ.
 
 | Interface | Producer | Consumer | Đầu ra tối thiểu |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `FileArtifact` | Upload | Parser | file_id, sha256, owner/workspace, media type, path, size |
 | `ParsedTableArtifact` | Parser | Profiler | source_table_id, artifact_id, row count, columns, provenance, warnings |
 | `DatasetProfile` | Profiler | Schema AI | type/null/distinct/key candidates, representative samples, distributions |
@@ -195,7 +195,7 @@ Mọi module chỉ giao tiếp qua **Pydantic domain objects và ID/versioned ar
 
 **Error envelope thống nhất:** `code`, `message_vi`, `details` (đã redacted), `retryable`, `correlation_id`. Không trả stack trace/secret cho FE.
 
-## 8. Ranh giới version và tái xử lý
+### 8. Ranh giới version và tái xử lý
 
 - `DatasetVersion` sinh ra nếu **nội dung file hoặc cách đọc thay đổi**; `file_sha256` không thay khi chỉ sửa mapping.
 - `ParsedArtifact` phụ thuộc `file hash + parser id/version + parse config`; parser output bất biến.
@@ -210,9 +210,9 @@ Mọi module chỉ giao tiếp qua **Pydantic domain objects và ID/versioned ar
 
 ---
 
-# III. DATA MODEL VÀ SCHEMA CONTRACT
+## III. DATA MODEL VÀ SCHEMA CONTRACT
 
-## 9. Mô hình dữ liệu tối giản, tổng quát
+### 9. Mô hình dữ liệu tối giản, tổng quát
 
 **Các đối tượng** (tên logic, chưa ấn định 1:1 số bảng):
 
@@ -225,10 +225,10 @@ Mọi module chỉ giao tiếp qua **Pydantic domain objects và ID/versioned ar
 
 **PostgreSQL**: IDs, cấu trúc/metadata, owner/scope, decisions, trạng thái/đếm, index; **Parquet**: bảng parsed/canonical/match detail lớn; **file storage**: raw + exports; tránh tạo bảng PostgreSQL mới cho mỗi file upload.
 
-### 9.1. Bốn loại schema
+#### 9.1. Bốn loại schema
 
 | Lớp | Mục tiêu | Bằng chứng cần lưu |
-|---|---|---|
+| --- | --- | --- |
 | Observed Source | header, kiểu quan sát, null/độ duy nhất, vị trí nguồn | sheet/page/header row/cell/row ID |
 | Semantic | dự đoán ý nghĩa, grain và loại đối tượng | evidence refs, `UNKNOWN`/`AMBIGUOUS` |
 | Canonical/Custom | cấu trúc ổn định và kiểu hóa theo domain | schema definition và owner/scope/revision |
@@ -236,7 +236,7 @@ Mọi module chỉ giao tiếp qua **Pydantic domain objects và ID/versioned ar
 
 Một bảng có thể là `order_line`, `payment_event`, `settlement`, `supporting_document` hoặc `unknown`. Không gán `record_grain=order` khi chưa kiểm chứng khóa duy nhất và ý nghĩa dòng.
 
-### 9.2. Canonical core (mọi domain)
+#### 9.2. Canonical core (mọi domain)
 
 `canonical_record_id`, `dataset_version_id`, `source_table_id`, `source_row_id`, `workspace_id`, `entity_kind`, `business_key_components`, `source_provenance`, `mapping_revision`, `normalization_revision`, `quality_flags`, `record_payload`.
 
@@ -244,10 +244,10 @@ Một bảng có thể là `order_line`, `payment_event`, `settlement`, `support
 - `record_payload` có kiểu theo schema template; không biến mọi trường thành text rồi kỳ vọng đối soát đúng.
 - Source provenance được giữ qua join/aggregation; aggregated evidence tham chiếu **danh sách/nhiều thành viên nguồn**, không chỉ một row.
 
-### 9.3. Domain template Ecommerce tối thiểu
+#### 9.3. Domain template Ecommerce tối thiểu
 
 | Entity | Grain | Khóa nghiệp vụ gợi ý | Lưu ý |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `Order` | Một đơn hàng | platform + shop + order_id | Có thể nhiều dòng nguồn cho 1 đơn; phải group trước |
 | `OrderLine` | Một dòng sản phẩm | line ID nếu có, hoặc combination đã kiểm chứng | SKU chưa chắc duy nhất trong một đơn |
 | `FinancialEvent` | Một sự kiện phí/giảm giá/refund | event ID nếu có | Dấu, event type, effective date, currency bắt buộc khi tính |
@@ -256,11 +256,11 @@ Một bảng có thể là `order_line`, `payment_event`, `settlement`, `support
 
 Các trường amount phải có **semantic metric id** (`item_gross`, `seller_discount`, `platform_discount`, `refund`, `fee`, `settlement`, `payout`), `currency`, `amount_basis`, `sign_convention` và giá trị Decimal. **Không đồng nhất `total`, `gross` và `settlement`.**
 
-### 9.4. Document artifact
+#### 9.4. Document artifact
 
 `DocumentArtifact`: `document_id`, `source_file`, `pages`, `text_blocks`, `extracted_tables`, `evidence_locations`, `parser_confidence_or_warnings`, `verification_status`. Đánh dấu `UNVERIFIED_EXTRACTION` nếu OCR hoặc bảng PDF chưa được xác minh. File văn bản quy định/hợp đồng có thể là **ngữ cảnh rule có trích dẫn**, không phải bảng giao dịch để đối soát tự động.
 
-## 10. Hợp đồng dữ liệu JSON mẫu (mang tính chuẩn giao tiếp, không phải prompt sinh tùy ý)
+### 10. Hợp đồng dữ liệu JSON mẫu (mang tính chuẩn giao tiếp, không phải prompt sinh tùy ý)
 
 ```json
 {
@@ -288,7 +288,7 @@ Các trường amount phải có **semantic metric id** (`item_gross`, `seller_d
 
 **Không chạy ví dụ trên thực tế** khi metric `order_amount_after_seller_discount` chưa có định nghĩa đồng nhất ở cả nguồn hoặc `completeness` chưa được xác nhận từ nguồn dữ liệu. Validator bác bỏ mọi ID không tồn tại và policy thiếu.
 
-## 11. Trạng thái chuẩn — KHÔNG trộn các chiều
+### 11. Trạng thái chuẩn — KHÔNG trộn các chiều
 
 **Dataset status:** `UPLOADED`, `PARSING`, `PARSED`, `PROFILED`, `NEEDS_MAPPING_REVIEW`, `MAPPED`, `NORMALIZING`, `READY`, `PARTIAL`, `FAILED`.
 
@@ -308,9 +308,9 @@ Các trường amount phải có **semantic metric id** (`item_gross`, `seller_d
 
 ---
 
-# IV. WORKFLOW CHÍNH XÁC VÀ GATE GIỮA BƯỚC
+## IV. WORKFLOW CHÍNH XÁC VÀ GATE GIỮA BƯỚC
 
-## 12. Workflow tổng hợp
+### 12. Workflow tổng hợp
 
 ```mermaid
 flowchart TD
@@ -340,10 +340,10 @@ flowchart TD
  V --> W[Assistant tools + cited explanations]
 ```
 
-## 13. Các gate MUST
+### 13. Các gate MUST
 
 | Gate | Điều kiện đủ | Khi không đạt |
-|---|---|---|
+| --- | --- | --- |
 | **Upload** | file allowlist + MIME/magic + size/row limits; checksum; workspace policy | từ chối rõ lý do; không thực thi nội dung file |
 | **Parse** | bảng và cấu trúc cần dùng có provenance, không có lỗi làm sai định danh/tiền quan trọng | thử fallback có giới hạn; giữ `UNVERIFIED`, không auto-approve |
 | **Schema** | biết entity/grain hoặc xác nhận mục tiêu đối soát tương thích | `NEEDS_REVIEW`, không tự coi cột tên giống là giống nghĩa |
@@ -356,9 +356,9 @@ flowchart TD
 
 ---
 
-# V. HÀM, THUẬT TOÁN VÀ CÔNG THỨC BẮT BUỘC
+## V. HÀM, THUẬT TOÁN VÀ CÔNG THỨC BẮT BUỘC
 
-## 14. Parser Router và chất lượng parse
+### 14. Parser Router và chất lượng parse
 
 **Thứ tự [D]:**
 
@@ -378,7 +378,7 @@ def verify_parse(artifact: ParsedTableArtifact, inspection: FileInspection) -> P
 
 **MUST test:** empty, truncated, invalid ZIP/XML, multi-sheet, multi-table, merged headers, encoding, CSV injection strings, hidden sheet policy, date serial, formula cached values, negative/invalid amounts, OCR `8` vs `3`, source location. No silent row drop. Preserve original form and field-level raw when precision may be lost.
 
-## 15. Data Profiling và Semantic Mapping
+### 15. Data Profiling và Semantic Mapping
 
 Profiling bằng code: `row_count`, `null_count`, `distinct_count`, `type_candidates`, `min/max` hợp lệ, pattern/length, duplicate-key candidates, sample theo nhiều strata (null, edge case, duplicate, random) có giới hạn và redaction.
 
@@ -403,7 +403,7 @@ def approve_mapping(decision: MappingDecision, actor: Actor) -> MappingRevision:
 
 **Confidence** LLM chỉ là metadata mô tả, không diễn giải như xác suất đúng đã hiệu chỉnh. Auto-approve chỉ được mở cho lớp mapping đã có gold evaluation/constraint và mức rủi ro cho phép; tiền chưa rõ gross/net mặc định review.
 
-## 16. Transformation DSL (không chạy mã do AI tự viết)
+### 16. Transformation DSL (không chạy mã do AI tự viết)
 
 **Allowed ops:** `cast_string_preserve`, `trim_if_approved`, `parse_decimal(locale)`, `parse_date(format, timezone)`, `normalize_enum(mapping_id)`, `coalesce_with_rule`, `add_fields`, `subtract_fields`, `aggregate_by(keys, metric)`.
 
@@ -417,7 +417,7 @@ def validate_canonical(canonical_ref: ArtifactRef, schema: SchemaDefinition) -> 
 
 **Zero/null/invalid** phân biệt bằng enum và raw value; column conversion errors xuất hiện trong error artifact. Không viết back vào raw artifact.
 
-## 17. Reconciliation Planning — chuẩn bị đúng nghĩa trước khi matching
+### 17. Reconciliation Planning — chuẩn bị đúng nghĩa trước khi matching
 
 ```python
 def propose_reconciliation_plan(datasets: list[CanonicalDataset], user_intent: str) -> ReconciliationPlan: ...
@@ -429,7 +429,7 @@ Contract validator **MUST** kiểm tra nguồn, join keys, entity grain, uniquen
 
 **Ví dụ ba file:** split dữ liệu nội bộ theo `platform` trước, đối soát riêng với Shopee và TikTok; **không** ba-way join trực tiếp. Khi nguồn đối ứng thiếu kỳ hoặc settlement chưa đến hạn, `PENDING`/`INSUFFICIENT_COVERAGE`, không gắn `MISSING_COUNTERPART` chắc chắn.
 
-## 18. Matching Algorithm — có thứ tự, bảo đảm không dùng trùng
+### 18. Matching Algorithm — có thứ tự, bảo đảm không dùng trùng
 
 **Các bước:**
 
@@ -455,15 +455,15 @@ def compare_linked_groups(groups: LinkageArtifact, contract: ReconciliationContr
 
 **Luôn kiểm tra disjointness của các trạng thái chính và uniqueness của `MatchMember` theo run/rule/cardinality.** Mỗi bên có thể có số dòng khác nhau trong 1:N; không dùng `matched_rows / left_rows` để gọi là tỷ lệ match group khi mẫu số không cùng đơn vị.
 
-## 19. Tiền tệ, phép tính và tolerance (D: công thức do dự án định nghĩa, không nhận là công thức Shopee/TikTok chính thức)
+### 19. Tiền tệ, phép tính và tolerance (D: công thức do dự án định nghĩa, không nhận là công thức Shopee/TikTok chính thức)
 
-### 19.1. Điều kiện tiên quyết
+#### 19.1. Điều kiện tiên quyết
 
 Chỉ so sánh hai `metric` nếu **cùng semantic definition, currency, time basis và grain** hoặc có **transformation rule đã phê duyệt** chuyển sang cùng cơ sở. Tỷ giá FX, số tiền quy đổi và phí phát sinh phải có nguồn định nghĩa và effective date; không tự giả định.
 
 **Decimal**: parse từ chuỗi gốc dưới locale đã xác nhận; không đi qua float. Phép cộng `Decimal` với scale đủ lớn, lượng tử hóa/round theo currency/rule **chỉ tại những điểm đã được định nghĩa**. Rounding mode phải là thuộc tính rule (`ROUND_HALF_UP`, `ROUND_HALF_EVEN` ...) chứ không tự chọn tùy ý.
 
-### 19.2. Difference
+#### 19.2. Difference
 
 Với `L`, `R` cùng metric (đã normalise signs/units):
 
@@ -482,7 +482,7 @@ T = \max\left(T_{abs},\ T_{rel}\times\max(|L|,|R|)\right), \qquad |L-R|\leq T.
 - Tolerance **không dùng làm điều kiện liên kết ID** hoặc cơ chế tìm “một giao dịch có số tiền đúng hơn”.
 - `WITHIN_TOLERANCE` phải tách `EQUAL` (đúng tuyệt đối) trên Dashboard/Excel.
 
-### 19.3. Group aggregation
+#### 19.3. Group aggregation
 
 \[
 \operatorname{GroupAmount}(G,m)=\sum_{r\in G}\operatorname{SignedAmount}(r,m).
@@ -490,7 +490,7 @@ T = \max\left(T_{abs},\ T_{rel}\times\max(|L|,|R|)\right), \qquad |L-R|\leq T.
 
 Tổng này chỉ hợp lệ nếu `r` cùng group grain, metric `m`, currency, rule sign và không trùng membership. Nếu group có mixed currencies/missing values: không tính như một group verified.
 
-### 19.4. Conservation & partition invariants
+#### 19.4. Conservation & partition invariants
 
 Với source table ở mức raw record sau parse (trước grouping):
 
@@ -510,12 +510,12 @@ Chỉ áp dụng trên records có amount hợp lệ, `invalid_amount` báo riê
 
 **Idempotency:** cùng source artifact IDs, mapping revision, contract revision, engine revision và scope phải cho cùng **logical match groups, statuses và metrics** (không bắt run ID/timestamp giống nhau).
 
-## 20. KPI công thức minh bạch, tránh nhập nhằng mẫu số
+### 20. KPI công thức minh bạch, tránh nhập nhằng mẫu số
 
 Định nghĩa một **comparison unit** (CU) là đơn vị nghiệp vụ hợp lệ sau canonical grouping theo contract, ví dụ **một đơn hàng nội bộ trong scope**. Nguồn A/B không nhất thiết có cùng số dòng; tất cả KPI của một run phải công bố **population** và mẫu số.
 
 | KPI | Định nghĩa [D] | Lưu ý |
-|---|---|---|
+| --- | --- | --- |
 | Verified full match rate | `# CU có LINKED và EQUAL/WITHIN_TOLERANCE đã VERIFIED / # eligible CU` | Với 1:N vẫn đếm **CU**, không đếm source rows |
 | Linkage rate | `# CU có LINKED / # eligible CU` | Có thể khác full match rate |
 | Exception rate | `# eligible CU có ít nhất 1 active exception / # eligible CU` | Không cộng số issue vì một CU có nhiều issue |
@@ -530,7 +530,7 @@ Chỉ áp dụng trên records có amount hợp lệ, `invalid_amount` báo riê
 - Dashboard/API/export dùng **cùng một `MetricSnapshot` verified**, không để FE hay LLM tính lại.
 - Multi-currency chỉ tổng theo từng currency hoặc rule FX được duyệt, không cộng VND với USD.
 
-## 21. Verification function là độc lập với Matching
+### 21. Verification function là độc lập với Matching
 
 ```python
 def verify_partition_conservation(run: ReconciliationRun) -> VerificationCheck: ...
@@ -543,7 +543,7 @@ def publish_verified_run(run: ReconciliationRun, checks: list[VerificationCheck]
 
 **Independence requirement:** không chỉ lấy chính số liệu được Matcher ghi rồi so với bản sao của nó. Phải có oracle độc lập dùng aggregation đơn giản trên nguồn/canonical hoặc fixtures nhỏ tính tay. Nếu verification fail, không publish report “đã xác minh”. Artifact tạm hoàn tất trước, sau đó DB transaction publish refs; DB rollback không làm lộ kết quả chưa đạt. Orphan temp files được xử lý bảo thủ sau này, không có background xóa tùy tiện.
 
-## 22. Exception Inbox / giải thích nguyên nhân
+### 22. Exception Inbox / giải thích nguyên nhân
 
 Một `ExceptionCase` liên kết `run_id`, `match_group_id/CU`, `type`, `severity_basis`, `evidence_ids`, `workflow_state`, `notes`, `resolved_by`, `resolved_at`, `rule_id`. `review state` không sửa kết quả của run gốc.
 
@@ -553,9 +553,9 @@ UI chi tiết kiểu side drawer: nguồn trái/phải, khóa liên kết, các 
 
 ---
 
-# VI. AI GATEWAY, PROMPTS, BỘ NHỚ VÀ CHI PHÍ
+## VI. AI GATEWAY, PROMPTS, BỘ NHỚ VÀ CHI PHÍ
 
-## 23. AI Tasks thay vì multi-agent phức tạp
+### 23. AI Tasks thay vì multi-agent phức tạp
 
 **Chỉ một AI Gateway** với tasks: `classify_dataset`, `infer_grain`, `propose_mapping`, `suggest_transformation`, `propose_reconciliation_contract`, `explain_exception`, `summarize_verified_metrics`, `interpret_user_request`.
 
@@ -574,14 +574,13 @@ def validate_ai_output(raw: RawProviderResponse, task: AITaskRequest) -> Validat
 
 **Chỉ dẫn ngày 28/10/2026 — chỉ Final Acceptance Giai đoạn 1 (lịch sử):** chỉ kiểm tra, sửa lỗi thực tế thuộc Data Foundation + AI Smart Setup và cập nhật báo cáo. Gemini `gemini-3.5-flash-lite` mặc định, giữ nguyên ngân sách/lịch sử; Qwen live hoãn vì HTTP 403. Giữ bằng chứng hai tài liệu LlamaParse đã thử, không gửi lại request tính phí khi không cần. Chỉ commit/push thay đổi hợp lệ trên `codex/data-foundation`, **không merge main trong lượt này**. Nếu mọi gate điều chỉnh đạt, kết luận `GIAI ĐOẠN 1 ĐẠT NGHIỆM THU — QWEN LIVE ĐƯỢC HOÃN THEO CHỈ ĐỊNH`, rồi **dừng toàn bộ công việc và chờ prompt Giai đoạn 2 riêng**. Không triển khai planner/matcher/dashboard tài chính/Exception Inbox/Assistant. Chỉ dẫn này thay toàn bộ quyền triển khai Giai đoạn 2 trong yêu cầu trước; kế hoạch ba giai đoạn và các hợp đồng bên dưới vẫn giữ nguyên.
 
-
 **Ủy quyền tiếp theo ngày 28/10/2026 — hợp nhất và triển khai:** chủ dự án giao prompt riêng cho phép merge có lưu lịch sử Giai đoạn 1 vào main, chạy lại regression không gọi cloud, push/tag mốc data-foundation-accepted-20261028 rồi tạo/push codex/reconciliation-engine từ mốc đã nghiệm thu. Chỉ triển khai Giai đoạn 2 trên nhánh này; không merge Giai đoạn 2 vào main, không bắt đầu Giai đoạn 3. Gemini Planner được thử tối đa 2 HTTP attempts mới kể cả retry trong quota global/workspace hiện có khi policy cho phép, không reset/tăng ngân sách. Qwen live tiếp tục hoãn HTTP 403; LlamaParse tạo job OFF. Các lệnh dừng ở chỉ dẫn thu hẹp trên là lịch sử của nhiệm vụ trước, đã được prompt này thay quyền chuyển tiếp; không thay kiến trúc hoặc semantic contracts.
 
 **Ủy quyền ngày 29/10/2026 — Final Acceptance và hợp nhất:** chủ dự án cho phép nghiệm thu Giai đoạn 2 không gọi cloud, kiểm đúng source/runtime và oracle/persistence/quota; chỉ khi gates đạt mới merge `--no-ff` vào main, chia sẻ VS Code config đã rà bảo mật, tag `reconciliation-engine-accepted-20261029`, deploy main và dọn chính xác images không còn cần của project. Gemini vẫn giữ model/usage/ceilings cũ; Qwen không probe, parser tạo job OFF. Gemini 4 Argon chỉ nghiên cứu tài liệu/thiết kế, chưa tích hợp, chưa cấp quota hoặc gọi live. Quyền này thay lệnh dừng trước merge của các nhiệm vụ 28/10, không thay ba giai đoạn, semantic contracts hoặc cho phép bắt đầu Giai đoạn 3.
 
 Gemini model `gemini-3.5-flash-lite`, policy `LOCAL_ONLY` mặc định, `external_request_budget=0` mặc định; cloud test chỉ khi chủ dự án cấp phép. Với payload Structured Outputs bị API từ chối trên dự án cũ, dùng **JSON prompt + strict Pydantic/semantic checks** làm đường hỗ trợ, không cố retry vô hạn hoặc coi JSON là đúng nghiệp vụ. LlamaParse là dịch vụ riêng, budget/allowance riêng. Ghi tokens/credits khi provider cho biết; không bịa unit costs.
 
-## 24. Prompt contracts
+### 24. Prompt contracts
 
 Mỗi prompt có `task_id`, `revision`, `input schema`, `output JSON Schema/Pydantic`, instruction, samples, validation constraints, policy/model compatibility, golden examples.
 
@@ -595,11 +594,11 @@ Mỗi prompt có `task_id`, `revision`, `input schema`, `output JSON Schema/Pyda
 
 **Assistant tool planning:** chỉ dùng danh sách tool đã đăng ký, typed params/allowlist, giới hạn số tool call và quyền read-only cho kết quả; quyết định run/review/approve vẫn qua API riêng do user xác nhận.
 
-### 24.1. Phòng injection
+#### 24.1. Phòng injection
 
 File upload, PDF, cột Excel và tool output là **untrusted**; tách khỏi chỉ thị AI. `validate_tool_arguments` + workspace authorization ở tầng code, không chỉ system prompt. Redact logs; không để AI chọn path tùy ý hoặc raw SQL. Theo OWASP [S15].
 
-## 25. Persistent Memory
+### 25. Persistent Memory
 
 - **Dataset memory**: raw/parsed/canonical artifacts, profile và lineage.
 - **Approved domain memory**: mapping, schema, rules, effective dates theo workspace.
@@ -609,7 +608,7 @@ File upload, PDF, cột Excel và tool output là **untrusted**; tách khỏi ch
 
 Mọi memory có owner/scope, revision, updated_at, source, status approved hoặc proposed; hỗ trợ chỉnh/sửa/xóa theo quyền. **Không fine-tune liên tục và không cần vector database trong MVP.**
 
-## 26. Phân bổ chi phí và tốc độ
+### 26. Phân bổ chi phí và tốc độ
 
 1. AI chỉ thấy profile + capped evidence samples, không thấy toàn bộ 50.000 dòng.
 2. Cache approved mappings/plans theo chữ ký và phạm vi, không cache quyết định mơ hồ thành confirmed.
@@ -622,14 +621,14 @@ Mọi memory có owner/scope, revision, updated_at, source, status approved ho�
 
 ---
 
-# VII. API, UI VÀ LOCAL DEMO AN TOÀN
+## VII. API, UI VÀ LOCAL DEMO AN TOÀN
 
-## 27. API resource map
+### 27. API resource map
 
 Ưu tiên REST, routes theo resource, mọi thao tác có workspace authorization:
 
 | Nhóm | Ví dụ endpoints (thống nhất prefix `/api`) | Chú ý |
-|---|---|---|
+| --- | --- | --- |
 | Workspace/Projects | `GET/POST /projects`, `GET /projects/{id}` | owner, memberships |
 | Uploads | `POST /datasets/uploads`, `GET /datasets/{id}` | multipart limits, hash |
 | Tables/Profiles | `GET /datasets/{id}/tables`, `/tables/{id}/profile`, `/tables/{id}/preview` | pagination, no raw path |
@@ -645,14 +644,14 @@ Mọi memory có owner/scope, revision, updated_at, source, status approved ho�
 
 **Contract:** API errors in Vietnamese and codes stable; no token in URL; no secret in response; `POST` job có idempotency key; `GET` paginate/filter server-side.
 
-## 28. Giao diện — Kosh-inspired nhưng độc lập
+### 28. Giao diện — Kosh-inspired nhưng độc lập
 
 **Palette:** `#2563EB` chính; hover `#1D4ED8`; background `#F8FAFC`; cards `#FFFFFF`; selected nav `#EFF6FF`; text `#0F172A/#334155`; muted `#64748B`; border `#E2E8F0`; success/warning/error màu semantic. Light theme mặc định, không sidebar tối.
 
 **App Shell:** left sidebar gọn có thể thu gọn, project selector tìm kiếm, top bar breadcrumb + kỳ thời gian + trạng thái nền, phần nội dung chính; right drawer dành cho evidence và AI Assistant.
 
 | Trang | Trạng thái/đầu ra tối thiểu | Chính sách |
-|---|---|---|
+| --- | --- | --- |
 | Tổng quan | cards số file/sẵn sàng/đối soát đã verified/cases, next action | không hiển thị KPI giả khi chưa chạy |
 | Dữ liệu | dropzone, file list, parse/profile, AI Smart Setup, mapping/review, normalization | advanced fields ẩn |
 | Đối soát | AI plan preview, nguồn/keys/metrics, review/approve, chạy, progress | không tự chạy rule chưa approved |
@@ -665,15 +664,15 @@ Mọi memory có owner/scope, revision, updated_at, source, status approved ho�
 
 **Đặc tả responsive:** desktop 1366/1440/1920, tablet 768, mobile 390; sidebar chuyển drawer; bảng lớn có scroll nội bộ; pagination; các nút có trạng thái loading/disabled thật. Keyboard accessible, focus, color contrast theo WCAG 2.2 AA [S16].
 
-## 29. Màn hình AI Smart Setup (chỉ UI hóa các task thực)
+### 29. Màn hình AI Smart Setup (chỉ UI hóa các task thực)
 
 Sau upload: tóm tắt `x nguồn/y bảng`, entity/grain proposals, cột đã biết, mapping cần review, next step. Có thể `Xem bằng chứng`, `Chỉnh sửa`, `Xác nhận`. Không đưa source hash, `JSON`, parser config/row offsets ra giao diện chính.
 
-## 30. Màn hình kết quả/Exception
+### 30. Màn hình kết quả/Exception
 
 Dashboard 4 cards: `Tỷ lệ khớp`, `Cần kiểm tra`, `Giá trị lệch tuyệt đối`, `Tự động hóa` (chỉ khi mẫu số/thước đo có định nghĩa). Bên dưới: biểu đồ trạng thái, runs table, prioritized exceptions. Trên case, hiển thị left/right fields và EvidenceRef; AI chỉ giải thích dựa trên facts. Một click về dòng nguồn; trạng thái `PENDING` khác `MISSING`.
 
-## 31. Không yêu cầu mã truy cập ở demo LOCAL nhưng không bỏ bảo mật
+### 31. Không yêu cầu mã truy cập ở demo LOCAL nhưng không bỏ bảo mật
 
 **Điều kiện không thương lượng:** chỉ bật `LOCAL_DEMO_ACCESS` khi **service công bố ra loopback `127.0.0.1`**, có allowlist host/origin và cấu hình run demo explicit; không dùng một header tự khai để quyết định local; chặn khi **cổng được công bố trên host** bind `0.0.0.0`, LAN, reverse proxy public hoặc profile production (tiến trình **bên trong container** có thể bind `0.0.0.0` để nhận kết nối qua Docker network; đó không phải lý do duy nhất để chặn). Không hardcode token trong FE bundle, không mở toàn bộ backend anonymous.
 
@@ -683,18 +682,18 @@ Dashboard 4 cards: `Tỷ lệ khớp`, `Cần kiểm tra`, `Giá trị lệch tu
 
 ---
 
-# VIII. TRIỂN KHAI CHÍNH THỨC — ĐÚNG 3 GIAI ĐOẠN
+## VIII. TRIỂN KHAI CHÍNH THỨC — ĐÚNG 3 GIAI ĐOẠN
 
-## 32. GIAI ĐOẠN 1: Data Foundation + AI Smart Setup + UX cơ sở
+### 32. GIAI ĐOẠN 1: Data Foundation + AI Smart Setup + UX cơ sở
 
-### Mục tiêu đo được
+#### Mục tiêu đo được
 
 Người dùng local mở Dashboard, upload nhiều CSV/XLSX, xem bảng nguồn và AI proposal, xác nhận những mapping quan trọng, chuẩn hóa và đóng/mở lại không mất dữ liệu. Adapter PDF/DOCX phải có policy/contract; kiểm thử live chỉ nếu cấp phép và ngân sách có sẵn.
 
-### Deliverables
+#### Deliverables
 
 | Workstream | Chi tiết bắt buộc | Test/gate liên kết |
-|---|---|---|
+| --- | --- | --- |
 | Project bootstrapping | Repo **mới**, Compose FE/BE/worker/PG; `.env.example`, `.gitignore`, AGENTS.md, lockfiles, migrations | clean up/down không xóa volumes; không chiếm port cũ |
 | Auth/local demo | localhost Dashboard direct, scope/authorization Backend | security E2E local/non-local/CSRF |
 | Upload/storage | file allowlist, SHA256, immutable raw, workspace paths, size limits, dedup scoped | file bytes match hash after restart |
@@ -707,11 +706,11 @@ Người dùng local mở Dashboard, upload nhiều CSV/XLSX, xem bảng nguồn
 | FE | blue/light app shell, Dashboard, Dữ liệu với upload/profile/mapping/normalize | Playwright first-time/returning/error UX |
 | Docs | architecture, contracts, failure states, source references, how to run | docs commands tested |
 
-### API/contract handoff sang Giai đoạn 2
+#### API/contract handoff sang Giai đoạn 2
 
 Giai đoạn 1 **phải xuất ra**: `CanonicalDataset`, `DatasetProfile`, `SchemaDefinition`, `MappingRevision`, `EvidenceRef`, `JobStatus`, `WorkspacePolicy` và list artifacts có scope/quality status. Có DTO/API tự mô tả; giai đoạn 2 tuyệt đối **không viết parser/mapping engine thứ hai**.
 
-### Acceptance MUST
+#### Acceptance MUST
 
 - Upload CSV/XLSX có header lạ/zero-prefix/decimal invalid/duplicate candidates và test file security; raw bytes giữ nguyên.
 - Tiêu chí gốc: tối thiểu một mapping Qwen live bằng dữ liệu tổng hợp. Ngoại lệ chính thức 28/10/2026: Qwen `BLOCKED_EXTERNAL_DEPENDENCY — IP allowlist`, dùng Gemini mapping live thay thế; giữ contract mock coverage, không sửa lịch sử thành Qwen PASS.
@@ -723,16 +722,16 @@ Giai đoạn 1 **phải xuất ra**: `CanonicalDataset`, `DatasetProfile`, `Sche
 
 **Không xây matcher/dashboard tài chính/chatbot đầy đủ ở GĐ1.** Chỉ chừa đúng interface cần thiết.
 
-## 33. GIAI ĐOẠN 2: AI Planning + Reconciliation Engine + Kosh-style Results
+### 33. GIAI ĐOẠN 2: AI Planning + Reconciliation Engine + Kosh-style Results
 
-### Điều kiện đầu vào
+#### Điều kiện đầu vào
 
 Các contract và gates Giai đoạn 1 PASS; local repo sạch hoặc diff đã được ghi; migrations không đụng dữ liệu không liên quan; golden fixtures đã được tạo.
 
-### Deliverables
+#### Deliverables
 
 | Workstream | Chi tiết bắt buộc | Test/gate liên kết |
-|---|---|---|
+| --- | --- | --- |
 | Domain schema templates | Order, OrderLine, FinancialEvent, Settlement/Payout (nếu có nguồn) | grain/currency/semantic tests |
 | Reconciliation contracts | typed rule DSL, effective dates, source coverage, approval | unapproved/invalid cannot execute |
 | AI Planner | Qwen dự đoán nguồn/keys/metrics/cardinality/assumptions | no invented fields; UNKNOWN review |
@@ -745,7 +744,7 @@ Các contract và gates Giai đoạn 1 PASS; local repo sạch hoặc diff đã 
 | Reuse templates | approved rule templates per scope; drift/effective date check | next month no blind reuse |
 | Tests | ecommerce 3-file + other domain 2-file + property/security/E2E | no false-positive high-risk auto-match |
 
-### Golden scenarios tối thiểu
+#### Golden scenarios tối thiểu
 
 - Exact correct; same key different amount must be `LINKED + AMOUNT_MISMATCH`.
 - Composite key prevents same order IDs across platforms/shops colliding.
@@ -758,7 +757,7 @@ Các contract và gates Giai đoạn 1 PASS; local repo sạch hoặc diff đã 
 - Partial run/failed verification must not show as verified; aggregates conserved.
 - Export starts with `=`, `+`, `-`, `@` text is safe in Excel/CSV context; no formula injection.
 
-### Acceptance MUST
+#### Acceptance MUST
 
 - Gói demo **3 file** (nội bộ/Shopee/TikTok) có đáp án gán nhãn; 1 bộ **ngoài ecommerce** chứng minh tổng quát.
 - `MatchGroup`, `MatchMember`, metrics, exception drilldown và evidence theo đúng contract; unmatched/invalid/out-of-scope không biến mất.
@@ -769,16 +768,16 @@ Các contract và gates Giai đoạn 1 PASS; local repo sạch hoặc diff đã 
 
 **Không cần Assistant chat hoàn chỉnh ở GĐ2.** AI Planner đã hoạt động đúng ngữ cảnh và được kiểm soát.
 
-## 34. GIAI ĐOẠN 3: AI Assistant + End-to-end Automation + Release
+### 34. GIAI ĐOẠN 3: AI Assistant + End-to-end Automation + Release
 
-### Điều kiện đầu vào
+#### Điều kiện đầu vào
 
 Giai đoạn 2 đã có **VerifiedRun + MetricSnapshot + EvidenceRefs + ExceptionCases** có test; Assistant chỉ được truy xuất qua tools này.
 
-### Deliverables
+#### Deliverables
 
 | Workstream | Chi tiết bắt buộc | Test/gate liên kết |
-|---|---|---|
+| --- | --- | --- |
 | Typed read-only tools | `list_datasets`, `get_run_summary`, `get_metric_breakdown`, `list_exceptions`, `get_match_evidence`, `get_rule`, `get_workflow_status` | auth + scope + output schema |
 | Contextual Assistant | biết project/run/case đang xem; Qwen primary; Gemini opt-in | facts with IDs; no invented amounts |
 | Language workflows | câu “đối soát ba file” → reuse mapping/contract → checks → run hoặc review request | no auto-approve finance rule |
@@ -790,7 +789,7 @@ Giai đoạn 2 đã có **VerifiedRun + MetricSnapshot + EvidenceRefs + Exceptio
 | Benchmark | 1k/10k/50k and optional 100k as resources permit | report latency, RAM, precision/recall |
 | Release | Docker Compose 4 services, docs backup/restore, demo script, GitHub Public sanitization | clean environment deploy and persist |
 
-### End-to-end acceptance MUST
+#### End-to-end acceptance MUST
 
 Mở browser local thẳng Dashboard → upload 3 files → Smart Setup nhận diện → người dùng chỉ duyệt mơ hồ → AI Plan → approved rule → verified run → Dashboard/Exception Inbox → hỏi “vì sao lệch?” → trả lời có evidence → export → restart/reopen vẫn còn dữ liệu và history.
 
@@ -802,12 +801,12 @@ Mở browser local thẳng Dashboard → upload 3 files → Smart Setup nhận d
 
 ---
 
-# IX. CHIẾN LƯỢC TEST, CHỐNG SỬA ĐI SỬA LẠI
+## IX. CHIẾN LƯỢC TEST, CHỐNG SỬA ĐI SỬA LẠI
 
-## 35. Test pyramid
+### 35. Test pyramid
 
 | Cấp | Công việc | Ví dụ |
-|---|---|---|
+| --- | --- | --- |
 | Unit | pure functions, transform ops, status machine | parse decimal `"1.200,50"` under locale; null != 0 |
 | Property | invariants dưới dữ liệu sinh | partition conservation; permutations không thay logical result |
 | Contract | FE/BE DTO, AI JSON, artifact refs | invalid field/evidence IDs bị từ chối |
@@ -819,7 +818,7 @@ Mở browser local thẳng Dashboard → upload 3 files → Smart Setup nhận d
 
 **Oracle độc lập:** golden labeled data với đáp án được tính thủ công/SQL đơn giản khác implementation; không lấy LLM/matcher làm người chấm chính mình.
 
-## 36. Metrics chất lượng (đích đề xuất, không phải cam kết)
+### 36. Metrics chất lượng (đích đề xuất, không phải cam kết)
 
 - Auto schema mapping **precision ≥ 98%** trên gold test representative; recall và abstention báo riêng. Khi test mới không đạt → giảm auto-accept.
 - Auto linkage **precision ≥ 99.5%** và **recall ≥ 95%** trên phạm vi hỗ trợ; ngoài phạm vi/ambiguous không ép match.
@@ -830,10 +829,10 @@ Mở browser local thẳng Dashboard → upload 3 files → Smart Setup nhận d
 - No cloud request when `LOCAL_ONLY`: **0**.
 - UX: người dùng mới hoàn thành demo không cần xem JSON/token/terminal; đo thành công theo task, thời gian/number of clicks; không suy ra có thể sử dụng với mọi đối tượng chưa kiểm thử.
 
-## 37. Risk register ưu tiên
+### 37. Risk register ưu tiên
 
 | Rủi ro | Phòng ngừa ngắn nhất |
-|---|---|
+| --- | --- |
 | Mã đơn mất số 0 đầu | raw preservation + identifier string tests |
 | AI map sai gross/net | metric semantics approval gate |
 | JOIN nhân bản dòng/tiền | grain/cardinality invariant + independent oracle |
@@ -849,7 +848,7 @@ Mở browser local thẳng Dashboard → upload 3 files → Smart Setup nhận d
 | Dữ liệu mất khi Docker restart | durable volumes + backup/restart tests |
 | Codex overengineer | contract-first, exactly 3 stages, deny non-MVP extras |
 
-## 38. Quy tắc Codex theo dự án mới
+### 38. Quy tắc Codex theo dự án mới
 
 1. Tạo **repo/thư mục hoàn toàn mới**; tên cụ thể do người dùng chọn, không sửa/xóa thư mục cũ và **không tự push repo mới vào repo cũ**.
 2. Tạo `AGENTS.md` ngắn ở gốc: nguồn kiến trúc, coding conventions, bảo mật, stage gates, không invent business formulas, và chính sách branch/commit.
@@ -863,7 +862,7 @@ Mở browser local thẳng Dashboard → upload 3 files → Smart Setup nhận d
 10. Báo cáo cuối mỗi giai đoạn: mục tiêu, code/files, APIs, migrations, test counts/lệnh, live/mock/blocked, screenshots UI **không chứa token**, unresolved limits, commit hash khi được giao push.
 11. Nếu thiếu thông tin nghiệp vụ để chạy rule, không bịa, giữ `UNKNOWN`, review hoặc implement schema/template generic an toàn.
 
-## 39. Cơ chế chống xung đột giữa các giai đoạn
+### 39. Cơ chế chống xung đột giữa các giai đoạn
 
 - Stage 1 **chốt API và dữ liệu đầu vào** cho stage 2 bằng contract tests; stage 2 chỉ consume canonical records, không làm lại parser.
 - Stage 2 **chốt match/result/metric/evidence** cho stage 3; stage 3 chỉ consume verified tools, không tự tính KPI trong LLM.
@@ -877,9 +876,9 @@ Mở browser local thẳng Dashboard → upload 3 files → Smart Setup nhận d
 
 ---
 
-# X. BÀN GIAO ĐỂ BẮT ĐẦU CODING
+## X. BÀN GIAO ĐỂ BẮT ĐẦU CODING
 
-## 40. Checklist trước dòng code đầu tiên
+### 40. Checklist trước dòng code đầu tiên
 
 - [ ] Xác định tên repo/thư mục mới và cổng local **không trùng dự án cũ** (đề xuất `18180` FE, `18181` BE; kiểm tra thực tế trước).
 - [ ] Ghi scope sản phẩm trong `README.md`, cùng 3 giai đoạn và bản đặc tả này.
@@ -891,7 +890,7 @@ Mở browser local thẳng Dashboard → upload 3 files → Smart Setup nhận d
 - [ ] Pin dependency sau compatibility smoke tests.
 - [ ] Chỉ sau đó triển khai feature Giai đoạn 1 theo luồng nhỏ end-to-end.
 
-## 41. Kịch bản demo cuối cùng (chuẩn nghiệm thu liên giai đoạn)
+### 41. Kịch bản demo cuối cùng (chuẩn nghiệm thu liên giai đoạn)
 
 1. Truy cập localhost → trực tiếp `Tổng quan`.
 2. Upload nội bộ + Shopee + TikTok tháng 10 (dữ liệu tổng hợp, có ground truth).
@@ -906,48 +905,48 @@ Mở browser local thẳng Dashboard → upload 3 files → Smart Setup nhận d
 11. Restart/recreate; mở lại dự án, kết quả và history còn, không phải upload/parse lại.
 12. Upload file ngành khác, mapping custom và đối soát theo khóa được duyệt để chứng minh giải pháp **không bị hardcode riêng ecommerce**.
 
-## 42. Định nghĩa DONE
+### 42. Định nghĩa DONE
 
 Không đánh dấu DONE vì đã viết đủ modules. DONE khi: luồng người dùng hoạt động thật, số liệu được tính bằng backend và verification độc lập, golden/property/security/E2E PASS, dữ liệu sống qua restart, AI traces/policy đúng, UI không yêu cầu token ở local demo, các giới hạn được công bố, source an toàn để commit. Không cam kết không bao giờ có bug; mục tiêu là **không có lỗi âm thầm gây sai kết luận** trong phạm vi đã nghiệm thu và có cơ chế khoanh vùng lỗi mới.
 
 ---
 
-# XI. NGUỒN VÀ ĐỘ TIN CẬY
+## XI. NGUỒN VÀ ĐỘ TIN CẬY
 
 Nguồn đã tham khảo/kiểm tra đến 27/10/2026. Tài liệu thương mại là **tham khảo tính năng và trải nghiệm**, không phải chứng minh các tỷ lệ “accuracy” hay hiệu quả. Công thức tolerance, KPI, trạng thái và workflow ở đây được gắn [D] là **quyết định thiết kế cần benchmark**, không giả làm nghiên cứu khoa học.
 
 | ID | Nguồn | Dùng để kiểm chứng |
-|---|---|---|
-| S01 | Microsoft Learn — Financial Reconciliation Agent: https://learn.microsoft.com/en-us/copilot/finance/reconcile/reconcile-data | AI-suggested data/keys, human keep/edit, templates |
-| S02 | Kosh AI: https://www.kosh.ai/ | no-code rules, dashboard, exceptions |
-| S03 | Kosh — Ledger Reconciliation: https://www.kosh.ai/ledger-reconciliation-software | trace entries to sources, variance view |
-| S04 | Ledge: https://www.ledge.co/ | agents prepare/review/approve, live statuses |
-| S05 | Kosh LinkedIn article (marketing): https://www.linkedin.com/pulse/how-ai-powered-reconciliation-systems-redefining-financial-operations-lu2vc/ | feature ideas; không dùng numbers làm truth |
-| S06 | Fellegi, Sunter (1969), *A Theory for Record Linkage*, JASA: https://doi.org/10.1080/01621459.1969.10501049 | review/undecided state in linkage |
-| S07 | Rahm, Bernstein (2001), *A Survey of Approaches to Automatic Schema Matching*: https://www.microsoft.com/en-us/research/publication/on-matching-schemas-automatically/ | multi-signal schema matching |
-| S08 | Steiner, Peeters, Bizer (2026), *MaDI-Bench*: https://arxiv.org/abs/2606.30371 ; https://github.com/wbsg-uni-mannheim/MaDI-Bench | end-to-end integration benchmark |
-| S09 | Polars Excel user guide: https://docs.pola.rs/user-guide/io/excel/ | fastexcel/openpyxl parsing |
-| S10 | LlamaParse Parse + pricing: https://developers.llamaindex.ai/llamaparse/parse/getting_started/ ; https://developers.llamaindex.ai/llamaparse/general/pricing/ | parse tier, cloud credit/budget, verify extraction |
-| S11 | DuckDB Parquet: https://duckdb.org/docs/stable/data/parquet/overview | column/filter pushdown |
-| S12 | Python `decimal`: https://docs.python.org/3/library/decimal.html | decimal exactness and rounding |
-| S13 | Google Gemini 3.5 Flash-Lite: https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite | model ID and capabilities |
-| S14 | PostgreSQL SELECT/SKIP LOCKED: https://www.postgresql.org/docs/current/sql-select.html | queue-like consumers |
-| S15 | OWASP LLM Prompt Injection Prevention: https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html | tool authorization, untrusted input |
-| S16 | W3C WCAG 2.2: https://www.w3.org/TR/WCAG22/ | accessibility targets |
-| S17 | OWASP File Upload Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html | file safety controls |
+| --- | --- | --- |
+| S01 | Microsoft Learn — Financial Reconciliation Agent: <https://learn.microsoft.com/en-us/copilot/finance/reconcile/reconcile-data> | AI-suggested data/keys, human keep/edit, templates |
+| S02 | Kosh AI: <https://www.kosh.ai/> | no-code rules, dashboard, exceptions |
+| S03 | Kosh — Ledger Reconciliation: <https://www.kosh.ai/ledger-reconciliation-software> | trace entries to sources, variance view |
+| S04 | Ledge: <https://www.ledge.co/> | agents prepare/review/approve, live statuses |
+| S05 | Kosh LinkedIn article (marketing): <https://www.linkedin.com/pulse/how-ai-powered-reconciliation-systems-redefining-financial-operations-lu2vc/> | feature ideas; không dùng numbers làm truth |
+| S06 | Fellegi, Sunter (1969), *A Theory for Record Linkage*, JASA: <https://doi.org/10.1080/01621459.1969.10501049> | review/undecided state in linkage |
+| S07 | Rahm, Bernstein (2001), *A Survey of Approaches to Automatic Schema Matching*: <https://www.microsoft.com/en-us/research/publication/on-matching-schemas-automatically/> | multi-signal schema matching |
+| S08 | Steiner, Peeters, Bizer (2026), *MaDI-Bench*: <https://arxiv.org/abs/2606.30371> ; <https://github.com/wbsg-uni-mannheim/MaDI-Bench> | end-to-end integration benchmark |
+| S09 | Polars Excel user guide: <https://docs.pola.rs/user-guide/io/excel/> | fastexcel/openpyxl parsing |
+| S10 | LlamaParse Parse + pricing: <https://developers.llamaindex.ai/llamaparse/parse/getting_started/> ; <https://developers.llamaindex.ai/llamaparse/general/pricing/> | parse tier, cloud credit/budget, verify extraction |
+| S11 | DuckDB Parquet: <https://duckdb.org/docs/stable/data/parquet/overview> | column/filter pushdown |
+| S12 | Python `decimal`: <https://docs.python.org/3/library/decimal.html> | decimal exactness and rounding |
+| S13 | Google Gemini 3.5 Flash-Lite: <https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite> | model ID and capabilities |
+| S14 | PostgreSQL SELECT/SKIP LOCKED: <https://www.postgresql.org/docs/current/sql-select.html> | queue-like consumers |
+| S15 | OWASP LLM Prompt Injection Prevention: <https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html> | tool authorization, untrusted input |
+| S16 | W3C WCAG 2.2: <https://www.w3.org/TR/WCAG22/> | accessibility targets |
+| S17 | OWASP File Upload Cheat Sheet: <https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html> | file safety controls |
 
-## Quy tắc nghiên cứu bổ sung khi triển khai
+### Quy tắc nghiên cứu bổ sung khi triển khai
 
 Nếu xây scoring/probabilistic classifier mới, phải ghi rõ phương pháp, bài báo/tài liệu và cách hiệu chỉnh threshold trên labeled validation split. Nếu không đủ dữ liệu để hiệu chỉnh, giữ **candidate review** thay vì tự chấp nhận. Với formula của Shopee/TikTok, chỉ sử dụng tài liệu nguồn có ngày hiệu lực tương ứng hoặc định nghĩa do người dùng xác nhận; không lấy công thức trong ví dụ trên Internet làm luật tổng quát.
 
 ---
 
-# XII. MA TRẬN HÀM — TIỀN ĐIỀU KIỆN, HẬU ĐIỀU KIỆN VÀ TEST ĐỐI CHIẾU
+## XII. MA TRẬN HÀM — TIỀN ĐIỀU KIỆN, HẬU ĐIỀU KIỆN VÀ TEST ĐỐI CHIẾU
 
 Bảng này là **hợp đồng function-level** bắt buộc để Codex thực hiện. Mỗi hàm cần type hints, docstring ghi nhận bất biến, lỗi có mã, và test kết nối với bước kế tiếp. Tên hàm chỉ là giao diện đề xuất; không nhất thiết tạo đủ class/service nếu một hàm thuần là đủ.
 
 | ID | Hàm | Tiền điều kiện | Hậu điều kiện/đảm bảo | Bài test bắt buộc |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | F01 | `inspect_upload` | stream hữu hạn, owner xác thực, có policy | không thực thi file; có SHA256 trên bytes gốc, kết quả giới hạn kích thước | T01, T02 |
 | F02 | `choose_parser` | F01 hợp lệ, cloud policy được nạp từ Backend | parser được allowlist và chi phí hợp lệ; không cloud ngoài policy | T03 |
 | F03 | `parse_to_artifacts` | F01/F02 hợp lệ, file tồn tại | bản gốc giữ nguyên; parsed artifact có `source_table_id`, vị trí nguồn, warnings | T04, T05 |
@@ -978,10 +977,10 @@ Bảng này là **hợp đồng function-level** bắt buộc để Codex thực
 | F28 | `get_verified_fact_set` | run verified + workspace authorization | scoped results with metric/evidence IDs; no free SQL | T38 |
 | F29 | `answer_from_facts` | F28, known scope, user question | câu định lượng chỉ từ verified facts, uncertainty explicit | T39, T40 |
 
-## 43. Golden test catalogue — thiết kế sao cho test có thể tái sử dụng từ sớm
+### 43. Golden test catalogue — thiết kế sao cho test có thể tái sử dụng từ sớm
 
 | Test ID | Test case | Oracle tối thiểu / kết quả mong đợi | Giai đoạn |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | T01 | file quá lớn, giả `.xlsx` | rejected, không gọi parser | 1 |
 | T02 | file hợp lệ upload hai lần | cùng hash, raw không sửa; scoped reuse | 1 |
 | T03 | LlamaParse policy OFF | 0 cloud HTTP calls | 1 |
@@ -1025,7 +1024,7 @@ Bảng này là **hợp đồng function-level** bắt buộc để Codex thực
 
 **Quy tắc nối các giai đoạn:** Các tests T01–T16 vẫn chạy sau Giai đoạn 2 và 3; các tests T17–T35 vẫn chạy ở Giai đoạn 3. Mỗi lỗi mới phải được giữ thành regression test có ID hoặc đặt tên có ý nghĩa, không xóa case cũ để che failure.
 
-## 44. Chính sách performance và độ chính xác được đo chứ không dự đoán
+### 44. Chính sách performance và độ chính xác được đo chứ không dự đoán
 
 - Benchmark chạy tối thiểu với máy/số worker/GPU thực tế ghi rõ cấu hình; đo thời gian `parse`, `profile`, `mapping`, `normalize`, `match`, `verify`, `render` và peak RAM.
 - Bắt đầu 1k/10k/50k giao dịch; 100k chỉ nếu không gây áp lực tài nguyên. Report p50/p95 latency, số lần gọi Qwen, cost cloud nếu có và số review decisions.
@@ -1033,7 +1032,7 @@ Bảng này là **hợp đồng function-level** bắt buộc để Codex thực
 - Đo precision của auto-approved decisions riêng khỏi recall và tỷ lệ abstain; một cách an toàn có thể auto ít hơn để precision cao.
 - Mỗi lần đổi algorithm/engine/prompt version phải replay bộ gold liên giai đoạn và so kết quả; thay đổi có chủ đích phải có giải thích tại sao ground truth/rule cần cập nhật.
 
-## 45. Kết thúc đợt nghiên cứu và bắt đầu dự án mới
+### 45. Kết thúc đợt nghiên cứu và bắt đầu dự án mới
 
 Tài liệu này đủ để bắt đầu với hợp đồng/fixtures rồi triển khai Giai đoạn 1, nhưng **không thể thay thế bằng chứng chạy trên máy thật**. Các điều còn phải được Codex kiểm tra lúc bắt đầu: định danh request/response thực của Qwen endpoint, resource limits, policy/credit LlamaParse hiện tại, lockfile-compatible versions và port đang rảnh.
 
@@ -1041,7 +1040,6 @@ Tài liệu này đủ để bắt đầu với hợp đồng/fixtures rồi tri
 
 **QUYẾT ĐỊNH CUỐI CÙNG:** Đây là một ứng dụng MVP mới với **ba giai đoạn**, dùng stack tối giản, giao diện Kosh-inspired sáng xanh dương và AI-first, nhưng kết quả tài chính chỉ có giá trị sau khi vượt qua gate, bất biến và bằng chứng. **Không dùng code cũ làm nền**, chỉ dùng bài học từ code cũ để tránh sai lầm lặp lại.
 
-
-### Chỉ dẫn bổ sung về Gemini sau Assistant-only
+#### Chỉ dẫn bổ sung về Gemini sau Assistant-only
 
 Ngày 02/11/2026, chủ dự án tiếp tục cho phép gọi Gemini khi cần, không yêu cầu dừng ở ceiling 50 của chỉ dẫn trước. Điều này thay riêng blocker quota trong phần bổ sung Assistant-only ở đầu tài liệu. Được phân bổ thêm lifetime allowance có audit, bảo toàn reservations/request history; vẫn đo usage, batch hiệu quả, stop-on-error, không retry delivery chưa rõ và không đổi cloud OFF/0 của cài đặt mới. Không thay ba giai đoạn, công thức, approval/security gates hoặc thresholds NLP. Xem trạng thái thực tại IMPLEMENTATION_STATUS mục T.
