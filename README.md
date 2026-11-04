@@ -43,7 +43,7 @@ Câu trả lời phụ thuộc vào nguồn đã chọn, dữ liệu đã xác n
 
 ## Chạy local
 
-Cần Windows/PowerShell và Docker Desktop đang chạy, cổng127.0.0.1:18180 còn trống. Trên máy mới, clone repository, đứng tại thư mục gốc và kiểm tra `.env.example`. Script tạo `.env` với bí mật local ngẫu nhiên nếu chưa có; cấu hình dịch vụ AI và quyền workspace là bước riêng, không tự được cấp khi khởi động.
+Cần Windows/PowerShell và Docker Desktop đang chạy, cổng `127.0.0.1:18180` còn trống. Trên máy mới, clone repository, đứng tại thư mục gốc và kiểm tra `.env.example`. Script tạo `.env` với bí mật local ngẫu nhiên nếu chưa có; cấu hình dịch vụ AI và quyền workspace là bước riêng, không tự được cấp khi khởi động.
 
 **Khởi động lần đầu hoặc build lại:**
 
@@ -63,7 +63,7 @@ Lệnh khởi động đợi bốn dịch vụ khỏe, xác minh cổng loopback
 
 ## Quyền riêng tư và độ tin cậy
 
-Tệp gốc được bảo toàn, kết quả có tham chiếu nguồn và quy tắc mới cần được phê duyệt. Không tự biến dữ liệu thiếu thành0, bỏ số0đầu mã giao dịch hoặc gộp các loại tiền khác nhau. Các trường hợp chưa đủ bằng chứng được giữ để kiểm tra.
+Tệp gốc được bảo toàn, kết quả có tham chiếu nguồn và quy tắc mới cần được phê duyệt. Không tự biến dữ liệu thiếu thành 0, bỏ số 0 đầu mã giao dịch hoặc gộp các loại tiền khác nhau. Các trường hợp chưa đủ bằng chứng được giữ để kiểm tra.
 
 AI hoạt động theo cấu hình, quyền workspace và điều kiện dịch vụ hiện hành; dữ liệu được phép có thể được gửi đến dịch vụ bên ngoài. Môi trường local được cấp quyền có thể bỏ trần số lượt request nội bộ, nhưng usage vẫn được ghi nhận và quota/rate limit/chi phí của nhà cung cấp vẫn áp dụng. Không đồng nghĩa AI miễn phí hoặc nhà cung cấp không giới hạn.
 

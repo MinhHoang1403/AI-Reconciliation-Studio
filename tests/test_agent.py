@@ -1164,3 +1164,24 @@ def test_reuse_scope_rejects_new_source_facts_instead_of_silently_discarding_the
             ["Đối soát theo phạm vi đã duyệt"],
             cat,
         )
+
+
+def test_timezone_is_not_silently_accepted_as_business_time_basis():
+    from studio.agent_intents import compile_routing
+
+    cat = routing_catalogue()
+    plan = cat.confirmed_plan
+    selection = {
+        "left_canonical_id": plan.left.canonical_id,
+        "right_canonical_id": plan.right.canonical_id,
+        "timezone": "UTC",
+        "left_source": {"canonical_id": plan.left.canonical_id, "time_basis": "UTC"},
+    }
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        compile_routing(
+            json.dumps(
+                {"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": selection}]}
+            ),
+            ["Ngày phát sinh theo UTC"],
+            cat,
+        )

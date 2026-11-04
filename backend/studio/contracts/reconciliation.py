@@ -58,7 +58,15 @@ class PlanningSource(Contract):
     canonical_id: str
     role: str | None = Field(default=None, min_length=1, max_length=100)
     date_field: str | None = None
-    time_basis: str | None = Field(default=None, min_length=1, max_length=100)
+    time_basis: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "Business meaning of the date, e.g. event_date or posting_date. "
+            "Not a timezone such as UTC. Use only the meaning explicitly supplied by the user."
+        ),
+    )
     currency_field: str | None = None
     filters: dict[str, str] | None = Field(default=None, max_length=8)
     coverage_start: date | None = None

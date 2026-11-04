@@ -17,7 +17,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-27"
+INTENT_REVISION = "agent-intent-28"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -127,6 +127,15 @@ def validate_intents(
             for side in ("left", "right"):
                 source = getattr(p, side)
                 old = getattr(confirmed, side) if confirmed else None
+                if (
+                    source.time_basis
+                    and source.time_basis == p.timezone
+                    and not (old and source.time_basis == old.time_basis)
+                ):
+                    raise DomainError(
+                        "INPUT_AMBIGUOUS",
+                        "Cần xác nhận ý nghĩa ngày đối soát; múi giờ được chọn riêng.",
+                    )
                 for field in ("coverage_start", "coverage_end", "snapshot_at", "settlement_due_at"):
                     value_at = getattr(source, field)
                     if (
@@ -944,7 +953,10 @@ def interpret_requests(
                 "Kỳ/nguồn mới: confirmed_run_id null. Chuyển đầy đủ dữ kiện người dùng đã nêu "
                 "vào left_source/right_source (canonical_id đúng nguồn, date_field, time_basis, "
                 "currency_field, coverage_start/end, completeness, snapshot_at), "
-                "period_start/end, timezone và effective_from/to. Không bỏ dữ kiện đã rõ; "
+                "period_start/end, timezone và effective_from/to. time_basis là ý nghĩa "
+                "ngày phát sinh/ngày hạch toán, dùng date_field tương ứng khi người dùng nêu rõ; "
+                "không dùng UTC hoặc giá trị timezone làm time_basis. "
+                "Không bỏ dữ kiện đã rõ; "
                 "chưa được nêu thì null, không lấy kỳ làm coverage hay mặc định đầy đủ. "
                 "server sẽ review facts thiếu, không tự xác nhận. Không thêm "
                 "query/reconciliation cho "
