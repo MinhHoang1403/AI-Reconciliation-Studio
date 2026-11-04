@@ -20,6 +20,12 @@ Settings phân biệt cấu hình, quyền workspace, quyền tác vụ, lượt
 
 Planner gửi DTO nhỏ `PlannerReply` bằng GenerateContent `responseJsonSchema` (serialization schema, Decimal chuỗi); server giữ source/scope đã xác nhận, ghép domain plan rồi chạy lại validator. `allowed_rule_evidence_ids` tách canonical/schema/artifact khỏi field-level evidence trong catalogue. Model chọn field evidence không đúng tầng bị từ chối, không lọc/sửa IDs để qua gate. Optional không gửi hoặc explicit null dùng `exclude_unset` và `exclude_none` khi ghép domain defaults; false/0/filters tường minh vẫn giữ. Missing confirmations không được tự điền thành approval. Mỗi Planner job1HTTP attempt; trace hash/status/loc/type không chứa input/secret. Google schema subset/complexity có giới hạn; UUID enum trong nested evidence array đã bị400 ở live, không dùng constraint đó để ép provider.
 
+## Routing và usage hiện hành — 04/11/2026
+
+`agent-intent-29` giữ source/date/coverage/snapshot/effective facts đã nêu qua DTO sang Planner, chặn việc dùng múi giờ thay ý nghĩa ngày. Facts thiếu vẫn cần người dùng bổ sung; model không tự xác nhận độ đầy đủ hoặc phê duyệt quy tắc. Truy vấn tổng chênh lệch toàn run, kể cả đi cùng count, dùng MetricSnapshot đã verified; phân tích có filter/group vẫn là typed query. Tổng quan run đang mở không tự trở thành lọc ngoại lệ OPEN. Các revision và hạn mức trong những mục lịch sử bên dưới không thay cấu hình hiện hành ở đầu tài liệu.
+
+Gateway ghi model, từng HTTP attempt, status, tokens và latency khi provider trả được. Read/write timeout hoặc delivery chưa rõ dừng, không gửi lại mù; connect failure/known5xx mới retry có giới hạn và backoff.429 dừng bằng mã rate-limit riêng; unlimited nội bộ không thay quota thật. Usage của lỗi Assistant được giữ trong trace, không trả nội dung nhạy cảm ra UI.
+
 ## Assistant có bằng chứng
 
 Task `answer_verified_question`, prompt `assistant-grounded-1`, dùng cùng GeminiProvider/Gateway. Reuse facts trước, câu hỏi facts hỗ trợ được trả bằng backend deterministic; không gọi đây là LLM/live. Model chỉ chọn fact IDs và mã diễn giải allowlist theo `ModelAnswer`, không sinh prose/tiền/citations tùy ý. Backend kiểm FactSet/run/snapshot, claims và render số liệu từ facts; mismatch chỉ chứng minh chênh lệch, chưa chứng minh nguyên nhân/phí. Metric không có phải báo thiếu bằng chứng.

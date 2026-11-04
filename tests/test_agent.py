@@ -967,7 +967,8 @@ def test_plain_listing_resolves_only_unique_alias_and_never_filters_or_unknown_s
     assert resolve_plain_listing("Cho xem các dòng của B", cat) is None
 
 
-def test_full_run_variance_uses_snapshot_while_filtered_analysis_remains_query():
+@pytest.mark.parametrize("with_count", [False, True])
+def test_full_run_variance_uses_snapshot_while_filtered_analysis_remains_query(with_count):
     from studio.agent_intents import compile_routing, routing_sources
 
     cat = routing_catalogue()
@@ -981,6 +982,8 @@ def test_full_run_variance_uses_snapshot_while_filtered_analysis_remains_query()
         currency_field=None,
         aggregations=[dict(op="sum_decimal", field_id="absolute_variance")],
     )
+    if with_count:
+        query["aggregations"].insert(0, dict(op="count", field_id=None))
     body = dict(intents=[dict(intent="QUERY_DATA", query=query)])
     result = compile_routing(json.dumps(body), ["Tổng chênh lệch tuyệt đối của kết quả"], cat)[0]
     assert (

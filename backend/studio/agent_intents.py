@@ -17,7 +17,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-28"
+INTENT_REVISION = "agent-intent-29"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -340,9 +340,15 @@ def validate_intents(
                 and q.source_kind == "VERIFIED_RUN"
                 and not q.filters
                 and not q.group_by
-                and len(q.aggregations) == 1
-                and q.aggregations[0].op == "sum_decimal"
-                and q.aggregations[0].field_id in {"delta", "absolute_variance"}
+                and any(
+                    a.op == "sum_decimal" and a.field_id in {"delta", "absolute_variance"}
+                    for a in q.aggregations
+                )
+                and all(
+                    (a.op == "count" and a.field_id is None)
+                    or (a.op == "sum_decimal" and a.field_id in {"delta", "absolute_variance"})
+                    for a in q.aggregations
+                )
             ):
                 batch.intents[index] = AgentIntent(intent="SUMMARIZE_RESULTS", run_id=q.source_id)
     return batch.intents
@@ -885,7 +891,11 @@ def interpret_requests(
                 "Tra bằng chứng hoặc kiểm tra chênh lệch cho mã nghiệp vụ cụ thể cũng dùng "
                 "EXPLAIN_RESULT + key_value, tuyệt đối không lọc group_id theo mã nghiệp vụ. "
                 "SUMMARIZE_RESULTS là KPI/tỷ lệ/tổng chênh lệch/tổng quan run từ snapshot có sẵn, "
-                "không dùng QUERY_DATA để dựng lại KPI. CREATE_VISUALIZATION cần query aggregate; "
+                "không dùng QUERY_DATA để dựng lại KPI, kể cả khi hỏi cùng lúc nhiều chỉ số. "
+                "Tổng quan kết quả đang xem/đang mở nói về run hiện hành; không suy ra bộ lọc "
+                "ngoại lệ OPEN từ trạng thái đang xem. Chỉ lọc trạng thái xử lý ngoại lệ khi "
+                "người dùng yêu cầu các trường hợp chưa xử lý/case OPEN cụ thể. "
+                "CREATE_VISUALIZATION cần query aggregate; "
                 "EXPORT_RESULT chọn csv/xlsx; CONTINUE_REVIEW chỉ khi đang trả lời câu hỏi review. "
                 "Thiếu nguồn/kỳ/năm/nghĩa thì CLARIFY kèm câu hỏi ngắn; không dùng UNSUPPORTED "
                 "chỉ vì "
