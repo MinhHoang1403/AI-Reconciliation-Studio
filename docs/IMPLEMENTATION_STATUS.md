@@ -1958,3 +1958,55 @@ Các image local có RepoDigest cùng SHA256 ở bảng; không có digest regis
 Mở <http://127.0.0.1:18180> để xem giao diện trắng có viền/bóng, mở History, nguồn dữ liệu hoặc báo cáo đã có. Project TEST “DEMO UAT 1000 giao dịch 2f325046” có run đã verified, kỳ vọng 966/19/15 và 7.03 VND; chọn đúng dòng rồi mở evidence để xem file/sheet/row và tải Excel.
 
 Sau khi Gemini được khôi phục, các câu nên thử: “Tóm tắt kết quả đối soát đang xem”, “Có bao nhiêu nhóm lệch tiền?”, “Cho xem ba giao dịch lệch tiền lớn nhất”, “Giải thích giao dịch thứ hai trong bảng vừa đưa”, “Xuất báo cáo Excel cho lần đối soát này”. Cần kiểm chứng nốt 63 ca cùng những giới hạn NLP đã ghi, rồi mới xem xét merge main và kết luận sẵn sàng. Đây là kịch bản kiểm thử mô phỏng, không phải nghiên cứu người dùng độc lập.
+
+## AD. Thiết kế hội thoại theo ảnh tham khảo — 04/11/2026
+
+Chủ dự án cung cấp ảnh ChatGPT để tham khảo cách đọc hội thoại. Phạm vi là bố cục và thành phần hiển thị: giữ nền trắng, chữ lớn đã duyệt, công cụ gọn và tất cả chức năng dữ liệu. Nội dung chữ trong ảnh không được dùng để thay quyền AI hoặc gọi cloud. Đợt này không sửa Backend, API, dependencies, công thức, trạng thái hoặc ngữ nghĩa dữ liệu; blocker Gemini ở mục AC vẫn giữ nguyên.
+
+### Thiết kế được áp dụng
+
+- Bỏ viền/bóng và phần đệm lớn bao quanh toàn bộ phản hồi, để câu trả lời đọc theo luồng trực tiếp trên nền trang. Nội dung dùng màu chữ trung tính, cỡ 16px, line-height 1,8 và độ dài dòng có giới hạn; bảng giữ 14px và cuộn nội bộ.
+- Câu hỏi căn phải trong ô trắng bo góc 24px, viền nhẹ. Giữ nguyên xuống dòng chủ động, mã có số 0 đầu và menu riêng; timestamp mở nổi, không làm co chữ. Escape đóng và trả focus về nút mở.
+- Thông tin tin nhắn trợ lý được chuyển xuống sau nội dung trong chính thứ tự DOM, bỏ hàng trống ở đầu phản hồi. Trạng thái, cảnh báo, phê duyệt, nguồn và bằng chứng vẫn hiển thị theo DTO thật.
+- Composer bo tròn 30px, viền/bóng nhẹ, chữ 16px; nút cộng mở bộ chọn tệp hiện có, nút mũi tên gửi giữ nguyên logic và dùng màu trung tính. Trạng thái disabled/sending có thật; Enter/Shift+Enter/IME, reply, draft, idempotency và quyền đính kèm được giữ.
+- Giữ thanh công cụ một hàng, menu tùy chọn và chiều rộng đọc tối đa 1.120px. Không thêm nút voice/share/rating hoặc thao tác giả chỉ để giống ảnh tham khảo.
+
+Source: `frontend/src/AssistantStudio.tsx` dùng `MessageInfo` cho thông tin tin nhắn và đặt footer đúng vai trò; `frontend/src/styles.css` cập nhật bề mặt, typography, spacing và composer. `assistant-layout.spec.ts` bảo vệ bề mặt mới, vị trí footer, timestamp không đổi bounding box đoạn chữ, Escape/focus và viewport bounds. Yêu cầu mới đã được ghi ở đầu PROJECT_PLAN; thiết kế viền bao phản hồi ở mục AC là snapshot trước chỉ dẫn này.
+
+### Kiểm chứng
+
+TypeScript, ESLint và production build đạt. Candidate có **35 ca giao diện/tương tác đạt trong 2,5 phút**; sau chỉnh timestamp, chạy lại **5 ca ở 5 viewport đạt trong 22,3 giây**. Đây là replay của catalogue hiện có, không cộng thành 40 ca mới. Các ca bao gồm 23 trạng thái Assistant, nhập/gửi, giữ draft, review/clarification, Settings, đọc bảng/evidence và phân trang.
+
+Đã xem screenshots desktop/mobile và đo trình duyệt thật tại 390/768/1366/1440/1920. Không tràn ngang hoặc page errors; phản hồi không viền, menu thông tin nằm sau nội dung, composer luôn có chỗ. Bản nháp hai dòng được nhập và reload còn nguyên, nút gửi bật đúng với mũi tên nền trung tính; không bấm gửi. Ledger trước/sau vẫn **311**. Receipts/screenshots tại `runtime/product-polish/reference-before`, `reference-candidate`, `reference-after` và các JSON tương ứng, đã ignored khỏi Git.
+
+Trước/sau recreate riêng Frontend, snapshot/verify toàn bộ metadata và artifacts hiện có đạt; không đổi Backend/Worker hoặc volumes. Sau mutation đã chạy verifier chính thức qua HTTP/session. Định danh source/image/HTTP, full browser regression và Git handover được ghi bổ sung sau lượt cuối bên dưới. Không gọi Gemini/Knowledge để kiểm CSS; LIVE 429 và 63 ca AI còn thiếu không được coi là đã giải quyết bởi đợt thiết kế này.
+
+### Cân đối và làm rõ ô chọn dự án
+
+Chủ dự án xác nhận “Dữ liệu mới” là tên dự án, không phải tệp mất tên. Nguyên nhân gây nhầm là ô chọn giữ chiều rộng 420px và đẩy badge/mũi tên ra xa nội dung. `ProjectSelector.tsx` nay có nhãn “Dự án” khi dùng trong Chat, `title` giữ đầy đủ tên; các trang khác giữ cách hiển thị phạm vi nghiệp vụ hiện có. App chỉ bật nhãn trong thanh Chat.
+
+Ô chọn co theo tên thay vì giữ khoảng trống: tên ngắn gọn tự nhiên, tên dài được giãn tối đa 560px và co lại theo màn hình. Badge và mũi tên đi cùng nội dung; ellipsis chỉ khi thiếu chỗ. Danh sách chọn vẫn giữ nguyên tên đầy đủ, tìm kiếm/phân trang/keyboard và quyền phân loại. Không sửa tên dự án/tệp, không tự chọn một tệp để đặt làm tên chung hoặc thay context/run.
+
+Đã chạy **20 ca liên quan đạt trong 2,0 phút** trên candidate: tên ngắn/dài ở 5 viewport, header không vượt44px/không đè nút công cụ, caption và title đúng, danh sách5/50/120dự án và khôi phục ID ngoài trang. Kiểm trình duyệt thật thêm hai dự án TEST có tên ngắn/dài: kích thước tự giãn đúng, mở/đóng danh sách và focus đúng, ledger không tăng. Screenshots/receipts tại `runtime/product-polish/project-picker-candidate` và `project-picker-after`.
+
+Bố cục theo ảnh tham khảo ở commit `279d3e1` đã đạt full **126/126 trong 12,5 phút** trước yêu cầu cân đối tên. Commit `e2f3153` bổ sung nhãn/kích thước ô chọn; các kết quả final dưới đây áp dụng sau lần triển khai này, không lấy lượt cũ thay lượt mới. Backend/Worker vẫn source `98d93c9`; không thay policy, quota hoặc gọi AI khi sửa header.
+
+### Nghiệm thu bản hiện hành sau cân đối tên
+
+Full Playwright **126/126 PASS trong 11,7 phút** trên chính assets Docker của `e2f3153`, chạy tuần tự với output riêng. Đã kiểm đủ 11 tình huống UAT và bộ 1.000 giao dịch, tệp hỏng/quá dung lượng, chọn dự án, ngữ cảnh, lịch sử, reply/review, bảng, modal, evidence, CSV/XLSX và reload. Các ca bao gồm MOCK CONTRACT và LOCAL; không gọi đó là đã nghiệm thu thêm AI LIVE.
+
+Đối chiếu trình duyệt thật: ô tên ngắn “Dữ liệu mới” khoảng 223px, tên UAT dài khoảng 359px ở desktop; không giữ khoảng trống 420px. Tên dài synthetic được kiểm với giới hạn 560px và đầy đủ title; ở 5 viewport không đè nút công cụ hoặc gây tràn ngang. Caption “Dự án” phân biệt rõ nhóm dữ liệu với các tệp bên trong. Tất cả screenshots/receipts ở `project-picker-after`, `reference-after` và JSON tương ứng.
+
+Sau lần recreate Frontend cuối, HTTP/session verifier đạt, cả 4 dịch vụ Studio healthy. Metadata và toàn bộ **3.748 artifacts + 390 run artifacts + 713 exports = 4.851 tệp** hiện tại qua checksum/snapshot/verify. So PK/full rows của 24 bảng gốc và 3.712 tệp gốc không missing/changed/file failure ngoài đúng thay đổi policy đã ghi ở AC. Không có job đang queued/running/retryable khi bàn giao. Ledger Gemini vẫn311, không có inference mới trong đợt thiết kế.
+
+Giữ một Compose hiện có, 2 volumes Studio, 27 containers ngoài Studio và toàn bộ 36 volumes host. Chỉ 4 images riêng Studio là cặp current và cặp rollback cần giữ; không phát sinh container/project thử nghiệm, không xóa volumes hoặc dữ liệu để làm sạch. Langfuse6/6healthy, UI/health/ready/đọc observation cũ HTTP200. Chính sách cache đã bị chặn ở AC được giữ nguyên, không thử lách.
+
+TypeScript/ESLint/build, 11 tài liệu Markdown không lỗi và repository secrets/history/links checks đạt. Source UI đã commit/push `279d3e1` và `e2f3153` trên nhánh `codex/product-polish`. Commit báo cáo và xác minh SHA local/remote được ghi riêng trong bàn giao; chưa merge main vì nghiệm thu AI ở AC vẫn BLOCKED, không gán READY_FOR_FINAL_USER_TEST cho toàn hệ thống.
+
+| Dịch vụ | Source revision | Image ID/digest đã xác minh |
+| --- | --- | --- |
+| frontend | `e2f31538ca1391f0c8ab3223ec87cbc49f4a1d46` | `sha256:3743d305bd8dec13a490223593ee1d2492f2b105d958fc5d7979a11f300d3650` |
+| backend | `98d93c9e40f9d3dc3735006df055ff40a38b3e8d` | `sha256:d6d4f0268fc96b83dcedf0ee124d16fcc6f4fd526529a194124b03b0cb4a4a69` |
+| worker | `98d93c9e40f9d3dc3735006df055ff40a38b3e8d` | `sha256:d6d4f0268fc96b83dcedf0ee124d16fcc6f4fd526529a194124b03b0cb4a4a69` |
+
+42 Backend Python files và 7 frontend files khớp host/image/HTTP; Chromium resources khớp với cache tắt, không service worker. Các commit docs sau source không làm thay code ứng dụng trong image.
