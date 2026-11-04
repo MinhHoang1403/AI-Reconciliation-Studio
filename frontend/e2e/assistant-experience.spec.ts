@@ -125,39 +125,44 @@ for(const width of [390,768,1366,1440,1920]) {
     const dto=await(await page.request.get('/api/settings')).json();
     await expect(settings.getByRole('heading',{name:'Tài khoản và không gian làm việc'})).toBeVisible();
     await expect(settings).toContainText(`${dto.agent_max_upload_files} tệp mỗi lần`);
-    await expect(settings).toContainText('Chưa kiểm tra trực tiếp');
+    await expect(settings.getByRole('heading',{name:'AI và quyền riêng tư',exact:true})).toBeVisible();
     await expect(settings.getByText('Model Gemini',{exact:true})).not.toBeVisible();
     await page.screenshot({path:`../runtime/ui-refinement/after/${width}/settings-basic.png`,fullPage:true});
-    await settings.getByText('Thông tin nâng cao',{exact:true}).click();
-    await expect(settings.getByText(dto.gemini_model,{exact:true})).toBeVisible();
-    await page.screenshot({path:`../runtime/ui-refinement/after/${width}/settings-advanced.png`,fullPage:true});
+    await expect(settings.getByText('Thông tin nâng cao',{exact:true})).toHaveCount(0);
+    await expect(settings).not.toContainText(/Gemini|Qwen|model|hạn mức chung|Lượt AI đã ghi nhận/i);
+    await expect(settings.getByText(dto.gemini_model,{exact:true})).toHaveCount(0);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
     expect(errors).toEqual([]);expect(writes).toEqual([]);
   });
 }
 
-test('[MOCK CONTRACT] Settings distinguishes permission, configuration, allowance and roles',async({page})=>{
+test('[MOCK CONTRACT] Settings uses user-facing availability, privacy and roles without operator diagnostics',async({page})=>{
   let scenario='allowed', role='owner';
   await page.route('**/api/**',route=>{
     if(route.request().method()!=='GET')throw new Error('Unexpected settings write');
     return route.fulfill({json:{items:[],total:0,has_more:false}});
   });
   await page.route('**/api/settings',route=>route.fulfill({json:{workspace_name:'Synthetic privacy',
-    agent_cloud_enabled:scenario==='allowed',assistant_cloud_enabled:false,gemini_configured:scenario!=='key',
+    agent_cloud_enabled:['allowed','taskbudget'].includes(scenario),assistant_cloud_enabled:false,gemini_configured:scenario!=='key',
     gemini_requests_remaining:scenario==='budget'?0:7,gemini_requests_used:3,gemini_model:'synthetic-model',
+    ai_task_allowances:{agent:{remaining:scenario==='taskbudget'?0:7}},
     mapping_ai_provider:'GEMINI',cloud_live_status:'NOT VERIFIED',max_upload_bytes:3145728,max_upload_files:4,
     agent_max_upload_files:2,agent_upload_extensions:['.csv','.xlsx'],max_rows:1234,
     policy:{mode:scenario==='local'?'LOCAL_ONLY':'CLOUD_ALLOWED',allow_external_ai:scenario!=='local',allow_cloud_parsing:false}}}));
   await page.route('**/api/session',route=>route.fulfill({json:{role,workspace_id:'synthetic',actor_id:'settings-reader'}}));
-  for(const [next,expected] of [['allowed','Được phép hỗ trợ tác vụ dữ liệu'],['key','Chưa cấu hình dịch vụ AI'],['budget','Đã hết lượt sử dụng AI'],['task','Tác vụ AI chưa được cấp quyền'],['local','Chưa bật AI bên ngoài']]){
+  for(const [next,expected] of [['allowed','Có thể yêu cầu AI hỗ trợ'],['key','Hỗ trợ AI hiện chưa khả dụng'],['budget','Đã hết lượt hỗ trợ AI'],['task','Hỗ trợ AI hiện chưa khả dụng'],['taskbudget','Đã hết lượt hỗ trợ AI'],['local','Xử lý trong ứng dụng']]){
     scenario=next;await page.goto('/#page=settings');await page.reload();
     const settings=page.locator('.settings-page');await expect(settings).toContainText(expected);
-    await expect(settings).toContainText('Chưa kiểm tra trực tiếp');
+    await expect(settings).not.toContainText(/Thông tin nâng cao|Gemini|Qwen|synthetic-model|Chưa cấu hình|kết nối chưa xác minh|Lượt AI đã ghi nhận/);
+    await expect(settings.getByRole('heading',{name:'AI và quyền riêng tư',exact:true})).toBeVisible();
     await expect(settings).toContainText('2 tệp mỗi lần');await expect(settings).toContainText('3 MB');
-    if(next==='local')await expect(settings).toContainText('Xử lý nội bộ theo chính sách hiện tại');
-    else await expect(settings).toContainText('Có thể sử dụng dịch vụ AI bên ngoài');
+    if(next==='local')await expect(settings).toContainText('Không gửi dữ liệu đến dịch vụ AI bên ngoài');
+    else await expect(settings).toContainText('Cho phép sử dụng dịch vụ AI bên ngoài');
   }
-  role='viewer';await page.reload();await expect(page.locator('.settings-page')).toContainText('Chỉ xem');
+  for(const [nextRole,title] of [['editor','Có thể chỉnh sửa'],['viewer','Chỉ xem']]){
+    role=nextRole;await page.reload();await expect(page.locator('.settings-page')).toContainText(title);
+    await expect(page.locator('.settings-page')).not.toContainText(/Thông tin nâng cao|Gemini|Qwen|synthetic-model/);
+  }
   await expect(page.getByText('Thông tin nâng cao',{exact:true})).toHaveCount(0);
 });
 

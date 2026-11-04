@@ -12,6 +12,10 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Cài đặt dành cho người sử dụng — 04/11/2026
+
+Chủ dự án yêu cầu bỏ hẳn **Thông tin nâng cao** trong Cài đặt, kể cả đối với owner. Thay yêu cầu mở thông tin vận hành dành cho chủ không gian ở bổ sung02/11: trang chỉ trình bày tài khoản/quyền sử dụng, chia sẻ dữ liệu và hỗ trợ AI bằng ngôn ngữ người dùng, cùng giới hạn tệp trong hội thoại. Không hiển thị provider/model, cấu hình/kết nối kiểm thử, ledger/quota nội bộ hoặc phân bổ từng tác vụ. Khả dụng vẫn lấy từ DTO và các gates hiện có, không đổi policy, quota, API hay quyền Backend. Không thêm controls cấu hình chưa được triển khai. Nghiệm thu responsive/keyboard và đồng bộ đúng image đã kiểm thử, giữ dữ liệu và rollback khi dọn Docker.
+
 ### Giao diện tối giản và đồng bộ Docker — 04/11/2026
 
 Chủ dự án yêu cầu kiểm chứng Git/build/image/HTTP/Chromium trước khi kết luận giao diện cũ do Docker. Nếu đã khớp thì sửa CSS/UI: bề mặt composer trung tính không border/outline ngoài khi click chuột; chỉ báo bàn phím vẫn nhìn rõ; ghost actions, typography/spacing thống nhất cho App Shell, Settings/History, review, kết quả và manual fallback. Hợp nhất selectors/tokens tại rule gốc, không thêm framework/dependency hoặc thay Backend/financial/approval contracts. Không inference mới, tăng quota hay reset Gemini ledger để test UI. Sau quality gates và deploy đúng frontend source mới, dọn từng image ID đã xác minh thuộc riêng Studio, không có container tham chiếu; giữ release hiện hành, PostgreSQL, cặp rollback `dac8dd1`, hai volumes và mọi backup/dữ liệu. Không dùng global prune hoặc tác động dự án khác. Kết quả và giới hạn tại IMPLEMENTATION_STATUS mục Z.

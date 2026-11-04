@@ -1,66 +1,61 @@
 import type { WorkspaceSettings as Settings } from "./types";
 
 const roles: Record<string, string> = {
-  owner: "Chủ không gian", editor: "Có thể chỉnh sửa", viewer: "Chỉ xem",
+  owner: "Chủ không gian",
+  editor: "Có thể chỉnh sửa",
+  viewer: "Chỉ xem",
 };
 
-/** Chỉ trình bày quyền và giới hạn từ API; cấu hình không chứng minh model đang kết nối. */
+/** Present user capabilities and privacy from the API, without operator diagnostics. */
 export function WorkspaceSettings({ settings: s, role }: { settings: Settings; role: string }) {
-  const allowed = s.policy.mode === "CLOUD_ALLOWED" && s.policy.allow_external_ai;
-  const permitted = s.agent_cloud_enabled && s.gemini_configured;
-  const remaining = Number.isFinite(s.gemini_requests_remaining) ? s.gemini_requests_remaining : null;
-  const aiStatus = !allowed ? "Chưa bật AI bên ngoài"
-    : !s.gemini_configured ? "Chưa cấu hình dịch vụ AI"
-    : remaining === 0 ? "Đã hết lượt sử dụng AI"
-    : permitted ? "Được phép hỗ trợ tác vụ dữ liệu" : "Tác vụ AI chưa được cấp quyền";
+  const externalAllowed = s.policy.mode === "CLOUD_ALLOWED" && s.policy.allow_external_ai;
+  const available = externalAllowed && s.agent_cloud_enabled && s.gemini_configured;
+  const exhausted = s.gemini_requests_remaining === 0 || s.ai_task_allowances?.agent?.remaining === 0;
+  const aiStatus = !externalAllowed ? "Xử lý trong ứng dụng"
+    : exhausted ? "Đã hết lượt hỗ trợ AI"
+    : available ? "Có thể yêu cầu AI hỗ trợ" : "Hỗ trợ AI hiện chưa khả dụng";
+
   return <section className="settings-page" aria-label="Cài đặt">
     <section className="settings-section" aria-labelledby="settings-account">
       <h2 id="settings-account">Tài khoản và không gian làm việc</h2>
       <dl className="settings-rows">
-        <div><dt>Tài khoản hiện tại</dt><dd>Người dùng local</dd></div>
+        <div><dt>Tài khoản hiện tại</dt><dd>Người dùng trên thiết bị này</dd></div>
         <div><dt>Không gian làm việc</dt><dd>{s.workspace_name}</dd></div>
         <div><dt>Quyền của bạn</dt><dd>{roles[role] || "Chưa xác minh"}</dd></div>
       </dl>
+      <p>{role === "viewer"
+        ? "Bạn có thể xem dữ liệu, kết quả và bằng chứng trong phạm vi được chia sẻ."
+        : "Bạn có thể tải tệp và làm việc với dữ liệu trong phạm vi được cấp quyền. Các đề xuất cần phê duyệt vẫn chờ bạn xác nhận."}</p>
     </section>
     <section className="settings-section" aria-labelledby="settings-privacy">
-      <h2 id="settings-privacy">AI và quyền riêng tư dữ liệu</h2>
-      <p>AI hỗ trợ chuẩn hóa, đối soát và tra cứu. Hệ thống tính toán và kiểm chứng số liệu.</p>
+      <h2 id="settings-privacy">AI và quyền riêng tư</h2>
       <dl className="settings-rows">
         <div><dt>Hỗ trợ AI</dt><dd>{aiStatus}</dd></div>
-        <div><dt>Kết nối dịch vụ AI</dt><dd>{s.cloud_live_status === "VERIFIED" ? "Đã được kiểm tra" : "Chưa kiểm tra trực tiếp"}</dd></div>
-        <div><dt>Xử lý dữ liệu</dt><dd>{allowed ? "Có thể sử dụng dịch vụ AI bên ngoài" : "Xử lý nội bộ theo chính sách hiện tại"}</dd></div>
+        <div><dt>Chia sẻ để xử lý</dt><dd>{externalAllowed
+          ? "Cho phép sử dụng dịch vụ AI bên ngoài"
+          : "Không gửi dữ liệu đến dịch vụ AI bên ngoài"}</dd></div>
       </dl>
-      <details><summary>Dữ liệu được xử lý như thế nào?</summary><p>{allowed
-        ? "Khi tác vụ được cấp quyền và còn lượt sử dụng, nội dung yêu cầu, cấu trúc dữ liệu và mẫu có giới hạn có thể được gửi tới dịch vụ AI bên ngoài. Tệp gốc được giữ nguyên."
-        : "Tác vụ không được phép gửi dữ liệu tới dịch vụ AI bên ngoài. Bạn vẫn có thể xem dữ liệu, dùng quy tắc đã duyệt và thao tác thủ công."}</p>
-      <p>Các quyết định mới về ý nghĩa dữ liệu và quy tắc đối soát cần bạn xác nhận. Quyền sử dụng và cấu hình AI được kiểm tra lại khi thực hiện; kết nối ứng dụng không xác nhận kết nối AI.</p>
-      {!permitted && <p>Tra cứu theo dữ kiện, quy tắc đã duyệt và công cụ thủ công vẫn sử dụng được trong phạm vi dữ liệu và quyền của bạn.</p>}</details>
+      <p>AI giúp bạn hiểu dữ liệu và đề xuất cách xử lý. Số liệu được hệ thống tính toán và kiểm chứng; các quyết định cần xác nhận vẫn do bạn thực hiện.</p>
+      <details>
+        <summary>Dữ liệu của tôi được sử dụng như thế nào?</summary>
+        <p>{externalAllowed
+          ? "Khi bạn thực hiện yêu cầu được cho phép, nội dung yêu cầu, cấu trúc dữ liệu và mẫu dữ liệu có giới hạn có thể được gửi tới dịch vụ AI bên ngoài. Tệp gốc được giữ nguyên."
+          : "Các tác vụ hiện không được phép gửi dữ liệu tới dịch vụ AI bên ngoài. Bạn vẫn có thể xem dữ liệu, tra cứu kết quả và sử dụng các quy tắc đã được duyệt."}</p>
+        <p>Dữ liệu và kết quả đã lưu thuộc không gian làm việc của bạn. Quyền truy cập được kiểm tra khi xem, xử lý hoặc tải kết quả.</p>
+      </details>
+      {externalAllowed && <p>{available && !exhausted
+        ? "Khả năng hỗ trợ tùy thuộc vào yêu cầu và lượt sử dụng còn lại. Nếu chưa thể xử lý, ứng dụng sẽ hướng dẫn bạn bước tiếp theo."
+        : "Bạn vẫn có thể xem kết quả đã lưu và thao tác với dữ liệu theo quyền của mình. Liên hệ người quản lý không gian làm việc nếu cần hỗ trợ AI."}</p>}
     </section>
     <section className="settings-section" aria-labelledby="settings-limits">
-      <h2 id="settings-limits">Giới hạn sử dụng</h2>
+      <h2 id="settings-limits">Tệp bạn có thể tải lên</h2>
       <dl className="settings-rows">
-        <div><dt>Dung lượng mỗi tệp</dt><dd>{(s.max_upload_bytes / 1048576).toLocaleString("vi-VN")} MB</dd></div>
-        <div><dt>Đính kèm trong hội thoại</dt><dd>{s.agent_max_upload_files == null ? "Chưa có thông tin" : `${s.agent_max_upload_files} tệp mỗi lần`}</dd></div>
-        <div><dt>Định dạng trong hội thoại</dt><dd>{s.agent_upload_extensions?.map(ext => ext.slice(1).toUpperCase()).join(", ") || "Chưa có thông tin"}</dd></div>
-        <div><dt>Số dòng mỗi bảng</dt><dd>{s.max_rows.toLocaleString("vi-VN")} dòng</dd></div>
+        <div><dt>Định dạng tệp</dt><dd>{s.agent_upload_extensions?.map(ext => ext.slice(1).toUpperCase()).join(", ") || "Chưa có thông tin"}</dd></div>
+        <div><dt>Dung lượng tối đa mỗi tệp</dt><dd>{(s.max_upload_bytes / 1048576).toLocaleString("vi-VN")} MB</dd></div>
+        <div><dt>Đính kèm mỗi lần gửi</dt><dd>{s.agent_max_upload_files == null ? "Chưa có thông tin" : `${s.agent_max_upload_files} tệp mỗi lần`}</dd></div>
+        <div><dt>Số dòng tối đa mỗi bảng</dt><dd>{s.max_rows.toLocaleString("vi-VN")} dòng</dd></div>
       </dl>
+      <p>Các giới hạn trên áp dụng khi đính kèm tệp trong hội thoại. Ứng dụng sẽ thông báo khi tệp vượt giới hạn hoặc cần bạn kiểm tra lại.</p>
     </section>
-    {role === "owner" && <details className="settings-advanced settings-section">
-      <summary>Thông tin nâng cao</summary>
-      <p>Thông tin chỉ đọc dành cho chủ không gian khi cần kiểm tra hoặc liên hệ hỗ trợ.</p>
-      <dl className="settings-rows">
-        <div><dt>Dịch vụ đề xuất ánh xạ</dt><dd>{s.mapping_ai_provider === "GEMINI" ? "Gemini" : "Qwen"}</dd></div>
-        <div><dt>Model Gemini</dt><dd>{s.gemini_configured ? s.gemini_model : "Chưa cấu hình"}</dd></div>
-        <div><dt>Lượt AI đã ghi nhận</dt><dd>{Number.isFinite(s.gemini_requests_used) ? s.gemini_requests_used.toLocaleString("vi-VN") : "Chưa có thông tin"}</dd></div>
-        <div><dt>Lượt AI còn trong hạn mức chung</dt><dd>{remaining === null ? "Chưa xác minh" : remaining.toLocaleString("vi-VN")}</dd></div>
-        {s.ai_task_allowances && ([['agent','Thực hiện tác vụ'],['planner','Đề xuất quy tắc mới'],['assistant','Diễn giải dữ kiện']] as const).map(([key,title])=><div key={key}><dt>{title}</dt><dd>{s.ai_task_allowances![key].remaining} lượt còn trong hạn mức tác vụ</dd></div>)}
-        <div><dt>Tác vụ hội thoại</dt><dd>{s.agent_cloud_enabled ? "Có quyền theo chính sách" : "Chưa khả dụng theo chính sách hoặc hạn mức"}</dd></div>
-        <div><dt>Hỏi dữ kiện qua AI bên ngoài</dt><dd>{s.assistant_cloud_enabled ? "Có quyền theo chính sách" : "Chưa khả dụng"}</dd></div>
-        <div><dt>Qwen</dt><dd>{s.qwen_configured ? `Đã cấu hình · ${s.qwen_model} · kết nối chưa xác minh` : "Chưa cấu hình"}</dd></div>
-        <div><dt>Trích xuất tài liệu bên ngoài</dt><dd>{s.policy.allow_cloud_parsing ? "Workspace có quyền; mỗi tác vụ cần kiểm tra riêng" : "Workspace chưa cho phép tạo tác vụ"}</dd></div>
-        <div><dt>Tải qua công cụ thủ công</dt><dd>{s.max_upload_files} tệp mỗi lần</dd></div>
-      </dl>
-      <p>Hạn mức chung không đảm bảo còn lượt cho từng tác vụ. Mỗi yêu cầu đã gửi đều được ghi nhận, kể cả lỗi hoặc chưa rõ dịch vụ đã nhận; không tự gửi lại khi chưa xác định.</p>
-    </details>}
   </section>;
 }

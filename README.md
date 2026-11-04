@@ -2,9 +2,9 @@
 
 Không gian đối soát CSV/XLSX bằng hội thoại: tải tệp, chuẩn hóa, duyệt quy tắc, tra cứu và phân tích kết quả có bằng chứng. Backend tính tiền bằng Decimal, kiểm chứng độc lập và lưu dữ liệu/hội thoại trong PostgreSQL/Parquet.
 
-Composer trung tính, bo tròn và không khung ngoài khi click chuột; Tab có chỉ báo focus mảnh. Ô nhập tự giãn theo nội dung và độ rộng; Enter gửi, Shift+Enter xuống dòng. Cài đặt, lịch sử, review, bảng và evidence dùng cùng giao diện tối giản; trạng thái/quyền/giới hạn lấy từ Backend. Trạng thái được cấp quyền AI và đã cấu hình không chứng minh model đang kết nối.
+Composer trung tính, bo tròn và không khung ngoài khi click chuột; Tab có chỉ báo focus mảnh. Ô nhập tự giãn theo nội dung và độ rộng; Enter gửi, Shift+Enter xuống dòng. Cài đặt chỉ gồm tài khoản, quyền riêng tư, khả năng hỗ trợ AI và giới hạn tệp; không có thông tin vận hành/model/ledger. Lịch sử, review, bảng và evidence dùng cùng giao diện tối giản; trạng thái/quyền/giới hạn lấy từ Backend. Trạng thái được cấp quyền AI và đã cấu hình không chứng minh model đang kết nối.
 
-**Nghiệm thu hiện hành 04/11/2026 — READY_FOR_GUIDED_DEMO:** **302 Backend/PostgreSQL và 117 Playwright PASS sau Docker cleanup**, thêm8checks sau deploy đãPASS trước cleanup. Frontend `18706a7` là bản giao diện mới, Backend/Worker giữDAC với42source files khớp;7HTML/assets host/image/HTTP và Chromium đều khớp. Đủ4dịch vụ healthy, dữ liệu gốc24bảng/2.709checksums không đổi, backup/restore đã kiểm. Xem [báo cáo giao diện và hiện trạng mục Z](docs/IMPLEMENTATION_STATUS.md#z-giao-diện-tối-giản-sourceruntime-và-docker-cleanup--04112026); bằng chứng AI trước đó và giới hạn tại mụcY vẫn áp dụng. Có thể dùng local cho luồng CSV/XLSX đã nghiệm thu; chưa nghiệm thu Internet/nhiều người dùng hoặc bảo đảm mọi câu ngôn ngữ tự nhiên đều đúng. Gemini còn7lượt tổng, không inference mới/tăng quota/reset ledger trong nhiệm vụ UI. Đã bỏ8image cũ, giữ release/rollbackDAC/PG/volumes/backups; không global prune. Số tests/các checks replay không cộng thành cases mới.
+**Mốc nghiệm thu trước vòng khôi phục phiên và chỉnh Cài đặt (04/11/2026):** **302 Backend/PostgreSQL và 117 Playwright PASS sau Docker cleanup**, thêm8checks sau deploy đãPASS trước cleanup. Frontend `18706a7` là bản giao diện mới, Backend/Worker giữDAC với42source files khớp;7HTML/assets host/image/HTTP và Chromium đều khớp. Đủ4dịch vụ healthy, dữ liệu gốc24bảng/2.709checksums không đổi, backup/restore đã kiểm. Xem [báo cáo giao diện và hiện trạng mục Z](docs/IMPLEMENTATION_STATUS.md#z-giao-diện-tối-giản-sourceruntime-và-docker-cleanup--04112026); bằng chứng AI trước đó và giới hạn tại mụcY vẫn áp dụng. Có thể dùng local cho luồng CSV/XLSX đã nghiệm thu; chưa nghiệm thu Internet/nhiều người dùng hoặc bảo đảm mọi câu ngôn ngữ tự nhiên đều đúng. Gemini còn7lượt tổng, không inference mới/tăng quota/reset ledger trong nhiệm vụ UI. Đã bỏ8image cũ, giữ release/rollbackDAC/PG/volumes/backups; không global prune. Số tests/các checks replay không cộng thành cases mới.
 
 ## Mở ứng dụng trong workspace hiện tại
 
@@ -21,6 +21,10 @@ Script tạo `.env` với credentials local ngẫu nhiên nếu chưa có, build
 ```powershell
 ./tools/start.ps1 -SkipBuild
 ```
+
+Script chỉ báo mở ứng dụng sau khi cả bốn services healthy, published ports đúng loopback, identity Frontend khớp HTTP và các đường `/api/live`, `/api/ready`, `/api/session`, `/api/settings`, danh sách dự án trả200 với cùng cookie phiên. Nếu một bước thất bại, lệnh dừng với lỗi; `-SkipBuild` không build image. Không sửa `.env` hoặc xóa cookies/dữ liệu để khôi phục.
+
+**Sau khi máy/Docker/Backend khởi động lại hoặc recreate Frontend**, chạy `./tools/start.ps1 -SkipBuild` một lần rồi mở ứng dụng. Proof nằm trong tmpfs và gắn với instance Backend/Frontend nên mất hiệu lực theo thiết kế bảo mật; Docker tự khởi động bốn containers healthy chưa thay thế bước xác minh trên host. Giao diện báo **Chưa kết nối**, phân biệt cần xác minh local với lỗi mạng; có **Thử kết nối lại** và hướng dẫn vận hành thu gọn. Thử lại chỉ đọc session/settings/project, giữ bản nháp trong tab và lịch sử đã lưu; không tự gửi lại upload, approval hoặc câu hỏi. Browser không có quyền tự bật proof. Nếu có thao tác restart/recreate tiếp theo, xác minh lại sau thao tác cuối.
 
 Máy đã kiểm tra: Windows, Ryzen 5 7535HS (6 cores/12 threads), khoảng 16 GB RAM; Docker Desktop/Linux Engine 29.7.2, Compose 5.5.0. Chỉ cần Docker để chạy ứng dụng; Node/Python local dùng cho phát triển và tests. Cổng `18180` phải còn trống. Backend/worker/PostgreSQL không publish host ports.
 

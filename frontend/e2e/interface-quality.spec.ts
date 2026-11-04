@@ -1151,3 +1151,67 @@ for (const kind of ["REVIEW_MAPPING", "NORMALIZE"] as const) {
     ).toHaveAttribute("aria-selected", "true");
   });
 }
+
+
+test("[MOCK CONTRACT] local proof recovery preserves draft and reloads project and history without mutation", async ({ page }) => {
+  await fixture(page, projects(1), "project-000");
+  const draftKey = 'studio.assistant-draft.synthetic.demo.["project-000","","","","","new"]';
+  await page.addInitScript(({key}) => sessionStorage.setItem(key, "Bản nháp được giữ nguyên"), {key:draftKey});
+  let historyReads = 0;
+  await page.route("**/api/conversations?**", route => {
+    historyReads++;
+    return route.fulfill({json:{items:[{id:"saved-history",title:"Hội thoại trước khi khởi động lại",context:{project_id:"project-000"},created_at:"2026-11-04T00:00:00Z"}],has_more:false}});
+  });
+  let verified = false;
+  let documents = 0;
+  page.on("request", request => { if(request.isNavigationRequest() && request.frame()===page.mainFrame()) documents++; });
+  await page.route("**/api/session", route => verified ? route.fallback() : route.fulfill({status:403,json:{code:"LOCAL_DEMO_NOT_VERIFIED",message_vi:"technical operator detail"}}));
+  await page.goto("/");
+  const status = page.getByRole("status", {name:"Trạng thái kết nối"});
+  await expect(status).toHaveText("Chưa kết nối");
+  await expect(page.getByText("Ứng dụng cần xác minh lại môi trường local sau khi khởi động. Dữ liệu của bạn vẫn được giữ nguyên.")).toBeVisible();
+  await expect(page.getByRole("button", {name:"AI Assistant",exact:true})).toBeDisabled();
+  await expect(page.locator("code", {hasText:"tools/start.ps1 -SkipBuild"})).not.toBeVisible();
+  await page.getByText("Hướng dẫn cho người vận hành local", {exact:true}).click();
+  await expect(page.locator("code", {hasText:"tools/start.ps1 -SkipBuild"})).toBeVisible();
+  expect(await status.locator("span").evaluate(el=>getComputedStyle(el).backgroundColor)).not.toBe("rgb(22, 163, 74)");
+  verified = true;
+  await page.getByRole("button", {name:"Thử kết nối lại",exact:true}).click();
+  await expect(status).toHaveText("Hệ thống đã kết nối");
+  await expect(page.locator("#project-select")).toHaveAttribute("data-project-id","project-000");
+  await expect(page.getByRole("textbox",{name:"Câu hỏi cho AI Assistant",exact:true})).toHaveValue("Bản nháp được giữ nguyên");
+  await page.getByRole("button", {name:"Lịch sử",exact:true}).click();
+  await expect(page.getByRole("dialog",{name:"Lịch sử",exact:true}).getByText("Hội thoại trước khi khởi động lại",{exact:false})).toBeVisible();
+  expect(historyReads).toBeGreaterThan(0);
+  expect(await page.evaluate(key=>sessionStorage.getItem(key),draftKey)).toBe("Bản nháp được giữ nguyên");
+  expect(documents).toBe(1);
+});
+
+for (const failure of ["network", "timeout", "settings"] as const) {
+  test(`[MOCK CONTRACT] bootstrap ${failure} stops loading and recovers with a GET-only retry`, async ({ page }) => {
+    await fixture(page, projects(1));
+    let failed = true;
+    if(failure==="timeout") await page.addInitScript(()=>{
+      const original = AbortSignal.timeout.bind(AbortSignal);
+      AbortSignal.timeout = ms => original(ms===30000?1000:ms);
+    });
+    await page.route(failure==="settings"?"**/api/settings":"**/api/session", async route=>{
+      if(!failed)return route.fallback();
+      if(failure==="network")return route.abort("connectionrefused");
+      if(failure==="timeout") { await new Promise(resolve=>setTimeout(resolve,1600)); return route.fulfill({json:{workspace_id:"synthetic",role:"owner"}}).catch(()=>{}); }
+      return route.fulfill({status:503,body:"unavailable"});
+    });
+    await page.goto("/");
+    const status=page.getByRole("status",{name:"Trạng thái kết nối"});
+    await expect(status).toHaveText("Chưa kết nối");
+    await expect(page.getByText("Không thể kết nối tới dịch vụ xử lý dữ liệu. Hãy kiểm tra trạng thái ứng dụng.")).toBeVisible();
+    await expect(page.getByText("Hướng dẫn cho người vận hành local",{exact:true})).toHaveCount(0);
+    await expect(page.getByText("Đang xác minh quyền",{exact:false})).toHaveCount(0);
+    failed=false;
+    await page.getByRole("button",{name:"Thử kết nối lại",exact:true}).click();
+    await expect(status).toHaveText("Hệ thống đã kết nối");
+    await expect(page.getByRole("textbox",{name:"Câu hỏi cho AI Assistant",exact:true})).toBeEnabled();
+    await page.reload();
+    await expect(status).toHaveText("Hệ thống đã kết nối");
+  });
+}

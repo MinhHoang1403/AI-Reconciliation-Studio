@@ -27,6 +27,95 @@ from studio.database import (
 pytestmark = pytest.mark.integration
 
 
+def test_local_session_reverification_and_expiry(pg, monkeypatch):
+    """Real isolated DB sessions, real proof checks; only internal health is synthetic."""
+    import io
+    import json
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from pydantic import SecretStr
+    from studio import access
+
+    client, factory, _ = pg
+    client.cookies.clear()  # Only this isolated TestClient, never browser/application sessions.
+    monkeypatch.setattr(settings, "access_token", SecretStr(""))
+    monkeypatch.setattr(settings, "local_demo_access", True)
+    settings.instance_path.write_text("synthetic-boot")
+    identity = {"value": "a" * 12}
+    monkeypatch.setattr(
+        access.urllib.request,
+        "build_opener",
+        lambda *_: SimpleNamespace(
+            open=lambda *_args, **_kwargs: nullcontext(
+                SimpleNamespace(
+                    headers={"X-Studio-Instance": identity["value"]},
+                )
+            ),
+        ),
+    )
+
+    def verify():
+        containers = [
+            {
+                "Id": identity["value"] + "0" * 52 if service == "frontend" else service,
+                "Config": {
+                    "Labels": {
+                        "com.docker.compose.project": "ai-reconciliation-studio",
+                        "com.docker.compose.service": service,
+                    }
+                },
+                "NetworkSettings": {
+                    "Ports": {"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18180"}]}
+                    if service == "frontend"
+                    else {}
+                },
+            }
+            for service in ("frontend", "backend", "worker", "postgres")
+        ]
+        monkeypatch.setattr(access.sys, "stdin", io.StringIO(json.dumps(containers)))
+        access.activate_demo()
+
+    response = client.get("/api/session")
+    assert response.status_code == 403 and response.json()["code"] == "LOCAL_DEMO_NOT_VERIFIED"
+    verify()
+    response = client.get("/api/session")
+    assert response.status_code == 200
+    assert response.json() == {"actor_id": "demo-owner", "workspace_id": "demo", "role": "owner"}
+    assert all(
+        flag in response.headers["set-cookie"].lower()
+        for flag in ("httponly", "samesite=strict", "path=/api", "max-age=28800")
+    )
+    assert client.get("/api/settings").status_code == 200
+    cookie = client.cookies.get("studio_session")
+    assert client.get("/api/session").status_code == 200
+    assert client.cookies.get("studio_session") == cookie
+    for change in ("frontend", "backend"):
+        if change == "frontend":
+            identity["value"] = "b" * 12
+        else:
+            settings.instance_path.write_text("synthetic-reboot")
+        for path in ("/api/session", "/api/settings"):
+            response = client.get(path)
+            assert (
+                response.status_code == 403 and response.json()["code"] == "LOCAL_DEMO_NOT_VERIFIED"
+            )
+        verify()
+        assert client.get("/api/session").status_code == 200
+        assert client.cookies.get("studio_session") == cookie
+    with factory() as db:
+        db.get(SessionRow, access.session_token_hash(cookie)).expires_at = now() - timedelta(
+            seconds=1
+        )
+        db.commit()
+    assert client.get("/api/settings").status_code == 401
+    assert client.get("/api/session").status_code == 200
+    assert client.cookies.get("studio_session") != cookie
+    assert client.get("/api/settings").status_code == 200
+    response = client.get("/api/session", headers={"Host": "attacker.example"})
+    assert response.status_code == 403 and response.json()["code"] == "HOST_NOT_ALLOWED"
+
+
 def test_assistant_raw_download_preserves_bytes_permissions_and_checksum(pg):
     from studio.database import ProjectRow
     from studio.storage import storage_path

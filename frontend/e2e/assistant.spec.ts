@@ -135,10 +135,19 @@ test("late report selection cannot rewrite Back navigation to Assistant",async({
     const response=await route.fetch();started();await gate;await route.fulfill({response}).catch(()=>{});
   });
   await openLegacyPage(page, "reports");
+  // Reports can reuse the run already loaded by the mounted reconciliation view.
+  // Select a different run explicitly so this regression always delays a real request.
+  const selector=page.getByLabel("Lần đối soát",{exact:true});
+  const selected=await selector.inputValue();
+  const alternative=await selector.locator('option').evaluateAll((options,current)=>
+    options.map(option=>(option as HTMLOptionElement).value).find(value=>value&&value!==current),selected);
+  expect(alternative).toBeTruthy();
+  await selector.selectOption(alternative!);
   await pending;
   await page.goBack();release();
   await expect(input).toHaveValue("Bản nháp được giữ khi kết quả báo cáo đến muộn");
   await expect(page).toHaveURL(/page=assistant/);
+  await page.unrouteAll({behavior:"wait"});
 });
 
 test("unknown message delivery keeps its idempotency key after reload", async ({

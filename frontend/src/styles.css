@@ -280,9 +280,11 @@ nav .active > svg { color: #2563eb; }
 .connection > span {
   width: 6px;
   height: 6px;
-  background: #16a34a;
+  background: var(--text-muted);
   border-radius: 50%;
 }
+.connection.connected > span { background: #16a34a; }
+.connection.disconnected > span { background: #b91c1c; }
 .menu-button {
   display: none !important;
 }
@@ -1212,7 +1214,6 @@ details p {
 .settings-rows > div { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); gap: 16px; padding-block: 7px; }
 .settings-rows dt { color: var(--text-muted); }
 .settings-rows dd { margin: 0; color: #1e293b; text-align: left; overflow-wrap: anywhere; }
-.settings-advanced > summary { font-size: 15px; font-weight: 600; padding-block: 4px; }
 @media(max-width:600px) {
   .settings-rows > div { grid-template-columns: 1fr; gap: 4px; }
   .settings-rows dd { text-align: left; }

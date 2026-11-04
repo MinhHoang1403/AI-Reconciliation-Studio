@@ -13,7 +13,7 @@ if (-not (Test-Path -LiteralPath '.env')) {
     # The company URL is supplied by the operator in the ignored .env, never bundled in JS.
     [System.IO.File]::WriteAllText((Join-Path $PWD '.env'), $config)
 }
-if ($SkipBuild) { docker compose up -d --wait } else { docker compose up -d --build --wait }
+if ($SkipBuild) { docker compose up -d --no-build --wait } else { docker compose up -d --build --wait }
 if ($LASTEXITCODE -ne 0) { throw 'Docker services did not become healthy.' }
 & (Join-Path $PSScriptRoot 'verify-local.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Loopback verification failed.' }

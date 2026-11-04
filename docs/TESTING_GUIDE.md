@@ -347,3 +347,11 @@ Các receipts mới: `runtime/assistant-experience-backend-final.log`, `assistan
 Final reliability source dc8fcc5: recovery 75k/2 attempts/1 canonical/Agent COMPLETED/0 cloud/12,984 s; backup 24 tables/981 files, UUID restore + host SHA verified; accepted rollback and return full snapshot/source/assets PASS. Variants đã tham gia chẩn đoán, không là blind holdout. Chi tiết/hash/receipts ở mục T.
 
 Main release f1ad9f1 có application diff rỗng so với dc8fcc5 đã full regression; build mới, identity/health/full snapshot và read-back 10 workflows + financial/evidence/export PASS, 0 AI calls thêm. Các commit sau release chỉ tài liệu, không suy healthcheck thay functional acceptance.
+
+## Khôi phục phiên local sau khởi động lại — 04/11/2026
+
+`tests/test_access.py` kiểm proof hợp lệ, thiếu/hỏng, nonce Backend hoặc identity Frontend đổi, health không phản hồi, local disabled, port sai và verification bị từ chối thu hồi proof cũ. `test_local_session_reverification_and_expiry` trong `tests/test_postgres.py` dùng PostgreSQL/schema UUID thật và health nội bộ synthetic: session403 trước proof,200 sau host activation, cookie HttpOnly/Strict, tái xác minh giữ cookie, hết hạn trả401 rồi bootstrap cấp lại; Host ngoài allowlist bị chặn. Không sửa bảng/session đang dùng.
+
+Bốn ca bootstrap trong `interface-quality.spec.ts` dùng mock GET: lỗi proof/mạng/timeout/settings, header và quyền không còn chờ vô hạn, retry giữ draft/tải project/history, không navigation reload hoặc mutation; reload sau phục hồi vẫn kết nối. Ca timeout rút thời gian bằng shim chỉ trong browser test, không tăng timeout ứng dụng.
+
+Chạy `./tools/test-postgres.ps1 -All`, frontend check/lint/build và toàn bộ Playwright khi đổi bootstrap/startup. Candidate dùng `STUDIO_FRONTEND_DIST=1` để kiểm dist qua origin hiện có; nghiệm thu sau deploy bỏ biến này để tải assets Nginx thật. Sau thao tác Docker cuối phải chạy `./tools/start.ps1 -SkipBuild`, xác minh session/settings200 và browser usable. Kiểm thử recreate chỉ khi queue không còn jobs; giữ hai volumes và cookie, chứng minh403 trước re-verification và200 sau đó, so metadata/checksums. Không gọi model hoặc tăng/reset quota để kiểm kết nối.

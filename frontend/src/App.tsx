@@ -168,6 +168,11 @@ export function App() {
   const [search, setSearch] = useState("");
   const [workspace, setWorkspace] = useState<WorkspaceSettings | null>(null);
   const [ready, setReady] = useState(false);
+  const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
+  const [bootstrapError, setBootstrapError] = useState<{
+    code: string;
+    message: string;
+  } | null>(null);
   const [focusMode, setFocusMode] = useState<"pointer" | "keyboard">("pointer");
   const [actorRole, setActorRole] = useState("");
   const [draftOwner, setDraftOwner] = useState("");
@@ -301,24 +306,26 @@ export function App() {
 
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]);
     void (async () => {
       try {
         const actor = await api<{
           role: string;
           actor_id?: string;
           workspace_id?: string;
-        }>("/session");
-        const s = await api<WorkspaceSettings>("/settings");
+        }>("/session", { signal });
+        const s = await api<WorkspaceSettings>("/settings", { signal });
         const savedId =
           locationRef.current.projectId ||
           localStorage.getItem("studio.project");
         let restored: Project | null = null;
         try {
           restored = savedId
-            ? await api<Project>(`/projects/${encodeURIComponent(savedId)}`)
+            ? await api<Project>(`/projects/${encodeURIComponent(savedId)}`, { signal })
             : locationRef.current.page === "assistant" ? null : (
                 await api<{ items: Project[] }>(
-                  "/projects?include_test=false&limit=1",
+                  "/projects?include_test=false&limit=1", { signal },
                 )
               ).items[0] || null;
         } catch (err) {
@@ -360,16 +367,24 @@ export function App() {
         );
         setReady(true);
       } catch (err) {
-        if (mounted)
-          setError(
-            err instanceof Error ? err.message : "Không kết nối được backend.",
-          );
+        if (mounted) {
+          const code = err instanceof ApiError ? err.code : "NETWORK_ERROR";
+          setBootstrapError({
+            code,
+            message: code === "LOCAL_DEMO_NOT_VERIFIED"
+              ? "Ứng dụng cần xác minh lại môi trường local sau khi khởi động. Dữ liệu của bạn vẫn được giữ nguyên."
+              : ["NETWORK_ERROR", "API_TIMEOUT", "HTTP_ERROR"].includes(code)
+                ? "Không thể kết nối tới dịch vụ xử lý dữ liệu. Hãy kiểm tra trạng thái ứng dụng."
+                : err instanceof Error ? err.message : "Chưa thể xác minh phiên làm việc. Hãy thử kết nối lại.",
+          });
+        }
       }
     })();
     return () => {
       mounted = false;
+      controller.abort();
     };
-  }, []);
+  }, [bootstrapAttempt]);
 
   const refreshProject = useCallback(async () => {
     if (!projectId) return;
@@ -1023,7 +1038,7 @@ export function App() {
                     editor: "Có quyền chỉnh sửa",
                     viewer: "Chỉ xem",
                   } as Record<string, string>
-                )[actorRole] || "Đang xác minh quyền"}
+                )[actorRole] || (bootstrapError ? "Chưa xác minh phiên" : "Đang xác minh quyền")}
               </small>
             </div>
           </div>
@@ -1058,9 +1073,9 @@ export function App() {
             </strong>
           </div>
           <div className="topbar-end">
-            <span className="connection">
+            <span className={`connection ${ready ? "connected" : bootstrapError ? "disconnected" : "connecting"}`} role="status" aria-label="Trạng thái kết nối">
               <span />
-              {ready ? "Hệ thống đã kết nối" : "Đang kết nối"}
+              {ready ? "Hệ thống đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}
             </span>
             <span className="avatar">LC</span>
           </div>
@@ -1109,18 +1124,29 @@ export function App() {
               )}
             </div>
           </div>}
+          {bootstrapError && (
+            <Notice tone="error">
+              <div className="notice-content">
+                <div>
+                  <p>{bootstrapError.message}</p>
+                  {bootstrapError.code === "LOCAL_DEMO_NOT_VERIFIED" && (
+                    <details>
+                      <summary>Hướng dẫn cho người vận hành local</summary>
+                      <p>Chạy <code>tools/start.ps1 -SkipBuild</code> trong PowerShell, sau đó thử lại.</p>
+                    </details>
+                  )}
+                </div>
+                <button className="text-button" onClick={() => {
+                  setBootstrapError(null);
+                  setBootstrapAttempt(attempt => attempt + 1);
+                }}>Thử kết nối lại</button>
+              </div>
+            </Notice>
+          )}
           {error && (
             <Notice tone="error">
               <div className="notice-content">
                 {error}
-                {!ready && (
-                  <button
-                    className="text-button"
-                    onClick={() => window.location.reload()}
-                  >
-                    Kết nối lại
-                  </button>
-                )}
                 <button
                   className="icon-button"
                   aria-label="Ẩn thông báo lỗi"
@@ -1132,7 +1158,7 @@ export function App() {
             </Notice>
           )}
           {success && <Notice tone="success">{success}</Notice>}
-          {!ready && !error && <Spinner />}
+          {!ready && !bootstrapError && <Spinner />}
           {ready && page !== "settings" && (
             <div className={`project-bar ${page==="assistant"?"assistant-project-bar":""}`}>
               <ProjectSelector
