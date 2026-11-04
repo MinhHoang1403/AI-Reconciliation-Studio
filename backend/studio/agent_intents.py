@@ -17,7 +17,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-29"
+INTENT_REVISION = "agent-intent-30"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -944,6 +944,10 @@ def interpret_requests(
                 "Thiếu trường/định nghĩa cho chỉ tiêu người dùng muốn: CLARIFY, hỏi về nguồn "
                 "hoặc chỉ tiêu sẵn có, không dùng UNSUPPORTED chỉ vì chưa có dữ liệu. "
                 "Biểu đồ toàn trạng thái dùng group_by status + count, không tự lọc PAID. "
+                "currency_field chỉ được chọn nếu thuộc fields của đúng source_ref; "
+                "không sao chép trường này từ nguồn khác. EXCEPTIONS không có currency: "
+                "currency_field=null cho danh sách/đếm ngoại lệ; mọi trường tùy chọn không "
+                "dùng phải null hoặc rỗng, không tự điền theo mặc định từ nguồn tiền. "
                 "Ngoại lệ đang mở dùng EXCEPTIONS state eq OPEN; chưa xử lý dùng state in "
                 "OPEN/IN_REVIEW. "
                 "Thiếu đối ứng dùng VERIFIED_RUN linkage_state UNMATCHED; thiếu trái thêm "
