@@ -1818,6 +1818,7 @@ pre {
 .result-chart{height:285px;width:100%}.result-panels p{margin:10px 0;overflow-wrap:anywhere}.result-filters{display:flex;gap:16px;margin:18px 0}
 .result-table{width:100%;border-collapse:collapse;white-space:nowrap}.result-table th{text-align:left;color:var(--text-muted);background:var(--surface-sidebar);font-weight:600}
 .result-table th,.result-table td{padding:14px 16px;border-bottom:1px solid var(--surface-border);font-size:13px}
+.result-table td > .text-button + .text-button{margin-inline-start:12px}
 .run-toolbar{margin:12px 0}.run-toolbar select{max-width:100%}.evidence-sides{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
 .evidence-record{background:var(--surface-subtle);border-radius:var(--control-radius);padding:16px;margin:16px 0;overflow-wrap:anywhere}
 .evidence-record dl>div{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;padding:5px 0}.evidence-record dt{color:var(--text-muted)}.evidence-record dd{margin:0}
