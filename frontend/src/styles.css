@@ -1903,7 +1903,7 @@ pre {
 .assistant-composer textarea::placeholder { color: #6b7280; font-weight: 400; }
 .assistant-composer > .icon-button { grid-column: 1; grid-row: 1; width: 40px; height: 40px; padding: 0; border-radius: 50%; }
 .composer-actions { grid-column: 3; grid-row: 1; display: flex; gap: 6px; align-items: center; }
-.composer-model { width: 100px; min-height: 34px; padding: 4px 5px; border: 0; border-radius: 9px; background: #f4f4f5; color: #334155; font-size: 12px; }
+.composer-model { width: 82px; min-height: 34px; padding: 4px 5px; border: 0; border-radius: 9px; background: #f4f4f5; color: #334155; font-size: 12px; }
 .composer-send { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; background: #262626; color: #fff; border: 0; border-radius: 50%; }
 .composer-send:hover:not(:disabled) { background: #404040; }
 .composer-send:disabled { background: var(--surface-border); color: var(--text-muted); opacity: 1; }

@@ -1039,10 +1039,12 @@ export function AssistantStudio({
                 setModelChoice(choice.id);
               }}
             >
-              {!selectedOption && <option value={selectedModel} disabled>{modelLabels[selectedModel]} · Chưa kiểm chứng</option>}
-              {models.map(option => <option key={option.id} value={option.id} disabled={!option.available}>
-                {option.label} · {option.id === "GEMINI" ? "AI đám mây" : "AI trên máy"} · {modelStatuses[option.status]}
-              </option>)}
+              {!selectedOption && <option value={selectedModel} disabled>{modelLabels[selectedModel]}</option>}
+              {models.map(option => (
+                <optgroup key={option.id} label={`${option.id === "GEMINI" ? "AI đám mây" : "AI trên máy"} · ${modelStatuses[option.status]}`}>
+                  <option value={option.id} disabled={!option.available}>{option.label}</option>
+                </optgroup>
+              ))}
             </select>}
             <button
               className="composer-send"
