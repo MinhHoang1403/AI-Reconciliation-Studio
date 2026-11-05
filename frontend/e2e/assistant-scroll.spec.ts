@@ -101,6 +101,7 @@ test("[MOCK CONTRACT] prepending history preserves its visual anchor; reload res
   await page.getByRole("button",{name:"Xem tin nhắn cũ hơn",exact:true}).click();
   await expect(page.getByRole("button",{name:"Xem tin nhắn cũ hơn",exact:true})).toHaveCount(0);
   expect(Math.abs((await anchor.boundingBox())!.y-before!.y)).toBeLessThan(3);
+  await expect(page.getByRole("button",{name:"Tin nhắn mới · Xuống cuối",exact:true})).toHaveCount(0);
   await page.reload();
   await expect(page.getByLabel("Câu hỏi cho AI Assistant",{exact:true})).toBeEnabled();
   await expect.poll(()=>gap(page)).toBeLessThan(10);

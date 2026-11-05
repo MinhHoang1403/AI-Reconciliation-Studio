@@ -158,6 +158,7 @@ export function AssistantStudio({
   const followTail=useRef(true);
   const forceTail=useRef(false);
   const prependAnchor=useRef<{height:number;top:number}|null>(null);
+  const prependedHeight=useRef<number|null>(null);
   const loadingOlder=useRef(false);
   const [olderLoading,setOlderLoading]=useState(false);
   const [newContent,setNewContent]=useState(false);
@@ -174,6 +175,7 @@ export function AssistantStudio({
     if(prependAnchor.current){
       const anchor=prependAnchor.current;
       pane.scrollTop=anchor.top+pane.scrollHeight-anchor.height;
+      prependedHeight.current=transcriptContent.current?.getBoundingClientRect().height??null;
       prependAnchor.current=null;
     }else if(forceTail.current||followTail.current){
       pane.scrollTop=pane.scrollHeight;
@@ -188,11 +190,15 @@ export function AssistantStudio({
     const observer=new ResizeObserver(()=>{
       const height=content.getBoundingClientRect().height;
       if(height===lastHeight&&pane.clientHeight===lastPaneHeight)return;
+      const grew=height>lastHeight;
       lastHeight=height;
       lastPaneHeight=pane.clientHeight;
+      const olderContent=height===prependedHeight.current;
+      prependedHeight.current=null;
+      if(olderContent)return;
       if(prependAnchor.current||loadingOlder.current)return;
       if(followTail.current)pane.scrollTop=pane.scrollHeight;
-      else setNewContent(true);
+      else if(grew)setNewContent(true);
     });
     observer.observe(content);
     observer.observe(pane);
