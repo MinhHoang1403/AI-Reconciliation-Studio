@@ -12,6 +12,14 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Kiểm chứng ngày và AI Smart Mapping — 05/11/2026
+
+Chủ dự án giao sửa lỗi ngày hợp lệ bị INVALID_DATE, kiểm tra toàn bảng trước phê duyệt và thu gọn Mapping Review. Mở rộng profiler/Agent/compiler hiện có, không thêm agent hoặc đổi Matcher/Verifier. Định dạng hiển thị `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY` là alias hữu hạn của định dạng Python tương đương; chuẩn hóa revision mới, không sửa artifact/mapping lịch sử. Lỗi format/timezone/runtime phải dừng trước lặp dòng; ngày sai thật, DST mơ hồ/không tồn tại và offset trái vùng đã duyệt vẫn bị phát hiện.
+
+Giữ contract ngày hiện hành là timestamp UTC từ múi giờ được người dùng duyệt; ngày lịch đối chiếu sau khi chuyển về vùng đó, không suy timezone từ chuỗi ngày và không migration date-only rộng. Thống kê toàn bảng hỗ trợ đề xuất date format/locale/currency/khóa, không dùng majority currency hoặc uniqueness thay bằng chứng nghiệp vụ. Field tiền vẫn đơn tiền tệ; nguồn có nhiều tiền tệ phải hiển thị giới hạn và giữ lỗi currency riêng, không đổi USD sang VND. Backend preflight đọc artifact scoped/checksum, dùng compiler/transform trong bộ nhớ, không công bố canonical hay phê duyệt. API phê duyệt kiểm lại trong transaction, giữ nonce/fingerprint/TTL/authorization. Review mặc định có tóm tắt, điều cần xác nhận và bất thường; chi tiết kỹ thuật mở khi cần.
+
+Nghiệm thu trên bộ ba nguồn TEST có sẵn và dự án TEST mới, oracle độc lập, host/Backend/Worker/PostgreSQL/browser; giữ project lỗi, revision cũ và backup. LIVE chỉ khi provider khả dụng, dừng khi429/503; không reset ledger/đổi provider hoặc gọi cached là LIVE mới. Full regression, source/image/HTTP, dữ liệu và hướng dẫn phải được kiểm trước bàn giao; main chưa merge nếu AI LIVE gate chưa đạt.
+
 ### Kiểm toán độ tin cậy, trạng thái nguồn và cuộn hội thoại — 04/11/2026
 
 Chủ dự án giao truy vết job lỗi thực tế, sửa phản hồi khi thiếu bằng chứng, bảo đảm trạng thái kết thúc được lưu/hiển thị, kiểm tra gửi trùng và cuộn Chat; đồng thời nghiệm thu lại hành trình nghiệp vụ và viết hướng dẫn người mới. Câu hỏi trạng thái chuẩn hóa dùng metadata scoped của phiên bản nguồn/ánh xạ/bản chuẩn hóa hiện hành, không yêu cầu VerifiedRun và không tự chạy chuẩn hóa. Không suy READY từ việc đã đọc tệp; bản cũ, một phần và lỗi phải được nêu riêng. Nguồn mơ hồ hỏi lại; thiếu kết quả tài chính vẫn fail-closed.

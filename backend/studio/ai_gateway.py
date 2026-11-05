@@ -73,6 +73,7 @@ def build_evidence_context(profile: DatasetProfile, schema: SchemaDefinition) ->
                 "null_count": col.null_count,
                 "distinct_count": col.distinct_count,
                 "identifier_candidate": col.identifier_candidate,
+                "observations": col.observations,
                 "shape_samples": [_redact_sample(v) for v in col.samples[:3]],
                 "evidence_ids": col.evidence_ids,
             }

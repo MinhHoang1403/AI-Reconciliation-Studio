@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { Notice, Spinner } from "./components";
 import { AgentResultBlocks } from "./AgentResultBlocks";
-import type { DraftField, NormalizationDraft, Review, Workflow } from "./agentTypes";
+import type { DraftField, NormalizationDraft, Review, Workflow, MappingAssessment } from "./agentTypes";
 import type { AssistantContext, Suggestion } from "./assistantTypes";
 import { label, type Plan, type Catalogue, type Slot } from "./reconciliationTypes";
 import {errorText as errors,statusText} from "./types";
@@ -88,6 +88,22 @@ function ReviewCard({ review, workflow, canEdit, refresh, onReply }: {
 }) {
     const [draft, setDraft] = useState(review.normalization_draft);
     const [plan, setPlan] = useState(review.plan);
+    const [assessment,setAssessment]=useState<MappingAssessment|null>(null);
+    const [checking,setChecking]=useState(false);
+    const [assessmentSignature,setAssessmentSignature]=useState('');
+    const draftSignature=JSON.stringify(draft);
+    useEffect(()=>{
+      if(!draft)return;
+      const controller=new AbortController();
+      setAssessment(null);setChecking(true);
+      const timer=setTimeout(()=>{
+        void api<MappingAssessment>('/agent/mapping-preflight',{method:'POST',body:draftSignature,signal:controller.signal})
+        .then(result=>{if(!controller.signal.aborted){setAssessment(result);setAssessmentSignature(draftSignature);setError('');}})
+        .catch(err=>{if(!controller.signal.aborted)setError(err instanceof Error?err.message:'Không kiểm tra được đề xuất.');})
+        .finally(()=>{if(!controller.signal.aborted)setChecking(false);});
+      },250);
+      return()=>{clearTimeout(timer);controller.abort();};
+    },[draftSignature]);
     const [catalogue,setCatalogue]=useState<Catalogue[]>([]);
     const submitting = useRef(false);
     const [extraction, setExtraction] = useState(false);
@@ -144,7 +160,7 @@ function ReviewCard({ review, workflow, canEdit, refresh, onReply }: {
                 setBusy(false);
         }
     }
-    const ready = review.kind === "MAPPING" ? !!draft?.fields.every(f => f.data_type === "string" || (f.data_type === "decimal" ? f.locale && f.semantic_metric && f.amount_basis && f.currency && f.unit : f.date_format && f.timezone)) :
+    const ready = review.kind === "MAPPING" ? !!assessment?.preflight_ready && assessmentSignature===draftSignature && !checking && (review.extraction_review_required!==true||extraction) && !!draft?.fields.every(f => f.data_type === "string" || (f.data_type === "decimal" ? f.locale && f.semantic_metric && f.amount_basis && f.currency && f.unit : f.date_format && f.timezone)) :
         review.kind === "RECONCILIATION" ? !!plan?.period_start && !!plan.period_end && !!plan.timezone && !!plan.effective_from && [plan.left, plan.right].every(s => s.date_field && s.time_basis && s.coverage_start && s.coverage_end && s.snapshot_at && s.completeness) : !!review.reply_intent;
     if (review.kind === "CLARIFICATION") return <section className="agent-clarification" aria-label="Câu hỏi bổ sung">
       <p>{review.question}</p>
@@ -157,12 +173,32 @@ function ReviewCard({ review, workflow, canEdit, refresh, onReply }: {
     </section>;
     return <section className="agent-review" aria-label="Quyết định cần xác nhận">{review.resource_label&&<strong>{review.resource_label}</strong>}<h4>{review.question}</h4><p>{review.reason}</p>
     {error && <Notice tone="error">{error}</Notice>}{review.reply_questions.map(q => <Notice key={q}>{q}</Notice>)}
-    {draft && <><p>{draft.grain}</p><ul className="review-summary">{draft.fields.filter(f=>f.data_type!=="string"||f.business_key||f.question).map(f=><li key={f.source_field}><strong>{f.name}</strong>: {f.data_type==="decimal"?`${f.semantic_metric||"Chưa rõ ý nghĩa"} · ${f.amount_basis||"chưa rõ gross/net"} · ${f.currency||"chưa rõ tiền tệ"} · ${f.locale||"chưa rõ định dạng số"}`:f.data_type==="date"?`${f.date_format||"chưa rõ định dạng ngày"} · ${f.timezone||"chưa rõ múi giờ"}`:"Giữ nguyên mã"}{f.question&&<span className="muted"> · {f.question}</span>}</li>)}</ul><details className="agent-review-editor"><summary>Xem và chỉnh các lựa chọn</summary><MappingReview draft={draft} disabled={disabled} onChange={v => { setDraft(v); }}/></details></>}
+    {draft && <>
+      <p>Tôi đã phân tích dữ liệu và chuẩn bị đề xuất chuẩn hóa.</p>
+      {checking && <p role="status"><Spinner/> Đang kiểm tra toàn bộ dữ liệu…</p>}
+      {assessment && <>
+        <p>{draft.fields.length} cột · {assessment.source_rows} dòng. {assessment.verified_fields} trường đã kiểm tra kỹ thuật; {assessment.pending_fields} trường cần xác nhận.</p>
+        <details><summary>Đã xác định bằng bằng chứng</summary><ul>{assessment.checks.filter(c=>c.state==='VERIFIED').map(c=><li key={c.field_id}><strong>{c.name}</strong>{c.messages.map(m=><p key={m}>{m}</p>)}</li>)}</ul><p>Các phép kiểm kỹ thuật không tự xác nhận ý nghĩa nghiệp vụ. Bạn vẫn kiểm tra và duyệt đề xuất.</p></details>
+        {assessment.questions.length>0 && <section aria-label="Thông tin cần xác nhận"><h4>Cần bạn xác nhận</h4><ul>{assessment.questions.map(q=><li key={q}>{q}</li>)}</ul></section>}
+        <details open={assessment.checks.some(c=>c.affected_rows>0)}><summary>Dữ liệu bất thường</summary>{assessment.checks.filter(c=>c.affected_rows>0||c.messages.some(m=>m.includes('nhiều tiền tệ'))).map(c=><p key={c.field_id}>{c.name}: {c.affected_rows} dòng lỗi chuyển đổi. {Object.entries(c.error_counts).map(([code,count])=>`${errors[code]||code}: ${count}`).join('; ')}{c.messages.filter(m=>m.includes('nhiều tiền tệ')).map(m=><span key={m}> {m}</span>)}</p>)}</details>
+        {!!assessment.related_keys?.length&&<details><summary>Quan hệ tiềm năng giữa các nguồn</summary>{assessment.related_keys.map((r,i)=><p key={`${r.table_id}:${i}`}>{r.source_name}: {r.fields.join(' + ')}; {r.shared_keys} khóa xuất hiện ở cả hai nguồn, {r.left_duplicate_rows}/{r.right_duplicate_rows} dòng trùng khóa, {r.missing_key_rows} dòng thiếu khóa. Cần xác nhận ý nghĩa mỗi dòng và quan hệ một/nhiều trước khi đối soát; không tự duyệt từ thống kê.</p>)}</details>}
+        {assessment.preflight_ready && <Notice>Đã kiểm tra trước chuẩn hóa trên {assessment.source_rows} dòng; dự kiến {assessment.predicted_invalid_rows} dòng không hợp lệ. Dữ liệu gốc và bản cũ được giữ nguyên.</Notice>}
+      </>}
+      {draft.fields.some(f=>f.data_type==='date'&&!f.timezone)&&<label>Múi giờ của nguồn<select aria-label="Múi giờ của nguồn" disabled={disabled} defaultValue="" onChange={e=>{if(e.target.value)setDraft({...draft,fields:draft.fields.map(f=>f.data_type==='date'&&!f.timezone?{...f,timezone:e.target.value}:f)});}}><option value="">Chọn theo quy ước dữ liệu</option><option value="UTC">UTC</option><option value="Asia/Ho_Chi_Minh">Việt Nam (Asia/Ho_Chi_Minh)</option></select></label>}
+      {draft.fields.some(f=>f.data_type==='decimal'&&!f.currency)&&<label>Tiền tệ cho số tiền trong nguồn<select aria-label="Tiền tệ cho số tiền trong nguồn" disabled={disabled} defaultValue="" onChange={e=>{if(e.target.value)setDraft({...draft,fields:draft.fields.map(f=>f.data_type==='decimal'&&!f.currency?{...f,currency:e.target.value,unit:f.unit||e.target.value}:f)});}}><option value="">Chọn phạm vi tiền tệ; giá trị khác giữ lỗi riêng</option>{(assessment?.currencies||[]).map(c=><option key={c} value={c}>{c}</option>)}</select></label>}
+      {draft.fields.filter(f=>f.data_type==='decimal'&&(!f.amount_basis||!f.currency||!f.semantic_metric||!f.unit||!f.locale)).map(f=><fieldset key={f.source_field}><legend>{f.name} — quyết định về số tiền</legend>
+        {!f.amount_basis&&<label>Cơ sở tiền của {f.name}<select disabled={disabled} value="" onChange={e=>setDraft({...draft,fields:draft.fields.map(x=>x.source_field===f.source_field?{...x,amount_basis:e.target.value||null}:x)})}><option value="">Chưa xác định</option><option value="gross">Trước khấu trừ / gross</option><option value="net">Sau khấu trừ / net</option><option value="expected">Dự kiến phải thu / expected</option><option value="paid">Đã thanh toán / paid</option><option value="fee">Phí / fee</option></select></label>}
+        {!f.currency&&<label>Tiền tệ cho {f.name}<input disabled={disabled} placeholder="VND / USD; kiểm tra cảnh báo tiền tệ" maxLength={3} onBlur={e=>{const value=e.target.value.toUpperCase();if(value)setDraft({...draft,fields:draft.fields.map(x=>x.source_field===f.source_field?{...x,currency:value,unit:x.unit||value}:x)});}}/></label>}
+        {(!f.semantic_metric||!f.unit||!f.locale)&&<p>Mở phần chỉnh sửa để xác nhận ý nghĩa, đơn vị hoặc định dạng còn thiếu.</p>}
+      </fieldset>)}
+      <p>Loại dữ liệu: {draft.entity_kind}. Mỗi dòng: {draft.grain}. Khóa đề xuất: {draft.fields.filter(f=>f.business_key).map(f=>f.name).join(', ')||'chưa chọn; cần kiểm tra grain và quan hệ nguồn'}.</p>
+      <details className="agent-review-editor"><summary>Xem và chỉnh các lựa chọn</summary><p>Chỉnh sửa chi tiết chỉ khi đề xuất chưa đúng. Các thay đổi được kiểm tra lại trước khi duyệt.</p><MappingReview draft={draft} disabled={disabled} onChange={v=>setDraft(v)}/></details>
+    </>}
     {plan && <><p>Nguồn A: {sourceName(plan.left.canonical_id)} · Nguồn B: {sourceName(plan.right.canonical_id)}</p><p>Kỳ {plan.period_start||"chưa chọn"} → {plan.period_end||"chưa chọn"} · {plan.timezone||"chưa rõ múi giờ"}</p><p>Khóa: {plan.join_keys.map(k=>`${fieldName(plan.left.canonical_id,k.left)} ↔ ${fieldName(plan.right.canonical_id,k.right)}`).join(", ")}. {label(plan.cardinality)} · {label(plan.aggregation)}</p>{plan.comparison_metrics.map(m=><p key={m.metric_id}>{fieldName(plan.left.canonical_id,m.left)} · {m.amount_basis} · {m.currency} · sai số {m.absolute_tolerance}</p>)}<details className="agent-review-editor"><summary>Kiểm tra phạm vi và chỉnh quy tắc</summary><PlanReview plan={plan} disabled={disabled} onChange={v => { setPlan(v); }}/></details></>}
     {review.kind === "RECONCILIATION" && !plan && <Notice>Cần bổ sung kỳ, múi giờ và độ đầy đủ. Chưa có quy tắc đủ điều kiện chạy.</Notice>}
     <button className="text-button" disabled={disabled} onClick={()=>onReply(workflow.id,review)}>Bổ sung bằng tiếng Việt</button>
     {review.pending_reply_job_id && <Spinner />}<p className="muted">Câu trả lời được diễn giải để bạn kiểm tra; hệ thống chưa phê duyệt thay bạn.</p>
-    {draft && <label><input type="checkbox" checked={extraction} disabled={disabled} onChange={e => setExtraction(e.target.checked)}/>Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.</label>}
+    {draft && review.extraction_review_required!==false && <label><input type="checkbox" checked={extraction} disabled={disabled} onChange={e => setExtraction(e.target.checked)}/>Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.</label>}
     {!ready && <p className="muted">Mở phần chỉnh sửa hoặc bổ sung bằng tiếng Việt để hoàn tất các điều kiện còn thiếu.</p>}
     <p className="muted">{review.kind === "MAPPING" ? "Khi duyệt, hệ thống sẽ lưu cách ghép cột và chuẩn hóa theo các lựa chọn này." : "Khi duyệt, hệ thống sẽ lưu quy tắc và bắt đầu đối soát trong phạm vi trên."}</p>
     <button className="button primary" disabled={disabled || !ready} onClick={() => void action()}>{review.kind === "MAPPING" ? "Duyệt cách ghép cột và chuẩn hóa" : "Duyệt quy tắc và đối soát"}</button>

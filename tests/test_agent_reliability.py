@@ -16,6 +16,43 @@ from test_reconciliation_postgres import prepare_pair
 pytestmark = pytest.mark.integration
 
 
+def test_mapping_preflight_is_scoped_read_only_and_rechecks_human_decisions(pg, monkeypatch):  # noqa: F811
+    from copy import deepcopy
+
+    from test_agent_postgres import mapping_fixture
+
+    client, factory, worker = pg
+    wf, decision = mapping_fixture(pg, monkeypatch)
+    draft = decision["decision"]["draft"]
+    with factory() as db:
+        counts = (
+            db.scalar(select(func.count()).select_from(MappingRow)),
+            db.scalar(select(func.count()).select_from(CanonicalRow)),
+        )
+    preview = client.post("/api/agent/mapping-preflight", json=draft)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["preflight_ready"] and preview.json()["predicted_invalid_rows"] == 0
+    invalid = deepcopy(draft)
+    invalid["fields"][2]["date_format"] = "%d/%m/%Y"
+    blocked = client.post("/api/agent/mapping-preflight", json=invalid)
+    assert blocked.status_code == 200 and not blocked.json()["preflight_ready"]
+    invalid["table_id"] = "foreign-table"
+    assert client.post("/api/agent/mapping-preflight", json=invalid).status_code == 404
+    bad_decision = deepcopy(decision)
+    bad_decision["decision"]["draft"]["fields"][2]["timezone"] = None
+    failed = client.post(
+        "/api/agent/workflows/" + wf["id"] + "/decisions",
+        json=bad_decision,
+        headers={"Idempotency-Key": "missing-timezone"},
+    )
+    assert failed.status_code == 422 and failed.json()["code"] == "MAPPING_PREFLIGHT_REQUIRED"
+    with factory() as db:
+        assert counts == (
+            db.scalar(select(func.count()).select_from(MappingRow)),
+            db.scalar(select(func.count()).select_from(CanonicalRow)),
+        )
+
+
 @pytest.mark.parametrize(
     "goal",
     [

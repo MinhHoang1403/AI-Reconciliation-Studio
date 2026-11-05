@@ -174,7 +174,7 @@ def test_date_confirmed_timezone_and_dst_rejected(mapping, schema):
         result.canonical["record_payload"].to_list()[0]["event_date"].isoformat()
         == "2026-10-01T04:00:00+00:00"
     )
-    assert result.errors["code"].to_list() == ["INVALID_DATE"]
+    assert result.errors["code"].to_list() == ["AMBIGUOUS_LOCAL_TIME"]
 
 
 def test_aggregate_keeps_all_lineage_and_signed_decimal(mapping, schema):

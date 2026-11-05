@@ -72,6 +72,40 @@ class NormalizationDraft(Contract):
     fields: list[NormalizationField] = Field(min_length=1, max_length=40)
 
 
+class MappingCheck(Contract):
+    field_id: str
+    name: str
+    state: Literal["VERIFIED", "NEEDS_CONFIRMATION", "BLOCKED"]
+    messages: list[str] = Field(default_factory=list)
+    error_counts: dict[str, int] = Field(default_factory=dict)
+    affected_rows: int = 0
+
+
+class RelatedKeyCheck(Contract):
+    table_id: str
+    source_name: str
+    fields: list[str]
+    shared_keys: int
+    left_duplicate_rows: int
+    right_duplicate_rows: int
+    missing_key_rows: int
+
+
+class MappingAssessment(Contract):
+    draft: NormalizationDraft
+    source_rows: int
+    verified_fields: int
+    pending_fields: int
+    checks: list[MappingCheck]
+    questions: list[str]
+    preflight_ready: bool
+    predicted_invalid_rows: int | None = None
+    error_counts: dict[str, int] = Field(default_factory=dict)
+    source_sha256: str
+    currencies: list[str] = Field(default_factory=list)
+    related_keys: list[RelatedKeyCheck] = Field(default_factory=list)
+
+
 class SourceColumn(Contract):
     id: str
     name: str
@@ -259,6 +293,7 @@ class ReviewRequest(Contract):
     state: Literal["OPEN", "DECIDED", "INVALIDATED"] = "OPEN"
     expected_effects: list[str]
     normalization_draft: NormalizationDraft | None = None
+    extraction_review_required: bool | None = None
     plan: ReconciliationPlan | None = None
     suggestions: PlanningSuggestions | None = None
     planning_request: PlanningRequest | None = None

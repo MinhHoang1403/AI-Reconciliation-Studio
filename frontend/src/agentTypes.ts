@@ -21,6 +21,11 @@ export type NormalizationDraft = {
     grain: string;
     fields: DraftField[];
 };
+export type MappingAssessment = {
+    draft: NormalizationDraft; source_rows: number; verified_fields: number; pending_fields: number;
+    checks: {field_id:string;name:string;state:string;messages:string[];error_counts:Record<string,number>;affected_rows:number}[];
+    related_keys?:{table_id:string;source_name:string;fields:string[];shared_keys:number;left_duplicate_rows:number;right_duplicate_rows:number;missing_key_rows:number}[];currencies?:string[];questions:string[];preflight_ready:boolean;predicted_invalid_rows:number|null;error_counts:Record<string,number>;source_sha256:string;
+};
 export type Query = {
     project_id: string;
     source_kind: string;
@@ -85,6 +90,7 @@ export type Review = {
     reason: string;
     expected_effects: string[];
     normalization_draft: NormalizationDraft | null;
+    extraction_review_required?: boolean | null;
     plan: Plan | null;
     suggestions: Suggestions | null;
     planning_request: Omit<Partial<Plan>, "left" | "right"> & {

@@ -155,6 +155,7 @@ class ColumnProfile(Contract):
     samples: list[str | None]
     evidence_ids: list[str]
     identifier_candidate: bool
+    observations: dict[str, int | str | list[str] | dict[str, int]] = Field(default_factory=dict)
 
 
 class DatasetProfile(Contract):

@@ -284,6 +284,13 @@ export const qualityText: Record<string, string> = {
   REQUIRED_NULL: "Thiếu giá trị bắt buộc",
   INVALID: "Không hợp lệ",
   INVALID_DATE: "Ngày cần kiểm tra",
+  DATE_FORMAT_INVALID: "Cấu hình định dạng ngày không hợp lệ",
+  TIMEZONE_INVALID: "Múi giờ không tồn tại",
+  TIMEZONE_DATABASE_UNAVAILABLE: "Môi trường thiếu dữ liệu múi giờ",
+  AMBIGUOUS_LOCAL_TIME: "Thời điểm mơ hồ do đổi giờ",
+  NONEXISTENT_LOCAL_TIME: "Thời điểm không tồn tại do đổi giờ",
+  DATE_OFFSET_MISMATCH: "Offset khác múi giờ đã duyệt",
+  MAPPING_PREFLIGHT_REQUIRED: "Cần hoàn tất kiểm tra trước chuẩn hóa",
   UNKNOWN_ENUM: "Danh mục chưa xác định",
   ARITHMETIC_NULL: "Phép tính thiếu đầu vào",
 };

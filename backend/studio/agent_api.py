@@ -27,7 +27,9 @@ from studio.contracts import DatasetProfile
 from studio.contracts.agent import (
     ClarificationDecision,
     IntentBatch,
+    MappingAssessment,
     MappingReviewDecision,
+    NormalizationDraft,
     PlanReviewDecision,
     QuerySelection,
     ReviewDecision,
@@ -104,6 +106,11 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         )
         if not mapping_id:
             raise DomainError("REVIEW_REQUIRED", "Chưa có proposal cho bảng này.")
+        from studio.mapping_verification import assess_table_mapping
+
+        assessment = assess_table_mapping(db, actor, draft)
+        if not assessment.preflight_ready:
+            raise DomainError("MAPPING_PREFLIGHT_REQUIRED", "; ".join(assessment.questions))
         approval = approval_from_draft(
             draft, DatasetProfile.model_validate(table.profile), body.decision.extraction_reviewed
         )
@@ -175,6 +182,12 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     DB = Annotated[Session, Depends(database)]
     User = Annotated[Actor, Depends(current_actor)]
     Key = Annotated[str, Header(min_length=1, max_length=160, alias="Idempotency-Key")]
+
+    @router.post("/mapping-preflight", response_model=MappingAssessment)
+    def mapping_preflight(body: NormalizationDraft, db: DB, actor: User) -> MappingAssessment:
+        from studio.mapping_verification import assess_table_mapping
+
+        return assess_table_mapping(db, actor, body)
 
     @router.post("/source-rows", response_model=SourceRowResult)
     def source_row(body: SourceRowRequest, db: DB, actor: User) -> SourceRowResult:

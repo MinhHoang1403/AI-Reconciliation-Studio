@@ -635,7 +635,24 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             table = get_scoped(db, TableRow, table_id, actor)
             if project_for_table(db, table).id != row.project_id:
                 raise DomainError("RESOURCE_NOT_FOUND", "Nguồn không thuộc dự án.", 404)
-            profile = DatasetProfile.model_validate(table.profile)
+            import polars as pl
+
+            from studio.contracts import SourceColumn
+            from studio.database import ArtifactRow
+            from studio.profiling import profile_table
+            from studio.storage import checksum, storage_path
+
+            artifact = get_scoped(db, ArtifactRow, table.artifact_id, actor)
+            path = storage_path(settings.storage_root, artifact.storage_key)
+            if checksum(path) != artifact.sha256:
+                raise DomainError("PARSED_CHECKSUM_MISMATCH", "Dữ liệu nguồn không khớp checksum.")
+            profile = profile_table(
+                pl.read_parquet(path),
+                [SourceColumn.model_validate(c) for c in table.parsed_contract["columns"]],
+                table.id,
+                actor.workspace_id,
+                artifact.id,
+            )
         draft = model_call(
             job_id,
             token,
@@ -653,6 +670,10 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             row = db.get(AgentWorkflowRow, row_id)
             assert row is not None
             owner(db, row)
+            from studio.mapping_verification import assess_table_mapping
+
+            assessment = assess_table_mapping(db, owner(db, row), draft, enrich=True)
+            draft = assessment.draft
             finish(db, job, {"drafts": [draft.model_dump(mode="json")]})
             db.commit()
         return

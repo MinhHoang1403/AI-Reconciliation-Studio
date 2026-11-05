@@ -227,6 +227,9 @@ def make_review(
         question=question,
         reason=reason,
         normalization_draft=draft,
+        extraction_review_required=bool(table.parsed_contract["warnings"])
+        if kind == "MAPPING"
+        else None,
         expected_effects=[
             "Giữ nguyên dữ liệu gốc và lịch sử.",
             "Chỉ chạy bước tiếp theo sau quyết định hợp lệ.",

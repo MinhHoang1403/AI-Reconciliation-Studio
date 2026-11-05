@@ -42,6 +42,7 @@ from studio.contracts.api import (
     JobView,
     MappingList,
     MappingView,
+    NormalizationPreflight,
     PreviewResponse,
     ProjectList,
     ProjectSummary,
@@ -861,6 +862,15 @@ def propose(
     return {"job_id": job.id, "status": job.status}
 
 
+@app.post("/api/tables/{table_id}/mapping-preflight", response_model=NormalizationPreflight)
+def preview_mapping(
+    table_id: str, body: ApprovalInput, db: DB, actor: CurrentActor
+) -> NormalizationPreflight:
+    from studio.mapping_verification import preflight_approval
+
+    return preflight_approval(db, actor, table_id, body)
+
+
 @app.post("/api/mappings/{mapping_id}/approve", response_model=MappingRevision)
 def approve_mapping(
     mapping_id: str, body: ApprovalInput, db: DB, actor: CurrentActor
@@ -1058,6 +1068,9 @@ def apply_mapping_approval(
     )
     profile = DatasetProfile.model_validate(table.profile)
     validate_mapping(proposal, profile, schema, for_approval=True)
+    from studio.mapping_verification import preflight_approval
+
+    preflight_approval(db, actor, table.id, body)
     # Every edit is a new schema/mapping row, including editing an approved revision.
     mapping = create_mapping(db, table, proposal.model_dump(mode="json"), schema)
     persisted_schema = db.get(SchemaRow, mapping.schema_id)

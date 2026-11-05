@@ -18,7 +18,7 @@ from studio.contracts.agent import NormalizationDraft, ReviewInterpretation, Rev
 from studio.contracts.api import ApprovalInput
 from studio.errors import DomainError
 
-PREPARATION_REVISION = "agent-normalization-3"
+PREPARATION_REVISION = "agent-normalization-4"
 REVIEW_REVISION = "agent-review-1"
 
 
@@ -132,7 +132,11 @@ def propose_normalization(
                 "Infer useful entity/grain and stable lowercase field IDs from the metadata. "
                 "Money semantic_metric/amount_basis/currency/unit/locale and date timezone "
                 "require evidence; when unclear leave null and ask a concise Vietnamese question. "
-                "Never guess timezone. "
+                "Never guess timezone. Return date_format using Python directives like %Y-%m-%d, "
+                "not display labels YYYY-MM-DD. Use full-column observations, not first rows. "
+                "Customer codes are NOT transaction keys. Unique columns do not prove grain. "
+                "Suggest composite reference keys only with grain evidence. Preserve scope. "
+                "Do not map expected/completed status to paid. Separate gross/net/fees. "
                 "completed is not paid; payment_status meaning requires user confirmation. "
                 "No SQL/Python/paths/workspace_id/actor_id/approval metadata. Return JSON ONLY: "
                 + json.dumps(NormalizationDraft.model_json_schema())
@@ -221,6 +225,7 @@ def approval_from_draft(
                 id=f.target_id,
                 name=f.name,
                 data_type=f.data_type,
+                required=f.business_key,
                 semantic_metric=f.semantic_metric,
                 amount_basis=f.amount_basis,
                 currency=f.currency,

@@ -112,8 +112,8 @@ export function MappingStudio({
       rows.map((r) => (r.source === source ? { ...r, ...patch } : r)),
     );
   }
-  async function approve() {
-    if (!mapping) return;
+  function approvalBody() {
+    if (!mapping) return null;
     const used = drafts.filter((d) => d.target);
     const fields: SchemaField[] = used.map((d) => ({
       id: d.target,
@@ -151,14 +151,11 @@ export function MappingStudio({
       reasoning: "Người dùng xác nhận sau khi xem nguồn.",
       unresolved_questions: [],
     }));
-    await api(`/mappings/${mapping.id}/approve`, {
-      method: "POST",
-      body: JSON.stringify({
-        schema_definition: schema,
-        decisions,
-        extraction_reviewed: reviewed,
-      }),
-    });
+    return {schema_definition:schema,decisions,extraction_reviewed:reviewed};
+  }
+  async function approve() {
+    if(!mapping||!preflight||preflightSignature!==bodySignature)return;
+    await api(`/mappings/${mapping.id}/approve`, {method:'POST',body:JSON.stringify(approvalBody())});
     await onApproved();
   }
   const invalid =
@@ -173,6 +170,19 @@ export function MappingStudio({
           (d.type === "date" && (!d.dateFormat || !d.timezone))),
     ) ||
     (table.parsed.warnings.length > 0 && !reviewed);
+  const [preflight,setPreflight]=useState<{source_rows:number;predicted_invalid_rows:number;error_counts:Record<string,number>}|null>(null);
+  const [preflightError,setPreflightError]=useState('');
+  const [preflightSignature,setPreflightSignature]=useState('');
+  const bodySignature=JSON.stringify(approvalBody());
+  useEffect(()=>{
+    setPreflight(null);setPreflightError('');
+    if(invalid)return;
+    const controller=new AbortController();
+    const timer=setTimeout(()=>{void api<{source_rows:number;predicted_invalid_rows:number;error_counts:Record<string,number>}>(`/tables/${table.id}/mapping-preflight`,{method:'POST',body:bodySignature,signal:controller.signal})
+    .then(result=>{if(!controller.signal.aborted){setPreflight(result);setPreflightSignature(bodySignature);}})
+    .catch(err=>{if(!controller.signal.aborted)setPreflightError(err instanceof Error?err.message:'Không kiểm tra được đề xuất.');});},400);
+    return()=>{clearTimeout(timer);controller.abort();};
+  },[bodySignature,invalid,table.id]);
   if (!mapping)
     return (
       <Notice>
@@ -281,6 +291,9 @@ export function MappingStudio({
           Giữ các cột chưa chọn dưới dạng chuỗi
         </button>
       </div>
+      {preflightError&&<Notice tone="error">{preflightError}</Notice>}
+      {!invalid&&!preflight&&!preflightError&&<p role="status">Đang kiểm tra trước chuẩn hóa…</p>}
+      {preflight&&<Notice>Đã kiểm tra {preflight.source_rows} dòng; dự kiến {preflight.predicted_invalid_rows} dòng không hợp lệ. {Object.entries(preflight.error_counts).map(([code,count])=>`${code}: ${count}`).join('; ')}. Dữ liệu gốc và bản cũ được giữ nguyên.</Notice>}
       <div className="mapping-rows">
         {drafts.map((d) => {
           const col = profile.columns.find((c) => c.column_id === d.source)!;
@@ -512,7 +525,7 @@ export function MappingStudio({
             disabled={
               busy ||
               readOnly ||
-              invalid ||
+              invalid || !preflight || preflightSignature!==bodySignature ||
               ["SUPERSEDED", "REJECTED"].includes(mapping.status)
             }
             onClick={() => void run(approve)}

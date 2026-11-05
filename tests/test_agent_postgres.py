@@ -471,8 +471,16 @@ def mapping_fixture(pg, monkeypatch):  # noqa: F811
         review_id=review["id"],
         nonce=review["nonce"],
         fingerprint=review["fingerprint"],
-        decision=dict(type="MAPPING", draft=review["normalization_draft"]),
+        decision=dict(type="MAPPING", draft=review["normalization_draft"].copy()),
     )
+    # Quy ước được người vận hành TEST xác nhận; không coi timezone/basis từ model là bằng chứng.
+    from copy import deepcopy
+    body["decision"]["draft"] = deepcopy(body["decision"]["draft"])
+    for field in body["decision"]["draft"]["fields"]:
+        if field["data_type"] == "date":
+            field["timezone"] = "UTC"
+        if field["data_type"] == "decimal":
+            field["amount_basis"] = "gross"
     return wf, body
 
 
@@ -1009,6 +1017,10 @@ def test_agent_review_natural_reply_is_bound_preview_never_auto_approval(pg, mon
             fingerprint=review["fingerprint"],
             decision=dict(type="MAPPING", draft=review["normalization_draft"]),
         )
+        # Reply chỉ xác nhận net; người vận hành chọn UTC ở bước quyết định cuối.
+        for field in decision["decision"]["draft"]["fields"]:
+            if field["data_type"] == "date":
+                field["timezone"] = "UTC"
         assert (
             client.post(
                 path + "/decisions",
