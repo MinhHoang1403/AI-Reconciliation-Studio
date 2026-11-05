@@ -2173,3 +2173,45 @@ Backend/Worker ở `09290a46ea82a8905386b0d7a314d1f537a05a6d`, Frontend ở `ef9
 ### H. Mức sẵn sàng và cách bắt đầu
 
 Có thể dùng [Studio local](http://127.0.0.1:18180) để chuẩn hóa có kiểm chứng và duyệt thủ công, đối soát, đọc báo cáo/bằng chứng và xuất tệp trong phạm vi đã thử. Bắt đầu theo [hướng dẫn](USER_TEST_GUIDE.md), mục 5 và 13. Luồng tự tạo đề xuất Smart Mapping ba nguồn vẫn **BLOCKED ở Gemini HTTP 503**. Cần một lượt LIVE thành công để nghiệm thu độ chính xác đề xuất và đo mức giảm thao tác; chưa có cơ sở phát hành toàn bộ luồng AI tự động.
+
+## AG. Gemini và Qwen trong AI Assistant
+
+### Chẩn đoán Gemini
+
+Trạng thái **GEMINI_INTERMITTENT**. Kiểm tra có dùng khóa hiện hành của Worker. Yêu cầu kết nối nhỏ trả HTTP 200; đối tượng JSON nhỏ đạt schema. Ca intent tiếng Việt thiếu nguồn trả đúng `CLARIFY` qua validator. Bảng tổng hợp hai cột trả hai trường hợp lệ. Trong luồng trình duyệt với ba tệp, intent đạt và bước ánh xạ đầu tiên trả 503. Bản sửa loại schema lặp khỏi prompt ánh xạ. Trên cùng profile nguồn 01, kích thước request đo được giảm 10.747 → 8.455 byte, schema 2.107 byte, output limit 6.000 tokens, timeout 45 giây. Bản sau sửa vẫn trả HTTP 503 `UNAVAILABLE` trong 4,007 giây. HTTP response đã nhận, không có request ID được gửi qua hai header được hỗ trợ. Phép đo này chưa tách được nguyên nhân bên trong nhà cung cấp. HTTP 429 trong lịch sử là tín hiệu giới hạn từ nhà cung cấp, mức quota hoặc billing cụ thể chưa được xác minh. [Tài liệu xử lý lỗi Gemini](https://ai.google.dev/gemini-api/docs/troubleshooting).
+
+Gateway ghi metadata của request và receipt đã lọc, giữ giới hạn một attempt của các job Agent. Tuyến cũ có thể thử lại lỗi kết nối trước khi gửi hoặc lỗi HTTP tạm thời đã nhận trong giới hạn đã cấp. Lỗi kiểm chứng nội dung và delivery chưa rõ không được thử lại tự động. Schema Pydantic, validation nghiệp vụ và quyền phê duyệt tiếp tục áp dụng.
+
+Đợt chẩn đoán có 7 attempts Gemini qua ledger, 5 HTTP 200 và 2 HTTP 503. Tổng receipt 19.524 tokens, gồm 19.011 đầu vào và 513 đầu ra. Request kết nối HTTP 200 trả nội dung khác giá trị mong đợi, nên chỉ dùng làm bằng chứng kết nối. Chi phí hóa đơn chưa xác minh.
+
+### Nghiệm thu lại Qwen 8B
+
+Windows Ollama 0.40.9, AMD Ryzen 5 7535HS (6 nhân, 12 luồng), RAM vật lý khoảng 15,3 GiB, NVIDIA RTX 3050 6 GiB (driver 617.42), Windows Docker Desktop WSL2. Tại các lần lấy mẫu, RAM khả dụng khoảng 0,4–1,0 GiB và VRAM khả dụng khoảng 5,9 GiB. Ollama nghe loopback 11434, cache model hiện có trong thư mục người dùng Windows. Backend và Worker truy cập được endpoint qua `host.docker.internal`. Tag `qwen3:8b` có digest `500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41`, Q4_K_M, 5,23 GB.
+
+| Phép đo LIVE | Kết quả |
+| --- | --- |
+| Hai lần nạp đầu | Timeout tại 65 và 100 giây |
+| Nghiệm thu lại 4.096 context | 3/3 câu intent đơn giản đúng và hợp lệ JSON. Cold 28,188 giây (nạp 15,047 giây, token đầu 15,579 giây). Warm 1,344 và 1,437 giây (token đầu 0,391 và 0,515 giây) |
+| Tốc độ và bộ nhớ khi nạp thành công | Warm khoảng 9,8–10,6 token/giây. Ollama báo 5,99 GB model resident, 4,21 GB VRAM tại 4.096 context. Ở 8.192, `ollama ps` báo 6,6 GB và offload 37% CPU/63% GPU. Đây là số đo khi model đang nạp, chưa đo peak toàn máy |
+| Intent Agent ba nguồn | Hợp đồng ban đầu trả `UNSUPPORTED` sai sau 27,675 giây. Bản giảm schema lặp trả JSON nhưng bị validator từ chối `AI_INVALID_INTENT` sau 56,090 giây |
+| Ánh xạ ba nguồn | 0/3 hoàn tất ở mỗi vòng, trước và sau thay đổi envelope cho Ollama. Các lượt riêng từng nguồn chạm khoảng 95 giây. Không có ánh xạ đạt để đo độ chính xác hoặc đưa vào phê duyệt |
+| Chat thật trên Docker sau triển khai | Job `d4f275d9-863f-4f34-a06d-c4a2257c5cb5` chọn đúng `PREPARE_NORMALIZATION` và cả ba nguồn sau 45,740 giây. Job đề xuất `2c8c1a83-0f5e-4c53-b87e-7ec951cb57c0` hết thời gian sau 90,187 giây. Luồng BLOCKED, 0 thẻ duyệt. Cả hai trace là OLLAMA với 0 lượt cloud, ledger Gemini giữ 356 |
+| Qwen 27B | Tag chính thức tồn tại và có bản tải khoảng 18 GB. Chưa cài trên máy này. Tải và nạp để benchmark được hoãn do thiếu RAM khả dụng và yêu cầu bảo toàn dịch vụ đang chạy. [Tag Qwen 27B](https://ollama.com/library/qwen3.8:27b) |
+
+Qwen 8B chỉ dùng để thử nghiệm. Các số đo JSON nhỏ không đại diện cho Planner, Q&A hay độ chính xác ánh xạ. Chưa có quy trình AI local hoàn chỉnh đủ điều kiện để đo lại hai cặp đối soát. Các ca local sử dụng cấu hình `LOCAL_ONLY` ở hợp đồng thử, với adapter Ollama báo `cloud_requests=0`.
+
+### Tích hợp và kiểm thử
+
+Thêm lựa chọn model ngay cạnh nút gửi. API theo phiên đọc các tag đã cài và trace mà không thực hiện inference. Khi gửi, job giữ model được chọn và các bước con dùng cùng lựa chọn. Thay model giữ hội thoại, bản nháp, phạm vi dữ liệu và yêu cầu đã xếp hàng. Khi không rõ một lần gửi đã được nhận, UI giữ mã và payload cũ cho đúng yêu cầu đó. Ollama dùng cùng validator với Gemini. Lịch sử và các cổng phê duyệt không thay đổi.
+
+Bản dựng thử qua Playwright tại 390 px đã kiểm chuyển model khi job đang chạy, bản nháp, reload, đúng payload và số lần gửi. Adapter được kiểm riêng với mock transport cho JSON, timeout, phản hồi thiếu và tag cloud bị từ chối. Test PostgreSQL mô phỏng routing xác nhận chọn Qwen không tạo reservation Gemini, cùng idempotency key không đổi được provider, và policy chặn Gemini khi cloud bị tắt.
+
+Backend/PostgreSQL trên image triển khai **440/440**. Có một cảnh báo deprecation Starlette TestClient. Ruff, mypy, TypeScript, ESLint, build và kiểm tra link Markdown đạt. Sau deploy, mở lại đúng hai lần chạy ở mục AF và kiểm lại snapshot, bảng, biểu đồ, bằng chứng. Các file xuất của hai lần chạy đã được đối chiếu độc lập ở mục AF. Phép đọc lại dùng kết quả nghiệp vụ đã có, tách khỏi kiểm thử LIVE tạo đề xuất của Qwen.
+
+Playwright đầy đủ trên Frontend `fb225fe` có **138/139** ca đạt. Ca còn lại phát hiện placeholder xuống dòng làm ô Chat rỗng cao 82 px ở màn hình 390 px. `729821e` giữ ô rỗng cao 58 px và tiếp tục giãn khi nhập nhiều dòng. Chạy lại **12/12** ca liên quan trên Docker hiện hành, gồm ca từng lỗi, bố cục 390–1920 px, nhập bằng IME, đổi model khi có job và tải lại. Bộ đầy đủ không chạy lại sau thay đổi chiều cao này.
+
+Backup `backup_3d91f44503674f01946a3824bd5f5fc8` giữ trên volume. Đã khôi phục thử trong schema riêng và đối chiếu 24 bảng cùng SHA-256 của 5.552 tệp sau triển khai. Không thiếu hoặc thay đổi dữ liệu đã sao lưu. Các lần cập nhật Docker đều đạt snapshot/verify. Backend và Worker chạy `5373cf7`, image `sha256:ec4e1da3ea379d35cef0480fc6205230865176cc88d0b295e7b6f78291d1b9da`. Frontend chạy `729821e`, image `sha256:8bf23dc215d58ae534c27285e0c9fcc4e058a067bb58087d1140b128b9dc4346`. Đã đối chiếu 45 tệp Python và 7 tệp Frontend phục vụ qua HTTP với source đã dựng. Bốn dịch vụ Studio healthy, giao diện và Ollama bind loopback. Sáu dịch vụ Langfuse healthy, 27 container ngoài Studio và danh sách volumes giữ nguyên. [Ảnh bộ chọn](images/user-guide/composer-model.png).
+
+### Bắt đầu thử
+
+Mở [Studio local](http://127.0.0.1:18180) và dùng mục 14 của [hướng dẫn sử dụng](USER_TEST_GUIDE.md). Dùng Qwen 8B để thử các câu tổng hợp đơn giản khi thấy lựa chọn. Nếu cần chuẩn hóa ba tệp để đối soát, dùng luồng thủ công đã được kiểm tại mục AF và mục 13 của hướng dẫn. Trạng thái AI tự động vẫn chưa đạt gate để hợp nhất `main`.

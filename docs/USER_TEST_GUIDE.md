@@ -364,3 +364,20 @@ Dùng ba tệp tổng hợp đã tải vào dự án **TEST Đối soát 3 ngu�
 | 02 ↔ 03 | `scope + batch_id`, nhiều sự kiện ↔ một lô; so với gross | 323 | 40 | 31 | −8.306 / 11.812 VND |
 
 Hai cặp thực hành thủ công đã đạt các số liệu trên. Trước và sau khi đổi khóa, Gemini đều nhận đúng yêu cầu, nhưng trả HTTP 503 tại bước tạo đề xuất ánh xạ. Khi gặp thông báo này, bạn có thể tiếp tục kiểm tra và duyệt ánh xạ thủ công theo mục 5.
+
+## 14. Chọn model trong ô Chat
+
+Mở **AI Assistant**. Bộ chọn nằm ngay cạnh nút gửi. **Gemini** là lựa chọn ban đầu. Khi Qwen local đã cấu hình và cài tag, chọn **Qwen 8B** để thử suy luận trên máy. **Chưa kiểm chứng** nghĩa là model có thể được thử, nhưng chưa đạt các ca nghiệp vụ bắt buộc. **Không khả dụng** cho biết lần gọi gần nhất bị lỗi hoặc không kết nối được.
+
+![Bộ chọn Gemini cạnh nút gửi trong ô Chat](images/user-guide/composer-model.png)
+
+[Giao diện trên điện thoại khi chọn Qwen 8B](images/user-guide/composer-model-mobile.png).
+
+Bạn có thể đổi model khi đang xem lịch sử, đang soạn bản nháp hoặc sau khi job đã được nhận. Tin nhắn kế tiếp dùng lựa chọn mới. Việc đổi model giữ nguyên hội thoại, bản nháp và thẻ xác nhận đang mở. Một lần gửi chưa rõ đã được tiếp nhận sẽ giữ mã yêu cầu và model của lần gửi đó để bảo vệ khỏi xử lý trùng.
+
+- “Các tệp đã được chuẩn hóa chưa?”
+- “Hãy kiểm tra và đề xuất cách chuẩn hóa các bộ dữ liệu này.”
+- “Cho tôi xem tổng quan kết quả đang mở.”
+- “Mở bằng chứng của nhóm lệch thứ hai trong bảng vừa trả.”
+
+Nếu Gemini báo giới hạn hoặc lỗi, bạn có thể chọn Qwen và gửi câu mới khi job trước đã kết thúc. Nếu Qwen hết thời gian hoặc chưa hiểu đúng nghiệp vụ, dùng đường duyệt thủ công ở mục 5.3. Các tác vụ chỉ đọc đã có đủ dữ kiện vẫn có thể do Backend xử lý trực tiếp.

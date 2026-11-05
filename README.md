@@ -28,6 +28,8 @@ Một đề xuất chưa được duyệt không phải là kết quả đối s
 
 Xem [hướng dẫn từng bước và bộ dữ liệu tự kiểm thử](docs/USER_TEST_GUIDE.md), từ tạo dự án đến kiểm chứng và xuất Excel.
 
+Trong ô Chat, bạn có thể chọn Gemini cloud hoặc thử Qwen local qua Ollama, tùy cấu hình và quyền của không gian làm việc. Trạng thái nghiệm thu từng model được ghi trong [báo cáo triển khai](docs/IMPLEMENTATION_STATUS.md).
+
 1. Mở **AI Assistant**, đính kèm CSV/XLSX và nêu công việc bằng tiếng Việt.
 2. Xem dữ liệu và trả lời các điểm chưa rõ. Kiểm tra, duyệt cách ghép cột hoặc quy tắc mới khi được yêu cầu.
 3. Đọc kết quả, mở **Xem dòng gốc** để kiểm tra bằng chứng hoặc xuất báo cáo.
