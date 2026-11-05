@@ -26,6 +26,8 @@ Một đề xuất chưa được duyệt không phải là kết quả đối s
 
 ## Bắt đầu sử dụng
 
+Xem [hướng dẫn từng bước và bộ dữ liệu tự kiểm thử](docs/USER_TEST_GUIDE.md), từ tạo dự án đến kiểm chứng và xuất Excel.
+
 1. Mở **AI Assistant**, đính kèm CSV/XLSX và nêu công việc bằng tiếng Việt.
 2. Xem dữ liệu và trả lời các điểm chưa rõ. Kiểm tra, duyệt cách ghép cột hoặc quy tắc mới khi được yêu cầu.
 3. Đọc kết quả, mở **Xem dòng gốc** để kiểm tra bằng chứng hoặc xuất báo cáo.

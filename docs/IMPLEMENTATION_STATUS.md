@@ -2010,3 +2010,99 @@ TypeScript/ESLint/build, 11 tài liệu Markdown không lỗi và repository sec
 | worker | `98d93c9e40f9d3dc3735006df055ff40a38b3e8d` | `sha256:d6d4f0268fc96b83dcedf0ee124d16fcc6f4fd526529a194124b03b0cb4a4a69` |
 
 42 Backend Python files và 7 frontend files khớp host/image/HTTP; Chromium resources khớp với cache tắt, không service worker. Các commit docs sau source không làm thay code ứng dụng trong image.
+
+## AE. Độ tin cậy, phục hồi lỗi, cuộn Chat và hướng dẫn người dùng — 05/11/2026
+
+Phạm vi được giao: truy vết lỗi thật, trạng thái chuẩn hóa, phản hồi kết thúc, gửi trùng/cuộn Chat, kiểm toán nghiệp vụ, kiểm thử và hướng dẫn người mới. Tiếp tục cùng nhánh `codex/product-polish`, một Compose Studio; không thay engine, Verifier, công thức, Decimal, approval, quyền cloud/parser hoặc dữ liệu cũ.
+
+### A. Nguyên nhân job bị báo lỗi
+
+Job `64a84041-5fe4-4380-8764-bbf9839de525`, owner đúng workspace/project, nhận câu “2 bộ dữ liệu trên đã được chuẩn hoá chưa”. Trace cho thấy Gemini **HTTP200/STOP**, `agent-intent-31`, output được kiểm kiểu nhưng chọn **SUMMARIZE_RESULTS**. Hai dataset đã có mapping APPROVED và canonical READY, không stale: normalize jobs thành công lúc08:48:52 và08:48:55UTC; câu hỏi lúc09:07:01UTC. Đây không phải thiếu dữ liệu chuẩn hóa hoặc provider429 tại job đó.
+
+`agent_workflows.advance` đi vào nhánh SUMMARIZE_RESULTS → `facts()` chọn tool `get_run_summary`. `context.run_id` là null; `assistant_tools.read_tool` gặp điều kiện `row is None or row.status not in {VERIFIED, PARTIAL_VERIFIED} or not row.metric_snapshot`, ném INSUFFICIENT_EVIDENCE. Gate financial này đúng với câu hỏi kết quả đối soát, nhưng routing đã dùng sai loại bằng chứng cho câu hỏi trạng thái nguồn.
+
+Worker lưu job FAILED và workflow BLOCKED/error_code; transaction `advance` bị rollback trước đoạn tạo assistant MessageRow trong `execute_agent`. Do đó không có phản hồi trợ lý cho lượt này. Frontend khi đó chỉ hiện lỗi chung tạm thời, không có lỗi cụ thể bền vững trong transcript sau mở lại. Nguyên nhân đã chứng minh bằng metadata/job/workflow/trace; không suy ra chỉ từ một dòng log.
+
+Trong hội thoại có hai user message khác nhau với cùng nội dung, hai jobs `e168cf34-e77a-4695-a55c-e9bacc501f38` và `64a84041-5fe4-4380-8764-bbf9839de525`, lúc09:06:09 và09:07:01UTC, khóa idempotency khác nhau, mỗi job một attempt. Đây là hai logical requests; không có HAR gốc để kết luận người dùng chủ động gửi lại hay trình duyệt tự tạo lần gửi mới. Không xóa/gộp hai lịch sử hợp lệ hoặc quy trách nhiệm cho người dùng từ DB alone.
+
+### B. Sửa Agent và vòng đời lỗi
+
+- `dataset_status.py`: DTO đọc metadata scoped; xác định phiên bản nguồn mới nhất, active mapping và revision normalization hiện hành. Phân biệt upload/đang đọc/đọc lỗi/đã đọc/chờ duyệt/đã duyệt/READY/PARTIAL/FAILED/stale. Không cần VerifiedRun và không gọi AI để trả lời các biến thể câu hỏi trạng thái được nhận diện.
+- `agent_jobs.interpret` ưu tiên câu hỏi trạng thái; `agent_workflows.advance` công bố phản hồi từ metadata. Nguồn không xác định hỏi lại; thiếu tệp hướng dẫn tải. READY chỉ là chuẩn hóa, không tuyên bố đối soát hoặc đủ coverage cho một contract.
+- SUMMARIZE_RESULTS không có run chuyển thành câu hỏi chọn kết quả hợp lệ; financial tool vẫn fail-closed. Không biến lỗi lập trình/hạ tầng thành clarification chung.
+- `persist_request_failure` tạo tối đa một assistant reply cùng transaction với terminal failure, UUID ổn định/unique job-role, thông báo redacted theo lỗi. Không hồi sinh hội thoại đã xóa/quyền bị thu hồi. MessageView thêm job_status/error_code để UI còn trình bày được các lỗi cũ chưa có assistant reply, không sửa lịch sử cũ.
+- Phân biệt thiếu bằng chứng/thông tin, sai trường/chỉ tiêu, thiếu quyền/phiên, stale, provider429/timeout/unknown delivery và worker failure. Không lưu exception body, path hay credentials trong phản hồi.
+- Khi hết ba attempts/lease, parse source chuyển FAILED, run chưa có snapshot chuyển BLOCKED, workflow/pending reply nhận lỗi kết thúc. Không treo trạng thái “đang chạy” hoặc giả publish thành công.
+- Trình duyệt không ngừng quan sát job sau60poll ban đầu; GET chậm lại hai giây và dừng khi rời/đổi hội thoại. Không POST lại hoặc gọi provider để kiểm trạng thái.
+
+Trên đúng dự án của lỗi gốc, tạo hội thoại TEST riêng, gửi lại câu hỏi gốc qua Chromium thật: job `83408844-1f07-4c00-8c91-50d52a61ab5b`, workflow `c88e6e32-0a81-5ace-af7c-46ac96f19821`, SUCCEEDED/COMPLETED, CHECK_DATASET_STATUS, hai nguồn READY, model_calls0. Reload vẫn có phản hồi; ledger313→313. Không sửa hai job thất bại cũ. Receipt `reported-status-browser.json`, ảnh trong hướng dẫn.
+
+LIVE còn tái hiện D07 “Cho tôi xem trước cả hai nguồn giao nhận”: model trả hai intents cho một mục tiêu, bị AI_INVALID_INTENT_COUNT chặn. Đường preview chỉ đọc trong `resolve_plain_listing` nay xử lý plural preview từ đúng catalogue mà không hỏi model; thiếu/khác số nguồn thì hỏi lại. Filter/tiền/kỳ/tác vụ write vẫn qua router typed. Không hợp thức hóa output model sai hoặc đổi golden expected. Các biến thể có regression PostgreSQL; đây là sửa LOCAL xác định, không đổi kết quả chấm LIVE D07 thành PASS.
+
+### C. Cuộn hội thoại
+
+Trước sửa, effect chỉ phụ thuộc lastMessageId: bảng/thẻ workflow đến muộn cùng message ID không cuộn theo; thêm lịch sử hoặc mở lại tin cũ chưa có trạng thái đọc rõ ràng. Bản sửa chỉ điều khiển `.assistant-scroll`, không window:
+
+- Gửi câu mới luôn xuống cuối, gồm khi đang đọc ở trên; giữ focus và bộ gõ/draft.
+- Theo dõi cuối bằng refs và ResizeObserver có cleanup, theo cả nội dung và chiều cao pane.
+- Chủ động đọc cũ thì không kéo xuống; có nút quay về mới nhất, tôn trọng reduced motion.
+- Prepend giữ anchor theo chênh lệch chiều cao. Nội dung lịch sử cũ không tạo thông báo “Tin nhắn mới”; resize pane đơn thuần cũng không giả là tin mới.
+- Reload/mở hội thoại xem phần mới nhất; bảng/modal và thông tin tin nhắn giữ khả năng quay lại vị trí đọc.
+
+Regression đo scrollTop/scrollHeight, bounding box, phần tử trong viewport, window.scrollY và POST count; có390/1440/1920px, phản hồi chậm, bảng dài, clarification, approval, lỗi terminal, double-click và clock vượt60poll. Ca cũ đo metadata phải đưa câu hỏi cũ vào viewport trước khi đo; giữ so sánh bounding box chính xác, không nới yêu cầu để che reflow. Lỗi thông báo nhầm sau prepend có receipt FAIL trước sửa và **9/9 PASS** sau sửa.
+
+### D. Hành trình nghiệp vụ và tài liệu
+
+Giữ 11 bộ UAT tổng hợp với oracle độc lập, không sửa đáp án: CSV/XLSX/multi-sheet, tiền Decimal/âm/NULL/0, zero-prefix, duplicate,1:1/1:N/N:1/composite, tolerance, currency/coverage và evidence/export. Bộ1.000 giữ966EQUAL/19AMOUNT_MISMATCH/15UNMATCHED/7,03VND; bộ nhỏ đúng run giữ3/1/2/0,50VND. Đã đọc lại qua browser, typed read tools, chart, evidence và tải XLSX rồi kiểm snapshot/formula injection; đó là LOCAL/CACHED, không LIVE inference mới.
+
+`USER_TEST_GUIDE.md` dành cho người mới, README liên kết ngắn. Có vị trí/nút thật, hai tệp tổng hợp A25/B24, đáp án từng mã và tổng chênh lệch, đường AI và manual fallback, phê duyệt, dữ liệu lỗi/stale, chọn explicit phiên bản chuẩn hóa, chọn đúng run, bảng/chart/evidence/export, History/draft/reload, lỗi và khôi phục kết nối. Các ảnh chỉ có dữ liệu tổng hợp của runtime thực, không mockup hoặc credentials.
+
+Khi tự làm theo hướng dẫn đã phát hiện bước chọn bản chuẩn hóa còn thiếu: nút Đã chuẩn hóa/Dòng lỗi khóa cho đến khi chọn **Phiên bản chuẩn hóa**. Đã bổ sung bước, giữ guard chọn revision, không tự chọn bản cũ. Hướng dẫn cũng phân biệt một cụm khóa mơ hồ000002 với ba dòng chưa liên kết của báo cáo; bộ A có27mục kết quả,19/24đơn vị eligible khớp79,17%, không tự dùng19/27 làm KPI. Tiền trống không thành0; raw Decimal `264.600` được giải thích là264,600VND, không phải hàng nghìn.
+
+### E. Cổng kiểm chứng và giới hạn
+
+Baseline trước sửa337Backend/PostgreSQL PASS. Sau các sửa bổ sung khi làm theo hướng dẫn, source `f2de497` **400/400 PASS**123,75giây; đúng backend/worker Docker cùng source **400/400 PASS**138,42giây. Lượt391 trước đó là mốc trung gian, không thay gate của bản hiện hành. Ruff, mypy43files, ESLint, TypeScript/build, repository secrets/history/links và Markdown đạt tại các receipts nhiệm vụ. Một cảnh báo deprecation của Starlette TestClient còn được ghi; không phải test failure hoặc lý do nâng đồng loạt dependencies.
+
+Full browser đầu trên `bf07d16`:129PASS/5FAIL; năm failure là đo metadata khi Playwright tự cuộn câu hỏi từ ngoài viewport, đã sửa cách đo và giữ assertions. Candidate sau sửa chờ job chậm/metadata **19/19 PASS**; thêm kiểm notification prepend phát hiện lỗi thật, sửa và9/9PASS. Full regression production tại source `f2de497`: **136/136 PASS,14,9phút**, gồm11bộ UAT LOCAL có oracle, upload→review→normalization→verification→evidence→CSV/XLSX→reload, security/recovery/responsive và các ca MOCK CONTRACT được ghi riêng trong tên. Receipt `reliability-final-browser.log`; không gọi đây là136ca AI LIVE. Cập nhật CSS `cdef8fb` sau đó **19/19ca bố cục/cuộn PASS,2,3phút** trên Docker mới (`reliability-spacing-browser.log`). Đo hai nút Xem bằng chứng/Hỏi vì sao lệch: trước sửa gap0 FAIL, sau sửa gap12px ở390/768/1366/1440/1920, không document overflow; mở đúng evidence tiếp tục PASS (`guide-evidence.json`, `reliability-spacing-before.log`/`after.log`). Không tuyên bố full136 được chạy lại trên image CSS mới; diff chỉ một CSS declaration, Backend không thay.
+
+### F. Backup, runtime và Git
+
+Backup mới `backup_8ea050f8963f480da761d396be4bb1a5`: metadata SHA256 `87b95f751847c7a37c1c30a85c2489ea7dc06ac61577b62fd8894602bc7b34d2`,24bảng/4.851tệp, restore UUID schema PASS, checksum corruption/path traversal bị chặn, public không đổi. Backup43,954giây/restore30,337giây; bản host độc lập kiểm lại đủ4.851SHA. Giữ cả backup gốc ở AC và hai volumes.
+
+Backend/Worker source **`f2de497978ddd344c0108e06000cda4e65e41703`**; Frontend source **`cdef8fbd90af1916defd17ab8eced9b132683420`** bổ sung đúng một rule CSS giãn hai nút ở bảng kết quả. Backend/Worker image `sha256:851850744ae750021359cac496c93c602c973ec9a874113692ec546c9dd31222`; Frontend image `sha256:7620b3d1d0268efa358a32bfa199071a1ba82497cb8075fa1c249adf9df949f6`.43Python files và7HTML/assets khớp host/image/HTTP; backend/worker cùng image và Git diff backend từ source image tới HEAD rỗng. Các sửa code gồm `bf07d16`, `4de04f0`, `b6071c0`, `91646b4`, `f2de497`, `cdef8fb`; sau lỗi GitHub commit_refs/Internal Server Error tạm thời, push bình thường đã thành công, không force hoặc đổi remote. Official origin không đổi. Main chưa merge khi AI LIVE còn chưa qua đủ gate.
+
+Recreate Backend/Worker và Frontend đã snapshot/verify metadata/artifact bytes không đổi; cả4serviceshealthy, loopback18180 và session verifier đạt. Sau khởi động lại môi trường05/11 dùng đúng start-SkipBuild để khôi phục proof, không xóa cookie/volume hoặc dữ liệu. Receipt snapshot/verify của deploy logic: `reliability-scope-persistence-before.log` và `reliability-scope-persistence-after.log`; cập nhật CSS cuối có `reliability-spacing-persistence-before.log`/`after.log` PASS. Mã nguồn/image/HTTP hiện hành tại `reliability-release-components.log`; diff Backend từ source image tới HEAD rỗng. Không rebuild Backend vì chỉ đổi CSS.
+
+### G. Lỗi bổ sung tìm được qua hướng dẫn thực tế
+
+Câu “Đề xuất cách chuẩn hóa hai nguồn dữ liệu. Hãy hỏi tôi nếu có cột hoặc ý nghĩa chưa rõ.” từng bị classifier trạng thái nhận vì có từ “chưa”. Job `e428f855-b313-4b52-8f39-0fcbd4987c47` đã trả trạng thái thay vì chuẩn bị đề xuất. `91646b4` loại các lệnh thực hiện/đề xuất khỏi shortcut trạng thái; thêm7ca phân biệt lệnh có mệnh đề điều kiện với câu hỏi chỉ đọc. Gửi yêu cầu mới sau sửa đi đúng PREPARE_NORMALIZATION, nhưng provider lỗi ở nguồn B; không sửa hoặc xóa lượt sai trước đó.
+
+Khi trở về Chat từ màn hình nguồn B, sidebar giữ đúng dataset scope. Trước sửa, câu hỏi “Hai bộ dữ liệu đã được chuẩn hóa chưa?” chỉ trả một nguồn rồi COMPLETED. `f2de497` kiểm số nguồn được yêu cầu, trả clarification khi phạm vi không đủ; thêm hai ca PostgreSQL. Dialog ngữ cảnh hiển thị tên tệp và nút **Dùng dữ liệu của dự án**, giữ draft/hội thoại riêng, không gọi AI hoặc ghi nghiệp vụ. Browser regression kiểm tên, scope, giữ draft, reload và zero write; initializer MOCK chỉ chạy một lần để không tự khôi phục scope cũ khi reload.
+
+Dự án thực hành mới **TEST Học đối soát đơn hàng — nghiệm thu hướng dẫn**, ID `a623bee0-ffdb-4407-a34d-be77d43df21f`, tải hai tệp qua composer; chuẩn hóa thủ công có kiểm tra/phê duyệt từng nguồn. Sau sửa phạm vi, câu hỏi trạng thái trả đúng hai READY, model_calls0. Phê duyệt quy tắc và chạy từ nút thật tạo run **`71801df7-fb6d-4b5c-8f97-7e9b648e84be`**, PARTIAL_VERIFIED đúng fixture chứa thiếu/mơ hồ/NULL:19EQUAL/2AMOUNT_MISMATCH/2UNMATCHED, full match19/24=79,17%, signed−249,900/absolute264,600VND. Không đổi engine/oracle để ép VERIFIED toàn phần.
+
+Hướng dẫn đã sửa đúng chuỗi **Lưu đề xuất thủ công → Xác nhận quy tắc và dấu số tiền → Chạy đối soát đã duyệt**, giữ hai quyết định riêng. Lượt chạy công cụ hướng dẫn đầu gọi sai tên nút đã lưu một đề xuất chưa duyệt; giữ lịch sử, lần thực hành tiếp lưu đề xuất được kiểm tra và phê duyệt, không tạo thêm canonical hoặc chạy đối soát trùng. CSV và XLSX tải qua Chromium, Snapshot JSON của cả hai bằng đúng snapshot API; giữ mã000001/000010, không ô công thức. Đọc Sources xác nhận amount của000010 làNULL,000011 là0,000009 là−42,125 và phía đối ứng000010 là357,25, không chỉ so tổng. Bằng chứng dòng000004 mở đúng run/mã, hai nguồn113,25/105,90. Reload/report/draft/History đạt, không lỗi JavaScript. Receipts `guide-walkthrough.json`, `guide-export-readback.json`, `guide-evidence.json`; không xem những bước thủ công là AI LIVE.
+
+### H. AI LIVE, chi phí và giới hạn nghiệm thu
+
+Vòng prompt `agent-intent-32` có canary D27 PASS LIVE. Full gold dừng tại D21 vì HTTP429:20ca đo được trong lượt chính,19/20intent,19/20source,12/12semantic,19/20tool. Gộp canary là21gold khác nhau đã đo, một D07 sai intent count;59gold chưa nghiệm thu (gồm D21 bị quota),24variants chưa chạy. Launcher không chạy variants sau429. D07 được sửa LOCAL bằng preview xác định, không đổi kết quả LIVE sai thành PASS và không gọi benchmark của prompt31 là kết quả prompt32.
+
+Ngày05/11, sau khi người dùng tiếp tục và quota có phản hồi lại, câu hỏi kiểm tra hai tệp của hướng dẫn có HTTP200/SUCCEEDED/COMPLETED thật. Yêu cầu chuẩn hóa sau sửa classifier đi đúng intent; đề xuất A được lưu, nguồn B nhận **HTTP503 GEMINI_UNAVAILABLE**, receipt `delivery_unknown:false`, một attempt. Workflow BLOCKED, không tự duyệt đề xuất A hay gửi lại B. Đây là phản hồi dịch vụ503, không có bằng chứng unknown delivery. Trạng thái provider gần nhất không còn chỉ là429 của vòng trước; full quality gate vẫn chưa đạt vì coverage thiếu và một lỗi model đã đo.
+
+Từ backup đầu nhiệm vụ313 đến339 reservations: **26 HTTP attempts mới,24HTTP200/1HTTP429/1HTTP503**. HTTP200 chỉ xác nhận dịch vụ trả, không chứng minh hiểu đúng ý. Prompt tokens356.402/output4.938/total361.340, cached0; latency26samples p50=2.883,5ms/p95=4.688ms. Chi phí hóa đơn **NOT VERIFIED**; không bịa đơn giá hoặc tiền đã trả. Ledger/tokens/failures không reset; không đổi key/account/provider/model hoặc parser allowance. Active public jobs0 tại lần chốt usage. Receipt `reliability-final-usage.json`.
+
+### I. Dữ liệu, Docker và mức sẵn sàng
+
+Đối chiếu tất cả PK/nội dung24bảng và4.851tệp từ backup đầu nhiệm vụ: không thiếu/thay đổi bản ghi cũ, SHA đầy đủ đạt. Backup trước đó3.712tệp cũng đạt; chỉ có amendment policy210→null đã được ủy quyền từ nhiệm vụ trước, không thay business rows. Snapshot/verify qua recreate đạt; hai volumes Studio, backups, uploads và artifacts được giữ. Full browser tạo thêm dữ liệu TEST; đó là dữ liệu nghiệm thu mới, không phải mất/thay dữ liệu cũ.
+
+Inventory cuối:31containers/51images/36volumes toàn host; Studio đúng4containershealthy, hai image hiện hành và cặp rollback `dac8dd1`. **0 image cũ thuộc Studio đủ điều kiện xóa thêm**, không tạo con số dung lượng đã giải phóng giả.27container dự án khác giữ nguyên IDs/image/volume refs;36volume names giữ nguyên. Shared build cache38,62GB không có bằng chứng sở hữu riêng nên giữ; không global prune/volume delete. Một ảnh hướng dẫn thừa do nhiệm vụ tạo đã xóa, runtime receipts/backup giữ phục vụ kiểm toán. Inventory/ownership review hiện hành: `reliability-release-cleanup-plan.json`; không có container Studio dư hoặc dừng, không OOM/restart ở bốn services hiện hành.
+
+Langfuse đang thuộc Compose `langfuse`,6services được Docker khởi động sau reboot; không sửa dữ liệu hoặc config dự án đó. Kiểm tra chỉ đọc: web200/health200/ready200, đọc một observation cũ200, không lỗi JavaScript. Không tuyên bố kiểm tra cả mọi dự án sử dụng Langfuse.
+
+Có thể sử dụng local tại `http://127.0.0.1:18180` cho các luồng đã kiểm chứng, gồm manual fallback và câu hỏi trạng thái nguồn. **Chưa chứng nhận READY_FOR_FINAL_USER_TEST cho toàn bộ AI tự động**: full current-prompt80gold/24variants còn thiếu, provider429/503 và lỗi model cần replay lại khi dịch vụ khả dụng. Các ví dụ chat mở trong hướng dẫn không phải tất cả đã được LIVE xác nhận trên dự án mới. Không merge main hoặc tuyên bố không còn mọi lỗi khi gate này chưa đạt. Source sửa đã push official feature branch; commit tài liệu được báo tại bàn giao Git.
+
+### J. Bàn giao source và tài liệu
+
+Các lỗi tái hiện thuộc phạm vi đã được sửa, full regression và các checks liên quan đạt như mục E; không còn lỗi tái hiện LOCAL nghiêm trọng đã biết trong các luồng đã đo. Điều này không phải cam kết không có mọi lỗi hoặc AI luôn hiểu đúng. README liên kết hướng dẫn mới; `USER_TEST_GUIDE.md` có8ảnh thực chụp từ Docker hiện hành, từng bước và đường manual đã thực hành trên dự án mới. Markdown12tài liệu0issue; Ruff/mypy43files, ESLint/TypeScript/build, repository paths/known-secrets/history và diff whitespace đạt. Không thêm dependencies, migrations, services hoặc worktree.
+
+Code hiện hành đã push nhánh `codex/product-polish`, official origin được kiểm trước push. Main vẫn `a4f70b289b935b11928e6d1c2b2e0748160fbfa1`, chưa merge vì mục H chưa đủ full LIVE gate. Commit tài liệu bàn giao tiếp theo chỉ đổi README/hướng dẫn/ảnh/báo cáo; source ứng dụng trong Docker vẫn trùng với source đã kiểm tra. Commit hash bàn giao được nêu trong trả lời và xác minh bằng remote/status, không tự ghi hash chưa tồn tại vào báo cáo.
