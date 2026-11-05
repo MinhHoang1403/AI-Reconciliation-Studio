@@ -6,11 +6,68 @@ import httpx
 import pytest
 from pydantic import ValidationError
 from studio.agent_intents import interpret_requests, validate_intents
-from studio.ai_gateway import GeminiProvider
+from studio.agent_preparation import propose_normalization
+from studio.ai_gateway import GeminiProvider, OllamaProvider
 from studio.config import Settings
 from studio.contracts import WorkspacePolicy
 from studio.contracts.agent import AgentIntent, IntentCatalogue
 from studio.errors import DomainError
+
+
+@pytest.mark.parametrize("bad_column", [False, True])
+def test_local_mapping_semantics_cannot_change_source_shape_or_guess_money(
+    config, profile, bad_column
+):
+    config.local_demo_access = True
+    config.ollama_url = "http://host.docker.internal:11434"
+    amount_profile = profile.columns[1]
+    amount_profile.observations.update(nonempty_count=5, numeric_locales={"vi-VN": 4})
+
+    def transport(request):
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200, json={"models": [{"name": "qwen3:8b", "size": 10, "digest": "a" * 64}]}
+            )
+        payload = json.loads(request.content)
+        assert "fields" not in payload["format"]["properties"]
+        return httpx.Response(
+            200,
+            json={
+                "done": True,
+                "done_reason": "stop",
+                "message": {
+                    "content": json.dumps(
+                        {
+                            "entity_kind": "order",
+                            "grain": "unknown",
+                            "key_columns": ["c1"],
+                            "money": [
+                                {"column": "outside" if bad_column else "c2", "meaning": "gross"}
+                            ],
+                        }
+                    )
+                },
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        provider = OllamaProvider(config, "QWEN_8B", client)
+        if bad_column:
+            with pytest.raises(DomainError, match="INVALID_SOURCE_FIELD"):
+                propose_normalization(
+                    provider, profile.source_table_id, profile, WorkspacePolicy(), lambda: True
+                )
+            return
+        draft = propose_normalization(
+            provider, profile.source_table_id, profile, WorkspacePolicy(), lambda: True
+        )
+    assert [(f.source_field, f.data_type) for f in draft.fields] == [
+        ("c1", "string"),
+        ("c2", "decimal"),
+    ]
+    assert not any(f.business_key for f in draft.fields)
+    amount = draft.fields[1]
+    assert amount.amount_basis is amount.semantic_metric is amount.currency is None
 
 
 def catalogue():

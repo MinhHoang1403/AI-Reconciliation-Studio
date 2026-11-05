@@ -252,7 +252,15 @@ export function AgentWorkflowPanel({ id, canEdit, onNavigate, onContext, onReply
     } }
     return <section className="agent-workflow" aria-label="Công việc của AI Assistant">{error && <Notice tone="error">{error}<button className="text-button" onClick={() => void refresh()}>Cập nhật</button></Notice>}
     {!workflow ? <Spinner /> : <><p className="agent-workflow-state" role="status">{["CREATED","RUNNING"].includes(workflow.state)&&<Spinner/>}<strong>{workflow.state==="WAITING_REVIEW"&&workflow.detail.reviews.some(r=>r.state==="OPEN"&&r.kind==="CLARIFICATION")?"Cần bạn bổ sung":workflow.state === "COMPLETED" && workflow.detail.intent?.intent === "EXPLORE_DATA" ? "Đã đọc dữ liệu; chưa chuẩn hóa" : states[workflow.state] || "Chưa có trạng thái xử lý"}</strong>{["CREATED", "RUNNING", "WAITING_REVIEW"].includes(workflow.state) && <button className="text-button" onClick={() => void cancel()}>Dừng bước tiếp theo</button>}</p>
-      {workflow.detail.error_code && <Notice tone="warning">{errors[workflow.detail.error_code]||"Chưa đủ điều kiện để tiếp tục. Dữ liệu và kết quả đã lưu được giữ."}<details><summary>Chi tiết</summary><code>{workflow.detail.error_code}</code></details></Notice>}
+      {workflow.detail.error_code && <Notice tone="warning">
+        {errors[workflow.detail.error_code]||"Chưa đủ điều kiện để tiếp tục. Dữ liệu và kết quả đã lưu được giữ."}
+        {workflow.detail.intent?.intent === "PREPARE_NORMALIZATION" && (
+          <button type="button" className="text-button" onClick={() => onNavigate("OPEN_DATA", workflow.context)}>
+            Mở dữ liệu để ghép cột thủ công
+          </button>
+        )}
+        <details><summary>Chi tiết</summary><code>{workflow.detail.error_code}</code></details>
+      </Notice>}
       {workflow.detail.steps.length>0&&<details className="agent-processing"><summary>Chi tiết xử lý</summary><ol className="agent-steps">{workflow.detail.steps.map((s, i) => <li key={i}>{tools[s.tool] || s.tool} · {statusText[s.status]||label(s.status)}</li>)}</ol></details>}
       {workflow.detail.reviews.filter(r => r.state === "OPEN").map(r => <ReviewCard key={`${r.id}:${r.nonce}`} review={r} workflow={workflow} canEdit={canEdit && workflow.state === "WAITING_REVIEW"} refresh={refresh} onReply={onReply}/>)}
       <AgentResultBlocks blocks={workflow.detail.blocks.filter((block,index,blocks)=>block.type!=="progress"||(!workflow.detail.reviews.some(r=>r.state==="OPEN"&&(r.question===block.text||r.reply_questions.includes(block.text)))&&!blocks.slice(0,index).some(previous=>previous.type==="progress"&&previous.text===block.text)))} context={workflow.context} onNavigate={onNavigate} workflowId={workflow.id} querySelection={workflow.detail.query_selection?.query}/>

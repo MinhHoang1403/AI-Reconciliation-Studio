@@ -19,6 +19,7 @@ from studio.agent_intents import (
     resolve_plain_listing,
 )
 from studio.agent_preparation import (
+    LOCAL_PREPARATION_REVISION,
     PREPARATION_REVISION,
     REVIEW_REVISION,
     interpret_review_reply,
@@ -227,7 +228,11 @@ def model_call(
                     job_id=job_id,
                     provider="GEMINI" if cloud else "OLLAMA",
                     task_id=task,
-                    prompt_revision=revision,
+                    prompt_revision=(
+                        LOCAL_PREPARATION_REVISION
+                        if not cloud and task == "prepare_normalization"
+                        else revision
+                    ),
                     usage=provider.usage,
                     latency_ms=int((time.monotonic() - started) * 1000),
                     outcome=outcome,
@@ -669,10 +674,14 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 actor.workspace_id,
                 artifact.id,
             )
-            from studio.database import MappingRow, SchemaRow
+            from studio.database import DatasetRow, MappingRow, SchemaRow, VersionRow
             from studio.profiling import source_signature
 
             project = project_for_table(db, table)
+            version = db.get(VersionRow, table.dataset_version_id)
+            assert version is not None  # Bảng và project đã được kiểm scope ở trên.
+            dataset = get_scoped(db, DatasetRow, version.dataset_id, actor)
+            source_label = {"name": dataset.name[:180], "sheet": table.sheet[:120]}
             patterns = db.scalars(
                 select(MappingRow)
                 .where(
@@ -705,7 +714,12 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             factory,
             fence,
             lambda provider, policy, reserve: propose_normalization(
-                provider, table_id, profile, policy, reserve, mapping_context
+                provider,
+                table_id,
+                profile,
+                policy,
+                reserve,
+                mapping_context | {"source": source_label} if provider.local else mapping_context,
             ),
         )
         with factory() as db:

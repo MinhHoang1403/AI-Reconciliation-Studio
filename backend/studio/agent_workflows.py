@@ -301,9 +301,12 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
     step.status = "SUCCEEDED" if child.status == "SUCCEEDED" else "BLOCKED"
     row.waiting_job_id = None
     if child.status != "SUCCEEDED":
-        row.state = (
-            "PARTIAL" if any(isinstance(b, DatasetBlock) for b in state.blocks) else "BLOCKED"
-        )
+        if child.kind == "agent_prepare" and any(r.state == "OPEN" for r in state.reviews):
+            row.state = "WAITING_REVIEW"
+        else:
+            row.state = (
+                "PARTIAL" if any(isinstance(b, DatasetBlock) for b in state.blocks) else "BLOCKED"
+            )
         state.error_code = child.error_code or "WORKFLOW_STEP_FAILED"
         state.blocks.append(
             ProgressBlock(text="Một bước bị chặn; các kết quả đã lưu vẫn được giữ.")
@@ -520,6 +523,13 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                 elif not any(r.resource_id == table.table_id for r in state.reviews):
                     waiting_tables.append(table.table_id)
         if waiting_tables:
+            if any(s.tool == "propose_mapping" and s.status == "BLOCKED" for s in state.steps):
+                # Một đề xuất lỗi không hủy thẻ đã tạo. Không tự gửi thêm request AI.
+                row.state = (
+                    "WAITING_REVIEW" if any(r.state == "OPEN" for r in state.reviews) else "PARTIAL"
+                )
+                save(row, state)
+                return
             if len(state.steps) >= settings.agent_max_steps:
                 raise DomainError("AGENT_STEP_LIMIT", "Đã đạt giới hạn bước.")
             if (

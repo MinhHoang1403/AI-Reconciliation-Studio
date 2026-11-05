@@ -124,12 +124,20 @@ class OllamaProvider:
                 "num_predict": 6000,
             },
         }
+        request_bytes = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
+        self.usage.update(
+            payload_bytes=len(request_bytes),
+            context_limit=self.config.ollama_context,
+            output_limit=6000,
+            timeout_seconds=self.config.ollama_timeout_seconds,
+        )
         started = time.monotonic()
         self.usage["ai_calls"] += 1
         try:
             response = self.client.post(
                 self.config.ollama_url + "/api/chat",
-                json=body,
+                content=request_bytes,
+                headers={"content-type": "application/json"},
                 timeout=httpx.Timeout(self.config.ollama_timeout_seconds, connect=3),
             )
             self.usage["http_status"] = response.status_code
@@ -138,6 +146,7 @@ class OllamaProvider:
             self.usage["tokens"] = {
                 "promptTokenCount": result.get("prompt_eval_count"),
                 "candidatesTokenCount": result.get("eval_count"),
+                "cachedContentTokenCount": result.get("prompt_eval_cached_count"),
             }
             self.usage["timings_ns"] = {
                 key: result[key]

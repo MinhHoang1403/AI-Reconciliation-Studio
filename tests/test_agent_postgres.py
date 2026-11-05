@@ -458,29 +458,46 @@ def test_displayed_page_changed_during_inference_never_explains_a_different_grou
     assert not result["detail"]["blocks"] and result["context"]["group_id"] is None
 
 
-def mapping_fixture(pg, monkeypatch):  # noqa: F811
+def mapping_fixture(pg, monkeypatch, *, second_source_error=False):  # noqa: F811
     import studio.agent_jobs as agents
 
     client, factory, worker = pg
     pid = project(client)
-    result = client.post(
-        "/api/datasets/uploads",
-        data=dict(project_id=pid, request_ai_mapping="false"),
-        files=[
+    files = [
+        (
+            "files",
+            (
+                "synthetic.csv",
+                b"id,amount,date\n000701,25.00,2026-10-01\n000702,12.75,2026-10-02\n",
+                "text/csv",
+            ),
+        )
+    ]
+    if second_source_error:
+        files.append(
             (
                 "files",
                 (
-                    "synthetic.csv",
-                    b"id,amount,date\n000701,25.00,2026-10-01\n000702,12.75,2026-10-02\n",
+                    "synthetic-second.csv",
+                    b"id,amount,date\n000801,25.00,2026-10-01\n000802,12.75,2026-10-02\n",
                     "text/csv",
                 ),
             )
-        ],
+        )
+    result = client.post(
+        "/api/datasets/uploads",
+        data=dict(project_id=pid, request_ai_mapping="false"),
+        files=files,
     )
     assert result.status_code == 202, result.text
     drain(factory, worker)
 
+    calls = []
+
     def mock_draft(provider, table_id, profile, policy, reserve, context=None):
+        calls.append(table_id)
+        if second_source_error and len(calls) > 1:
+            raise DomainError("OLLAMA_UNAVAILABLE", "Provider mock timeout", 503)
         return NormalizationDraft.model_validate(
             dict(
                 table_id=table_id,
@@ -526,7 +543,7 @@ def mapping_fixture(pg, monkeypatch):  # noqa: F811
     wf = workflow_for(client, factory, queued["job_id"])
     assert wf["state"] == "WAITING_REVIEW", wf
     review = wf["detail"]["reviews"][0]
-    assert review["resource_label"].startswith("synthetic.csv")
+    assert review["resource_label"].startswith("synthetic")
     body = dict(
         review_id=review["id"],
         nonce=review["nonce"],
@@ -597,6 +614,30 @@ def test_agent_mock_mapping_review_atomic_resume_reopen_idempotency(pg, monkeypa
         ).status_code
         == 409
     )
+
+
+def test_mapping_timeout_keeps_earlier_review_usable_without_resend(pg, monkeypatch):  # noqa: F811
+    client, factory, worker = pg
+    workflow, approval = mapping_fixture(pg, monkeypatch, second_source_error=True)
+    assert workflow["detail"]["error_code"] == "OLLAMA_UNAVAILABLE"
+    assert len(workflow["detail"]["reviews"]) == 1
+    path = f"/api/agent/workflows/{workflow['id']}"
+    response = client.post(
+        path + "/decisions", json=approval, headers={"Idempotency-Key": "partial"}
+    )
+    assert response.status_code == 200, response.text
+    drain(factory, worker)
+    final = client.get(path).json()
+    assert final["state"] == "PARTIAL"
+    assert final["detail"]["reviews"][0]["state"] == "DECIDED"
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 1
+        assert (
+            db.scalar(
+                select(func.count()).select_from(JobRow).where(JobRow.kind == "agent_prepare")
+            )
+            == 2
+        )
 
 
 @pytest.mark.parametrize("reason", ["nonce", "expiry", "revision", "viewer", "cancel"])
