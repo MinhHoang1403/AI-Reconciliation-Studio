@@ -26,8 +26,10 @@ test("Agent inline upload bootstraps once, profiles real files and reopens witho
     {name:`Vouchers-${marker}.csv`,mimeType:"text/csv",buffer:Buffer.from("voucher,amount\n000701,25.00\n000702,10.00\n")},
   ]);
   const attachment=page.waitForResponse(r=>r.url().endsWith("/agent/attachments")&&r.request().method()==="POST");
+  const message=page.waitForRequest(r=>r.url().endsWith("/assistant/messages")&&r.method()==="POST");
   await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();
   const receipt=await(await attachment).json();expect(receipt.items).toHaveLength(2);expect(receipt.scope_confirmed).toBe(false);
+  expect((await message).postDataJSON().dataset_ids).toEqual(receipt.items.map((item:{id:string})=>item.id));
   const pid=receipt.project_id;
   await expect(page.getByRole("region",{name:"Công việc của AI Assistant",exact:true})).toContainText("Đã đọc dữ liệu; chưa chuẩn hóa",{timeout:45000});
   await expect(page.locator(".agent-table")).toHaveCount(2);

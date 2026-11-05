@@ -16,6 +16,7 @@ from studio.agent_intents import (
     approval_bypass_requested,
     currency_bypass_requested,
     interpret_requests,
+    resolve_attached_normalization,
     resolve_plain_listing,
 )
 from studio.agent_preparation import (
@@ -318,6 +319,13 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
             save(row, state)
             db.commit()
             return
+        if state.model_choice in {"QWEN_8B", "QWEN_27B"}:
+            attached = resolve_attached_normalization(goal, catalogue, state.dataset_ids)
+            if attached is not None:
+                state.intent = attached
+                save(row, state)
+                db.commit()
+                return
     try:
         intents = model_call(
             job_id,

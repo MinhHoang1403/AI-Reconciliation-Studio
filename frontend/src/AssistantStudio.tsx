@@ -52,12 +52,13 @@ const labels: Record<string, string> = {
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Không tải được hội thoại.";
 
-function sameRequestExceptModel(previous: string, next: string) {
+function sameRequestExceptModel(previous: string, next: string, reuseUploadedScope = false) {
   try {
     const before = JSON.parse(previous);
     const after = JSON.parse(next);
     delete before.model_choice;
     delete after.model_choice;
+    if (reuseUploadedScope && !after.dataset_ids) delete before.dataset_ids;
     return JSON.stringify(before) === JSON.stringify(after);
   } catch {
     return false;
@@ -500,6 +501,7 @@ export function AssistantStudio({
     setBusy(true);
     setError("");
     let bootstrapProject="";
+    let uploadedDatasetIds: string[] | undefined;
     try {
       if(reviewReply&&conversation){
         if(!canEdit)throw new Error("Cần quyền chỉnh sửa để trả lời yêu cầu xác nhận.");
@@ -529,8 +531,9 @@ export function AssistantStudio({
         sessionStorage.setItem(storage, JSON.stringify({signature, key}));
         const body=new FormData();files.forEach(file=>body.append("files",file));
         if(context.project_id)body.append("project_id",context.project_id);
-        const uploaded=await api<{project_id:string}>("/agent/attachments",{method:"POST",body,
+        const uploaded=await api<{project_id:string; items?: {id:string}[]}>("/agent/attachments",{method:"POST",body,
           headers:{"Idempotency-Key":key}});
+        uploadedDatasetIds = uploaded.items?.map(item => item.id);
         if(!alive.current||request!==sequence.current)return;
         setFiles([]);sessionStorage.removeItem(storage);
         if(!context.project_id){
@@ -543,6 +546,7 @@ export function AssistantStudio({
           const question=text.trim()||"Kiểm tra các file vừa tải lên";
           const body=JSON.stringify({conversation_id:created.id,context:created.context,text:question,
             mode:"AGENT",command:command||(!text.trim()?"EXPLORE_DATA":null),
+            ...(uploadedDatasetIds?.length ? {dataset_ids:uploadedDatasetIds} : {}),
             ...(modelChoice ? {model_choice:modelChoice} : {})});
           const key=createKey.current+"-message";
           const pendingKey=`studio.assistant-request.${draftOwner}.${uploaded.project_id}`;
@@ -583,6 +587,7 @@ export function AssistantStudio({
         text: text.trim() || "Kiểm tra các file vừa tải lên",
         mode,
         ...(modelChoice ? {model_choice:modelChoice} : {}),
+        ...(mode === "AGENT" && uploadedDatasetIds?.length ? {dataset_ids:uploadedDatasetIds} : {}),
         ...(mode==="AGENT"?{command:command||(!text.trim()?"EXPLORE_DATA":null)}:{}),
       });
       let previous = pendingRequest.current;
@@ -597,7 +602,8 @@ export function AssistantStudio({
           /* A malformed local draft is never authority to send a request. */
         }
       }
-      if (previous && sameRequestExceptModel(previous.body, body)) body = previous.body;
+      if (previous && sameRequestExceptModel(previous.body, body, !uploadedDatasetIds?.length))
+        body = previous.body;
       const key = previous?.body === body ? previous.key : crypto.randomUUID();
       pendingRequest.current = { body, key };
       sessionStorage.setItem(requestStorageKey, JSON.stringify({ body, key }));

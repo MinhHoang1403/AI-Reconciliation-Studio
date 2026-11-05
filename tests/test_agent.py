@@ -5,7 +5,11 @@ import json
 import httpx
 import pytest
 from pydantic import ValidationError
-from studio.agent_intents import interpret_requests, validate_intents
+from studio.agent_intents import (
+    interpret_requests,
+    resolve_attached_normalization,
+    validate_intents,
+)
 from studio.agent_preparation import propose_normalization
 from studio.ai_gateway import GeminiProvider, OllamaProvider
 from studio.config import Settings
@@ -94,6 +98,32 @@ def catalogue():
             ],
         )
     )
+
+
+@pytest.mark.parametrize(
+    ("goal", "attached", "accepted"),
+    [
+        ("Vui lòng chuẩn hóa các tệp đã đính kèm.", ["dataset"], True),
+        (
+            "Tôi muốn kiểm tra và chuẩn hóa các bộ dữ liệu vừa tải lên. "
+            "Hãy tự phân tích, đề xuất cách xử lý phù hợp và chỉ hỏi tôi "
+            "khi cần xác nhận thông tin quan trọng.",
+            ["dataset"],
+            True,
+        ),
+        ("Đừng chuẩn hóa các tệp đã đính kèm.", ["dataset"], False),
+        ("Chuẩn hóa các tệp rồi đối soát.", ["dataset"], False),
+        ("Chuẩn hóa các tệp.", [], False),
+        ("Chuẩn hóa các tệp.", ["outside"], False),
+    ],
+)
+def test_explicit_local_normalization_binds_only_attached_scope(goal, attached, accepted):
+    result = resolve_attached_normalization(goal, catalogue(), attached)
+    if accepted:
+        assert result and result.intent == "PREPARE_NORMALIZATION"
+        assert result.dataset_ids == ["dataset"]
+    else:
+        assert result is None
 
 
 @pytest.mark.parametrize(

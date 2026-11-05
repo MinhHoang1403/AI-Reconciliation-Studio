@@ -513,6 +513,30 @@ def resolve_plain_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
     )
 
 
+def resolve_attached_normalization(
+    goal: str, catalogue: IntentCatalogue, attached_ids: list[str]
+) -> AgentIntent | None:
+    """[D] Lệnh chuẩn hóa rõ ràng với tệp gắn vào tin nhắn, vẫn qua cổng duyệt."""
+    ids = [dataset.id for dataset in catalogue.datasets]
+    if not attached_ids or set(ids) != set(attached_ids):
+        return None
+    normalized = " ".join(plain_question(goal).split())
+    action = (
+        r"(?:(?:xin|toi muon|hay|vui long|giup toi) )?"
+        r"(?:kiem tra va )?chuan hoa (?:tat ca (?:cac )?|cac |nhung )?"
+        r"(?:bo du lieu|du lieu|tep|file|nguon du lieu|nguon)"
+        r"(?: (?:vua|moi) tai len| da dinh kem)?"
+    )
+    review_only = (
+        r"(?:[.!] (?:hay )?(?:tu )?phan tich(?:,? (?:va )?de xuat "
+        r"(?:cach xu ly|cach chuan hoa)(?: phu hop)?)?"
+        r"(?: va chi hoi (?:toi )?khi can xac nhan(?: thong tin quan trong)?)?)?"
+    )
+    if not re.fullmatch(action + review_only + r"[.!]?", normalized):
+        return None
+    return AgentIntent(intent="PREPARE_NORMALIZATION", dataset_ids=ids)
+
+
 def compile_routing(
     content: str,
     goals: list[str],
