@@ -20,7 +20,7 @@ async function chatFixture(page:Page,{long=true,failed=false,withModels=false}={
     if(path==="/api/settings")return route.fulfill({json:{workspace_name:"TEST",agent_cloud_enabled:false,assistant_cloud_enabled:false,max_upload_bytes:20971520,max_upload_files:5,agent_max_upload_files:5,agent_upload_extensions:[".csv",".xlsx"],max_rows:100000,policy:{allow_external_ai:false}}});
     if(path==="/api/assistant/models"&&withModels)return route.fulfill({json:[
       {id:"GEMINI",label:"Gemini",available:true,status:"UNAVAILABLE"},
-      {id:"QWEN_8B",label:"Qwen 8B",available:true,status:"UNVERIFIED"},
+      {id:"QWEN_8B",label:"Qwen 8B",available:true,status:"UNVERIFIED",preferred:true},
     ]});
     if(path==="/api/projects/scroll-project")return route.fulfill({json:{id:context.project_id,name:"TEST scroll",business_scope:"Synthetic",workspace_id:"demo",classification:"TEST"}});
     if(path.endsWith("/summary"))return route.fulfill({json:{dataset_count:0,table_count:0,mapping_review_count:0,ready_canonical_count:0,active_job_count:0}});
@@ -68,6 +68,7 @@ test("[MOCK CONTRACT] switching model preserves draft, queued request and histor
   const fixture=await chatFixture(page,{long:false,withModels:true});
   const model=page.getByLabel("Model cho tin nhắn mới");
   const composer=page.getByLabel("Câu hỏi cho AI Assistant",{exact:true});
+  await expect(model).toHaveValue("QWEN_8B");
   await composer.fill("Kiểm tra đúng nguồn của hội thoại này");
   await model.selectOption("QWEN_8B");
   await expect(composer).toHaveValue("Kiểm tra đúng nguồn của hội thoại này");

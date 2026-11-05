@@ -219,6 +219,7 @@ class AssistantModelOption(Contract):
     id: ModelChoice
     label: str
     available: bool
+    preferred: bool = False
     status: Literal[
         "READY", "UNVERIFIED", "UNAVAILABLE", "LIMITED", "NOT_CONFIGURED", "NOT_ALLOWED"
     ]

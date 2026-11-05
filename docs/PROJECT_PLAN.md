@@ -12,6 +12,10 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Khôi phục Smart Mapping và model local — 05/11/2026
+
+Chủ dự án cấp quyền một vòng chẩn đoán Gemini với khóa mới trong cấu hình, rồi tối ưu Ollama `qwen3:8b` nếu Gemini vẫn lỗi. Quyền này cho phép dùng Qwen chạy trên Windows qua Gateway hiện có và hoàn thiện bộ chọn model trong Chat. Backend tính profiling và tạo đầy đủ bản nháp, model tập trung vào ngữ nghĩa, mọi đề xuất đi qua validator và thẻ duyệt. Đo trên ba tệp TEST 5.487 dòng, giữ oracle chuẩn hóa và hai cặp đối soát. Không tải Qwen 27B trong điều kiện thiếu RAM. Mặc định local có thể chọn Qwen sau phép thử tác vụ đạt, trong khi các cổng nghiệm thu AI tổng thể tiếp tục quyết định việc hợp nhất main. Quyết định mới thay các yêu cầu hoãn Qwen của những nhiệm vụ trước trong phạm vi này.
+
 ### Kiểm chứng ngày và AI Smart Mapping — 05/11/2026
 
 Chủ dự án giao sửa lỗi ngày hợp lệ bị INVALID_DATE, kiểm tra toàn bảng trước phê duyệt và thu gọn Mapping Review. Mở rộng profiler/Agent/compiler hiện có, không thêm agent hoặc đổi Matcher/Verifier. Định dạng hiển thị `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY` là alias hữu hạn của định dạng Python tương đương; chuẩn hóa revision mới, không sửa artifact/mapping lịch sử. Lỗi format/timezone/runtime phải dừng trước lặp dòng; ngày sai thật, DST mơ hồ/không tồn tại và offset trái vùng đã duyệt vẫn bị phát hiện.

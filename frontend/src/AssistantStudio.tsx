@@ -132,7 +132,13 @@ export function AssistantStudio({
     const controller = new AbortController();
     const query = context.project_id ? `?project_id=${encodeURIComponent(context.project_id)}` : "";
     void api<AssistantModelOption[]>(`/assistant/models${query}`, {signal: controller.signal})
-      .then(options => { if (!controller.signal.aborted) setModels(Array.isArray(options) ? options : []); })
+      .then(options => {
+        if (controller.signal.aborted) return;
+        const choices = Array.isArray(options) ? options : [];
+        setModels(choices);
+        const preferred = choices.find(option => option.preferred && option.available);
+        if (preferred) setModelChoice(previous => previous || preferred.id);
+      })
       .catch(() => { if (!controller.signal.aborted) setModels([]); });
     return () => controller.abort();
   }, [context.project_id, modelRefresh]);

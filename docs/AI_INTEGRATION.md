@@ -1,5 +1,15 @@
 # AI Gateway và provider contracts
 
+## Smart Mapping local theo profile và ngữ nghĩa — 05/11/2026
+
+Theo yêu cầu khôi phục Smart Mapping, Qwen 8B nhận một envelope ngắn cho từng bảng. Backend tạo đủ trường của `NormalizationDraft` từ profile toàn cột. Header và số liệu đọc được cùng hỗ trợ gợi ý kiểu ngày/tiền, còn mã định danh giữ chuỗi. Qwen chỉ gợi ý loại bảng, ý nghĩa một dòng, ứng viên khóa và nghĩa gross/net/fee. Schema đầu ra giới hạn tham chiếu trong danh sách cột thực. Bộ kiểm tra từ chối tham chiếu sai hoặc trùng. Múi giờ, nghĩa tiền còn mơ hồ, đơn vị và các điều kiện nghiệp vụ tiếp tục chờ xác nhận qua preflight và thẻ duyệt.
+
+Tên tệp và sheet là ngữ cảnh có giới hạn, được gửi như dữ liệu không đáng tin. Nếu grain còn unknown, Backend bỏ ứng viên khóa. Cột tiền tên chung `amount` hoặc `total` vẫn cần nghĩa được xác nhận. Công cụ không chuyển trạng thái dự kiến/hoàn thành thành đã thanh toán. Các đề xuất của nhiều bảng vẫn thuộc cùng một workflow và có quyết định riêng cho từng nguồn.
+
+Lệnh chuẩn hóa rõ ràng đi cùng tệp đính kèm có thể dùng resolver hữu hạn trên Backend khi chọn Qwen. Resolver kiểm đầy đủ câu và danh sách tệp gắn vào tin nhắn. Câu phủ định, scope thiếu hoặc câu chứa thêm hành động ngoài chuẩn hóa đi qua router. Frontend lưu danh sách tệp vào payload cùng mã yêu cầu. Khi phản hồi một lần gửi chưa rõ, bản ghi payload cũ tiếp tục xác định model và phạm vi đã gửi.
+
+`ASSISTANT_DEFAULT_MODEL` chọn mặc định của bộ chọn khi người dùng chưa có lựa chọn cá nhân. Cài mới mặc định Gemini. Giá trị này không sửa các job đã gửi. Trạng thái kết nối và trạng thái nghiệm thu tác vụ được trình bày riêng trong báo cáo.
+
 ## Chọn Gemini hoặc Qwen trong AI Assistant
 
 AI Assistant gửi `model_choice` cùng tin nhắn hoặc câu trả lời cho thẻ xác nhận. Backend kiểm quyền, lưu lựa chọn theo job, rồi chuyển tiếp lựa chọn đó cho các bước chuẩn bị và đề xuất đối soát thuộc cùng luồng. Đổi lựa chọn trong ô Chat áp dụng cho tin nhắn sau. Job cũ đọc được khi thiếu trường này và tiếp tục theo tuyến Gemini hiện có. Các tác vụ đọc xác định và quy tắc đã duyệt vẫn dùng dữ kiện của Backend.

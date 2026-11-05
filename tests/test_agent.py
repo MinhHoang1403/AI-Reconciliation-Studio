@@ -34,6 +34,8 @@ def test_local_mapping_semantics_cannot_change_source_shape_or_guess_money(
             )
         payload = json.loads(request.content)
         assert "fields" not in payload["format"]["properties"]
+        assert payload["format"]["properties"]["key_columns"]["items"]["enum"] == ["c1"]
+        assert payload["format"]["$defs"]["MoneyHint"]["properties"]["column"]["enum"] == ["c2"]
         return httpx.Response(
             200,
             json={

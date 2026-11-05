@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash-lite"
     ollama_url: Literal["", "http://127.0.0.1:11434", "http://host.docker.internal:11434"] = ""
     ollama_choice: Literal["QWEN_8B", "QWEN_27B"] = "QWEN_8B"
+    assistant_default_model: ModelChoice = "GEMINI"
     ollama_timeout_seconds: float = Field(default=90, ge=5, le=100)
     ollama_context: int = Field(default=8192, ge=2048, le=32768)
     allow_external_ai: bool = False

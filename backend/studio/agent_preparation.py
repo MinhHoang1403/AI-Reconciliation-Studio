@@ -198,6 +198,15 @@ def propose_local_normalization(
         }
         for c in profile.columns
     ]
+    schema = MappingSemantics.model_json_schema()
+    if key_candidates:
+        schema["properties"]["key_columns"]["items"]["enum"] = sorted(key_candidates)
+    else:
+        schema["properties"]["key_columns"]["maxItems"] = 0
+    if money_ids:
+        schema["$defs"]["MoneyHint"]["properties"]["column"]["enum"] = sorted(money_ids)
+    else:
+        schema["properties"]["money"]["maxItems"] = 0
     prompt = [
         {
             "role": "system",
@@ -236,6 +245,12 @@ def propose_local_normalization(
             raise DomainError("AI_INVALID_JSON", "Đề xuất ngữ nghĩa không đúng hợp đồng.") from exc
         keys = set(semantics.key_columns)
         money = {hint.column: hint.meaning for hint in semantics.money}
+        provider.usage["semantic_shape"] = {
+            "unknown_keys": len(keys - key_candidates),
+            "duplicate_keys": len(semantics.key_columns) - len(keys),
+            "unknown_money_columns": len(money.keys() - money_ids),
+            "duplicate_money_columns": len(semantics.money) - len(money),
+        }
         if (
             not keys <= key_candidates
             or len(keys) != len(semantics.key_columns)
@@ -284,7 +299,7 @@ def propose_local_normalization(
         reserve,
         validate,
         max_attempts=1,
-        response_schema=MappingSemantics.model_json_schema(),
+        response_schema=schema,
     )
 
 

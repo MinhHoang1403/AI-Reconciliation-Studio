@@ -118,6 +118,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                 adapter.close()
             options.append(local)
         for option in options:
+            option.preferred = option.id == settings.assistant_default_model
             if not option.available:
                 continue
             conditions = (

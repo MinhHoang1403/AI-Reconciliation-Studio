@@ -86,5 +86,6 @@ export type AssistantModelOption = {
   id: ModelChoice;
   label: string;
   available: boolean;
+  preferred?: boolean;
   status: "READY" | "UNVERIFIED" | "UNAVAILABLE" | "LIMITED" | "NOT_CONFIGURED" | "NOT_ALLOWED";
 };
