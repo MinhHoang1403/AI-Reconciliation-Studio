@@ -367,7 +367,7 @@ Hai cặp thực hành thủ công đã đạt các số liệu trên. Trước 
 
 ## 14. Chọn model trong ô Chat
 
-Mở **AI Assistant**. Bộ chọn nằm ngay cạnh nút gửi. **Gemini** là lựa chọn ban đầu. Khi Qwen local đã cấu hình và cài tag, chọn **Qwen 8B** để thử suy luận trên máy. **Chưa kiểm chứng** nghĩa là model có thể được thử, nhưng chưa đạt các ca nghiệp vụ bắt buộc. **Không khả dụng** cho biết lần gọi gần nhất bị lỗi hoặc không kết nối được.
+Mở **AI Assistant**. Bộ chọn nằm ngay cạnh nút gửi. Local hiện hành chọn **Qwen 8B** cho phiên chưa lưu model cá nhân; lựa chọn cũ của bạn được giữ. Bạn vẫn có thể chọn **Gemini**. **Chưa kiểm chứng** nghĩa là model có thể được thử nhưng chưa đạt toàn bộ các ca AI bắt buộc. Qwen đã chạy được bộ ba nguồn ở mục 15 với người dùng chỉnh và duyệt, chưa được coi là tự ánh xạ đúng hoàn toàn. **Không khả dụng** cho biết lần gọi gần nhất bị lỗi hoặc không kết nối được.
 
 ![Bộ chọn Gemini cạnh nút gửi trong ô Chat](images/user-guide/composer-model.png)
 
@@ -381,3 +381,19 @@ Bạn có thể đổi model khi đang xem lịch sử, đang soạn bản nháp
 - “Mở bằng chứng của nhóm lệch thứ hai trong bảng vừa trả.”
 
 Nếu Gemini báo giới hạn hoặc lỗi, bạn có thể chọn Qwen và gửi câu mới khi job trước đã kết thúc. Nếu Qwen hết thời gian hoặc chưa hiểu đúng nghiệp vụ, dùng đường duyệt thủ công ở mục 5.3. Các tác vụ chỉ đọc đã có đủ dữ kiện vẫn có thể do Backend xử lý trực tiếp.
+
+## 15. Thử Smart Mapping Qwen với ba tệp
+
+Lượt LIVE mới nhất tại [báo cáo mục AH](IMPLEMENTATION_STATUS.md#ah-khôi-phục-smart-mapping-với-qwen-local--05112026). Có thể mở dự án **TEST Qwen 8B — kiểm chứng ánh xạ** để đọc kết quả đã giữ trên máy. Các dự án thử cùng tên có thể thuộc những lượt thất bại trước; project của lượt đã duyệt là `510a220a-2e94-46be-9537-0940a115fa8b`. Để thử lại, tạo dự án TEST riêng và tải đúng ba tệp trong mục 13; không xóa các bản cũ.
+
+1. Chọn **Qwen 8B**, đính kèm cả ba tệp trong cùng tin nhắn. Gửi: “Tôi muốn kiểm tra và chuẩn hóa các bộ dữ liệu vừa tải lên. Hãy tự phân tích, đề xuất cách xử lý phù hợp và chỉ hỏi tôi khi cần xác nhận thông tin quan trọng.” Lệnh rõ ràng này được Backend chọn phạm vi từ đúng các tệp đính kèm; Qwen đề xuất ngữ nghĩa từng nguồn.
+2. Chờ đủ ba thẻ **Quyết định cần xác nhận**, đúng tên nguồn, tổng 5.487 dòng. Lượt nghiệm thu mất khoảng 54 giây cho ba lần suy luận, chưa gồm thao tác người dùng. Máy thiếu RAM hoặc nạp model lại có thể lâu hơn. Không bấm gửi thêm vì đang chờ.
+3. Đọc **Cần bạn xác nhận**, **Dữ liệu bất thường** và **Quan hệ tiềm năng**. Mở **Xem và chỉnh các lựa chọn** khi đề xuất chưa đúng. Với bộ tổng hợp này, cùng loại `order_financial_record`, grain lần lượt là `order`, `payment_event`, `settlement_batch`; khóa chuẩn hóa lần lượt `scope + reference`, `payment_id`, `scope + batch_id`. Không dùng customer_code làm khóa giao dịch; không dùng settlement_id thay batch_id của quan hệ đối soát theo lô.
+4. Xác nhận `%Y-%m-%d`, UTC theo quy ước bộ thử. Các cột tiền dùng en-US, VND và đơn vị VND; amount/gross_amount là metric `reported_gross_amount`, basis gross; net_amount có metric/basis net riêng, fee_amount có metric/basis fee riêng. Đây là thông tin của bộ tổng hợp, không áp dụng mặc định cho tệp nghiệp vụ khác. Dòng USD vẫn giữ nguyên và báo khác tiền tệ.
+5. Chờ thông báo kiểm tra toàn bảng sau mỗi chỉnh sửa. Khóa trong thẻ Chat là bắt buộc; dự kiến cần kiểm tra **12 / 11 / 6 dòng**, thêm bốn dòng thiếu mã so với cấu hình thủ công ở mục 13. Bản này dự kiến **5.458 hợp lệ / 29 cần kiểm tra**. Không bỏ khóa hoặc cảnh báo để ép về 25. Lỗi ngày thật vẫn 2 / 5 / 0.
+6. Bấm **Duyệt cách ghép cột và chuẩn hóa** riêng từng nguồn khi đã kiểm tra. Mỗi nguồn có ánh xạ và kết quả riêng. Luồng kết thúc **Hoàn thành một phần** vì còn dòng lỗi; dùng **Kiểm tra dữ liệu trước/sau** để đọc từng dòng. AI không duyệt thay bạn.
+7. Đối soát theo đúng hai hợp đồng mục 13: MAIN_VND, VND, UTC, tháng 10/2026, tolerance 0, cộng signed; 01 ↔ 02 theo scope/reference 1:N và 02 ↔ 03 theo scope/batch_id N:1, dùng gross. Duyệt quy tắc trước khi chạy. Hai kết quả mới vẫn đúng đáp án 2.040/200/215 và 323/40/31. Mở báo cáo, biểu đồ, **Xem bằng chứng**, rồi tải CSV/XLSX của đúng run.
+
+![Qwen đã chuẩn hóa ba nguồn sau các quyết định riêng](images/user-guide/qwen-mapping-completed.png)
+
+Nếu một nguồn lỗi tạo đề xuất, các thẻ đã tạo trước đó vẫn có thể duyệt. Đọc tên nguồn và thông báo của đúng job, dùng **Mở dữ liệu để ghép cột thủ công** cho phần còn lại. Không có fallback cloud tự động. Đổi model chỉ áp dụng cho lần gửi sau; lần gửi chưa rõ phản hồi giữ payload và model ban đầu. Gemini vẫn có HTTP 503 trong vòng cuối và chưa được coi ổn định dù khóa mới đã nhận HTTP 200.

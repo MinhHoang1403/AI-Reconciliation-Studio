@@ -4,11 +4,17 @@
 
 Theo yêu cầu khôi phục Smart Mapping, Qwen 8B nhận một envelope ngắn cho từng bảng. Backend tạo đủ trường của `NormalizationDraft` từ profile toàn cột. Header và số liệu đọc được cùng hỗ trợ gợi ý kiểu ngày/tiền, còn mã định danh giữ chuỗi. Qwen chỉ gợi ý loại bảng, ý nghĩa một dòng, ứng viên khóa và nghĩa gross/net/fee. Schema đầu ra giới hạn tham chiếu trong danh sách cột thực. Bộ kiểm tra từ chối tham chiếu sai hoặc trùng. Múi giờ, nghĩa tiền còn mơ hồ, đơn vị và các điều kiện nghiệp vụ tiếp tục chờ xác nhận qua preflight và thẻ duyệt.
 
+Heuristic kiểu tiền `[D]` cần header phù hợp và ít nhất 80% giá trị không rỗng đọc được như số, đồng thời không phải ứng viên mã định danh. Header ngày cần có quan sát định dạng ngày. Đây là gợi ý bản nháp, không phải ngưỡng chất lượng đã hiệu chỉnh; normalization vẫn kiểm từng giá trị, không bỏ dòng còn lại để đạt tỷ lệ này.
+
 Tên tệp và sheet là ngữ cảnh có giới hạn, được gửi như dữ liệu không đáng tin. Nếu grain còn unknown, Backend bỏ ứng viên khóa. Cột tiền tên chung `amount` hoặc `total` vẫn cần nghĩa được xác nhận. Công cụ không chuyển trạng thái dự kiến/hoàn thành thành đã thanh toán. Các đề xuất của nhiều bảng vẫn thuộc cùng một workflow và có quyết định riêng cho từng nguồn.
 
 Lệnh chuẩn hóa rõ ràng đi cùng tệp đính kèm có thể dùng resolver hữu hạn trên Backend khi chọn Qwen. Resolver kiểm đầy đủ câu và danh sách tệp gắn vào tin nhắn. Câu phủ định, scope thiếu hoặc câu chứa thêm hành động ngoài chuẩn hóa đi qua router. Frontend lưu danh sách tệp vào payload cùng mã yêu cầu. Khi phản hồi một lần gửi chưa rõ, bản ghi payload cũ tiếp tục xác định model và phạm vi đã gửi.
 
 `ASSISTANT_DEFAULT_MODEL` chọn mặc định của bộ chọn khi người dùng chưa có lựa chọn cá nhân. Cài mới mặc định Gemini. Giá trị này không sửa các job đã gửi. Trạng thái kết nối và trạng thái nghiệm thu tác vụ được trình bày riêng trong báo cáo.
+
+Local hiện hành đã đặt `QWEN_8B` sau lượt tạo đủ ba đề xuất LIVE và duyệt/chuẩn hóa qua UI. Model vẫn mang trạng thái **Chưa kiểm chứng** cho phạm vi AI tổng thể: grain/khóa cần người dùng sửa và chưa có full live gold cho Planner/NLP. Không nâng trạng thái hoặc bật cloud fallback chỉ từ ba JSON hợp lệ. Bằng chứng hiện hành tại IMPLEMENTATION_STATUS mục AH, thay số đo thời điểm AG.
+
+Vòng chẩn đoán khóa mới dùng REST `v1beta ...:generateContent` qua httpx 0.28.1, không dùng SDK Google; không có SDK retry ngầm. Đối chiếu [GenerateContent](https://ai.google.dev/api/generate-content), [Structured Outputs](https://ai.google.dev/gemini-api/docs/structured-output), [mã lỗi](https://ai.google.dev/gemini-api/docs/api-errors), [quota theo project](https://ai.google.dev/gemini-api/docs/rate-limits), [token receipts](https://ai.google.dev/gemini-api/docs/tokens), [billing](https://ai.google.dev/gemini-api/docs/billing) và [SDK chính thức](https://github.com/googleapis/python-genai). Không áp dụng ví dụ của API khác vào request đang chạy. Khóa mới đã nhận HTTP 200, nhưng cả JSON nhỏ lẫn bước mapping thật vẫn có HTTP 503. Không có bằng chứng 401/403/429 trong vòng này, không có quyền xem quota/billing project Google để xác minh nguyên nhân sâu hơn. Dừng Gemini sau năm attempts, giữ toàn bộ ledger. Với Ollama, dùng [Chat API](https://docs.ollama.com/api/chat) và metadata load/prefill/decode; thời gian token đầu không đo trực tiếp khi phản hồi không streaming.
 
 ## Chọn Gemini hoặc Qwen trong AI Assistant
 

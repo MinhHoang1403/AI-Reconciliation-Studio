@@ -2,6 +2,16 @@
 
 Định nghĩa thực thi nằm trong `backend/studio/contracts/`. OpenAPI tại `/openapi.json` và `/docs` mô tả request/response; endpoint này không cấp quyền đọc dữ liệu. Error envelope: `code`, `message_vi`, `details` đã redacted, `retryable`, `correlation_id`.
 
+## Smart Mapping local và lựa chọn ban đầu — 05/11/2026
+
+Adapter local dùng `MappingSemantics` nội bộ: entity, grain, tham chiếu khóa và nghĩa tiền. Schema giới hạn tham chiếu theo cột của bảng hiện tại; Backend vẫn từ chối cột sai/trùng. Backend tạo đầy đủ `NormalizationDraft` từ profile rồi dùng cùng assessment, preflight và approval. Đây là thay đổi cách chuẩn bị đề xuất; public draft, compiler, Decimal, Matcher và Verifier giữ nguyên. Grain unknown không được mang khóa suy đoán. Tham chiếu có thật chưa chứng minh khóa hoặc grain đúng nghiệp vụ.
+
+Tin nhắn có tệp đính kèm mang `dataset_ids` của đúng lần tải. Resolver local chỉ nhận lệnh chuẩn hóa explicit, kiểm toàn câu và exact scope; câu phủ định hoặc nhiều hành động không thuộc grammar tiếp tục qua router. Lỗi một đề xuất giữ những thẻ đã mở của nguồn trước để người dùng tiếp tục duyệt, không tạo lại các đề xuất đã nhận.
+
+`AssistantModelOption.preferred` mặc định false, là trường additive từ cấu hình `ASSISTANT_DEFAULT_MODEL`. Frontend chỉ chọn model ưu tiên khả dụng khi chưa có lựa chọn cá nhân. Model vẫn được đóng vào payload/job; đổi bộ chọn không đổi lần gửi chưa rõ phản hồi hoặc job đã nhận. Không có fallback cloud tự động.
+
+Khóa được chọn trong Chat draft vẫn là trường required theo contract hiện có. Trường khóa của màn hình thủ công có thể không required. So kết quả giữa hai đường phải kiểm cả điều kiện này: bản duyệt Chat của bộ ba nguồn báo thêm bốn dòng thiếu khóa, không phải phát sinh lỗi ngày hoặc mất dữ liệu. Số liệu và oracle từng cấu hình tại báo cáo mục AH.
+
 ## Ngày và kiểm chứng Mapping Review — 05/11/2026
 
 `normalization-2` chấp nhận ba alias hiển thị hữu hạn: `YYYY-MM-DD`/`DD/MM/YYYY`/`MM/DD/YYYY` tương đương `%Y-%m-%d`/`%d/%m/%Y`/`%m/%d/%Y`. Không đoán thứ tự ngày/tháng. Compiler và transform kiểm cấu hình trước khi lặp dòng: `DATE_FORMAT_INVALID`, `TIMEZONE_INVALID`, `TIMEZONE_DATABASE_UNAVAILABLE` dừng tác vụ, không tạo hàng nghìn INVALID_DATE. Ngày sai thật là INVALID_DATE; DST mơ hồ/không tồn tại có mã riêng; timestamp có offset phải khớp vùng đã duyệt. Date-only vẫn theo contract timestamp UTC, đối chiếu calendar date sau khi chuyển về múi giờ đã duyệt. Không sửa canonical lịch sử; lần chạy mới dùng revision mới.
