@@ -270,7 +270,7 @@ def write_xlsx(path: Path, sections: dict[str, list[list[Any]]]) -> None:
     for i, (name, rows) in enumerate(sections.items(), 1):
         sheet = workbook.create_sheet(name)
         exact[f"xl/worksheets/sheet{i}.xml"] = numeric = {}
-        for values in rows:
+        for row_index, values in enumerate(rows, 1):
             if any(
                 isinstance(v, str)
                 and (len(v) > 32767 or re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", v))
@@ -280,7 +280,10 @@ def write_xlsx(path: Path, sections: dict[str, list[list[Any]]]) -> None:
                     "EXPORT_CELL_LIMIT", "Text vượt giới hạn ô XLSX; không cắt hoặc sửa dữ liệu."
                 )
             sheet.append(values)
-            for cell, value in zip(sheet[sheet.max_row], values, strict=False):
+            # max_row và truy cập cả hàng quét lại các ô đã ghi; dùng tọa độ
+            # hiện hành để tránh chi phí bậc hai trên sheet Sources nhiều dòng.
+            for column_index, value in enumerate(values, 1):
+                cell = sheet.cell(row_index, column_index)
                 if isinstance(value, str):
                     cell.data_type = "s"
                     cell.value = safe_text(value)
@@ -292,10 +295,10 @@ def write_xlsx(path: Path, sections: dict[str, list[list[Any]]]) -> None:
         for cell in sheet[1]:
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor="2563EB")
-        for column in sheet.columns:
+        for column in sheet.iter_cols(max_row=min(100, len(rows))):
             letter = column[0].column_letter
             sheet.column_dimensions[letter].width = min(
-                55, max(16, max(len(str(c.value or "")) for c in column[:100]) + 2)
+                55, max(16, max(len(str(c.value or "")) for c in column) + 2)
             )
     temporary = path.with_suffix(".unpublished.xlsx")
     workbook.save(temporary)
