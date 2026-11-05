@@ -174,11 +174,47 @@ def test_status_empty_uploaded_and_ambiguous_sources_have_a_visible_outcome(pg, 
     response = ask_agent(client, ctx, cid, text="Hai file này chuẩn hóa xong chưa?")
     drain(factory, worker)
     wf = workflow_for(client, factory, response["job_id"])
-    assert wf["state"] == ("WAITING_REVIEW" if count > 2 else "COMPLETED")
-    if count > 2:
+    assert wf["state"] == ("COMPLETED" if count == 0 else "WAITING_REVIEW")
+    if count:
         assert wf["detail"]["reviews"][0]["kind"] == "CLARIFICATION"
     else:
         assert wf["detail"]["blocks"]
+
+
+@pytest.mark.parametrize(
+    "question,expected",
+    [
+        ("Hai bộ dữ liệu đã được chuẩn hóa chưa?", "WAITING_REVIEW"),
+        ("Nguồn đang xem đã được chuẩn hóa chưa?", "COMPLETED"),
+    ],
+)
+def test_status_respects_single_source_scope_and_never_answers_two_with_one(pg, question, expected):  # noqa: F811
+    client, factory, worker = pg
+    pid, _ = prepare_pair(pg)
+    with factory() as db:
+        source = db.scalar(select(DatasetRow).where(DatasetRow.project_id == pid))
+        did = source.id
+    ctx = dict(project_id=pid, dataset_id=did)
+    cid = conversation(client, ctx)
+    result = ask_agent(client, ctx, cid, text=question)
+    drain(factory, worker)
+    wf = workflow_for(client, factory, result["job_id"])
+    assert wf["state"] == expected and wf["detail"]["model_calls"] == 0
+    if expected == "WAITING_REVIEW":
+        assert wf["detail"]["reviews"][0]["kind"] == "CLARIFICATION"
+        assert "1 nguồn" in wf["detail"]["reviews"][0]["question"]
+        assert not wf["detail"]["blocks"]
+    else:
+        assert (
+            len(
+                [
+                    b
+                    for b in wf["detail"]["blocks"]
+                    if b["type"] == "progress" and "Đã chuẩn hóa;" in b["text"]
+                ]
+            )
+            == 1
+        )
 
 
 @pytest.mark.parametrize(

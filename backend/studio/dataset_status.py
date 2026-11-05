@@ -98,6 +98,18 @@ def read_processing_status(
                 )
             matched.extend(matches)
         datasets = list({d.id: d for d in matched}.values())
+    if (
+        datasets
+        and re.search(r"\b(?:hai|2)\s+(?:bo du lieu|nguon|file|tep)\b", plain_question(goal))
+        and len(datasets) != 2
+    ):
+        raise DomainError(
+            "INPUT_AMBIGUOUS",
+            f"Ngữ cảnh hiện tại có {len(datasets)} nguồn: "
+            + "; ".join(d.name for d in datasets)
+            + ". Hãy chọn đúng hai nguồn. Nếu đang xem một tệp, "
+            "mở Đổi ngữ cảnh phân tích và chọn Dùng dữ liệu của dự án trước khi hỏi lại.",
+        )
     result = []
     from studio.normalization import NORMALIZATION_REVISION
 

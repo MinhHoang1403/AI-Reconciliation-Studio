@@ -3,6 +3,34 @@ import {expect} from "@playwright/test";
 import {mkdir} from "node:fs/promises";
 import {createHash} from "node:crypto";
 
+test('[MOCK CONTRACT] single-source context can explicitly return to project data without a write',async({page})=>{
+  const context={project_id:'scope-project',dataset_id:'scope-b'};
+  const conversation={id:'scope-conversation',context,title:'Hội thoại của nguồn B',created_at:'2026-11-05T00:00:00Z',archived:false};
+  const writes:string[]=[];
+  await page.addInitScript(()=>{if(!sessionStorage.getItem('scope-fixture-initialized')){localStorage.setItem('studio.project','scope-project');localStorage.setItem('studio.conversation.scope-project','scope-conversation');sessionStorage.setItem('scope-fixture-initialized','1');}});
+  await page.route('**/api/**',async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(route.request().method()!=='GET')writes.push(path);
+    if(path==='/api/session')return route.fulfill({json:{workspace_id:'test',actor_id:'reader',role:'owner'}});
+    if(path==='/api/settings')return route.fulfill({json:{workspace_name:'TEST scope',agent_cloud_enabled:false,assistant_cloud_enabled:false,policy:{allow_external_ai:false}}});
+    if(path==='/api/projects/scope-project')return route.fulfill({json:{id:context.project_id,name:'TEST scope',business_scope:'Synthetic',classification:'TEST'}});
+    if(path==='/api/datasets/scope-b')return route.fulfill({json:{id:'scope-b',name:'Chứng từ B.xlsx',project_id:context.project_id}});
+    if(path==='/api/conversations')return route.fulfill({json:{items:[conversation],has_more:false}});
+    if(path==='/api/conversations/scope-conversation')return route.fulfill({json:{conversation,items:[],has_more:false}});
+    return route.fulfill({json:{items:[],total:0,has_more:false}});
+  });
+  await page.goto('/#page=assistant&project=scope-project&dataset_id=scope-b');
+  const input=page.getByLabel('Câu hỏi cho AI Assistant',{exact:true});await expect(input).toBeEnabled();
+  await input.fill('Bản nháp riêng của nguồn B');
+  await page.getByRole('button',{name:'Đổi ngữ cảnh phân tích',exact:true}).click();
+  const modal=page.getByRole('dialog',{name:'Đổi ngữ cảnh phân tích',exact:true});await expect(modal).toContainText('Chứng từ B.xlsx');
+  await modal.getByRole('button',{name:'Dùng dữ liệu của dự án',exact:true}).click();await expect(modal).toBeHidden();
+  await expect(page).not.toHaveURL(/dataset_id=/);await expect(input).toHaveValue('');
+  expect(await page.evaluate(()=>Object.values(sessionStorage).includes('Bản nháp riêng của nguồn B'))).toBe(true);
+  await page.reload();await expect(input).toBeEnabled();await expect(page).not.toHaveURL(/dataset_id=/);
+  expect(writes).toEqual([]);
+});
+
 test('[LOCAL] composer reflows an unchanged draft when the viewport narrows and widens',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await page.setViewportSize({width:1440,height:900});await page.goto('/');

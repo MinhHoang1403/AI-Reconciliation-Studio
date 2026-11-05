@@ -1107,12 +1107,10 @@ export function AssistantStudio({
                 </p>
               </details>
             )}
-            {context.dataset_id && (
-              <p className="muted">
-                Nguồn đang xem: {context.dataset_id.slice(0, 8)}. Chọn run đã
-                xác minh để hỏi số liệu đối soát.
-              </p>
-            )}
+            {displayContext.dataset_id && <>
+              <p className="muted">Nguồn đang xem: {sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Tệp đang chọn"}. Phạm vi này chỉ gồm một nguồn.</p>
+              <button className="button secondary" disabled={busy||!!pendingJob||loading} onClick={()=>{newConversation({project_id:context.project_id});setContextOpen(false);}}>Dùng dữ liệu của dự án</button>
+            </>}
       </Modal>
       {evidence && (
         <ReconciliationEvidence
