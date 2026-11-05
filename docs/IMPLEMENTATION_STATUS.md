@@ -2106,3 +2106,70 @@ Có thể sử dụng local tại `http://127.0.0.1:18180` cho các luồng đã
 Các lỗi tái hiện thuộc phạm vi đã được sửa, full regression và các checks liên quan đạt như mục E; không còn lỗi tái hiện LOCAL nghiêm trọng đã biết trong các luồng đã đo. Điều này không phải cam kết không có mọi lỗi hoặc AI luôn hiểu đúng. README liên kết hướng dẫn mới; `USER_TEST_GUIDE.md` có8ảnh thực chụp từ Docker hiện hành, từng bước và đường manual đã thực hành trên dự án mới. Markdown12tài liệu0issue; Ruff/mypy43files, ESLint/TypeScript/build, repository paths/known-secrets/history và diff whitespace đạt. Không thêm dependencies, migrations, services hoặc worktree.
 
 Code hiện hành đã push nhánh `codex/product-polish`, official origin được kiểm trước push. Main vẫn `a4f70b289b935b11928e6d1c2b2e0748160fbfa1`, chưa merge vì mục H chưa đủ full LIVE gate. Commit tài liệu bàn giao tiếp theo chỉ đổi README/hướng dẫn/ảnh/báo cáo; source ứng dụng trong Docker vẫn trùng với source đã kiểm tra. Commit hash bàn giao được nêu trong trả lời và xác minh bằng remote/status, không tự ghi hash chưa tồn tại vào báo cáo.
+
+## AF. Chuẩn hóa ngày và kiểm chứng Smart Mapping với ba nguồn tháng 10/2026
+
+### A. Nguyên nhân và bản sửa
+
+Nguồn `01_don_hang_du_kien_2400.csv` có 2.418 dòng. Job gốc `5adf1d0e-2089-4cde-a2ef-5970d249cefe` hoàn tất với chất lượng PARTIAL, nhưng cả 2.418 dòng bị đánh dấu không hợp lệ. Bản ánh xạ đã duyệt `bef7cbec-77b7-47d7-958b-9a8bac9f37ab` lưu định dạng `YYYY-MM-DD`, múi giờ UTC. Cùng artifact Parsed và image Worker cũ tái hiện lỗi: bộ chuyển đổi truyền chuỗi hiển thị nguyên văn cho [Python datetime.strptime](https://docs.python.org/3.12/library/datetime.html#strftime-and-strptime-format-codes); chuỗi `2026-10-10` gây `ValueError: time data '2026-10-10' does not match format 'YYYY-MM-DD'`, rồi bị ghi là `INVALID_DATE`. Đây là exception từ lần tái hiện; artifact lỗi gốc không lưu traceback.
+
+`date_parsing.py` chuyển ba mẫu hiển thị sang định dạng Python, kiểm tra cú pháp và múi giờ IANA trước khi đọc dòng, tách lỗi cấu hình/môi trường khỏi lỗi dữ liệu. Kiểm tra offset và giờ nhập nhằng hoặc không tồn tại khi đổi giờ mùa hè. Backend và Worker dùng cùng image, có dữ liệu múi giờ Debian `2026b-0+deb12u1`; UTC, Asia/Ho_Chi_Minh và America/New_York được kiểm. Hành vi dùng dữ liệu hệ thống phù hợp [Python zoneinfo](https://docs.python.org/3.12/library/zoneinfo.html#data-sources). Không đổi dependency Python hay migration.
+
+### B. Kết quả trên nguồn gốc và dự án kiểm thử
+
+Giữ bản chuẩn hóa `cf3f21ef-2a8c-4795-8419-0545f64aec46`. Job mới `a3e58d64-1829-4589-9b16-90aa70d065f8` dùng cùng ánh xạ đã duyệt, tạo `7e492f46-b668-42df-9be6-ef84139df85f` (`normalization-2`): **2.408 hợp lệ, 10 không hợp lệ**. Số lỗi ngày từ 2.418 còn đúng 2; số bản ghi lỗi từ 2.432 còn 16. Mười bốn lỗi khác vẫn còn. SHA-256 của file gốc và metadata bản chuẩn hóa cũ không đổi.
+
+Tải ba tệp gốc vào dự án TEST mới `7967303e-0bdc-461b-ad07-cd8ce9d4f31f`; kiểm chứng và duyệt thủ công từng nguồn trên trình duyệt sau khi AI bị chặn. Đọc lại artifact Worker và so từng ngày, giá trị Decimal đã chuyển được, mã có số 0 đầu và dấu vết dòng vật lý với dữ liệu nguồn.
+
+| Nguồn | Tổng dòng | Hợp lệ | Không hợp lệ | Lỗi ngày thật | Lỗi ngoài ngày |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 01 · Đơn dự kiến CSV | 2.418 | 2.408 | 10 | 2 | `amount`: 4 trống, 5 sai định dạng, 3 khác tiền tệ; `reference`: 2 trống |
+| 02 · Sự kiện thanh toán XLSX | 2.685 | 2.674 | 11 | 5 | `amount`: 3 trống, 5 sai định dạng, 3 khác tiền tệ; `batch_id`, `currency`, `reference`: 2, 3, 3 trống |
+| 03 · Sao kê theo lô CSV | 384 | 380 | 4 | 0 | `batch_id`: 2 trống; `gross_amount`: 2 sai định dạng; gross, net và fee: mỗi cột 2 khác tiền tệ |
+
+Tổng 5.487 dòng, 5.462 hợp lệ, 25 cần kiểm tra. Mọi dòng `MAIN_VND` hợp lệ; lỗi chỉ ở `EDGE_CASE`. Một dòng có thể có nhiều lỗi. Giữ nguyên giá trị gốc, không bù NULL bằng 0, không đổi USD thành VND hoặc tự đổi trạng thái dự kiến thành đã thanh toán.
+
+![Bản chuẩn hóa cũ và bản mới của nguồn 01 hiển thị cùng nhau trên Docker](images/user-guide/date-normalization-comparison.png)
+
+### C. Kiểm chứng đề xuất trước khi duyệt
+
+Profiling bổ sung thống kê định dạng ngày, cách viết số, giá trị rỗng, số 0 đầu, tiền tệ và tính duy nhất. Chỉ điền sẵn dữ kiện đủ bằng chứng. So mẫu đã duyệt theo workspace, nghiệp vụ và chữ ký cấu trúc tương thích; quyền duyệt cũ không chuyển sang bản mới. Không suy múi giờ từ ngày trần, tự đoán gross/net hoặc dùng mã khách hàng làm khóa khi dòng là đơn/sự kiện/lô và thiếu bằng chứng quan hệ.
+
+Preflight kiểm thử toàn bảng với đúng bộ chuyển đổi của Worker, không xuất bản dữ liệu. Kiểm checksum và báo số dòng dự kiến lỗi, chặn cấu hình làm tất cả giá trị không rỗng của một trường cùng lỗi. Kiểm phép biến đổi không tổng hợp theo lô 2.000 dòng để hạn chế RAM; phép tổng hợp giữ đầy đủ thành viên. API kiểm quyền và kiểm lại bản nháp tại thời điểm duyệt; thay đổi bản nháp làm kết quả cũ mất hiệu lực. Hợp đồng đối soát, công thức tiền, trạng thái và cơ chế quyền giữ nguyên.
+
+### D. Giao diện
+
+Khung duyệt trong chat gom thành **Đã xác định bằng bằng chứng**, **Cần bạn xác nhận** và **Dữ liệu bất thường**. Chọn múi giờ chung một lần cho nguồn khi thích hợp; mở **Xem và chỉnh các lựa chọn** để sửa từng cột. Nút duyệt chờ kết quả kiểm tra của đúng bản nháp và mỗi nguồn vẫn cần quyết định riêng. [Ảnh khung duyệt](images/user-guide/mapping-review.png) chụp từ Chromium với phản hồi mô phỏng (MOCK). Ảnh trước, ảnh kiểm tra thủ công và biên bản dữ liệu tổng hợp giữ tại `runtime/mapping-audit/` trên máy kiểm thử.
+
+### E. Đối soát, bằng chứng và xuất tệp
+
+Cả hai run `PARTIAL_VERIFIED`, đúng với bộ thử có nhóm chưa đủ điều kiện và dòng bị loại. Hai hợp đồng riêng theo `MAIN_VND`, UTC, kỳ tháng 10/2026 và sai số 0 VND. Oracle độc lập đọc CSV/XLSX, nhóm khóa ghép và cộng có dấu bằng Decimal; không dùng Matcher hoặc Verifier.
+
+| Run | Quan hệ và khóa | Khớp | Lệch tiền | Thiếu đối ứng (trái/phải) | Lệch có dấu / tuyệt đối |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `a40bbb98-c05f-499a-ac03-f13be55d23c7` | 01 ↔ 02, 1:N theo `scope + reference` | 2.040 | 200 | 215 (160/55) | 7.867 / 60.883 VND |
+| `d94ed637-0e80-4b0a-bac4-1256d4eabd1e` | 02 ↔ 03, N:1 theo `scope + batch_id`, dùng gross | 323 | 40 | 31 (18/13) | −8.306 / 11.812 VND |
+
+Đã mở đúng hai báo cáo, biểu đồ, truy vấn ba nhóm lệch lớn nhất và bằng chứng của nhóm thứ hai; kiểm khóa và nguồn, mở đúng dòng từ bảng, tải lại vẫn giữ kết quả. CSV và XLSX của từng run giữ đúng snapshot API; cả 240 nhóm lệch khớp khóa và tiền từng phía với oracle. Hai bản xuất có 5.103/3.069 dòng bằng chứng và 51.297/33.375 ô nguồn; không có ô công thức, giữ số âm và số 0 đầu.
+
+Excel cặp đầu từng treo hơn 4 phút vì mỗi lần thêm dòng lại duyệt toàn worksheet để tra dòng cuối. Bản sửa dùng tọa độ trực tiếp và giới hạn số dòng dùng để ước lượng độ rộng. Job `7043c3ac-e7da-413f-91c6-bc414f75d4a4` được phục hồi qua lease và hoàn tất lần xử lý sau trong 14,490 giây, với cùng một export. Khi tải phiên chậm, mở liên kết run B trước khi tải xong run A từng bị trả về A. Frontend hiện ghi nhận đích mới trong lúc tải phiên; đổi dự án hủy lần đọc cũ. Đã tái hiện trên bản cũ và xác nhận URL, báo cáo đúng run B trên bản triển khai.
+
+### F. Kiểm thử và AI LIVE
+
+Backend/PostgreSQL **435/435** (một cảnh báo deprecation từ Starlette TestClient); Playwright toàn bộ **137/137** trên bản Docker trước bản sửa điều hướng và **39/39** ca thuộc Assistant, Mapping Review, bố cục và cuộn chat trên bản Docker sau sửa. Có ca bảo mật, responsive 390–1920 px, đường thủ công và kiểm thử hợp đồng AI mô phỏng. Bộ kiểm ngày gồm CSV/XLSX, NULL/invalid, lỗi cấu hình/múi giờ, DST, offset và truy vết dòng. Có ca từ chối khóa khách hàng không phù hợp, xử lý currency/locale mơ hồ và sửa bản nháp sau preflight.
+
+Vòng đầu và vòng sau đổi khóa đều dùng dữ liệu tổng hợp, cùng model `gemini-3.5-flash-lite`. Đã kiểm Backend/Worker dùng cấu hình mới mà không in khóa. Vòng sau: job `69765cf3-7984-4ab3-a9e8-90be22d47efb` nhận HTTP 200 sau 4.735 ms, xác định đúng lệnh chuẩn hóa và cả ba nguồn. Job đề xuất `eab07043-5e88-4b2c-a898-70adf644e05e` (`agent-normalization-5`) nhận HTTP 503 sau 1.853 ms, một attempt, `delivery_unknown: false`. Luồng BLOCKED, không có đề xuất để duyệt, không gửi lại sau 503. Không có bằng chứng khóa mới bị từ chối hoặc cơ sở kết luận nguyên nhân nội bộ của Gemini.
+
+Hai vòng cộng **4 HTTP attempts mới** (2 × 200, 2 × 503), ledger 342 → 346; hai phản hồi có số đo ghi nhận 21.583 tokens (21.271 đầu vào, 312 đầu ra). Chi phí hóa đơn chưa xác minh. Chưa có bộ đề xuất LIVE để đo mức tăng độ chính xác, độ bao phủ hoặc số lần người dùng phải sửa. Kết quả thủ công, kiểm chứng local và MOCK không thay phép đo LIVE.
+
+### G. Dữ liệu, Docker và Git
+
+Backup `backup_39aa77c2aa464f11ac3655deee279ce5` trên volume artifact: sao lưu 80,138 giây, restore thử vào schema tách biệt 36,228 giây. Đối chiếu sau kiểm thử: đủ bản ghi cũ trong 24 bảng, không đổi giá trị; SHA-256 của 5.347 tệp đều khớp. Giữ backup, hai volumes Studio, raw, ánh xạ đã duyệt và artifact cũ. Sau recreate Frontend, snapshot/verify đạt. Cả bốn dịch vụ healthy; cổng chỉ bind loopback. Đã đối chiếu 45 file Python giữa host và hai container, 7 file Frontend giữa bản dựng, image và HTTP.
+
+Studio có 4 container đang chạy, 2 image hiện hành (Frontend 24,7 MiB, Backend/Worker 149,1 MiB) và 4 image giữ để rollback. Không có job chờ hoặc đang chạy tại lần kiểm cuối. Không có container Studio dư hoặc image cũ của Studio đủ điều kiện xóa. So với đầu nhiệm vụ, 27 container ngoài Studio giữ nguyên danh tính, image và volume; 36 volume toàn host giữ nguyên. Compose `langfuse` vẫn độc lập và 6 dịch vụ đều healthy. Giữ cache dùng chung và tài nguyên của các dự án khác.
+
+Backend/Worker ở `09290a46ea82a8905386b0d7a314d1f537a05a6d`, Frontend ở `ef9cf0c2e32a81549d0df545b740b047c25199ca`. Các nhóm thay đổi: `b1478d3` sửa ngày và preflight; `cd6ae91` kiểm dữ kiện theo phạm vi và giới hạn bộ nhớ kiểm tra; `09290a4` sửa hiệu năng xuất Excel; `ef9cf0c` sửa liên kết báo cáo. Mã đã push nhánh `codex/product-polish` trên origin chính thức. Main giữ `a4f70b289b935b11928e6d1c2b2e0748160fbfa1` vì cổng AI LIVE chưa đạt.
+
+### H. Mức sẵn sàng và cách bắt đầu
+
+Có thể dùng [Studio local](http://127.0.0.1:18180) để chuẩn hóa có kiểm chứng và duyệt thủ công, đối soát, đọc báo cáo/bằng chứng và xuất tệp trong phạm vi đã thử. Bắt đầu theo [hướng dẫn](USER_TEST_GUIDE.md), mục 5 và 13. Luồng tự tạo đề xuất Smart Mapping ba nguồn vẫn **BLOCKED ở Gemini HTTP 503**. Cần một lượt LIVE thành công để nghiệm thu độ chính xác đề xuất và đo mức giảm thao tác; chưa có cơ sở phát hành toàn bộ luồng AI tự động.

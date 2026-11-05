@@ -118,21 +118,29 @@ Không chỉnh tệp hoặc đáp án để làm kết quả khớp. Nếu thử
 
 ### 5.1. Yêu cầu bằng hội thoại
 
-Gửi:
+Chọn đúng dự án, tải các tệp rồi gửi một lần:
 
-> Đề xuất cách chuẩn hóa hai nguồn dữ liệu. Hãy hỏi tôi nếu có cột hoặc ý nghĩa chưa rõ.
+> Hãy kiểm tra và chuẩn hóa các bộ dữ liệu này.
 
-Nếu cần giải thích thêm, dùng câu mô tả đầy đủ theo đúng dữ liệu thực hành:
+Chờ thẻ **Quyết định cần xác nhận** cho từng bảng. Mỗi thẻ ghi tên tệp/sheet, tổng số cột, số trường đã kiểm kỹ thuật và số trường cần xác nhận. Đề xuất không phải phê duyệt. Nếu chưa đủ dữ kiện, cung cấp thông tin được hỏi hoặc mở **Bổ sung bằng tiếng Việt**; nội dung được diễn giải thành bản xem lại và bạn vẫn phải quyết định.
 
-> Mỗi dòng là một giao dịch được báo cáo. Ghép scope và reference làm khóa, giữ nguyên mã có số 0 đầu. amount là reported_transaction_amount, gross VND, định dạng số 1,234.56. event_date là ngày phát sinh dạng năm-tháng-ngày, múi giờ UTC. PAID là đã thanh toán, UNPAID chưa thanh toán, COMPLETED chỉ hoàn thành xử lý. Không biến tiền trống thành 0. Cho tôi xem và duyệt cách ghép cột trước khi chuẩn hóa.
+![Thẻ đề xuất thu gọn với một lựa chọn múi giờ cho hai trường ngày](images/user-guide/mapping-review.png)
 
-Nếu xuất hiện câu hỏi bổ sung, chọn đúng nguồn hoặc bấm **Trả lời bằng tiếng Việt**, nhập thông tin, gửi. Khi hiện **Quyết định cần xác nhận**, kiểm tra từng tệp trước khi bấm duyệt.
+Ảnh trên chụp hồi quy trình duyệt với đề xuất tổng hợp giả lập, dùng để minh họa bố cục. Trạng thái AI LIVE của các lượt kiểm thử thật xem trong [báo cáo triển khai](IMPLEMENTATION_STATUS.md).
 
-### 5.2. Kiểm tra nội dung phê duyệt
+### 5.2. Xem kết quả kiểm tra và duyệt
 
-1. Trên thẻ của từng tệp, bấm **Xem và chỉnh các lựa chọn**.
-2. Kiểm tra loại dữ liệu là giao dịch, mỗi dòng là một giao dịch. Hai nguồn phải có ý nghĩa tương thích.
-3. Kiểm tra các cột theo bảng dưới. Tệp B đảo thứ tự cột nhưng phải giữ đúng tên/ý nghĩa.
+1. **Đã xác định bằng bằng chứng**: mở khi cần đối chiếu kiểu dữ liệu và các phép chuyển đổi đã kiểm. Không phải nhập lại định dạng ngày/số nếu hệ thống đã điền đúng.
+2. **Cần bạn xác nhận**: trả lời đúng thông tin còn thiếu. Ví dụ, chọn **Múi giờ của nguồn** một lần cho các cột ngày còn thiếu múi giờ. `2026-10-10` tự nó không cho biết thuộc UTC hay Việt Nam. Ngày lịch được biểu diễn bằng nửa đêm trong vùng đã xác nhận rồi lưu UTC; đối chiếu ngày sau khi xem lại theo vùng đã chọn.
+3. **Dữ liệu bất thường**: xem số dòng lỗi và loại lỗi. Nếu có nhiều tiền tệ, trường tiền hiện cần một đơn vị đã xác nhận. Chọn theo phạm vi dùng thật; giá trị tiền tệ khác vẫn còn trong nguồn và được báo riêng, không tự quy đổi hoặc bỏ dòng.
+4. **Quan hệ tiềm năng giữa các nguồn**, nếu có: xem số khóa chung, trùng và thiếu. Hai cột cùng tên hoặc nhiều khóa giống nhau chưa đủ để quyết định mỗi dòng là gì hay dùng một-một/một-nhiều. Mã khách hàng không mặc định là khóa giao dịch.
+5. Mở **Xem và chỉnh các lựa chọn** nếu cần thay kiểu, chỉ tiêu, cơ sở số tiền, khóa hoặc cách đọc. Khi sửa, chờ hệ thống kiểm lại. Nếu toàn bộ giá trị của một cột không chuyển được, kiểm lại quy tắc trước khi duyệt; không coi cả cột nguồn là hỏng.
+6. Đọc thông báo **Đã kiểm tra trước chuẩn hóa** và số dòng dự kiến lỗi. Nếu có xác nhận vùng bảng/cảnh báo nguồn, chỉ tích sau khi đã kiểm tra. Bấm **Duyệt cách ghép cột và chuẩn hóa** một lần khi đã hiểu và đồng ý. Lặp lại từng nguồn; phê duyệt một tệp không duyệt thay tệp khác.
+7. Vào **Tệp đã tải**, chọn tệp/sheet và **Phiên bản chuẩn hóa** vừa tạo. Chọn **Đã chuẩn hóa** để xem kết quả, **Dòng lỗi** để truy đúng giá trị gốc và số dòng.
+
+Nếu Gemini đang không khả dụng, dùng đường thủ công bên dưới. Khi chưa rõ dịch vụ đã nhận yêu cầu, giữ lịch sử và theo dõi công việc; không gửi lặp.
+
+Các lựa chọn tham chiếu khi cần sửa đề xuất của bộ A trong mục 3:
 
 | Cột nguồn | Cách xác nhận |
 | --- | --- |
@@ -141,14 +149,8 @@ Nếu xuất hiện câu hỏi bổ sung, chọn đúng nguồn hoặc bấm **T
 | amount | Số tiền; chỉ tiêu `reported_transaction_amount`; cơ sở `gross`; tiền tệ và đơn vị `VND`; định dạng `1,234.56` |
 | event_date | Ngày; định dạng `2026-10-31` tương ứng `%Y-%m-%d`; múi giờ `UTC` |
 | currency | Văn bản; mã tiền tệ trong nguồn |
-| payment_status | Văn bản; ý nghĩa trạng thái thanh toán khi bạn xác nhận đúng PAID/UNPAID/COMPLETED |
+| payment_status | Trạng thái gốc; COMPLETED và EXPECTED không mặc định là PAID |
 | description | Văn bản; không thực thi nội dung giống công thức hoặc chỉ thị |
-
-Sau khi đối chiếu các cột:
-
-1. Kiểm tra cảnh báo và vùng bảng. Không duyệt nếu cột tiền/ngày/khóa chưa đúng.
-2. Chỉ khi đã kiểm tra, tích xác nhận cảnh báo và bấm **Duyệt cách ghép cột và chuẩn hóa**. Nút này lưu ánh xạ đã duyệt rồi thực hiện chuẩn hóa; trả lời bằng tiếng Việt chỉ sửa đề xuất.
-3. Lặp lại cho nguồn còn lại. Nếu một nguồn còn chờ duyệt thì chưa thể nói cả hai đã chuẩn hóa.
 
 ### 5.3. Đường thủ công khi AI không khả dụng
 
@@ -166,7 +168,7 @@ Không cần đổi API key hoặc mở quyền mới để kiểm tra dữ li�
 6. Với từng cột, nhập **Trường đích** giống tên cột trong bảng trên. Chọn kiểu văn bản/số tiền/ngày. Tích **Thành phần khóa** cho scope và reference.
 7. Ở amount: Locale `en-US`, Chỉ tiêu `reported_transaction_amount`, Cơ sở `gross`, Tiền tệ `VND`, Đơn vị `VND`.
 8. Ở event_date: định dạng `%Y-%m-%d`, múi giờ `UTC`. Kiểm tra cảnh báo nếu có.
-9. Bấm **Xác nhận ánh xạ**. Chờ **Đã cập nhật ánh xạ.**
+9. Chờ thông báo **Đã kiểm tra … dòng**. Xem số dòng dự kiến lỗi, sửa lại trường chưa đúng nếu có. Bấm **Xác nhận ánh xạ** khi nút bật; chờ **Đã cập nhật ánh xạ.**
 10. Mở tab **Chuẩn hóa** → **Chuẩn hóa dữ liệu**. Chờ kết quả, kiểm tra đủ 25 hoặc 24 dòng. Lặp lại với tệp còn lại.
 11. Bấm **AI Assistant** ở thanh bên để về Chat.
 
@@ -339,3 +341,26 @@ Nếu bấm gửi một lần mà thấy hai yêu cầu, ghi lại thời điể
 - [ ] Reload/History/bản nháp và kết quả cũ được giữ.
 
 Kết quả nghiệm thu kỹ thuật, ảnh thực tế và các ca AI LIVE còn chặn được ghi tại [báo cáo triển khai](IMPLEMENTATION_STATUS.md). PASS local hoặc MOCK không chứng minh mọi câu tiếng Việt đều được AI hiểu đúng. Trạng thái phát hành phải căn cứ báo cáo của đúng revision đang chạy.
+
+## 13. Kiểm thử bộ ba nguồn tháng 10/2026
+
+Dùng ba tệp tổng hợp đã tải vào dự án **TEST Đối soát 3 nguồn tháng 10-2026**. Nếu muốn làm từ đầu, tải lại bản gốc qua **Tệp đã tải → Tải tệp gốc**, sau đó tạo dự án TEST mới. Không sửa tệp, không xóa bản chuẩn hóa cũ. Ba tệp này thuộc dữ liệu kiểm thử local và không đi kèm source GitHub.
+
+| Tệp | Tổng dòng | Dòng hợp lệ sau chuẩn hóa | Dòng không hợp lệ | Lỗi ngày thật |
+| --- | ---: | ---: | ---: | ---: |
+| `01_don_hang_du_kien_2400.csv` | 2.418 | 2.408 | 10 | 2 |
+| `02_su_kien_thanh_toan_2685.xlsx` | 2.685 | 2.674 | 11 | 5 |
+| `03_sao_ke_ngan_hang_theo_lo.csv` | 384 | 380 | 4 | 0 |
+
+1. Tải cả ba tệp; kiểm tổng 5.487 dòng. Xác nhận ngày `%Y-%m-%d` và UTC theo quy ước của bộ thử. Với tệp 01 đã có ánh xạ được duyệt, người vận hành có thể chạy **Chuẩn hóa dữ liệu** để tạo bản `normalization-2`; giữ bản cũ để đối chiếu. Không cần duyệt lại chỉ vì cách hiển thị `YYYY-MM-DD` đã được bộ chuyển đổi hiểu đúng.
+2. Trong **Dòng lỗi**, kiểm tra các lỗi còn lại thuộc `EDGE_CASE`; các dòng `MAIN_VND` đã kiểm không còn lỗi. Một dòng có thể có nhiều lỗi/cảnh báo; số bản ghi lỗi có thể lớn hơn số dòng không hợp lệ. Kiểm tra USD giữ nguyên giá trị gốc, không được tính như VND.
+3. Ở nguồn 01, `scope + reference` nhận diện đơn dự kiến; `customer_code` là mã khách hàng. Ở nguồn 02, mỗi dòng là sự kiện thanh toán; giữ `payment_id`, `reference`, `batch_id`, tiền âm và trạng thái gốc. Nguồn 03 là một dòng theo lô sao kê; `gross_amount`, `net_amount` và `fee_amount` là ba cột riêng. Không dùng net để so tổng gross.
+4. Tạo hai quy tắc riêng theo mục 6. Chọn `scope = MAIN_VND` ở cả hai phía, tiền tệ VND, UTC, kỳ từ `2026-10-01` đến trước `2026-11-01`. Đáp án bên dưới dùng sai số tuyệt đối `0 VND`, quy tắc giữ dấu số tiền, có xác nhận nguồn đầy đủ trong kỳ. Nếu dùng sai số khác, số nhóm trong ngưỡng sẽ thay đổi.
+5. Đối chiếu đáp án, mở **Xem bằng chứng**, rồi xuất CSV và XLSX cho từng lần chạy. Mở lại theo đúng lần đối soát, không dùng kết quả của cặp còn lại để kiểm tiền.
+
+| Cặp | Khóa và quan hệ | Khớp hoàn toàn | Lệch tiền | Thiếu đối ứng | Tổng lệch có dấu / tuyệt đối |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 01 ↔ 02 | `scope + reference`, một đơn ↔ nhiều sự kiện; cộng có dấu | 2.040 | 200 | 215 | 7.867 / 60.883 VND |
+| 02 ↔ 03 | `scope + batch_id`, nhiều sự kiện ↔ một lô; so với gross | 323 | 40 | 31 | −8.306 / 11.812 VND |
+
+Hai cặp thực hành thủ công đã đạt các số liệu trên. Trước và sau khi đổi khóa, Gemini đều nhận đúng yêu cầu, nhưng trả HTTP 503 tại bước tạo đề xuất ánh xạ. Khi gặp thông báo này, bạn có thể tiếp tục kiểm tra và duyệt ánh xạ thủ công theo mục 5.
