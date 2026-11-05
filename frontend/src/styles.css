@@ -1884,7 +1884,7 @@ pre {
   flex-shrink: 0;
   display: grid;
   font-size: 16px;
-  grid-template-columns: 40px minmax(0,1fr) 40px;
+  grid-template-columns: 40px minmax(0,1fr) auto;
   gap: 8px;
   align-items: end;
   width: 100%;
@@ -1902,12 +1902,14 @@ pre {
 .assistant-composer textarea:focus-visible { outline: none; }
 .assistant-composer textarea::placeholder { color: #6b7280; font-weight: 400; }
 .assistant-composer > .icon-button { grid-column: 1; grid-row: 1; width: 40px; height: 40px; padding: 0; border-radius: 50%; }
-.composer-send { grid-column: 3; grid-row: 1; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; background: #262626; color: #fff; border: 0; border-radius: 50%; }
+.composer-actions { grid-column: 3; grid-row: 1; display: flex; gap: 6px; align-items: center; }
+.composer-model { width: 100px; min-height: 34px; padding: 4px 5px; border: 0; border-radius: 9px; background: #f4f4f5; color: #334155; font-size: 12px; }
+.composer-send { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; background: #262626; color: #fff; border: 0; border-radius: 50%; }
 .composer-send:hover:not(:disabled) { background: #404040; }
 .composer-send:disabled { background: var(--surface-border); color: var(--text-muted); opacity: 1; }
 .composer-send > svg { flex-shrink: 0; display: block; width: 18px; height: 18px; }
 .assistant-composer > .agent-file-chips { grid-column: 1 / -1; }
-.assistant-composer:has(.review-reply-binding) > :is(label,.icon-button,.composer-send) { grid-row: 2; }
+.assistant-composer:has(.review-reply-binding) > :is(label,.icon-button,.composer-actions) { grid-row: 2; }
 .review-reply-binding { grid-column: 1 / -1; grid-row: 1; display: flex; gap: 6px; align-items: center; font-size: 12px; color: #475569; overflow-wrap: anywhere; }
 .agent-prompts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
 .agent-prompts > .text-button { min-height: 36px; padding: 8px 12px; font-size: 13px; font-weight: 400; border: 0; border-radius: 18px; background: transparent; color: #475569; }

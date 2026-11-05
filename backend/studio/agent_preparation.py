@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from studio.ai_gateway import GeminiProvider, build_evidence_context
+from studio.ai_gateway import TypedProvider, build_evidence_context
 from studio.contracts import (
     DatasetProfile,
     MappingDecision,
@@ -19,12 +19,12 @@ from studio.contracts.agent import NormalizationDraft, ReviewInterpretation, Rev
 from studio.contracts.api import ApprovalInput
 from studio.errors import DomainError
 
-PREPARATION_REVISION = "agent-normalization-5"
+PREPARATION_REVISION = "agent-normalization-6"
 REVIEW_REVISION = "agent-review-1"
 
 
 def interpret_review_reply(
-    provider: GeminiProvider,
+    provider: TypedProvider,
     review: ReviewRequest,
     text: str,
     policy: WorkspacePolicy,
@@ -93,11 +93,18 @@ def interpret_review_reply(
             )
         return output
 
-    return provider.request_typed(prompt, policy, reserve, validate, max_attempts=1)
+    return provider.request_typed(
+        prompt,
+        policy,
+        reserve,
+        validate,
+        max_attempts=1,
+        response_schema=ReviewInterpretation.model_json_schema() if provider.local else None,
+    )
 
 
 def propose_normalization(
-    provider: GeminiProvider,
+    provider: TypedProvider,
     table_id: str,
     profile: DatasetProfile,
     policy: WorkspacePolicy,
@@ -141,8 +148,8 @@ def propose_normalization(
                 "Suggest composite reference keys only with grain evidence. Preserve scope. "
                 "Do not map expected/completed status to paid. Separate gross/net/fees. "
                 "completed is not paid; payment_status meaning requires user confirmation. "
-                "No SQL/Python/paths/workspace_id/actor_id/approval metadata. Return JSON ONLY: "
-                + json.dumps(NormalizationDraft.model_json_schema())
+                "No SQL/Python/paths/workspace_id/actor_id/approval metadata. "
+                "Return JSON only, following the supplied response schema."
             ),
         ),
         dict(
@@ -182,8 +189,9 @@ def propose_normalization(
     # Gemini's grammar complexity limit. Require nullable fields in the provider
     # envelope; keep the full Pydantic/domain constraints after transport.
     schema = NormalizationDraft.model_json_schema()
-    field_schema = schema["$defs"]["NormalizationField"]
-    field_schema["required"] = list(field_schema["properties"])
+    if not provider.local:
+        field_schema = schema["$defs"]["NormalizationField"]
+        field_schema["required"] = list(field_schema["properties"])
     schema["properties"]["fields"].pop("maxItems", None)
     return provider.request_typed(
         prompt,

@@ -9,8 +9,8 @@ from typing import Any
 import httpx
 from pydantic import ValidationError
 
-from studio.ai_gateway import GeminiProvider, route_ai_task
-from studio.config import Settings
+from studio.ai_gateway import route_ai_task, typed_provider
+from studio.config import ModelChoice, Settings
 from studio.contracts import WorkspacePolicy
 from studio.contracts.assistant import (
     AnswerFactSet,
@@ -256,6 +256,7 @@ def answer_question(
     reserve: Callable[[], bool],
     *,
     client: httpx.Client | None = None,
+    model_choice: ModelChoice = "GEMINI",
 ) -> AssistantAnswer:
     """Một Gateway; deterministic trước, cloud riêng explicit và tối đa một HTTP attempt."""
     answer = deterministic_answer(question, facts)
@@ -265,11 +266,14 @@ def answer_question(
     if route == "DETERMINISTIC":
         assert answer is not None
         return answer
-    if (
-        route != "GEMINI"
-        or not config.assistant_cloud_enabled
-        or config.assistant_request_budget == 0
-        or not facts.snapshot
+    cloud = model_choice == "GEMINI"
+    if not facts.snapshot or (
+        cloud
+        and (
+            route != "GEMINI"
+            or not config.assistant_cloud_enabled
+            or config.assistant_request_budget == 0
+        )
     ):
         return AssistantAnswer(
             status="INSUFFICIENT_EVIDENCE" if not facts.snapshot else "PROVIDER_UNAVAILABLE",
@@ -286,7 +290,7 @@ def answer_question(
             ],
             suggestions=["OPEN_DATA", "OPEN_EXCEPTIONS"],
         )
-    provider = GeminiProvider(config, client)
+    provider = typed_provider(config, model_choice, client)
     prompt = [
         dict(
             role="system",
@@ -314,17 +318,22 @@ def answer_question(
     ]
     try:
         lines = provider.request_typed(
-            prompt, policy, reserve, lambda content: validate_answer(content, facts), max_attempts=1
+            prompt,
+            policy,
+            reserve,
+            lambda content: validate_answer(content, facts),
+            max_attempts=1,
+            response_schema=ModelAnswer.model_json_schema() if provider.local else None,
         )
         receipt = provider.usage.get("tokens") or {}
         return AssistantAnswer(
             status="ANSWERED",
-            mode="GEMINI",
+            mode="GEMINI" if cloud else "OLLAMA",
             fact_set=facts,
             lines=lines,
             suggestions=["OPEN_EVIDENCE", "OPEN_RULE"],
-            provider="GEMINI",
-            model=config.gemini_model,
+            provider="GEMINI" if cloud else "OLLAMA",
+            model=provider.usage["model"],
             request_count=provider.usage["cloud_requests"],
             usage=AssistantUsage(
                 input_tokens=receipt.get("promptTokenCount"),
@@ -333,5 +342,8 @@ def answer_question(
                 cached_tokens=receipt.get("cachedContentTokenCount"),
             ),
         )
+    except DomainError as exc:
+        exc.provider_usage = dict(provider.usage)
+        raise
     finally:
         provider.close()

@@ -52,9 +52,11 @@ def request_failure_message(code: str) -> str:
             "i để tránh xử lý trùng; hãy kiểm tra trạng thái hội thoại."
         ),
         "GEMINI_UNAVAILABLE": (
-            "Dịch vụ AI chưa phản hồi trong thời gian chờ. Yêu cầu không được t"
-            "ự gửi lại; hãy kiểm tra trạng thái trước khi thử lại."
+            "Gemini hiện chưa thể xử lý yêu cầu. Nội dung và dữ liệu của bạn vẫn được giữ nguyên."
         ),
+        "OLLAMA_UNAVAILABLE": "Qwen hiện chưa thể xử lý yêu cầu. Nội dung và dữ liệu vẫn được giữ.",
+        "OLLAMA_MODEL_MISSING": "Model Qwen được chọn chưa có trên máy.",
+        "OLLAMA_NOT_CONFIGURED": "Model Qwen được chọn chưa được cấu hình.",
         "QWEN_UNAVAILABLE": (
             "Dịch vụ AI chưa phản hồi. Hãy xem dữ liệu đã lưu hoặc sử dụng thiết lập thủ công."
         ),

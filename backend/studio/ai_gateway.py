@@ -6,15 +6,16 @@ transformation suggestions). Provider output never grants approval or tool acces
 
 import hashlib
 import json
+import random
 import re
 import time
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 import httpx
 from pydantic import ValidationError
 
-from studio.config import Settings, request_limit_reached
+from studio.config import OLLAMA_MODELS, ModelChoice, Settings, request_limit_reached
 from studio.contracts import (
     DatasetProfile,
     MappingDecision,
@@ -28,6 +29,159 @@ from studio.schema_mapping import validate_mapping
 
 PROMPT_REVISION = "schema-understanding-2"
 TASK_IDS = {"classify_dataset", "infer_grain", "propose_mapping", "suggest_transformation"}
+
+
+class TypedProvider(Protocol):
+    usage: dict[str, Any]
+    local: bool
+
+    def close(self) -> None: ...
+
+    def request_typed[T](
+        self,
+        prompt: list[dict[str, str]],
+        policy: WorkspacePolicy,
+        reserve_request: Callable[[], bool],
+        validator: Callable[[str], T],
+        *,
+        max_attempts: Literal[1, 2] = 1,
+        response_schema: dict[str, Any] | None = None,
+    ) -> T: ...
+
+
+def require_local_model(config: Settings, choice: ModelChoice) -> str:
+    if not config.local_demo_access or not config.ollama_url or choice != config.ollama_choice:
+        raise DomainError("OLLAMA_NOT_CONFIGURED", "Model Qwen này chưa được cấu hình.", 409)
+    return OLLAMA_MODELS[choice]
+
+
+class OllamaProvider:
+    """API native trên máy local, chỉ dùng tag đã cài và cùng validator nghiệp vụ."""
+
+    local = True
+
+    def __init__(
+        self, config: Settings, choice: ModelChoice, client: httpx.Client | None = None
+    ) -> None:
+        self.config = config
+        self.model = require_local_model(config, choice)
+        self.client = client or httpx.Client(trust_env=False, follow_redirects=False)
+        self.usage: dict[str, Any] = {
+            "model": self.model,
+            "ai_calls": 0,
+            "cloud_requests": 0,
+            "tokens": None,
+            "attempts": [],
+        }
+
+    def close(self) -> None:
+        self.client.close()
+
+    def installed_digest(self) -> str:
+        try:
+            response = self.client.get(self.config.ollama_url + "/api/tags", timeout=2)
+            response.raise_for_status()
+            for item in response.json()["models"]:
+                digest = item.get("digest", "")
+                if (
+                    item.get("name") == self.model
+                    and not item.get("remote_model")
+                    and not item.get("remote_host")
+                    and item.get("size", 0) > 0
+                    and isinstance(digest, str)
+                    and re.fullmatch(r"[a-f0-9]{64}", digest)
+                ):
+                    return digest
+        except (httpx.HTTPError, KeyError, AttributeError, TypeError, ValueError) as exc:
+            raise DomainError("OLLAMA_UNAVAILABLE", "Không kết nối được với Ollama.", 503) from exc
+        raise DomainError("OLLAMA_MODEL_MISSING", "Model Qwen chưa có trên máy.", 409)
+
+    def request_typed[T](
+        self,
+        prompt: list[dict[str, str]],
+        policy: WorkspacePolicy,
+        reserve_request: Callable[[], bool],
+        validator: Callable[[str], T],
+        *,
+        max_attempts: Literal[1, 2] = 1,
+        response_schema: dict[str, Any] | None = None,
+    ) -> T:
+        self.usage["digest"] = self.installed_digest()
+        if not reserve_request():
+            raise DomainError(
+                "AI_REQUEST_BLOCKED", "Yêu cầu AI đã gửi hoặc đã hết giới hạn tác vụ."
+            )
+        body = {
+            "model": self.model,
+            "messages": prompt,
+            "stream": False,
+            "think": False,
+            "format": response_schema or "json",
+            "keep_alive": "90s",
+            "options": {
+                "temperature": 0,
+                "num_ctx": self.config.ollama_context,
+                "num_predict": 6000,
+            },
+        }
+        started = time.monotonic()
+        self.usage["ai_calls"] += 1
+        try:
+            response = self.client.post(
+                self.config.ollama_url + "/api/chat",
+                json=body,
+                timeout=httpx.Timeout(self.config.ollama_timeout_seconds, connect=3),
+            )
+            self.usage["http_status"] = response.status_code
+            response.raise_for_status()
+            result = response.json()
+            self.usage["tokens"] = {
+                "promptTokenCount": result.get("prompt_eval_count"),
+                "candidatesTokenCount": result.get("eval_count"),
+            }
+            self.usage["timings_ns"] = {
+                key: result[key]
+                for key in (
+                    "total_duration",
+                    "load_duration",
+                    "prompt_eval_duration",
+                    "eval_duration",
+                )
+                if isinstance(result.get(key), int)
+            }
+            self.usage["finish_reason"] = result.get("done_reason")
+            if result.get("done") is not True or result.get("done_reason") != "stop":
+                raise DomainError("AI_INCOMPLETE_OUTPUT", "Qwen chưa trả kết quả hoàn chỉnh.")
+            content = result["message"]["content"]
+            if not isinstance(content, str) or not content.strip():
+                raise DomainError("AI_INVALID_JSON", "Qwen không trả dữ liệu JSON hợp lệ.")
+            return validator(content)
+        except httpx.HTTPError as exc:
+            self.usage["delivery_unknown"] = isinstance(
+                exc, httpx.TransportError
+            ) and not isinstance(exc, (httpx.ConnectTimeout, httpx.ConnectError))
+            raise DomainError(
+                "OLLAMA_UNAVAILABLE", "Qwen hiện chưa thể xử lý yêu cầu.", 503
+            ) from exc
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise DomainError("AI_INVALID_JSON", "Phản hồi Qwen sai hợp đồng.") from exc
+        finally:
+            self.usage["attempts"].append(
+                {
+                    "attempt": 1,
+                    "http_status": self.usage.get("http_status"),
+                    "tokens": self.usage.get("tokens"),
+                    "latency_ms": int((time.monotonic() - started) * 1000),
+                }
+            )
+
+
+def typed_provider(
+    config: Settings, choice: ModelChoice, client: httpx.Client | None = None
+) -> TypedProvider:
+    if choice == "GEMINI":
+        return GeminiProvider(config, client)
+    return OllamaProvider(config, choice, client)
 
 
 def route_ai_task(
@@ -242,6 +396,8 @@ class QwenProvider:
 class GeminiProvider:
     """Opt-in adapter. Budget reservation must be transactional before constructing a live call."""
 
+    local = False
+
     def __init__(self, config: Settings, client: httpx.Client | None = None):
         self.config = config
         self.client = client or httpx.Client(
@@ -292,40 +448,67 @@ class GeminiProvider:
             raise DomainError("GEMINI_KEY_MISSING", "Chưa cấu hình khóa Gemini.")
         if request_limit_reached(0, self.config.external_ai_request_budget):
             raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Ngân sách AI cloud toàn hệ thống bằng 0.")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.config.gemini_model}:generateContent"
+        payload = {
+            "systemInstruction": {"parts": [{"text": prompt[0]["content"]}]},
+            "contents": [{"role": "user", "parts": [{"text": prompt[1]["content"]}]}],
+            "generationConfig": {
+                "temperature": 0,
+                "responseMimeType": "application/json",
+                "maxOutputTokens": 6000,
+                **({"responseJsonSchema": response_schema} if response_schema else {}),
+            },
+        }
+        # Đo đúng body gửi đi, chỉ lưu kích thước và hash của schema công khai.
+        request_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+        schema_bytes = (
+            json.dumps(response_schema, sort_keys=True).encode() if response_schema else b""
+        )
+        self.usage.update(
+            endpoint=url,
+            payload_bytes=len(request_bytes),
+            schema_bytes=len(schema_bytes),
+            schema_sha256=hashlib.sha256(schema_bytes).hexdigest() if schema_bytes else None,
+            output_limit=6000,
+            timeout_seconds=self.config.ai_timeout_seconds,
+        )
         for attempt in range(max_attempts):
+            if attempt:
+                time.sleep(1 + random.uniform(0, 0.25))
             response_received = False
             started = time.monotonic()
             self.usage["tokens"] = None
-            self.usage.pop("http_status", None)
+            for key in (
+                "http_status",
+                "provider_error_status",
+                "request_id",
+                "transport_error",
+                "delivery_unknown",
+                "schema_complexity_rejected",
+                "provider_error_features",
+            ):
+                self.usage.pop(key, None)
             if not reserve_request():
                 raise DomainError("CLOUD_BUDGET_EXHAUSTED", "Đã hết ngân sách request AI cloud.")
             self.usage["ai_calls"] += 1
             self.usage["cloud_requests"] += 1
             try:
                 response = self.client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{self.config.gemini_model}:generateContent",
-                    headers={"x-goog-api-key": self.config.gemini_api_key.get_secret_value()},
-                    json={
-                        "systemInstruction": {"parts": [{"text": prompt[0]["content"]}]},
-                        "contents": [{"role": "user", "parts": [{"text": prompt[1]["content"]}]}],
-                        "generationConfig": {
-                            "temperature": 0,
-                            "responseMimeType": "application/json",
-                            "maxOutputTokens": 6000,
-                            **({"responseJsonSchema": response_schema} if response_schema else {}),
-                        },
+                    url,
+                    headers={
+                        "x-goog-api-key": self.config.gemini_api_key.get_secret_value(),
+                        "content-type": "application/json",
                     },
+                    content=request_bytes,
                     timeout=self.config.ai_timeout_seconds,
                 )
                 response_received = True
                 self.usage["http_status"] = response.status_code
-                if response.status_code == 429:
-                    self.usage["provider_error_status"] = "RESOURCE_EXHAUSTED"
-                    raise DomainError(
-                        "GEMINI_RATE_LIMITED", "Dịch vụ AI đang giới hạn yêu cầu.", 503
-                    )
-                if response.status_code in {500, 502, 503, 504}:
-                    raise httpx.TransportError("transient")
+                for header in ("x-goog-request-id", "x-request-id"):
+                    request_id = response.headers.get(header, "")
+                    if re.fullmatch(r"[A-Za-z0-9._/=+-]{1,128}", request_id):
+                        self.usage["request_id"] = request_id
+                        break
                 if not response.is_success:
                     try:
                         error = response.json().get("error", {})
@@ -335,6 +518,10 @@ class GeminiProvider:
                             "NOT_FOUND",
                             "RESOURCE_EXHAUSTED",
                             "UNAUTHENTICATED",
+                            "UNAVAILABLE",
+                            "INTERNAL",
+                            "DEADLINE_EXCEEDED",
+                            "FAILED_PRECONDITION",
                         }:
                             self.usage["provider_error_status"] = error["status"]
                         message = str(error.get("message", "")).lower()
@@ -357,6 +544,19 @@ class GeminiProvider:
                         ]
                     except (ValueError, TypeError, AttributeError):
                         pass
+                    if response.status_code == 429:
+                        raise DomainError(
+                            "GEMINI_RATE_LIMITED", "Gemini đang giới hạn yêu cầu.", 503
+                        )
+                    if response.status_code in {500, 502, 503, 504}:
+                        self.usage["delivery_unknown"] = False
+                        if attempt == max_attempts - 1:
+                            raise DomainError(
+                                "GEMINI_UNAVAILABLE",
+                                "Gemini hiện chưa thể xử lý yêu cầu. Dữ liệu của bạn vẫn được giữ.",
+                                503,
+                            )
+                        continue
                     raise DomainError("GEMINI_HTTP_ERROR", "Gemini trả lỗi HTTP.")
                 try:
                     body = response.json()
@@ -372,7 +572,7 @@ class GeminiProvider:
                         for part in candidate["content"]["parts"]
                         if not part.get("thought") and isinstance(part.get("text"), str)
                     )
-                    if not isinstance(content, str):
+                    if not content.strip():
                         raise ValueError("content")
                 except (KeyError, IndexError, ValueError, TypeError) as exc:
                     raise DomainError("AI_INVALID_JSON", "Phản hồi Gemini sai hợp đồng.") from exc
@@ -410,19 +610,18 @@ class GeminiProvider:
                     raise error from exc
             except DomainError as exc:
                 exc.provider_usage = dict(self.usage)
-                if exc.code != "AI_INVALID_JSON" or attempt == max_attempts - 1:
-                    raise
+                raise
             finally:
                 self.usage["attempts"].append(
                     {
                         "attempt": attempt + 1,
                         "http_status": self.usage.get("http_status"),
+                        "provider_error_status": self.usage.get("provider_error_status"),
+                        "request_id": self.usage.get("request_id"),
                         "tokens": self.usage.get("tokens"),
                         "latency_ms": int((time.monotonic() - started) * 1000),
                     }
                 )
-            if attempt + 1 < max_attempts:
-                time.sleep(0.25 * (2**attempt))
         raise DomainError("GEMINI_UNAVAILABLE", "Gemini không phản hồi.")
 
 

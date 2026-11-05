@@ -665,6 +665,7 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                 actor,
                 PlanAction(name="prepare_reconciliation_plan", context=context, request=p),
                 row.id,
+                model_choice=state.model_choice,
             )
             assert isinstance(ref, JobReference)
             intent.planning_request = p

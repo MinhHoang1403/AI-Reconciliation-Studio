@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
+from studio.config import ModelChoice
 from studio.contracts import Contract, SchemaDefinition
 from studio.contracts.assistant import AssistantAnswer, AssistantContext, Identifier, ToolResult
 from studio.contracts.data_query import (
@@ -319,6 +320,7 @@ class WorkflowState(Contract):
     reviews: list[ReviewRequest] = Field(default_factory=list, max_length=10)
     blocks: list[ResultBlock] = Field(default_factory=list, max_length=30)
     model_calls: int = 0
+    model_choice: ModelChoice | None = None
     error_code: str | None = None
     confirmed_mapping_ids: list[str] = Field(default_factory=list, max_length=10)
     confirmed_contract_id: str | None = None
@@ -375,6 +377,7 @@ class ReviewReply(Contract):
     nonce: str = Field(min_length=16, max_length=64)
     fingerprint: str = Field(pattern="^[a-f0-9]{64}$")
     text: str = Field(min_length=1, max_length=2000)
+    model_choice: ModelChoice | None = None
 
 
 class ReviewInterpretation(Contract):

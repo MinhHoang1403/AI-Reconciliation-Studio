@@ -107,6 +107,66 @@ def workflow_for(client, factory, jid):
     return response.json()
 
 
+def test_model_selection_pins_jobs_and_local_never_reserves_cloud(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+    from studio.config import settings
+    from studio.database import TraceRow
+
+    client, factory, worker = pg
+    context = dict(project_id=project(client))
+    cid = conversation(client, context)
+    monkeypatch.setattr(settings, "local_demo_access", True)
+    monkeypatch.setattr(settings, "ollama_url", "http://host.docker.internal:11434")
+    monkeypatch.setattr(settings, "allow_external_ai", False)
+    choices = []
+
+    class FakeLocalProvider:
+        usage = {"cloud_requests": 0, "model": "qwen3:8b"}
+
+        def close(self):
+            pass
+
+    def provider(_config, choice):
+        choices.append(choice)
+        return FakeLocalProvider()
+
+    def interpret(_provider, _goals, _catalogue, _policy, reserve):
+        assert reserve()
+        assert not reserve()
+        return [AgentIntent(intent="CLARIFY", questions=["Bạn cần xem nguồn nào?"])]
+
+    monkeypatch.setattr(agents, "typed_provider", provider)
+    monkeypatch.setattr(agents, "interpret_requests", interpret)
+    body = dict(conversation_id=cid, context=context, mode="AGENT", text="Tra cứu thông tin")
+    headers = {"Idempotency-Key": "local-pinned"}
+    first = client.post(
+        "/api/assistant/messages", json=body | {"model_choice": "QWEN_8B"}, headers=headers
+    )
+    assert first.status_code == 202
+    job_id = first.json()["job_id"]
+    mismatch = client.post(
+        "/api/assistant/messages", json=body | {"model_choice": "GEMINI"}, headers=headers
+    )
+    assert mismatch.status_code == 409
+    blocked = client.post(
+        "/api/assistant/messages",
+        json=body | {"model_choice": "GEMINI"},
+        headers={"Idempotency-Key": "cloud-blocked"},
+    )
+    assert blocked.status_code == 403
+    drain(factory, worker)
+    result = workflow_for(client, factory, job_id)
+    assert result["detail"]["model_choice"] == "QWEN_8B"
+    assert result["detail"]["model_calls"] == 1 and result["state"] == "WAITING_REVIEW"
+    assert choices == ["QWEN_8B"]
+    with factory() as db:
+        assert not db.scalar(
+            select(AuditRow.id).where(AuditRow.action == "GEMINI_REQUEST_RESERVED")
+        )
+        local = db.scalar(select(TraceRow).where(TraceRow.provider == "OLLAMA"))
+        assert local and local.usage["cloud_requests"] == 0
+
+
 def test_explicit_auto_approval_request_is_refused_before_model_or_tools(pg, monkeypatch):  # noqa: F811
     import studio.agent_jobs as agents
 
@@ -475,6 +535,7 @@ def mapping_fixture(pg, monkeypatch):  # noqa: F811
     )
     # Quy ước được người vận hành TEST xác nhận; không coi timezone/basis từ model là bằng chứng.
     from copy import deepcopy
+
     body["decision"]["draft"] = deepcopy(body["decision"]["draft"])
     for field in body["decision"]["draft"]["fields"]:
         if field["data_type"] == "date":

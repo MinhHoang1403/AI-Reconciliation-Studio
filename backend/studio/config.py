@@ -7,6 +7,8 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AGENT_UPLOAD_EXTENSIONS = (".csv", ".xlsx")
+ModelChoice = Literal["GEMINI", "QWEN_8B", "QWEN_27B"]
+OLLAMA_MODELS: dict[ModelChoice, str] = {"QWEN_8B": "qwen3:8b", "QWEN_27B": "qwen3.8:27b"}
 
 
 def request_limit_reached(used: int, ceiling: int | None) -> bool:
@@ -22,7 +24,7 @@ def remaining_requests(*limits: tuple[int | None, int]) -> int | None:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-    database_url: str = "postgresql+psycopg://studio@postgres/studio"
+    database_url: str = Field(default="postgresql+psycopg://studio@postgres/studio", repr=False)
     storage_root: Path = Path("runtime/storage")
     session_secret: SecretStr = SecretStr("")
     session_ttl_seconds: int = Field(default=28800, ge=60, le=86400)
@@ -43,6 +45,10 @@ class Settings(BaseSettings):
     ai_timeout_seconds: float = Field(default=45, ge=1, le=120)
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.5-flash-lite"
+    ollama_url: Literal["", "http://127.0.0.1:11434", "http://host.docker.internal:11434"] = ""
+    ollama_choice: Literal["QWEN_8B", "QWEN_27B"] = "QWEN_8B"
+    ollama_timeout_seconds: float = Field(default=90, ge=5, le=100)
+    ollama_context: int = Field(default=8192, ge=2048, le=32768)
     allow_external_ai: bool = False
     external_ai_request_budget: int | None = Field(default=0, ge=0)
     assistant_cloud_enabled: bool = False

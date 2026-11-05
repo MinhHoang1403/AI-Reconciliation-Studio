@@ -333,8 +333,10 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         payload = dict(
             workflow_id=row.id,
             conversation_id=row.conversation_id,
-            reply=body.model_dump(mode="json"),
+            reply=body.model_dump(mode="json", exclude_none=True),
         )
+        if body.model_choice is not None:
+            payload["model_choice"] = body.model_choice
         existing = db.scalar(
             select(JobRow).where(
                 JobRow.workspace_id == actor.workspace_id,
@@ -347,6 +349,9 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                     "IDEMPOTENCY_CONFLICT", "Mã trả lời đã dùng với nội dung khác.", 409
                 )
             return dict(job_id=existing.id, status=existing.status)
+        from studio.assistant_api import check_model_choice
+
+        check_model_choice(db, actor, body.model_choice)
         state = WorkflowState.model_validate(row.detail)
         review = next((r for r in state.reviews if r.id == body.review_id), None)
         if review:

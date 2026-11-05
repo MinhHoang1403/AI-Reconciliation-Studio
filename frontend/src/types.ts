@@ -264,7 +264,10 @@ export const errorText: Record<string, string> = {
   GEMINI_KEY_MISSING: "Hỗ trợ AI hiện chưa được thiết lập. Bạn vẫn có thể kiểm tra và ghép cột thủ công.",
   GEMINI_HTTP_ERROR:
     "Dịch vụ AI chưa chấp nhận yêu cầu. Bạn có thể tiếp tục xem dữ liệu và kiểm tra quyền sử dụng.",
-  GEMINI_UNAVAILABLE: "Dịch vụ AI chưa phản hồi. Yêu cầu đã gửi không được tự gửi lại; dữ liệu của bạn vẫn được giữ.",
+  GEMINI_UNAVAILABLE: "Gemini hiện chưa thể xử lý yêu cầu. Nội dung và dữ liệu của bạn vẫn được giữ nguyên.",
+  OLLAMA_UNAVAILABLE: "Qwen hiện chưa thể xử lý yêu cầu. Nội dung và dữ liệu của bạn vẫn được giữ.",
+  OLLAMA_MODEL_MISSING: "Model Qwen được chọn chưa có trên máy.",
+  OLLAMA_NOT_CONFIGURED: "Model Qwen được chọn chưa được cấu hình.",
   CLOUD_AI_DISABLED: "Không gian làm việc chưa cho phép sử dụng dịch vụ AI bên ngoài.",
   CLOUD_BUDGET_EXHAUSTED:
     "Tác vụ AI hiện chưa được phép tiếp tục. Bạn vẫn có thể xem dữ liệu và dùng quy tắc đã duyệt.",

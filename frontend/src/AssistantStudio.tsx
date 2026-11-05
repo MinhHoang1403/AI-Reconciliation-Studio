@@ -16,10 +16,12 @@ import type {
   AssistantAnswer,
   AssistantContext,
   AssistantMessage,
+  AssistantModelOption,
   AssistantRule,
   Conversation,
   ConversationPage,
   FactReference,
+  ModelChoice,
   Suggestion,
 } from "./assistantTypes";
 
@@ -38,6 +40,7 @@ const labels: Record<string, string> = {
   DETERMINISTIC: "Backend xác định",
   CACHE: "Tái sử dụng facts",
   GEMINI: "Gemini",
+  OLLAMA: "Qwen Local",
   MOCK: "Kiểm thử mô phỏng",
   OPEN_EXCEPTIONS: "Mở ngoại lệ",
   OPEN_EVIDENCE: "Xem bằng chứng",
@@ -49,8 +52,20 @@ const labels: Record<string, string> = {
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Không tải được hội thoại.";
 
-function MessageInfo({createdAt}: {createdAt: string}) {
-  return <details className="message-metadata" onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.currentTarget.open=false;event.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="Thông tin tin nhắn"><MoreHorizontal size={16} aria-hidden="true"/></summary><small>{new Date(createdAt).toLocaleString("vi-VN")}</small></details>;
+function sameRequestExceptModel(previous: string, next: string) {
+  try {
+    const before = JSON.parse(previous);
+    const after = JSON.parse(next);
+    delete before.model_choice;
+    delete after.model_choice;
+    return JSON.stringify(before) === JSON.stringify(after);
+  } catch {
+    return false;
+  }
+}
+
+function MessageInfo({createdAt, model}: {createdAt: string; model?: string}) {
+  return <details className="message-metadata" onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.currentTarget.open=false;event.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="Thông tin tin nhắn"><MoreHorizontal size={16} aria-hidden="true"/></summary><small>{new Date(createdAt).toLocaleString("vi-VN")}{model && ` · Model đã chọn: ${model}`}</small></details>;
 }
 
 /** Chỉ lưu chữ ký, không lưu bytes; hash tuần tự để giới hạn bộ nhớ khi nhiều tệp. */
@@ -95,6 +110,12 @@ export function AssistantStudio({
   setHistoryOpen: (open: boolean) => void;
   historyReturnFocus: RefObject<HTMLElement | null>;
 }) {
+  const modelStorageKey = `studio.assistant-model.${draftOwner}`;
+  const [modelChoice, setModelChoice] = useState<ModelChoice | null>(() => {
+    const saved = localStorage.getItem(modelStorageKey);
+    return saved === "GEMINI" || saved === "QWEN_8B" || saved === "QWEN_27B" ? saved : null;
+  });
+  const [models, setModels] = useState<AssistantModelOption[]>([]);
   const toolbarOptions = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => {
@@ -105,6 +126,22 @@ export function AssistantStudio({
     return () => document.removeEventListener("pointerdown", closeOutside);
   }, []);
   const [context, setContext] = useState(initialContext);
+  const [modelRefresh, setModelRefresh] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = context.project_id ? `?project_id=${encodeURIComponent(context.project_id)}` : "";
+    void api<AssistantModelOption[]>(`/assistant/models${query}`, {signal: controller.signal})
+      .then(options => { if (!controller.signal.aborted) setModels(Array.isArray(options) ? options : []); })
+      .catch(() => { if (!controller.signal.aborted) setModels([]); });
+    return () => controller.abort();
+  }, [context.project_id, modelRefresh]);
+  const modelLabels: Record<ModelChoice, string> = {GEMINI: "Gemini", QWEN_8B: "Qwen 8B", QWEN_27B: "Qwen 27B"};
+  const modelStatuses: Record<AssistantModelOption["status"], string> = {
+    READY: "Sẵn sàng", UNVERIFIED: "Chưa kiểm chứng", UNAVAILABLE: "Không khả dụng",
+    LIMITED: "Đang bị giới hạn", NOT_CONFIGURED: "Chưa cấu hình", NOT_ALLOWED: "Chưa được cấp quyền",
+  };
+  const selectedModel = modelChoice || "GEMINI";
+  const selectedOption = models.find(option => option.id === selectedModel);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [history, setHistory] = useState<Conversation[]>([]);
@@ -323,6 +360,7 @@ export function AssistantStudio({
       ) {
         setPendingJob("");
         const page=await refreshMessages(id, request);
+        if (alive.current && request === sequence.current) setModelRefresh(value => value + 1);
         if (job.status !== "SUCCEEDED"&&!page?.items.some(message=>message.job_id===jobId&&(message.role==="assistant"||message.error_code)))
           setError(
             `${jobErrors[job.error_code||""]||"Yêu cầu chưa có kết quả hợp lệ."} Lịch sử được giữ; không tự gửi lại nhà cung cấp AI.`,
@@ -461,11 +499,12 @@ export function AssistantStudio({
     try {
       if(reviewReply&&conversation){
         if(!canEdit)throw new Error("Cần quyền chỉnh sửa để trả lời yêu cầu xác nhận.");
-        const body=JSON.stringify({review_id:reviewReply.id,nonce:reviewReply.nonce,
-          fingerprint:reviewReply.fingerprint,text:text.trim()});
+        let body=JSON.stringify({review_id:reviewReply.id,nonce:reviewReply.nonce,
+          fingerprint:reviewReply.fingerprint,text:text.trim(), ...(modelChoice ? {model_choice:modelChoice} : {})});
         const storage=replyKeyFor(context,conversation.id);
         let previous:{body:string;key:string}|null=null;
         try{previous=JSON.parse(sessionStorage.getItem(storage+".request")||"null");}catch{/* Invalid cache is not authority. */}
+        if (previous && sameRequestExceptModel(previous.body, body)) body = previous.body;
         const key=previous?.body===body?previous.key:crypto.randomUUID();
         sessionStorage.setItem(storage+".request",JSON.stringify({body,key}));
         const accepted=await api<{job_id:string}>(`/agent/workflows/${reviewReply.workflowId}/replies`,{method:"POST",body,headers:{"Idempotency-Key":key}});
@@ -499,7 +538,8 @@ export function AssistantStudio({
           localStorage.setItem(`studio.conversation.${uploaded.project_id}`,created.id);
           const question=text.trim()||"Kiểm tra các file vừa tải lên";
           const body=JSON.stringify({conversation_id:created.id,context:created.context,text:question,
-            mode:"AGENT",command:command||(!text.trim()?"EXPLORE_DATA":null)});
+            mode:"AGENT",command:command||(!text.trim()?"EXPLORE_DATA":null),
+            ...(modelChoice ? {model_choice:modelChoice} : {})});
           const key=createKey.current+"-message";
           const pendingKey=`studio.assistant-request.${draftOwner}.${uploaded.project_id}`;
           sessionStorage.setItem(pendingKey,JSON.stringify({body,key}));
@@ -533,11 +573,12 @@ export function AssistantStudio({
         sessionStorage.removeItem(previousDraft);
         sessionStorage.removeItem(`${previousDraft}.create`);
       }
-      const body = JSON.stringify({
+      let body = JSON.stringify({
         conversation_id: active.id,
         context: active.context,
         text: text.trim() || "Kiểm tra các file vừa tải lên",
         mode,
+        ...(modelChoice ? {model_choice:modelChoice} : {}),
         ...(mode==="AGENT"?{command:command||(!text.trim()?"EXPLORE_DATA":null)}:{}),
       });
       let previous = pendingRequest.current;
@@ -552,6 +593,7 @@ export function AssistantStudio({
           /* A malformed local draft is never authority to send a request. */
         }
       }
+      if (previous && sameRequestExceptModel(previous.body, body)) body = previous.body;
       const key = previous?.body === body ? previous.key : crypto.randomUUID();
       pendingRequest.current = { body, key };
       sessionStorage.setItem(requestStorageKey, JSON.stringify({ body, key }));
@@ -708,8 +750,8 @@ export function AssistantStudio({
             <summary aria-label="Tùy chọn hội thoại" title="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary>
             <div className="assistant-options">
               <strong>Tùy chọn hội thoại</strong>
-              <p>{(mode==="AGENT"?agentEnabled:cloudEnabled)?"AI hỗ trợ theo quyền và chính sách dữ liệu của bạn.":"Chế độ dữ kiện đã xác minh đang được sử dụng; suy luận AI chưa khả dụng theo quyền hiện tại."}</p>
-              {typeof aiRequestsRemaining==="number"&&<p>Bạn còn {aiRequestsRemaining} lượt hỗ trợ AI theo quyền hiện tại.</p>}
+              <p>{selectedModel !== "GEMINI" ? "Các yêu cầu cần suy luận sẽ dùng Qwen trên máy." : (mode==="AGENT"?agentEnabled:cloudEnabled)?"AI hỗ trợ theo quyền và chính sách dữ liệu của bạn.":"Chế độ dữ kiện đã xác minh đang được sử dụng; suy luận AI chưa khả dụng theo quyền hiện tại."}</p>
+              {selectedModel === "GEMINI" && typeof aiRequestsRemaining==="number"&&<p>Bạn còn {aiRequestsRemaining} lượt hỗ trợ AI theo quyền hiện tại.</p>}
               <label>Xử lý yêu cầu<select aria-label="Chế độ hội thoại" value={mode} disabled={busy||!!pendingJob} onChange={e=>setMode(e.target.value as "AGENT"|"LEGACY")}><option value="AGENT">Thực hiện tác vụ dữ liệu</option><option value="LEGACY">Chỉ hỏi dữ kiện đã xác minh</option></select></label>
               {context.project_id&&<button className="text-button" onClick={()=>onNavigate("OPEN_RECONCILIATION",displayContext)}>Thiết lập đối soát thủ công</button>}
               {conversation&&<button className="text-button" disabled={busy||!!pendingJob} onClick={event=>{deleteTrigger.current=event.currentTarget;setConfirmDelete(true);}}><Trash2 size={15}/>Xóa hội thoại</button>}
@@ -885,7 +927,7 @@ export function AssistantStudio({
                     setReviewReply(binding);sessionStorage.setItem(replyKeyFor(context,conversation.id),JSON.stringify(binding));composerInput.current?.focus();}}/>}
                   {message.role==="assistant"&&!message.answer&&!message.workflow_id&&<p>{message.text}</p>}
                   {message.role==="user"&&message.error_code&&["FAILED","BLOCKED","CANCELLED"].includes(message.job_status||"")&&!messages.some(m=>m.role==="assistant"&&m.job_id===message.job_id)&&<Notice tone="error">{jobErrors[message.error_code]||"Yêu cầu này chưa hoàn tất. Hãy kiểm tra dữ liệu và kết quả đã lưu trước khi tạo yêu cầu mới."}<details><summary>Chi tiết hỗ trợ</summary>{message.error_code} · {message.job_id}</details></Notice>}
-                  {message.role==="assistant"&&<MessageInfo createdAt={message.created_at}/>}
+                  {message.role==="assistant"&&<MessageInfo createdAt={message.created_at} model={message.model_choice ? modelLabels[message.model_choice] : undefined}/>}
                 </article>
               ))}
             </div>
@@ -982,6 +1024,26 @@ export function AssistantStudio({
                 disabled={busy||loading}
               />
             </label>
+            <div className="composer-actions">
+            {(models.length > 0 || modelChoice) && <select
+              className="composer-model"
+              aria-label="Model cho tin nhắn mới"
+              title={selectedOption ? modelStatuses[selectedOption.status] : "Chưa kiểm chứng"}
+              value={selectedModel}
+              disabled={busy && !pendingJob}
+              onFocus={() => setModelRefresh(value => value + 1)}
+              onChange={event => {
+                const choice = models.find(option => option.id === event.target.value && option.available);
+                if (!choice) return;
+                localStorage.setItem(modelStorageKey, choice.id);
+                setModelChoice(choice.id);
+              }}
+            >
+              {!selectedOption && <option value={selectedModel} disabled>{modelLabels[selectedModel]} · Chưa kiểm chứng</option>}
+              {models.map(option => <option key={option.id} value={option.id} disabled={!option.available}>
+                {option.label} · {option.id === "GEMINI" ? "AI đám mây" : "AI trên máy"} · {modelStatuses[option.status]}
+              </option>)}
+            </select>}
             <button
               className="composer-send"
               aria-label="Gửi câu hỏi"
@@ -994,6 +1056,7 @@ export function AssistantStudio({
                 <ArrowUp size={20} aria-hidden="true" />
               )}
             </button>
+            </div>
           </form>
           {!messages.length&&<div className="agent-prompts">{[["Chuẩn hóa dữ liệu","PREPARE_NORMALIZATION"],["Đối soát các file",null],["Tra cứu thông tin",null],["Phân tích kết quả","SUMMARIZE_RESULTS"]].map(([title,action])=><button className="text-button" key={title} onClick={()=>{setText(title!);setCommand(action);composerInput.current?.focus();}}>{title}</button>)}</div>}
         </div>

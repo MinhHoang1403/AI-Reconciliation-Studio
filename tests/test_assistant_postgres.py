@@ -314,7 +314,8 @@ def test_task_budget_reservation_failure_receipt_and_no_blind_resend(pg, monkeyp
         db.commit()
     attempts = []
 
-    def mocked(question, facts, policy, config, reserve):
+    def mocked(question, facts, policy, config, reserve, *, model_choice):
+        assert model_choice == "GEMINI"
         allowed = reserve()
         attempts.append(allowed)
         if allowed:

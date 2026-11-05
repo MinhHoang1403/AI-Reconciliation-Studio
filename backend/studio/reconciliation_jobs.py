@@ -10,8 +10,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from studio.access import Actor
-from studio.ai_gateway import GeminiProvider
-from studio.config import request_limit_reached, settings
+from studio.ai_gateway import GeminiProvider, OllamaProvider, TypedProvider
+from studio.config import ModelChoice, request_limit_reached, settings
 from studio.contracts import WorkspacePolicy
 from studio.contracts.reconciliation import (
     ExceptionCase,
@@ -197,14 +197,31 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
         workspace = db.get(WorkspaceRow, actor.workspace_id)
         assert workspace is not None
         policy = WorkspacePolicy.model_validate(workspace.policy)
+        choice: ModelChoice = job.payload.get("model_choice", "GEMINI")
         workspace_id, project_id = job.workspace_id, job.project_id
         db.rollback()
-    provider = GeminiProvider(settings)
+    cloud = choice == "GEMINI"
+    provider_name = "GEMINI" if cloud else "OLLAMA"
+    reservation = "RECONCILIATION_PLANNER_ATTEMPT" if cloud else "LOCAL_PLANNER_ATTEMPT"
+    provider: TypedProvider = (
+        GeminiProvider(settings) if cloud else OllamaProvider(settings, choice)
+    )
     started, outcome = time.monotonic(), "VALIDATED_PROPOSAL"
 
     def reserve() -> bool:
         with factory() as db:
             fence(db, job_id, token)
+            if not cloud:
+                db.add(
+                    AuditRow(
+                        workspace_id=workspace_id,
+                        actor_id="worker",
+                        action=reservation,
+                        resource_id=job_id,
+                    )
+                )
+                db.commit()
+                return True
             lock = int.from_bytes(
                 hashlib.sha256(b"studio:gemini-request-budget").digest()[:8], "big", signed=True
             )
@@ -239,7 +256,7 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
             prior = db.scalar(
                 select(AuditRow.id).where(
                     AuditRow.resource_id == job_id,
-                    AuditRow.action == "RECONCILIATION_PLANNER_ATTEMPT",
+                    AuditRow.action == reservation,
                 )
             )
             if prior:
@@ -252,14 +269,16 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
             row = PlanRow(
                 workspace_id=workspace_id,
                 project_id=project_id,
-                origin="GEMINI",
+                origin=provider_name,
                 created_by=job.payload["actor_id"],
                 proposal=proposal.model_dump(mode="json"),
             )
             db.add(row)
             db.flush()
             finish(
-                db, job, {"plan_id": row.id, "source": "GEMINI", "proposal_status": proposal.status}
+                db,
+                job,
+                {"plan_id": row.id, "source": provider_name, "proposal_status": proposal.status},
             )
             db.commit()
     except DomainError as exc:
@@ -272,7 +291,7 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
                 TraceRow(
                     workspace_id=workspace_id,
                     job_id=job_id,
-                    provider="GEMINI",
+                    provider=provider_name,
                     task_id="propose_reconciliation_contract",
                     prompt_revision=PLANNER_REVISION,
                     usage=provider.usage,

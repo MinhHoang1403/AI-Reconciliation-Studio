@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, ValidationError
 
-from studio.ai_gateway import GeminiProvider, build_evidence_context
+from studio.ai_gateway import TypedProvider, build_evidence_context
 from studio.contracts import Contract, WorkspacePolicy
 from studio.contracts.reconciliation import (
     PlanningRequest,
@@ -139,7 +139,7 @@ def missing_confirmations(request: PlanningRequest) -> list[str]:
 
 
 def propose_plan(
-    provider: GeminiProvider,
+    provider: TypedProvider,
     catalogue: list[SourceCatalogue],
     draft: PlanningRequest | ReconciliationPlan,
     policy: WorkspacePolicy,

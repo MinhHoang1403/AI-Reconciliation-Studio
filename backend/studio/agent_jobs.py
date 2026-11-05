@@ -36,7 +36,7 @@ from studio.agent_workflows import (
     save,
     wait_for,
 )
-from studio.ai_gateway import GeminiProvider
+from studio.ai_gateway import typed_provider
 from studio.assistant_api import own_conversation
 from studio.assistant_tools import agent_catalogue
 from studio.config import request_limit_reached, settings
@@ -135,7 +135,7 @@ def model_call(
 ) -> Any:
     """Không giữ transaction khi gọi mạng; reserve trước và refence khi công bố."""
     with factory() as db:
-        fence(db, job_id, token)
+        job = fence(db, job_id, token)
         row = db.get(AgentWorkflowRow, workflow_id)
         assert row is not None
         actor = owner(db, row)
@@ -143,19 +143,28 @@ def model_call(
         if workspace is None:
             raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy workspace.", 404)
         policy = WorkspacePolicy.model_validate(workspace.policy)
+        state = WorkflowState.model_validate(row.detail)
+        reply_choice = (
+            ReviewReply.model_validate(job.payload["reply"]).model_choice
+            if job is not None and job.kind == "agent_review"
+            else None
+        )
+        choice = reply_choice or state.model_choice or "GEMINI"
+        cloud = choice == "GEMINI"
+        reservation = "AGENT_REQUEST_RESERVED" if cloud else "AGENT_LOCAL_REQUEST_RESERVED"
         prior = db.scalar(
             select(AuditRow.id).where(
-                AuditRow.action == "AGENT_REQUEST_RESERVED", AuditRow.resource_id == job_id
+                AuditRow.action == reservation, AuditRow.resource_id == job_id
             )
         )
         if prior:
             raise DomainError("AI_DELIVERY_UNKNOWN", "Request đã gửi; không tự gửi lại.", 409)
         workspace_id = actor.workspace_id
-    provider = GeminiProvider(settings)
+    provider = typed_provider(settings, choice)
     started, outcome = time.monotonic(), "VALIDATED"
 
     def reserve() -> bool:
-        if not settings.agent_cloud_enabled or settings.agent_request_budget == 0:
+        if cloud and (not settings.agent_cloud_enabled or settings.agent_request_budget == 0):
             return False
         with factory() as db:
             fence(db, job_id, token)
@@ -165,24 +174,28 @@ def model_call(
             state = WorkflowState.model_validate(row.detail)
             if row.state == "CANCELLED_BEFORE_NEXT_STEP":
                 return False
-            allowed = reserve_gemini_request(db, workspace_id, job_id, settings)
+            if cloud and not reserve_gemini_request(db, workspace_id, job_id, settings):
+                return False
             count = (
-                db.scalar(
-                    select(func.count())
-                    .select_from(AuditRow)
-                    .where(AuditRow.action == "AGENT_REQUEST_RESERVED")
+                (
+                    db.scalar(
+                        select(func.count())
+                        .select_from(AuditRow)
+                        .where(AuditRow.action == "AGENT_REQUEST_RESERVED")
+                    )
+                    or 0
                 )
-                or 0
+                if cloud
+                else 0
             )
             prior = db.scalar(
                 select(AuditRow.id).where(
-                    AuditRow.action == "AGENT_REQUEST_RESERVED", AuditRow.resource_id == job_id
+                    AuditRow.action == reservation, AuditRow.resource_id == job_id
                 )
             )
             if (
-                not allowed
-                or prior
-                or request_limit_reached(count, settings.agent_request_budget)
+                prior
+                or (cloud and request_limit_reached(count, settings.agent_request_budget))
                 or state.model_calls >= settings.agent_max_model_calls
             ):
                 db.rollback()
@@ -193,7 +206,7 @@ def model_call(
                 AuditRow(
                     workspace_id=workspace_id,
                     actor_id=actor.id,
-                    action="AGENT_REQUEST_RESERVED",
+                    action=reservation,
                     resource_id=job_id,
                 )
             )
@@ -212,7 +225,7 @@ def model_call(
                 TraceRow(
                     workspace_id=workspace_id,
                     job_id=job_id,
-                    provider="GEMINI",
+                    provider="GEMINI" if cloud else "OLLAMA",
                     task_id=task,
                     prompt_revision=revision,
                     usage=provider.usage,
@@ -391,7 +404,8 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                     fingerprint=digest(job.payload),
                     state="CREATED",
                     detail=WorkflowState(
-                        dataset_ids=job.payload.get("dataset_ids", [])
+                        dataset_ids=job.payload.get("dataset_ids", []),
+                        model_choice=job.payload.get("model_choice"),
                     ).model_dump(),
                 )
                 db.add(row)
@@ -572,6 +586,8 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                     dict(type="CLARIFICATION", intent=output.intent.model_dump(mode="json"))
                 )
                 state.intent = output.intent
+                if reply.model_choice is not None:
+                    state.model_choice = reply.model_choice
                 state.error_code = None
                 row.state = "RUNNING"
                 db.add(

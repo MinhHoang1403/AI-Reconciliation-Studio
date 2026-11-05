@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from studio.ai_gateway import GeminiProvider
+from studio.ai_gateway import TypedProvider
 from studio.assistant import plain_question
 from studio.contracts import WorkspacePolicy
 from studio.contracts.agent import AgentIntent, IntentBatch, IntentCatalogue, RoutingBatch
@@ -718,7 +718,7 @@ def compile_routing(
 
 
 def interpret_requests(
-    provider: GeminiProvider,
+    provider: TypedProvider,
     goals: list[str],
     catalogue: IntentCatalogue,
     policy: WorkspacePolicy,
@@ -1021,7 +1021,8 @@ def interpret_requests(
                 "Đang mở/đang xem gắn với kết quả là ngữ cảnh màn hình, không phải state OPEN "
                 "của case. Hai goal cùng cần CLARIFY vẫn phải có hai intents riêng theo đúng "
                 "thứ tự, không gộp thành một intent với hai questions. "
-                "Trả JSON đúng schema, không prose: " + json.dumps(schema)
+                "Trả JSON đúng schema, không thêm văn bản. "
+                + ("" if provider.local else json.dumps(schema))
             ),
         ),
         dict(
@@ -1066,5 +1067,12 @@ def interpret_requests(
         return compile_routing(content, goals, catalogue, provider.usage)
 
     return provider.request_typed(
-        prompt, policy, reserve, validate, max_attempts=1, response_schema=schema
+        prompt,
+        policy,
+        reserve,
+        validate,
+        max_attempts=1,
+        response_schema=RoutingBatch.model_json_schema(mode="serialization")
+        if provider.local
+        else schema,
     )

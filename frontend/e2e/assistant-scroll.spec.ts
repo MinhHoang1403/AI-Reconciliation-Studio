@@ -1,12 +1,13 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "./project-selection";
 
-async function chatFixture(page:Page,{long=true,failed=false}={}){
+async function chatFixture(page:Page,{long=true,failed=false,withModels=false}={}){
   const context={project_id:"scroll-project"};
   const conversation={id:"scroll-chat",context,title:"TEST cuộn hội thoại",created_at:"2026-11-04T00:00:00Z",archived:false};
   const message=(id:string,role:string,text:string,extra={})=>({id,job_id:id,role,text,context,answer:null,created_at:conversation.created_at,...extra});
   let messages=long?Array.from({length:24},(_,i)=>message(`history-${i}`,i%2?"assistant":"user",`Đoạn lịch sử ${i}. `+"Nội dung tổng hợp để kiểm tra vị trí đọc. ".repeat(12))):[];
   let accepted=0,settled=false,stage=0,jobPolls=0;
+  const modelChoices: string[] = [];
   let terminalError=false;
   let review:Record<string,unknown>|null=null;
   let blocks:Record<string,unknown>[]=[{type:"progress",text:"Đang kiểm tra nguồn dữ liệu tổng hợp."}];
@@ -17,6 +18,10 @@ async function chatFixture(page:Page,{long=true,failed=false}={}){
     if(path==="/api/agent/mapping-preflight"){const draft=route.request().postDataJSON();const pending=draft.fields.filter((f:{question?:string})=>!!f.question);return route.fulfill({json:{draft,source_rows:1,verified_fields:draft.fields.length-pending.length,pending_fields:pending.length,checks:draft.fields.map((f:{source_field:string;name:string;question?:string})=>({field_id:f.source_field,name:f.name,state:f.question?'NEEDS_CONFIRMATION':'VERIFIED',messages:f.question?[f.question]:[],error_counts:{},affected_rows:0})),questions:pending.map((f:{question:string})=>f.question),preflight_ready:!pending.length,predicted_invalid_rows:pending.length?null:0,error_counts:{},source_sha256:'a'.repeat(64)}});}
     if(path==="/api/session")return route.fulfill({json:{workspace_id:"demo",actor_id:"scroll-owner",role:"owner"}});
     if(path==="/api/settings")return route.fulfill({json:{workspace_name:"TEST",agent_cloud_enabled:false,assistant_cloud_enabled:false,max_upload_bytes:20971520,max_upload_files:5,agent_max_upload_files:5,agent_upload_extensions:[".csv",".xlsx"],max_rows:100000,policy:{allow_external_ai:false}}});
+    if(path==="/api/assistant/models"&&withModels)return route.fulfill({json:[
+      {id:"GEMINI",label:"Gemini",available:true,status:"UNAVAILABLE"},
+      {id:"QWEN_8B",label:"Qwen 8B",available:true,status:"UNVERIFIED"},
+    ]});
     if(path==="/api/projects/scroll-project")return route.fulfill({json:{id:context.project_id,name:"TEST scroll",business_scope:"Synthetic",workspace_id:"demo",classification:"TEST"}});
     if(path.endsWith("/summary"))return route.fulfill({json:{dataset_count:0,table_count:0,mapping_review_count:0,ready_canonical_count:0,active_job_count:0}});
     if(path==="/api/conversations")return route.fulfill({json:{items:[conversation],has_more:false}});
@@ -26,6 +31,7 @@ async function chatFixture(page:Page,{long=true,failed=false}={}){
     }
     if(path==="/api/assistant/messages"){
       accepted++;
+      modelChoices.push(route.request().postDataJSON().model_choice);
       messages=[...messages,message("new-user","user",route.request().postDataJSON().text,{job_id:"new-job"})];
       return route.fulfill({status:202,json:{job_id:"new-job"}});
     }
@@ -46,6 +52,7 @@ async function chatFixture(page:Page,{long=true,failed=false}={}){
   await page.goto("/");
   await expect(page.getByLabel("Câu hỏi cho AI Assistant",{exact:true})).toBeEnabled();
   return {
+    modelChoices,
     count:()=>accepted,
     polls:()=>jobPolls,
     finish:()=>{settled=true;},
@@ -55,6 +62,32 @@ async function chatFixture(page:Page,{long=true,failed=false}={}){
     table:()=>{stage++;blocks=[...blocks,{type:"table",result:{query:{project_id:context.project_id,source_kind:"RAW_PREVIEW",source_id:"table",select_fields:["reference"],sort:[],filters:[],group_by:[],aggregations:[],limit:25,offset:0,null_policy:"PRESERVE",result_scope:"ALL_MATCHING",currency_field:null},fields:["reference"],rows:Array.from({length:25},(_,i)=>({reference:`000${i}`})),total_count:25,input_count:25,offset:0,limit:25,truncated:false,evidence_complete:true,verification_status:"RAW_UNVERIFIED",source_refs:["table"],warnings:[]}}];},
   };
 }
+
+test("[MOCK CONTRACT] switching model preserves draft, queued request and history after reload",async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  const fixture=await chatFixture(page,{long:false,withModels:true});
+  const model=page.getByLabel("Model cho tin nhắn mới");
+  const composer=page.getByLabel("Câu hỏi cho AI Assistant",{exact:true});
+  await composer.fill("Kiểm tra đúng nguồn của hội thoại này");
+  await model.selectOption("QWEN_8B");
+  await expect(composer).toHaveValue("Kiểm tra đúng nguồn của hội thoại này");
+  expect(fixture.count()).toBe(0);
+  await composer.press("Enter");
+  await expect.poll(fixture.count).toBe(1);
+  await expect(model).toBeEnabled();
+  await model.selectOption("GEMINI");
+  expect(fixture.modelChoices).toEqual(["QWEN_8B"]);
+  fixture.finish();
+  await expect(page.getByText("Đang kiểm tra nguồn dữ liệu tổng hợp.",{exact:true})).toBeVisible();
+  await composer.fill("Bản nháp tiếp theo");
+  await page.reload();
+  await expect(model).toHaveValue("GEMINI");
+  await expect(composer).toHaveValue("Bản nháp tiếp theo");
+  await expect(page.getByText("Kiểm tra đúng nguồn của hội thoại này",{exact:true})).toBeVisible();
+  expect(fixture.count()).toBe(1);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
 const gap=(page:Page)=>page.locator(".assistant-scroll").evaluate(e=>e.scrollHeight-e.scrollTop-e.clientHeight);
 async function readEarlier(page:Page){
   await page.locator(".assistant-scroll").evaluate(e=>{e.scrollTop=200;e.dispatchEvent(new Event("scroll"));});
