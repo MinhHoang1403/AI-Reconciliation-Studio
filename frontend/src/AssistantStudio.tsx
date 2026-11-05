@@ -245,7 +245,11 @@ export function AssistantStudio({
   useEffect(()=>{
     const input=composerInput.current;
     if(!input)return;
-    const resize=()=>{input.style.height="auto";input.style.height=`${Math.min(input.scrollHeight,180)}px`;};
+    const resize = () => {
+      // Placeholder có thể xuống dòng khi bộ chọn thu hẹp ô nhập trên mobile.
+      input.style.height = "";
+      if (input.value) input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
+    };
     resize();
     let width=0;
     // Reflow saved drafts on orientation/sidebar changes too. Ignore height-only
@@ -1020,7 +1024,7 @@ export function AssistantStudio({
                 }}
                 maxLength={2000}
                 rows={1}
-                placeholder={reviewReply?"Nhập câu trả lời của bạn…":"Nhập yêu cầu của bạn..."}
+                placeholder={reviewReply?"Bổ sung thông tin…":"Nhập yêu cầu…"}
                 disabled={busy||loading}
               />
             </label>
