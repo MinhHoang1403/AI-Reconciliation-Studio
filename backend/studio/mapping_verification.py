@@ -21,7 +21,7 @@ from studio.date_parsing import date_format, date_zone, parse_date
 from studio.errors import DomainError
 from studio.normalization import apply_transform_plan, parse_decimal
 from studio.profiling import normalized_name, profile_table
-from studio.schema_mapping import compile_transform_plan
+from studio.schema_mapping import TransformPlan, compile_transform_plan
 
 
 def assess_mapping(
@@ -71,7 +71,11 @@ def assess_mapping(
                 f.timezone = None
             # Khóa khách hàng không tự trở thành khóa giao dịch; uniqueness không chứng minh grain.
             if f.business_key and (
-                any(w in name for w in ("customer", "khach", "status", "trang thai", "description"))
+                (
+                    any(w in name for w in ("customer", "khach"))
+                    and not any(w in normalized_name(draft.grain) for w in ("customer", "khach"))
+                )
+                or any(w in name for w in ("status", "trang thai", "description"))
                 or c.null_count
                 or c.empty_count
             ):
@@ -115,6 +119,15 @@ def assess_mapping(
                     f.currency = f.unit = None
                 if name in {"amount", "total", "so tien", "tong"}:
                     f.amount_basis = None
+        if (
+            f.business_key
+            and any(w in name for w in ("customer", "khach"))
+            and not any(w in normalized_name(draft.grain) for w in ("customer", "khach"))
+        ):
+            pending.append(
+                "Mã khách hàng chưa có bằng chứng làm khóa cho grain này. "
+                "Kiểm tra và bỏ chọn khóa nếu không phù hợp."
+            )
         if f.business_key:
             notes.append(
                 f"Khóa đề xuất: {c.null_count + c.empty_count} giá trị thiếu; "
@@ -206,11 +219,9 @@ def assess_mapping(
             approved_by="preflight-only",
         )
         plan = compile_transform_plan(mapping, approval.schema_definition, fresh)
-        output = apply_transform_plan(
-            frame, plan, "preflight", draft.table_id, "preflight", "preflight"
-        )
-        result.predicted_invalid_rows = output.invalid_count
-        result.error_counts = dict(Counter(output.errors["code"].to_list()))
+        invalid, counts, _ = preflight_rows(frame, plan)
+        result.predicted_invalid_rows = invalid
+        result.error_counts = dict(counts)
     return result
 
 
@@ -299,18 +310,14 @@ def preflight_approval(
     )
     plan = compile_transform_plan(mapping, schema, DatasetProfile.model_validate(table.profile))
     frame = pl.read_parquet(path)
-    output = apply_transform_plan(
-        frame, plan, table.dataset_version_id, table.id, "preflight", table.sheet
-    )
+    invalid, counts, failed_fields = preflight_rows(frame, plan)
     for d in mapping.decisions:
         if d.transformation_candidate.op not in {"parse_date", "parse_decimal"}:
             continue
         nonempty = frame.filter(
             pl.col(d.source_field).is_not_null() & (pl.col(d.source_field) != "")
         ).height
-        failed = output.errors.filter(
-            (pl.col("field") == d.candidate_target) & (pl.col("value_state") == "INVALID")
-        ).height
+        failed = failed_fields[str(d.candidate_target)]
         if nonempty and failed == nonempty:
             raise DomainError(
                 "MAPPING_TRANSFORM_ALL_FAILED",
@@ -319,10 +326,33 @@ def preflight_approval(
             )
     return NormalizationPreflight(
         source_rows=frame.height,
-        predicted_invalid_rows=output.invalid_count,
-        error_counts=dict(Counter(output.errors["code"].to_list())),
+        predicted_invalid_rows=invalid,
+        error_counts=dict(counts),
         source_sha256=artifact.sha256,
     )
+
+
+def preflight_rows(
+    frame: pl.DataFrame, plan: TransformPlan
+) -> tuple[int, Counter[str], Counter[str]]:
+    """Kiểm đủ mọi dòng bằng engine thật, chỉ giữ counters giữa các lô nhỏ.
+
+    Không chia lô aggregate vì phải giữ đủ nhóm/lineage để kiểm chứng phép nhóm.
+    Không công bố kết quả và không cắt mất dòng khi vượt kích thước lô.
+    """
+    aggregate = any(d.transformation_candidate.op == "aggregate_by" for d in plan.mapping.decisions)
+    batches = [frame] if aggregate else frame.iter_slices(2000)
+    invalid, counts, failed_fields = 0, Counter[str](), Counter[str]()
+    for batch in batches:
+        output = apply_transform_plan(
+            batch, plan, "preflight", plan.mapping.source_table_id, "preflight", "preflight"
+        )
+        invalid += output.invalid_count
+        counts.update(output.errors["code"].to_list())
+        failed_fields.update(
+            output.errors.filter(pl.col("value_state") == "INVALID")["field"].to_list()
+        )
+    return invalid, counts, failed_fields
 
 
 def compare_key_candidates(

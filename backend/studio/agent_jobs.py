@@ -653,6 +653,33 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 actor.workspace_id,
                 artifact.id,
             )
+            from studio.database import MappingRow, SchemaRow
+            from studio.profiling import source_signature
+
+            project = project_for_table(db, table)
+            patterns = db.scalars(
+                select(MappingRow)
+                .where(
+                    MappingRow.workspace_id == actor.workspace_id,
+                    MappingRow.business_scope == project.business_scope,
+                    MappingRow.signature == source_signature(profile),
+                    MappingRow.status == "APPROVED",
+                )
+                .order_by(MappingRow.created_at.desc())
+                .limit(3)
+            ).all()
+            mapping_context = {
+                "business_scope": project.business_scope[:500],
+                "request": row.goal[:1000],
+                "approved_patterns": [
+                    {
+                        "schema": db.get(SchemaRow, m.schema_id).definition,
+                        "decisions": m.decision["decisions"],
+                    }
+                    for m in patterns
+                    if m.decision
+                ],
+            }
         draft = model_call(
             job_id,
             token,
@@ -662,7 +689,7 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             factory,
             fence,
             lambda provider, policy, reserve: propose_normalization(
-                provider, table_id, profile, policy, reserve
+                provider, table_id, profile, policy, reserve, mapping_context
             ),
         )
         with factory() as db:
@@ -674,6 +701,39 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
 
             assessment = assess_table_mapping(db, owner(db, row), draft, enrich=True)
             draft = assessment.draft
+            from studio.date_parsing import date_format, date_zone
+
+            # Chỉ lấy facts từ mẫu đã duyệt cùng workspace/scope/signature và grain.
+            # Đây vẫn là đề xuất mới, không chuyển approval của nguồn cũ sang nguồn mới.
+            for pattern in mapping_context["approved_patterns"]:
+                previous = pattern["schema"]
+                if previous["grain"] != draft.grain or previous["entity_kind"] != draft.entity_kind:
+                    continue
+                fields = {f["id"]: f for f in previous["fields"]}
+                by_source = {d["source_field"]: d for d in pattern["decisions"]}
+                for field in draft.fields:
+                    decision = by_source.get(field.source_field)
+                    if not decision or decision["candidate_target"] != field.target_id:
+                        continue
+                    transform = decision["transformation_candidate"]
+                    if (
+                        field.data_type == "date"
+                        and transform["op"] == "parse_date"
+                        and field.date_format
+                        and date_format(field.date_format) == date_format(transform["format"])
+                    ):
+                        date_zone(transform["timezone"])
+                        field.timezone = transform["timezone"]
+                    if (
+                        field.data_type == "decimal"
+                        and fields.get(field.target_id, {}).get("data_type") == "decimal"
+                    ):
+                        old = fields[field.target_id]
+                        field.semantic_metric, field.amount_basis = (
+                            old.get("semantic_metric"),
+                            old.get("amount_basis"),
+                        )
+                break
             finish(db, job, {"drafts": [draft.model_dump(mode="json")]})
             db.commit()
         return

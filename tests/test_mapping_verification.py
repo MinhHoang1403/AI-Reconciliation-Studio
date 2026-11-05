@@ -143,6 +143,7 @@ def test_full_column_enrichment_does_not_guess_timezone_currency_or_customer_key
 
 def test_preflight_matches_real_transform_without_artifact_publication():
     frame, profile, draft = sample()
+    draft.fields[3].business_key = False
     result = assess_mapping(draft, frame, profile, "sha")
     assert result.preflight_ready and result.predicted_invalid_rows == 1
     assert result.error_counts == {"INVALID_DATE": 1, "CURRENCY_MISMATCH": 1}
@@ -274,3 +275,30 @@ def test_real_parser_dates_and_lineage(extension, tmp_path, config, schema, mapp
     assert result.canonical["record_payload"][0]["event_date"] == datetime(2026, 10, 10, tzinfo=UTC)
     assert result.canonical["source_provenance"][0][0]["row"] == 2
     assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+
+
+def test_preflight_batches_check_every_row_and_count_invalid_once():
+    frame, profile, draft = sample()
+    n = 4001
+    frame = pl.DataFrame(
+        {
+            "c1": ["2026-10-10"] * (n - 1) + ["2026-02-30"],
+            "c2": ["1.25"] * n,
+            "c3": ["VND"] * n,
+            "c4": [str(i) for i in range(n)],
+            "_source_row": list(range(2, n + 2)),
+            "_source_row_id": ["row-" + str(i) for i in range(n)],
+        }
+    )
+    draft.fields[3].business_key = False
+    checked = assess_mapping(draft, frame, profile, "sha")
+    assert checked.source_rows == 4001 and checked.predicted_invalid_rows == 1
+    assert checked.error_counts == {"INVALID_DATE": 1}
+
+
+def test_customer_key_requires_grain_evidence_even_without_enrichment():
+    frame, profile, draft = sample()
+    assert not assess_mapping(draft, frame, profile, "sha").preflight_ready
+    draft.grain = "one customer per row"
+    result = assess_mapping(draft, frame, profile, "sha", enrich=True)
+    assert result.draft.fields[3].business_key

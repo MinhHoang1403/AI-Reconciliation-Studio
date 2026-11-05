@@ -420,7 +420,7 @@ def mapping_fixture(pg, monkeypatch):  # noqa: F811
     assert result.status_code == 202, result.text
     drain(factory, worker)
 
-    def mock_draft(provider, table_id, profile, policy, reserve):
+    def mock_draft(provider, table_id, profile, policy, reserve, context=None):
         return NormalizationDraft.model_validate(
             dict(
                 table_id=table_id,
