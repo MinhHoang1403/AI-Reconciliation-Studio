@@ -6,7 +6,7 @@ async function chatFixture(page:Page,{long=true,failed=false}={}){
   const conversation={id:"scroll-chat",context,title:"TEST cuộn hội thoại",created_at:"2026-11-04T00:00:00Z",archived:false};
   const message=(id:string,role:string,text:string,extra={})=>({id,job_id:id,role,text,context,answer:null,created_at:conversation.created_at,...extra});
   let messages=long?Array.from({length:24},(_,i)=>message(`history-${i}`,i%2?"assistant":"user",`Đoạn lịch sử ${i}. `+"Nội dung tổng hợp để kiểm tra vị trí đọc. ".repeat(12))):[];
-  let accepted=0,settled=false,stage=0;
+  let accepted=0,settled=false,stage=0,jobPolls=0;
   let terminalError=false;
   let review:Record<string,unknown>|null=null;
   let blocks:Record<string,unknown>[]=[{type:"progress",text:"Đang kiểm tra nguồn dữ liệu tổng hợp."}];
@@ -29,6 +29,7 @@ async function chatFixture(page:Page,{long=true,failed=false}={}){
       return route.fulfill({status:202,json:{job_id:"new-job"}});
     }
     if(path==="/api/jobs/new-job"){
+      jobPolls++;
       if(settled&&!messages.some(m=>m.id==="new-assistant"))messages=[...messages,message("new-assistant","assistant",terminalError?"Dịch vụ AI đang giới hạn yêu cầu. Dữ liệu của bạn được giữ.":"",{job_id:"new-job",workflow_id:terminalError?null:"scroll-workflow",error_code:terminalError?"GEMINI_RATE_LIMITED":null})];
       return route.fulfill({json:{id:"new-job",kind:"agent",status:terminalError?"BLOCKED":settled?"SUCCEEDED":"RUNNING",error_code:terminalError?"GEMINI_RATE_LIMITED":null}});
     }
@@ -45,6 +46,7 @@ async function chatFixture(page:Page,{long=true,failed=false}={}){
   await expect(page.getByLabel("Câu hỏi cho AI Assistant",{exact:true})).toBeEnabled();
   return {
     count:()=>accepted,
+    polls:()=>jobPolls,
     finish:()=>{settled=true;},
     fail:()=>{terminalError=true;settled=true;},
     review:(kind:"CLARIFICATION"|"MAPPING")=>{stage++;review={id:"review",kind,question:"Bạn muốn tiếp tục với nguồn đã chọn?",reason:"Dữ liệu tổng hợp kiểm tra cuộn.",resource_id:"table",fingerprint:"a".repeat(64),nonce:"a".repeat(32),expires_at:"2099-01-01T00:00:00Z",state:"OPEN",expected_effects:[],reply_questions:[],pending_reply_job_id:null,reply_intent:null,plan:null,suggestions:null,planning_request:null,normalization_draft:kind==="MAPPING"?{table_id:"table",entity_kind:"test",grain:"Một dòng tổng hợp",fields:[{source_field:"c1",target_id:"reference",name:"Mã giao dịch",data_type:"string",business_key:true,semantic_metric:null,amount_basis:null,currency:null,unit:null,locale:null,date_format:null,timezone:null,question:""}]}:null,options:kind==="CLARIFICATION"?[{id:"selected",label:"Nguồn đã chọn",intent:{intent:"EXPLORE_DATA",dataset_ids:[]}}]:[]};},
@@ -144,6 +146,23 @@ test("[MOCK CONTRACT] terminal provider error arrives visibly at the transcript 
   await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();fixture.fail();
   await expect(page.getByText("Dịch vụ AI đang giới hạn yêu cầu. Dữ liệu của bạn được giữ.",{exact:true})).toBeInViewport();
   await expect.poll(()=>gap(page)).toBeLessThan(10);
+  await expect(page.getByLabel("Câu hỏi cho AI Assistant",{exact:true})).toBeEnabled();
+  expect(fixture.count()).toBe(1);
+});
+
+test("[MOCK CONTRACT] accepted slow job remains observable after the initial polling burst",async({page})=>{
+  const fixture=await chatFixture(page,{long:false});
+  await page.clock.install();
+  await page.getByLabel("Câu hỏi cho AI Assistant",{exact:true}).fill("Yêu cầu xử lý nền chậm");
+  await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();
+  for(let i=0;i<63;i++){
+    const previous=fixture.polls();
+    await page.clock.runFor(i<60?600:2100);
+    await expect.poll(()=>fixture.polls()).toBeGreaterThan(previous);
+  }
+  fixture.finish();
+  await page.clock.runFor(2100);
+  await expect(page.getByText("Đang kiểm tra nguồn dữ liệu tổng hợp.",{exact:true})).toBeVisible();
   await expect(page.getByLabel("Câu hỏi cho AI Assistant",{exact:true})).toBeEnabled();
   expect(fixture.count()).toBe(1);
 });

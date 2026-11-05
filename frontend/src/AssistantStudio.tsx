@@ -307,7 +307,9 @@ export function AssistantStudio({
   }
   async function waitForAnswer(jobId: string, id: string, request: number) {
     setPendingJob(jobId);
-    for (let attempt = 0; attempt < 60; attempt++) {
+    // A slow accepted job remains observable beyond the initial 30-second burst.
+    // These are GETs only; leaving/changing the conversation cancels the monitor.
+    for (let attempt = 0; alive.current && request === sequence.current; attempt++) {
       const job = await api<Job>(`/jobs/${jobId}`, getOptions());
       if (!alive.current || request !== sequence.current) return;
       if (
@@ -321,12 +323,8 @@ export function AssistantStudio({
           );
         return;
       }
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, attempt < 60 ? 500 : 2000));
     }
-    if (alive.current && request === sequence.current)
-      setError(
-        "Câu hỏi còn xử lý. Bấm Cập nhật hội thoại để tiếp tục xem, không cần gửi lại.",
-      );
   }
   async function openConversation(id: string, cached?: ConversationPage) {
     followTail.current=true;

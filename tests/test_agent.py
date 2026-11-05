@@ -39,6 +39,32 @@ def catalogue():
     )
 
 
+@pytest.mark.parametrize(
+    "goal",
+    [
+        "Xem trước cả hai nguồn đã thanh toán",
+        "Kiểm tra các file tháng 10",
+        "Cho tôi xem trước hai file và tổng tiền",
+        "Xem trước cả hai nguồn rồi đối soát",
+        "Cho tôi xem trước hai file của dự án khác",
+        "Xem trước các giao dịch PAID",
+    ],
+)
+def test_multi_source_preview_does_not_hijack_filters_periods_or_write_actions(goal):
+    from studio.agent_intents import resolve_plain_listing
+
+    assert resolve_plain_listing(goal, routing_catalogue()) is None
+
+
+def test_multi_source_preview_clarifies_count_and_does_not_choose_arbitrary_sources():
+    from studio.agent_intents import resolve_plain_listing
+
+    cat = catalogue()
+    assert resolve_plain_listing("Xem trước cả hai nguồn", cat).intent == "CLARIFY"
+    cat.datasets = []
+    assert resolve_plain_listing("Kiểm tra các file vừa tải lên", cat).intent == "CLARIFY"
+
+
 @pytest.mark.parametrize("selection", ["unique", "ambiguous", "missing", "previous", "foreign"])
 def test_verified_metric_resolution_uses_approved_semantics_and_scoped_context(selection):
     from reconciliation_cases import plan

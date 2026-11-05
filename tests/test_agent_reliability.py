@@ -263,3 +263,87 @@ def test_status_reader_does_not_reuse_previous_version_or_old_normalization_engi
         current = read_processing_status(db, actor, ctx, [dataset.id])
         assert len(current) == 1 and current[0].state == "UPLOADED"
         assert current[0].canonical_id is None
+
+
+def test_exhausted_parse_lease_marks_source_failed_and_reports_real_status(pg):  # noqa: F811
+    from studio.access import Actor
+    from studio.contracts.assistant import AssistantContext
+    from test_postgres import upload
+
+    client, factory, worker = pg
+    pid = project(client)
+    source = upload(client, pid)
+    with factory() as db:
+        job = db.scalar(select(JobRow).where(JobRow.kind == "parse"))
+        job.status, job.attempts = "RUNNING", 3
+        job.lease_until = now() - timedelta(seconds=1)
+        db.commit()
+    drain(factory, worker)
+    with factory() as db:
+        assert db.get(DatasetRow, source["id"]).status == "FAILED"
+        status = read_processing_status(
+            db,
+            Actor("test-owner", "demo", "owner"),
+            AssistantContext(project_id=pid),
+            [source["id"]],
+        )
+        assert len(status) == 1 and status[0].state == "PARSE_FAILED"
+
+
+def test_exhausted_reconciliation_lease_never_leaves_a_published_run_running(pg):  # noqa: F811
+    from studio.database import RunRow
+    from test_reconciliation_postgres import create_approved_run
+
+    client, factory, worker = pg
+    _, _, _, created = create_approved_run(pg)
+    with factory() as db:
+        job = db.scalar(select(JobRow).where(JobRow.kind == "reconcile"))
+        job.status, job.attempts = "RUNNING", 3
+        job.lease_until = now() - timedelta(seconds=1)
+        db.commit()
+    drain(factory, worker)
+    with factory() as db:
+        run = db.get(RunRow, created["run_id"])
+        assert run.status == "BLOCKED" and run.metric_snapshot is None
+
+
+@pytest.mark.parametrize(
+    "goal",
+    [
+        "Cho tôi xem trước cả hai nguồn giao nhận",
+        "Xem trước hai file giao nhận",
+        "Kiểm tra các file vừa tải lên",
+        "Khám phá tất cả nguồn giao nhận",
+    ],
+)
+def test_plain_multi_source_preview_is_one_request_without_model_or_financial_claims(
+    pg,  # noqa: F811
+    monkeypatch,
+    goal,
+):  # noqa: F811
+    import studio.agent_jobs as agents
+
+    client, factory, worker = pg
+    pid, _ = prepare_pair(pg)
+    # Names are metadata, not new data semantics or business rules.
+    with factory() as db:
+        for i, dataset in enumerate(
+            db.scalars(select(DatasetRow).where(DatasetRow.project_id == pid))
+        ):
+            dataset.name = f"Giao nhận {'A' if i == 0 else 'B'}.csv"
+        db.commit()
+
+    def forbidden(*args):
+        raise AssertionError("An unfiltered source preview must not call the model")
+
+    monkeypatch.setattr(agents, "interpret_requests", forbidden)
+    ctx = dict(project_id=pid)
+    cid = conversation(client, ctx)
+    response = ask_agent(client, ctx, cid, text=goal)
+    drain(factory, worker)
+    wf = workflow_for(client, factory, response["job_id"])
+    assert wf["state"] == "COMPLETED" and wf["detail"]["model_calls"] == 0
+    assert wf["detail"]["intent"]["intent"] == "EXPLORE_DATA"
+    assert len(wf["detail"]["intent"]["dataset_ids"]) == 2
+    blocks = [b for b in wf["detail"]["blocks"] if b["type"] == "table"]
+    assert len(blocks) == 2 and all(b["result"]["source_kind"] == "RAW_PREVIEW" for b in blocks)

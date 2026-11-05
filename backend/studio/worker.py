@@ -98,6 +98,16 @@ def claim_job(db: Session) -> tuple[str, str] | None:
         job.status, job.error_code = "FAILED", "JOB_RETRY_EXHAUSTED"
         job.claim_token = None
         job.lease_until = None
+        if job.kind == "parse":
+            dataset = db.get(DatasetRow, job.payload["dataset_id"])
+            if dataset:
+                dataset.status = "FAILED"
+        elif job.kind == "reconcile":
+            from studio.database import RunRow
+
+            run = db.get(RunRow, job.payload["run_id"])
+            if run and run.metric_snapshot is None:
+                run.status = "BLOCKED"
         from studio.agent_jobs import persist_request_failure
         from studio.agent_workflows import notify_job_finished, save
         from studio.contracts.agent import WorkflowState

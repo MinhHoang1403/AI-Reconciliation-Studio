@@ -2,6 +2,14 @@
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
+## Trạng thái nguồn, lỗi kết thúc và cuộn Chat — 05/11/2026
+
+`tests/test_agent_reliability.py` dùng cùng PostgreSQL/schema UUID hiện có để kiểm trạng thái upload/parse/mapping/READY/PARTIAL/FAILED/stale, nguồn khác project/workspace, revision hiện hành, phản hồi lỗi bền vững, unknown delivery, lease exhausted và preview hai nguồn không gọi model. Provider errors trong các ca này là MOCK, metadata/queue/transaction là PostgreSQL thật. Không dùng số tests này làm độ chính xác AI LIVE.
+
+`frontend/e2e/assistant-scroll.spec.ts` dùng đo scrollTop/scrollHeight và phần tử trong viewport: gửi từ phía trên, phản hồi chậm/bảng lớn, chủ động đọc cũ, prepend lịch sử giữ anchor, reload, clarification/approval, terminal error và double-click. Có390/1440/1920px; ca job chậm dùng clock điều khiển để vượt60poll ban đầu, xác nhận GET tiếp tục và chỉ một POST. `assistant-layout.spec.ts` cuộn câu hỏi cũ vào khung nhìn trước khi đo metadata, tránh coi thao tác auto-scroll của Playwright click là reflow của sản phẩm; vẫn giữ phép so bounding box chính xác.
+
+Kiểm source bằng `./tools/test-postgres.ps1 -All -Source`; sau deploy chạy `-All` và full Playwright tuần tự, không hai runner cùng lúc. Không build dist khi runner candidate đang đọc dist. Trước recreate snapshot metadata/checksums, sau recreate kiểm giữ nguyên và chạy `./tools/start.ps1 -SkipBuild` để xác minh loopback/session theo identity mới. Hướng dẫn người mới ở [USER_TEST_GUIDE](USER_TEST_GUIDE.md); phải kiểm nút thật, chọn explicit phiên bản chuẩn hóa trong drawer, đối chiếu oracle và phân biệt đường thủ công với câu Chat còn bị provider chặn.
+
 ## Giao diện tối giản và đồng bộ runtime — 04/11/2026
 
 Trước sửa, đối chiếu build từ Git với asset trong Nginx, HTTP và Chromium profile mới/disabled cache; kiểm service worker registrations, computed styles khi pointer và Tab. Baseline composer có border 1px + outline 2px cả khi click vì textarea vẫn `:focus-visible`; đây là lỗi CSS khi hashes đã khớp. Sau sửa phải xác minh lại trên asset production, không chỉ fixture dist.

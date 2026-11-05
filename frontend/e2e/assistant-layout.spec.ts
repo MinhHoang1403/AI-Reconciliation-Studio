@@ -203,6 +203,10 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     const metadataBox=(await response.locator('.message-metadata').boundingBox())!;
     expect(metadataBox.y).toBeGreaterThanOrEqual(contentBox.y+contentBox.height-1);
     expect(await user.locator('.message-metadata').evaluate(el=>getComputedStyle(el).float)).toBe('none');
+    // Opening a conversation now correctly starts at its latest content. Bring
+    // the older question into view before measuring; click() otherwise scrolls
+    // it itself, which is unrelated to metadata layout/reflow.
+    await user.scrollIntoViewIfNeeded();
     const userTextBefore=await user.locator('p').boundingBox();
     await user.getByLabel('Thông tin tin nhắn',{exact:true}).click();
     await expect(user.locator('.message-metadata small')).toBeVisible();

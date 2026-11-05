@@ -437,12 +437,51 @@ def routing_sources(catalogue: IntentCatalogue) -> list[dict[str, Any]]:
 
 
 def resolve_plain_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
-    """A finite, read-only shortcut for a plain row list of one named source.
+    """Finite read shortcut for source previews or rows of one named source.
 
-    It accepts only listing words plus an evidence-backed unique source alias;
-    filters, periods, money, comparisons and multi-table sources stay with the router.
+    A plural preview uses only current scoped sources; a row list needs a unique
+    evidence-backed alias. Filters, periods, money and comparisons stay with the router.
     """
     normalized = plain_question(goal)
+    # One read request can inspect several sources; never ask a model to split
+    # an unfiltered preview into separate logical requests. Financial/filter
+    # vocabulary remains outside this deliberately small read grammar.
+    words = set(re.findall(r"\w+", normalized))
+    source_words = set(
+        re.findall(r"\w+", plain_question(" ".join(d.name for d in catalogue.datasets)))
+    )
+    preview_words = set(
+        (
+            "cho toi xem truoc kiem tra doc kham pha ca hai 2 tat cac nguon file tep "
+            "du lieu vua moi tai len giup voi"
+        ).split()
+    )
+    financial_words = set(
+        (
+            "tong dem loc tien thanh toan paid unpaid chua da bieu do nhieu lech khop "
+            "thang nam ngay trang thai chuyen sap xep"
+        ).split()
+    )
+    if (
+        re.match(r"^(?:cho (?:toi )?xem(?: truoc)?|xem truoc|kiem tra|doc|kham pha)\b", normalized)
+        and re.search(r"\b(?:ca hai|hai|2|tat ca|cac)\b", normalized)
+        and re.search(r"\b(?:nguon|file|tep|du lieu)\b", normalized)
+        and words <= preview_words | source_words
+        and not words & financial_words
+    ):
+        if not catalogue.datasets:
+            return AgentIntent(
+                intent="CLARIFY",
+                questions=["Dự án chưa có tệp. Hãy tải CSV hoặc XLSX cần kiểm tra."],
+            )
+        if re.search(r"\b(?:hai|2)\b", normalized) and len(catalogue.datasets) != 2:
+            return AgentIntent(
+                intent="CLARIFY",
+                questions=[
+                    "Hãy chọn đúng hai nguồn cần xem trước; dự án hiện có số nguồn khác hai."
+                ],
+            )
+        return AgentIntent(intent="EXPLORE_DATA", dataset_ids=[d.id for d in catalogue.datasets])
     if not re.search(r"\b(?:liet ke|cho (?:toi )?xem|xem) (?:cac |nhung )?dong\b", normalized):
         return None
     allowed = set(
@@ -450,7 +489,6 @@ def resolve_plain_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
             "liet ke cho toi xem cac nhung dong cua nguon file tep bang hai dang mo trong du lieu"
         ).split()
     )
-    words = set(re.findall(r"\w+", normalized))
     matches = []
     for source in routing_sources(catalogue):
         if source["source_kind"] not in {"CANONICAL", "RAW_PREVIEW"}:
