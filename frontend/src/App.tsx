@@ -697,7 +697,6 @@ export function App() {
       );
   }
   useEffect(() => {
-    if (!ready) return;
     const controller = new AbortController();
     const restore = async () => {
       const current = ++navigationSequence.current;
@@ -745,6 +744,16 @@ export function App() {
       }
     };
     const listener = () => {
+      if (!ready) {
+        // Liên kết vừa mở là đích cần khôi phục, kể cả lúc đang tải phiên.
+        // Cùng dự án chỉ đổi ngữ cảnh; đổi dự án phải hủy lần đọc cũ.
+        const next = readLocation();
+        const changedProject = next.projectId !== locationRef.current.projectId;
+        locationRef.current = next;
+        setLocation(next);
+        if (changedProject) setBootstrapAttempt((attempt) => attempt + 1);
+        return;
+      }
       void restore();
     };
     window.addEventListener("popstate", listener);
