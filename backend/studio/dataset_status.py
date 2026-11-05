@@ -50,7 +50,9 @@ def asks_processing_status(goal: str) -> bool:
     )
     question = re.search(r"\b(?:chua|da|file nao|nguon nao|kiem tra trang thai|co can)\b", text)
     writes = re.search(
-        r"\b(?:hay chuan hoa|chuan hoa .*giup|tien hanh|chay doi soat|xuat bao cao|"
+        r"\b(?:de xuat|chuan bi|thiet lap|thuc hien|tao|cap nhat|chinh sua|dieu chinh|"
+        r"tiep tuc|lam sach|chuyen doi|hay chuan hoa|chuan hoa .*giup|"
+        r"tien hanh|chay doi soat|xuat bao cao|"
         r"duyet|bo qua|tu dong|sau do|roi .*doi soat|va .*doi soat|"
         r"bao nhieu|tong tien|tong so|bieu do|loc|sap xep|giai thich)\b",
         text,

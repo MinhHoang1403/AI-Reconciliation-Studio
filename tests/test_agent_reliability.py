@@ -50,6 +50,54 @@ def test_status_shortcut_never_hijacks_actions_or_analytics(goal):
 
 
 @pytest.mark.parametrize(
+    "goal",
+    [
+        "Đề xuất cách chuẩn hóa hai nguồn dữ liệu. Hãy hỏi tôi nếu có cột hoặc ý nghĩa chưa rõ.",
+        "Chuẩn bị để chuẩn hóa dữ liệu, hỏi nếu chưa rõ.",
+        "Tôi muốn thiết lập chuẩn hóa hai file chưa xử lý.",
+        "Hãy tạo đề xuất ghép cột cho dữ liệu chưa chuẩn hóa.",
+        "Làm sạch và chuẩn hóa dữ liệu nếu đã đọc xong.",
+        "Tiếp tục chuẩn hóa nguồn đã tải và hỏi tôi nếu chưa đủ thông tin.",
+    ],
+)
+def test_conditional_words_in_an_instruction_are_not_processing_status_questions(goal):
+    assert not asks_processing_status(goal)
+
+
+def test_normalization_proposal_with_conditional_question_reaches_the_action_router(
+    pg,  # noqa: F811
+    monkeypatch,
+):  # noqa: F811
+    import studio.agent_jobs as agents
+
+    client, factory, worker = pg
+    pid, _ = prepare_pair(pg)
+    calls = []
+
+    def interpret(*args):
+        calls.append(True)
+        return [AgentIntent(intent="PREPARE_NORMALIZATION")]
+
+    monkeypatch.setattr(agents, "interpret_requests", interpret)
+    ctx = dict(project_id=pid)
+    cid = conversation(client, ctx)
+    result = ask_agent(
+        client,
+        ctx,
+        cid,
+        text=(
+            "Đề xuất cách chuẩn hóa hai nguồn dữ liệu. Hãy hỏi tôi nếu có cột hoặc ý nghĩa chưa rõ."
+        ),
+    )
+    drain(factory, worker)
+    wf = workflow_for(client, factory, result["job_id"])
+    assert calls == [True]
+    assert wf["detail"]["intent"]["intent"] == "PREPARE_NORMALIZATION"
+    assert wf["state"] == "COMPLETED"
+    assert len([b for b in wf["detail"]["blocks"] if b["type"] == "dataset_summary"]) == 2
+
+
+@pytest.mark.parametrize(
     "variant", ["READY", "PARTIAL", "FAILED", "STALE", "MAPPED", "MAPPING_REVIEW", "PARSED"]
 )
 def test_status_reads_current_metadata_without_verified_run_or_model(pg, monkeypatch, variant):  # noqa: F811
