@@ -34,7 +34,7 @@ Hai nhánh cũ trên origin được giữ để truy vết. Toàn bộ commit h
 
 ## Tự động hóa sau upload — nhánh triển khai
 
-Checkpoint ứng dụng hiện tại là `75e1c5f`, đã push trên `codex/intelligent-automation-experience`. Source đạt501/501Backend/PostgreSQL. Gemini đã hoàn tất một luồng Planner mới có duyệt và đúng oracle. Qwen vẫn có lượt timeout90giây. Các cổng còn thiếu được ghi ở bảng cuối mục này.
+Checkpoint ứng dụng hiện tại là `8db257a`, đã push trên `codex/intelligent-automation-experience`. Source đạt503/503Backend/PostgreSQL. Frontend cùng bytes với bản `75e1c5f` đã đạt139/139Playwright. Gemini và Qwen đều hoàn tất một luồng Planner mới có duyệt và đúng oracle. Các lượt lỗi trước sửa và cổng còn thiếu được ghi bên dưới.
 
 CSV/XLSX mới có Parquet tự chuẩn bị và dòng cần kiểm tra, đọc từ màn hình Dữ liệu và API truy vấn có kiểu. Mapping tương thích được điền vào bản nháp cùng evidence mới. Worker có một luồng xử lý job chờ provider và nhận parse trong khi luồng đó bận. Planner kiểm khóa trong kỳ và chọn bản nháp xác định khi đủ bằng chứng. Top-N và câu hỏi theo vị trí dùng bảng đã lưu của đúng run.
 
@@ -95,11 +95,28 @@ Hồi quy source adapter local đạt **503/503 Backend/PostgreSQL**,133,82 giâ
 
 Trên `a039dd7`, Qwen LIVE trả đúng hai đối tượng nguồn gồm vai trò, ngày, currency, bộ lọc, coverage và snapshot trong74,671giây. Dùng2.984prompt token,420output token; thời gian load10,916giây, prefill4,147giây và decode59,505giây. Model bỏ kỳ báo cáo và timezone ở cấp ngoài; workflow `76129564-4e8d-5fc6-bbca-3a5ec82b324b` giữ WAITING_REVIEW, không tạo run. Lượt kế tiếp yêu cầu đầy đủ khóa nullable ở cấp lựa chọn, gồm kỳ và timezone, đồng thời nêu rõ ngày cuối kỳ không phải ngày hết hiệu lực rule. Regression106ca Assistant đạt trước triển khai.
 
+### Hai luồng LIVE trên checkpoint hiện tại
+
+| Provider | Diễn giải yêu cầu | Kế hoạch Backend và duyệt UI | Run và oracle |
+| --- | --- | --- | --- |
+| Gemini | 4,422giây;17.507prompt /598output token;1cloud request | Đúng nguồn, role, scope, kỳ,1:N và SUM_SIGNED; người kiểm thử duyệt thẻ | `12697b36-3980-4c5d-9af9-f9df9a3d6f3d`;2.040khớp/200lệch/215thiếu;7.867/60.883VND |
+| Qwen3:8B | 76,973giây;3.018prompt /458output token;0cloud requests | Đúng nguồn, role, scope, kỳ,N:1 và SUM_SIGNED; người kiểm thử duyệt thẻ | `10734760-c0d0-4837-a2f0-14a6c60be1d8`;323khớp/40lệch/31thiếu;−8.306/11.812VND |
+
+Hai workflow hoàn tất, mỗi workflow có một lần suy luận intent. Bước Planner không gọi model. Kiểm thử chỉ duyệt khi mọi trường có ảnh hưởng khớp fixture đã xác nhận, gồm ngày chốt, độ đầy đủ, tiền tệ, sai số0và ngày hết hiệu lực null. Cả hai run vẫn là PARTIAL_VERIFIED đúng với dữ liệu cần kiểm tra. Đọc lại XLSX mới của Qwen có đủ8sheet, snapshot trùng API và0ôcôngthức. Ledger381→382, giữ mọi lượt thất bại trong lịch sử.
+
+Full Backend/PostgreSQL chạy trực tiếp trên image `8db257a` đạt **503/503**,126,09giây, một cảnh báo TestClient deprecation. Không thay application source sau lượt này. Backend/Worker image `77b722476d7a94aa41d6d0a03c62f272e085bfc0ce16138ec40fbd112e2532a7`, Frontend `2d24289160df5d0240598e22a672b7c6c2deb6e160b00a8bc7a7ecf637c8ab02`.
+
+Trên hai run mới, Chat top3 và giải thích nhóm thứ hai đều có0model calls. Đối chiếu giá trị tuyệt đối top3 với toàn bộ200/40chênh lệch trong oracle độc lập, rồi đối chiếu từng khóa và tiền trái/phải/delta. Evidence đầy đủ và group thứ hai đúng ID đã hiển thị. Receipt ở `runtime/automation-native-current-results.json`, cùng hai receipt `runtime/automation-live-planner-*.json`. Đây là hai trường hợp có đủ dữ kiện, chưa phải đánh giá độ chính xác NLP trên tập holdout.
+
 ### Bảo toàn và công cụ backup
 
 Lượt `backup_23e21b4d901442dc8ab9c43e93cd5897` có metadata 64.907.007 byte, bị OOM tại bước đọc toàn bộ metadata để restore. Exit137 được giữ, không có receipt PASS. Công cụ backup lập chỉ mục byte của từng bản ghi lúc ghi file, rồi đọc và insert từng batch200 từ chính file backup. Định dạng codec cũ giữ nguyên byte, được regression kiểm Unicode, ngày, Decimal và nhãn JSON không đáng tin.
 
 Backup mới `backup_675dc832f0084e79858fe51dfed4a107` khôi phục thử thành công **24 bảng và 7.634 tệp**, sao lưu 34,235 giây và restore34,747 giây. Metadata SHA-256 `13cf2fdd930f359a349292ba3e0ac5a3f56c3f92609b830a042443bb71b04dde`. Đã copy đúng backup sang host và kiểm đủ checksum 7.634 tệp. Toàn bộ metadata/tệp của candidate trước và sau recreate khớp. Các bản ghi và 7.203 tệp của baseline ban đầu vẫn đủ và không đổi. Không có migration database.
+
+Đã rollback thật về image baseline `858dfb3` bằng công cụ hiện có rồi trở về `8db257a`. Hai lần đều đủ metadata và **7.838 tệp** của checkpoint trước rollback, cùng checksum. Baseline đọc được cả hai run LIVE mới và snapshot qua UI Báo cáo/API. Candidate trở lại với46filePython/7assets đúng source/dist/HTTP, bốn dịch vụ healthy. Không có thao tác downgrade schema. Logs ở `runtime/automation-rollback-*.log`.
+
+Backup sau hai luồng LIVE và full hồi quy là `backup_36c2d07c81ab491ea83a8b212f82c5fa`. Restore thử **24 bảng/7.838tệp PASS**, sao lưu31,053giây và restore35,615giây, metadata SHA-256 `e83662b8fe6499e67b2d58fdaaee6e9ed44b2a4ae0e569042d1504d74b723e69`. Đã copy sang `runtime/backups/` trên host và kiểm toàn bộ checksum. Hội thoại prepared75.000dòng đọc lại được sau rollback/return, ledger vẫn382. Kiểm lại27container ngoài Studio có cùng IDs/images/mounts và36volumes cùng tên. Không dọn cache bị policy từ chối.
 
 ### Trạng thái các cổng phát hành
 
@@ -112,14 +129,16 @@ Backup mới `backup_675dc832f0084e79858fe51dfed4a107` khôi phục thử thành
 | AP-05 | PASS trong phạm vi tái dùng exact, cấp/thu hồi quyền, loại drift và preflight |
 | AP-06 | NOT_RUN, chưa có tập holdout gán nhãn độc lập để đo precision/recall mapping hoặc số liệu Valentine |
 | AP-07 | PASS cho lần tải tương thích đã được cấp quyền. NOT_RUN cho nghiệm thu đầy đủ đề xuất AI mới không cần điền kỹ thuật lặp lại |
-| AP-08 | PASS Gemini LIVE sau sửa với Backend proposal, duyệt UI và oracle. FAIL Qwen LIVE vì bỏ dữ kiện nguồn |
+| AP-08 | PASS Gemini1:N và QwenN:1 LIVE, Backend proposal, duyệt UI và oracle. NOT_RUN đánh giá lựa chọn nhiều candidate ngang nhau trên tập holdout |
 | AP-09 | PASS local, duyệt quy tắc riêng qua API và hồi quy scope/quyền/idempotency |
 | AP-10 | PASS cho API raw/prepared, Chat đọc/đếm prepared75.000dòng, top-N/giải thích theo vị trí. NOT_RUN cho câu hỏi tự nhiên tổng quát trên prepared |
 | AP-11 | PASS cho Product Journey CSV/XLSX, đối chiếu hai XLSX mới và snapshot sau reload |
 | AP-12 | PASS ở năm chiều rộng trong hồi quy sidebar sáu mục và focus |
 | AP-13 | PASS PostgreSQL với provider giả lập bị giữ và một lượt Qwen LIVE đồng thời với 75.000 dòng. NOT_RUN p50/p95 tải đồng thời |
-| AP-14 | PASS baseline rollback/restore, candidate restore24bảng/7.634tệp và bảo toàn lúc recreate. NOT_RUN rollback của checkpoint75e1c5f |
+| AP-14 | PASS backup/restore24bảng, rollback baseline858dfb3→candidate8db257a, bảo toàn metadata/7.838tệp và đọc lại hai run LIVE mới |
 | AP-15 | NOT_RUN cho phát hành main. Giữ nhánh triển khai riêng cho đến khi các cổng bắt buộc đạt |
+
+Phần tiếp theo còn đánh giá mapping trên tập holdout độc lập, nghiệm thu luồng AI chuẩn bị nguồn mới với ít thao tác kỹ thuật và đánh giá nhiều candidate ngang nhau. Các giới hạn này giữ cổng phát hành chưa đạt. Main và origin/main vẫn ở `3deac3f`; các commit triển khai được push trên nhánh feature.
 
 ---
 
