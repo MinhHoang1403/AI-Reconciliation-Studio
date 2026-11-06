@@ -86,6 +86,38 @@ def test_chat_upload_prepares_reviews_from_profiles_without_provider_or_approval
             )
             == 2
         )
+    decisions = []
+    for review in flow["detail"]["reviews"]:
+        draft = review["normalization_draft"]
+        draft.update(entity_kind="cash", grain="cash_event")
+        draft["fields"][0]["business_key"] = True
+        draft["fields"][1]["timezone"] = "UTC"
+        draft["fields"][2].update(amount_basis="gross", semantic_metric="received_cash")
+        decisions.append(
+            dict(
+                review_id=review["id"],
+                nonce=review["nonce"],
+                fingerprint=review["fingerprint"],
+                decision={"type": "MAPPING", "draft": draft},
+            )
+        )
+    batch = f"/api/agent/workflows/{flow['id']}/decisions/batch"
+    bad = sorted(decisions, key=lambda item: item["decision"]["draft"]["table_id"])
+    bad[-1] = {**bad[-1], "nonce": "0" * 32}
+    assert client.post(batch, json={"decisions": bad}, headers=headers).status_code == 409
+    with factory() as db:
+        assert not db.scalar(select(MappingRow.id).where(MappingRow.status == "APPROVED"))
+    assert client.post(batch, json={"decisions": decisions}, headers=headers).status_code == 200
+    drain(factory, worker)
+    assert client.post(batch, json={"decisions": decisions}, headers=headers).status_code == 200
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 2
+        assert (
+            db.scalar(
+                select(func.count()).select_from(MappingRow).where(MappingRow.status == "APPROVED")
+            )
+            == 2
+        )
 
 
 def test_prepared_chat_preview_and_count_need_no_provider_or_mapping(pg, monkeypatch):  # noqa: F811
@@ -185,6 +217,59 @@ def test_chat_scope_confirmation_builds_a_new_preview_and_never_approves(pg, mon
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(ReconciliationContractRow)) == 0
         assert db.scalar(select(func.count()).select_from(RunRow)) == 0
+
+
+def test_chat_exports_the_displayed_verified_query_and_keeps_full_snapshot(pg, monkeypatch):  # noqa: F811
+    from io import BytesIO
+
+    import studio.agent_jobs as agents
+    from openpyxl import load_workbook
+    from test_reconciliation_postgres import create_approved_run
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Exporting the displayed verified query must not call a provider")
+
+    monkeypatch.setattr(agents, "model_call", forbidden)
+    client, factory, worker = pg
+    pid, _, _, run = create_approved_run(pg)
+    drain(factory, worker)
+    context = {"project_id": pid, "run_id": run["run_id"]}
+    cid = conversation(client, context)
+    message = ask_agent(client, context, cid, text="Cho tôi xem một nhóm lệch tiền lớn nhất")
+    drain(factory, worker)
+    workflow = workflow_for(client, factory, message["job_id"])
+    table = next(
+        block["result"] for block in workflow["detail"]["blocks"] if block["type"] == "table"
+    )
+    assert len(table["rows"]) == 1 and table["rows"][0]["delta"] == "2.75"
+
+    def export(key):
+        message = ask_agent(client, context, cid, text="Xuất danh sách trên", key=key)
+        drain(factory, worker)
+        flow = workflow_for(client, factory, message["job_id"])
+        assert flow["state"] == "COMPLETED" and flow["detail"]["model_calls"] == 0
+        block = next(block for block in flow["detail"]["blocks"] if block["type"] == "download")
+        assert block["displayed_query"] is True
+        return block["export_id"]
+
+    export_id = export("filtered-page")
+    assert export("filtered-page-again") == export_id
+    downloaded = client.get(f"/api/exports/{export_id}/download")
+    assert downloaded.status_code == 200, downloaded.text
+    book = load_workbook(BytesIO(downloaded.content), read_only=True)
+    assert book.sheetnames == ["Summary", "Displayed results"]
+    summary = dict(list(book["Summary"].values)[1:])
+    assert summary["Export population"] == "DISPLAYED_PAGE" and summary["Rows exported"] == 1
+    import json
+
+    assert (
+        json.loads(summary["Snapshot JSON"])
+        == client.get(f"/api/runs/{run['run_id']}/metrics").json()
+    )
+    header, item = list(book["Displayed results"].values)
+    row = dict(zip(header, item, strict=True))
+    assert row["delta"] == 2.75 and row["group_id"] == table["rows"][0]["group_id"]
+    book.close()
 
 
 def test_review_failure_then_valid_partial_reply_clears_current_error_keeps_history(

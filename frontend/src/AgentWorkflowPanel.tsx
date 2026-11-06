@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { Notice, Spinner } from "./components";
 import { AgentResultBlocks } from "./AgentResultBlocks";
@@ -25,6 +25,18 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
 }) {
     const [workflow, setWorkflow] = useState<Workflow | null>(null);
     const [error, setError] = useState("");
+    const [batchDrafts, setBatchDrafts] = useState<Record<string, string>>({});
+    const [batchBusy, setBatchBusy] = useState(false);
+    const batchLock = useRef(false);
+    const batchDraft = useCallback((id: string, payload: string | null) => {
+        setBatchDrafts(previous => {
+            if ((previous[id] || null) === payload) return previous;
+            const next = {...previous};
+            if (payload) next[id] = payload;
+            else delete next[id];
+            return next;
+        });
+    }, []);
     const alive = useRef(true);
     const sequence = useRef(0);
     const controller = useRef(new AbortController());
@@ -62,6 +74,23 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
         if (alive.current)
             setError(String(err));
     } }
+    const openMappings = workflow?.detail.reviews.filter(review => review.kind === "MAPPING" && review.state === "OPEN") || [];
+    const canBatch = canEdit && openMappings.length >= 2 && openMappings.every(review => !!batchDrafts[review.id]);
+    async function approveBatch() {
+        if (!canBatch || batchLock.current) return;
+        batchLock.current = true; setBatchBusy(true);
+        try {
+            await api(`/agent/workflows/${id}/decisions/batch`, {method: "POST", body: JSON.stringify({
+                decisions: openMappings.map(review => JSON.parse(batchDrafts[review.id])),
+            })});
+            await refresh();
+        } catch (err) {
+            if (alive.current) setError(err instanceof Error ? err.message : "Không lưu được các quyết định.");
+        } finally {
+            batchLock.current = false;
+            if (alive.current) setBatchBusy(false);
+        }
+    }
     return <section className="agent-workflow" aria-label="Công việc của AI Assistant">{error && <Notice tone="error">{error}<button className="text-button" onClick={() => void refresh()}>Cập nhật</button></Notice>}
     {!workflow ? <Spinner /> : <><p className="agent-workflow-state" role="status">{["CREATED","RUNNING"].includes(workflow.state)&&<Spinner/>}<strong>{workflow.state==="WAITING_REVIEW"&&workflow.detail.reviews.some(r=>r.state==="OPEN"&&r.kind==="CLARIFICATION")?"Cần bạn bổ sung":workflow.state === "COMPLETED" && workflow.detail.intent?.intent === "EXPLORE_DATA" ? "Đã đọc dữ liệu; chưa chuẩn hóa" : states[workflow.state] || "Chưa có trạng thái xử lý"}</strong>{["CREATED", "RUNNING", "WAITING_REVIEW"].includes(workflow.state) && <button className="text-button" onClick={() => void cancel()}>Dừng bước tiếp theo</button>}</p>
       {workflow.detail.error_code && <Notice tone="warning">
@@ -74,7 +103,11 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
         <details><summary>Chi tiết</summary><code>{workflow.detail.error_code}</code></details>
       </Notice>}
       {workflow.detail.steps.length>0&&<details className="agent-processing"><summary>Chi tiết xử lý</summary><ol className="agent-steps">{workflow.detail.steps.map((s, i) => <li key={i}>{tools[s.tool] || s.tool} · {statusText[s.status]||label(s.status)}</li>)}</ol></details>}
-      {workflow.detail.reviews.filter(r => r.state === "OPEN").map(r => <ReviewCard key={`${r.id}:${r.nonce}`} review={r} workflow={workflow} draftOwner={draftOwner} canEdit={canEdit && ["WAITING_REVIEW", "RUNNING"].includes(workflow.state)} refresh={refresh} onReply={onReply}/>)}
+      {workflow.detail.reviews.filter(r => r.state === "OPEN").map(r => <ReviewCard key={`${r.id}:${r.nonce}`} review={r} workflow={workflow} draftOwner={draftOwner} canEdit={canEdit && !batchBusy && ["WAITING_REVIEW", "RUNNING"].includes(workflow.state)} refresh={refresh} onReply={onReply} onBatchDraft={workflow.detail.prepare_upload ? batchDraft : undefined}/>)}
+      {(canBatch || batchBusy) && <section aria-label="Duyệt các nguồn đang hiển thị">
+        <p>Áp dụng các lựa chọn trong thẻ của {openMappings.map(review => review.resource_label || "nguồn đã chọn").join(", ")}.</p>
+        <button type="button" className="button primary" disabled={batchBusy} onClick={()=>void approveBatch()}>Duyệt {openMappings.length} nguồn và chuẩn hóa</button>
+      </section>}
       <AgentResultBlocks blocks={workflow.detail.blocks.filter((block,index,blocks)=>block.type!=="progress"||(!workflow.detail.reviews.some(r=>r.state==="OPEN"&&(r.question===block.text||r.reply_questions.includes(block.text)))&&!blocks.slice(0,index).some(previous=>previous.type==="progress"&&previous.text===block.text)))} context={workflow.context} onNavigate={onNavigate} workflowId={workflow.id} querySelection={workflow.detail.query_selection?.query}/>
     </>}</section>;
 }

@@ -140,9 +140,9 @@ test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconcil
     const meaning=card.getByRole('textbox',{name:'Khoản tiền này là gì?',exact:true});
     await meaning.fill('stock_value');await meaning.press('Tab');
     manualFields+=6;
-    await card.getByRole('button',{name:'Duyệt cách ghép cột và chuẩn hóa',exact:true}).click();
-    await expect(card).toHaveCount(0);
   }
+  await page.getByRole('button',{name:'Duyệt 3 nguồn và chuẩn hóa',exact:true}).click();
+  await expect(cards).toHaveCount(0);
   const work=page.getByRole('region',{name:'Công việc của AI Assistant',exact:true}).last();
   await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
   receipts.upload_to_canonical_ms=Date.now()-start;
@@ -154,7 +154,7 @@ test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconcil
   const scope=page.getByRole('group',{name:'Kỳ và phạm vi dữ liệu',exact:true});
   await scope.getByLabel('Ngày đầu kỳ',{exact:true}).fill('2026-11-01');
   await scope.getByLabel('Ngày sau cuối kỳ',{exact:true}).fill('2026-12-01');
-  await scope.getByLabel('Múi giờ đối soát',{exact:true}).selectOption('UTC');
+  await scope.getByRole('combobox',{name:/^Múi giờ đối soát/}).selectOption('UTC');
   await scope.getByLabel('Thời điểm chốt dữ liệu (UTC)',{exact:true}).fill('2026-12-02T00:00');
   await scope.getByRole('checkbox').check();manualFields+=5;
   await scope.getByRole('button',{name:'Kiểm tra phạm vi và tìm khóa',exact:true}).click();
@@ -175,18 +175,22 @@ test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconcil
   receipts.run_id=runId;receipts.upload_to_verified_ms=Date.now()-start;
   await send('Cho tôi xem một nhóm lệch tiền lớn nhất');
   await expect(work.locator('.agent-table')).toContainText('50');
+  const folder=`../runtime/automation-inventory/${suffix}`;
+  await mkdir(folder,{recursive:true});
+  await send('Xuất danh sách trên CSV');
+  const pageFile=page.waitForEvent('download');
+  await work.getByRole('link',{name:'Tải bảng đang xem CSV',exact:true}).click();
+  await (await pageFile).saveAs(`${folder}/displayed.csv`);
   await send('Giải thích nhóm thứ một');
   await expect(work).toContainText('0002');
   await send('Xuất báo cáo Excel của lần đối soát này');
   const file=page.waitForEvent('download');
   await work.getByRole('link',{name:/Tải.*XLSX/i}).click();
   const download=await file;
-  const folder=`../runtime/automation-inventory/${suffix}`;
-  await mkdir(folder,{recursive:true});
   await download.saveAs(`${folder}/inventory.xlsx`);
   await page.reload();
   await expect(work.getByRole('link',{name:/Tải.*XLSX/i})).toBeVisible();
   expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used);
   expect(errors).toEqual([]);
-  await writeFile(`${folder}/receipt.json`,JSON.stringify({...receipts,clicks,manualFields,approvals:4,pageErrors:errors},null,2));
+  await writeFile(`${folder}/receipt.json`,JSON.stringify({...receipts,clicks,manualFields,approvedResources:4,approvalClicks:2,pageErrors:errors},null,2));
 });

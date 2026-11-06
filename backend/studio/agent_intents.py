@@ -578,6 +578,31 @@ def resolve_run_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | Non
     )
 
 
+def resolve_displayed_export(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
+    """Require an explicit reference to the verified table currently in context."""
+    normalized = " ".join(plain_question(goal).split()).rstrip("?.!")
+    request = re.fullmatch(
+        r"(?:hay )?(?:xuat|tai) (?:danh sach|bang) (?:tren|nay|vua hien thi)(?: (excel|xlsx|csv))?",
+        normalized,
+    )
+    if not request:
+        return None
+    query = catalogue.previous_query
+    if (
+        query is None
+        or query.source_kind != "VERIFIED_RUN"
+        or query.source_id != catalogue.context.run_id
+        or query.source_id not in catalogue.run_ids
+        or query.project_id != catalogue.context.project_id
+    ):
+        return AgentIntent(intent="CLARIFY", questions=["Bạn muốn xuất bảng kết quả nào?"])
+    return AgentIntent(
+        intent="EXPORT_RESULT",
+        run_id=query.source_id,
+        export_format="csv" if request[1] == "csv" else "xlsx",
+    )
+
+
 def resolve_named_reconciliation(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
     """Resolve only an unqualified request with two exact filenames in stated order."""
     quoted = list(re.finditer(r'"([^"]+)"|“([^”]+)”', goal))

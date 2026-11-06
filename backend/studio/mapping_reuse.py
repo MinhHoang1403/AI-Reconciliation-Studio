@@ -40,7 +40,9 @@ def report_name_identity(filename: str) -> str:
 
 
 def compatible_column_bindings(
-    source: DatasetProfile, target: DatasetProfile
+    source: DatasetProfile,
+    target: DatasetProfile,
+    approved: TransformPlan | None = None,
 ) -> dict[str, str] | None:
     """Bind complete approved columns by unique lexical header identity, never fuzzy.
 
@@ -56,18 +58,33 @@ def compatible_column_bindings(
     right = {name(c.name): c for c in target.columns}
     if len(left) != len(source.columns) or len(right) != len(target.columns):
         return None
-    if not left.keys() <= right.keys():
-        return None
+    aliases: dict[str, set[str]] = {}
+    if approved and not approved.mapping.rules:
+        fields = {field.id: field for field in approved.schema.fields}
+        for decision in approved.mapping.decisions:
+            field = fields.get(decision.candidate_target or "")
+            if field and decision.transformation_candidate.op in {
+                "cast_string_preserve",
+                "parse_date",
+                "parse_decimal",
+            }:
+                aliases[decision.source_field] = {name(field.name), name(field.id)}
     bindings = {}
+    bound_names: set[str] = set()
     for header, original in left.items():
-        incoming = right[header]
+        names = ({header} | aliases.get(original.column_id, set())) & right.keys()
+        if len(names) != 1 or names & bound_names:
+            return None
+        selected = next(iter(names))
+        incoming = right[selected]
         if (
             set(original.type_candidates) != set(incoming.type_candidates)
             or original.identifier_candidate != incoming.identifier_candidate
         ):
             return None
         bindings[original.column_id] = incoming.column_id
-    for header in right.keys() - left.keys():
+        bound_names.add(selected)
+    for header in right.keys() - bound_names:
         column = right[header]
         if (
             header

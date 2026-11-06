@@ -30,6 +30,7 @@ from studio.contracts.agent import (
     ClarificationDecision,
     IntentBatch,
     MappingAssessment,
+    MappingReviewBatch,
     MappingReviewDecision,
     NormalizationDraft,
     PlanReviewDecision,
@@ -63,7 +64,9 @@ from studio.parsing import inspect_upload
 from studio.repository import enqueue_job, get_scoped, project_for_table
 
 
-def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) -> WorkflowView:
+def decide(
+    db: Session, actor: Actor, workflow_id: str, body: ReviewDecision, *, advance_now: bool = True
+) -> WorkflowView:
     """Một transaction duy nhất: reauthorize → approval → state → next-job enqueue."""
     row = own_workflow(db, actor, workflow_id, lock=True)
     require_editor(actor, db, row.id)
@@ -179,7 +182,8 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
     )
     row.state = "RUNNING"
     save(row, state)
-    advance(db, row)
+    if advance_now:
+        advance(db, row)
     db.flush()
     return view(row)
 
@@ -502,6 +506,28 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         result = decide(db, actor, workflow_id, body)
         db.commit()
         return result
+
+    @router.post("/workflows/{workflow_id}/decisions/batch", response_model=WorkflowView)
+    def mapping_decisions(
+        workflow_id: str, body: MappingReviewBatch, db: DB, actor: User, key: Key
+    ) -> WorkflowView:
+        """Apply each displayed mapping under its own token within one transaction."""
+        row = own_workflow(db, actor, workflow_id, lock=True)
+        require_editor(actor, db, row.id)
+        state = WorkflowState.model_validate(row.detail)
+        by_id = {review.id: review for review in state.reviews}
+        selected = [by_id.get(entry.review_id) for entry in body.decisions]
+        resources = {review.resource_id for review in selected if review is not None}
+        if len(resources) != len(body.decisions) or any(
+            review is None or review.kind != "MAPPING" or entry.decision.type != "MAPPING"
+            for review, entry in zip(selected, body.decisions, strict=True)
+        ):
+            raise DomainError("INVALID_REVIEW_DRAFT", "Chọn mỗi thẻ ghép cột một lần.", 422)
+        for entry in sorted(body.decisions, key=lambda item: by_id[item.review_id].resource_id):
+            decide(db, actor, workflow_id, entry, advance_now=False)
+        advance(db, row)
+        db.commit()
+        return view(row)
 
     @router.post("/workflows/{workflow_id}/replies", status_code=202)
     def reply(workflow_id: str, body: ReviewReply, db: DB, actor: User, key: Key) -> dict[str, str]:

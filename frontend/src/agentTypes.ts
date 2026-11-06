@@ -152,6 +152,7 @@ export type AgentBlock = {
     answer: AssistantAnswer | null;
 } | Chart | {
     type: "download";
+    displayed_query?: boolean;
     export_id: string;
     run_id: string;
     format: string;

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from studio.access import Actor, require_editor
 from studio.contracts import Contract, EvidenceRef, MappingRevision, ParsedTableArtifact
 from studio.contracts.api import JobAccepted
+from studio.contracts.data_query import DataQuery
 from studio.contracts.reconciliation import (
     ComparisonResult,
     ExceptionCase,
@@ -848,17 +849,34 @@ def enqueue_approved_run(contract_id: str, db: Session, actor: Actor) -> dict[st
 
 
 def enqueue_export(
-    run_id: str, format: Literal["csv", "xlsx"], db: Session, actor: Actor
+    run_id: str,
+    format: Literal["csv", "xlsx"],
+    db: Session,
+    actor: Actor,
+    *,
+    displayed_query: DataQuery | None = None,
 ) -> dict[str, str]:
     require_editor(actor, db, run_id)
     row = get_scoped(db, RunRow, run_id, actor)
     require_verified(row)
+    revision = REPORT_REVISION
+    if displayed_query is not None:
+        if (
+            displayed_query.source_kind != "VERIFIED_RUN"
+            or displayed_query.source_id != row.id
+            or displayed_query.project_id != row.project_id
+        ):
+            raise DomainError("STALE_CONTEXT", "Bảng xuất khác lần đối soát đã chọn.", 409)
+        query_identity = hashlib.sha256(
+            json.dumps([actor.id, displayed_query.model_dump(mode="json")], sort_keys=True).encode()
+        ).hexdigest()
+        revision = f"report-page-1:{query_identity}"
     db.refresh(row, with_for_update=True)
     artifact = db.scalar(
         select(ExportRow).where(
             ExportRow.run_id == run_id,
             ExportRow.format == format,
-            ExportRow.revision == REPORT_REVISION,
+            ExportRow.revision == revision,
         )
     )
     if artifact is None:
@@ -868,7 +886,7 @@ def enqueue_export(
             project_id=row.project_id,
             run_id=run_id,
             format=format,
-            revision=REPORT_REVISION,
+            revision=revision,
         )
         db.add(artifact)
         db.flush()
@@ -878,7 +896,12 @@ def enqueue_export(
         row.project_id,
         "export",
         "export:" + artifact.id,
-        {"export_id": artifact.id},
+        {"export_id": artifact.id}
+        | (
+            {"displayed_query": displayed_query.model_dump(mode="json"), "actor_id": actor.id}
+            if displayed_query
+            else {}
+        ),
     )
     db.flush()
     return {"export_id": artifact.id, "job_id": job.id, "status": artifact.status}

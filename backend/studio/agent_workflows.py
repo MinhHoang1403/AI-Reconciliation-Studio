@@ -954,7 +954,10 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
             assert context.run_id
             state.blocks.append(
                 DownloadBlock(
-                    export_id=exported, run_id=context.run_id, format=intent.export_format
+                    export_id=exported,
+                    run_id=context.run_id,
+                    format=intent.export_format,
+                    displayed_query=state.export_query is not None,
                 )
             )
             row.state = "COMPLETED"
@@ -962,7 +965,12 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
             ref = execute_tool(
                 db,
                 actor,
-                ExportAction(name="start_export", context=context, format=intent.export_format),
+                ExportAction(
+                    name="start_export",
+                    context=context,
+                    format=intent.export_format,
+                    displayed_query=state.export_query,
+                ),
                 row.id,
             )
             assert isinstance(ref, JobReference)

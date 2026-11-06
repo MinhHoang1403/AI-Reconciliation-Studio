@@ -165,13 +165,14 @@ function storedDraft(key: string, review: Review) {
     } catch { return null; }
 }
 
-export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onReply }: {
+export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onReply, onBatchDraft }: {
     review: Review;
     workflow: Workflow;
     canEdit: boolean;
     draftOwner: string;
     refresh: () => Promise<void>;
     onReply?: (workflowId:string,review:Review)=>void;
+    onBatchDraft?: (id: string, payload: string | null) => void;
 }) {
     const storageKey = `studio.review-draft.${draftOwner}.${workflow.id}.${review.id}.${review.nonce}.${review.fingerprint}`;
     const cached = useRef(storedDraft(storageKey, review)).current;
@@ -359,6 +360,14 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     }
     const ready = review.kind === "MAPPING" ? !!assessment?.preflight_ready && assessmentSignature===draftSignature && !checking && (review.extraction_review_required!==true||extraction) && !!draft?.fields.every(f => f.data_type === "string" || (f.data_type === "decimal" ? f.locale && f.semantic_metric && f.amount_basis && f.currency && f.unit : f.date_format && f.timezone)) :
         review.kind === "RECONCILIATION" ? !!plan?.period_start && !!plan.period_end && !!plan.timezone && !!plan.effective_from && planSources.every(Boolean) && [plan.left, plan.right].every(s => s.date_field && s.time_basis && s.coverage_start && s.coverage_end && s.snapshot_at && s.completeness) : !!review.reply_intent;
+    const batchPayload = review.kind === "MAPPING" && ready && !disabled ? JSON.stringify({
+        review_id: review.id, nonce: review.nonce, fingerprint: review.fingerprint,
+        decision: {type: "MAPPING", draft, extraction_reviewed: extraction},
+    }) : null;
+    useEffect(() => {
+        onBatchDraft?.(review.id, batchPayload);
+        return () => onBatchDraft?.(review.id, null);
+    }, [batchPayload, onBatchDraft, review.id]);
     if (review.kind === "CLARIFICATION") return <section className="agent-clarification" aria-label="Câu hỏi bổ sung">
       <p>{review.question}</p>
       {error && <Notice tone="error">{error}</Notice>}

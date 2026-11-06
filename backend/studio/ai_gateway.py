@@ -27,7 +27,7 @@ from studio.errors import DomainError
 from studio.profiling import find_mapping_candidates
 from studio.schema_mapping import validate_mapping
 
-PROMPT_REVISION = "schema-understanding-2"
+PROMPT_REVISION = "schema-understanding-3"
 TASK_IDS = {"classify_dataset", "infer_grain", "propose_mapping", "suggest_transformation"}
 
 
@@ -636,14 +636,15 @@ class GeminiProvider:
 
 def manual_proposal(profile: DatasetProfile, schema: SchemaDefinition) -> SchemaProposal:
     """Deterministic shortlist for manual review, explicitly labelled without AI success."""
+    from collections import Counter
+
     candidates = find_mapping_candidates(profile, schema)
     fields = {f.id: f for f in schema.fields}
     decisions = []
-    used: set[str] = set()
+    owners = Counter(candidate for matches in candidates.values() for candidate in matches)
     for col in profile.columns:
-        target = next((t for t in candidates[col.column_id] if t not in used), None)
-        if target:
-            used.add(target)
+        matches = candidates[col.column_id]
+        target = matches[0] if len(matches) == 1 and owners[matches[0]] == 1 else None
         field = fields.get(target or "")
         transform: dict[str, Any] = {"op": "cast_string_preserve"}
         if field and field.data_type == "decimal":
@@ -656,12 +657,16 @@ def manual_proposal(profile: DatasetProfile, schema: SchemaDefinition) -> Schema
                 {
                     "source_field": col.column_id,
                     "candidate_target": target,
-                    "decision": "PROPOSED" if target else "UNKNOWN",
+                    "decision": "PROPOSED"
+                    if target
+                    else "AMBIGUOUS"
+                    if len(matches)
+                    else "UNKNOWN",
                     "evidence_ids": col.evidence_ids,
                     "grain_assumption": "unknown",
                     "transformation_candidate": transform,
                     "unresolved_questions": ["Xác nhận ý nghĩa trường và phép chuyển đổi."],
-                    "reasoning": "Ứng viên theo từ điển tên cột; chưa được AI xác minh.",
+                    "reasoning": "Ứng viên dựa trên tên và đặc điểm cột; cần xác nhận nghiệp vụ.",
                 }
             )
         )

@@ -76,6 +76,7 @@ class ExportAction(Contract):
     name: Literal["start_export"]
     context: AssistantContext
     format: Literal["csv", "xlsx"]
+    displayed_query: DataQuery | None = None
 
 
 AgentAction = Annotated[
@@ -218,6 +219,12 @@ def execute_tool(
         if action.context.run_id is None:
             raise DomainError("INSUFFICIENT_EVIDENCE", "Cần run đã xác minh.")
         return JobReference.model_validate(
-            enqueue_export(action.context.run_id, action.format, db, actor)
+            enqueue_export(
+                action.context.run_id,
+                action.format,
+                db,
+                actor,
+                displayed_query=action.displayed_query,
+            )
         )
     raise DomainError("TOOL_NOT_ALLOWED", "Công cụ chưa hỗ trợ.")

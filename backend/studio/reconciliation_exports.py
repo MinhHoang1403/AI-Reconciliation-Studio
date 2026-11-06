@@ -22,10 +22,12 @@ from sqlalchemy import select
 
 from studio.access import Actor
 from studio.config import settings
+from studio.contracts.data_query import DataQuery
 from studio.contracts.reconciliation import MetricSnapshot, ReconciliationContract
 from studio.database import (
     ExceptionRow,
     ExportRow,
+    MembershipRow,
     ReconciliationContractRow,
     RunRow,
     identifier,
@@ -263,6 +265,56 @@ def write_csv(path: Path, sections: dict[str, list[list[Any]]]) -> None:
                 )
 
 
+def displayed_sections(
+    db: Any, run: RunRow, query: DataQuery, actor_id: str
+) -> dict[str, list[list[Any]]]:
+    """Export one pinned query page while retaining the full verified run snapshot."""
+    from studio.data_query import VERIFIED_MONEY_FIELDS, execute_query
+
+    if (
+        query.source_kind != "VERIFIED_RUN"
+        or query.source_id != run.id
+        or query.project_id != run.project_id
+    ):
+        raise DomainError("STALE_CONTEXT", "Bảng xuất khác lần đối soát đã chọn.", 409)
+    member = db.get(MembershipRow, (run.workspace_id, actor_id))
+    if member is None or member.role not in {"owner", "editor"}:
+        raise DomainError("ROLE_FORBIDDEN", "Không còn quyền tạo báo cáo.", 403)
+    result = execute_query(db, Actor(actor_id, run.workspace_id, member.role), query)
+    fields = list(result.fields)
+    if not query.aggregations and "group_id" not in fields:
+        fields.append("group_id")
+    money_fields = set(VERIFIED_MONEY_FIELDS) | {
+        f"{operation.op}_{operation.field_id or 'rows'}_{index}"
+        for index, operation in enumerate(query.aggregations)
+        if operation.field_id in VERIFIED_MONEY_FIELDS and operation.op != "count"
+    }
+    rows: list[list[Any]] = [fields]
+    for record in result.rows:
+        rows.append(
+            [
+                Decimal(value) if isinstance(value, str) and field in money_fields else value
+                for field in fields
+                for value in [record.get(field)]
+            ]
+        )
+    snapshot = MetricSnapshot.model_validate(run.metric_snapshot)
+    return {
+        "Summary": [
+            ["Field", "Value"],
+            ["Run ID", run.id],
+            ["Verification", run.status],
+            ["Export population", "DISPLAYED_PAGE"],
+            ["Rows exported", len(result.rows)],
+            ["Query matches", result.total_count],
+            ["Snapshot population", "FULL_VERIFIED_RUN"],
+            ["Snapshot JSON", snapshot.model_dump_json()],
+            ["Query JSON", result.query.model_dump_json()],
+        ],
+        "Displayed results": rows,
+    }
+
+
 def write_xlsx(path: Path, sections: dict[str, list[list[Any]]]) -> None:
     workbook = Workbook()
     workbook.remove(workbook.worksheets[0])
@@ -333,7 +385,16 @@ def execute_export(job_id: str, token: str, factory: Any, fence: Any, finish: An
         assert run is not None
         require_verified(run)
         captured_at = now()
-        sections = report_sections(db, run, captured_at)
+        sections = (
+            displayed_sections(
+                db,
+                run,
+                DataQuery.model_validate(job.payload["displayed_query"]),
+                job.payload["actor_id"],
+            )
+            if "displayed_query" in job.payload
+            else report_sections(db, run, captured_at)
+        )
         artifact_id, format = artifact.id, artifact.format
         key = f"{run.workspace_id}/exports/{artifact_id}/{identifier()}/report.{format}"
         db.rollback()

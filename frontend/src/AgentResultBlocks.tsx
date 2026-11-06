@@ -170,7 +170,7 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
             if (block.type === "chart")
                 return <ResultChart key={i} data={block}/>;
             if (block.type === "download")
-                return <a className="button secondary" key={i} href={`/api/exports/${block.export_id}/download`}>Tải {block.format.toUpperCase()}</a>;
+                return <a className="button secondary" key={i} href={`/api/exports/${block.export_id}/download`}>Tải {block.displayed_query ? "bảng đang xem " : ""}{block.format.toUpperCase()}</a>;
             if (block.type === "dataset_summary")
                 return <section className="agent-dataset" key={i}><h4>{block.name}</h4><Badge status={block.status}/><p>{block.status === "READY" ? "Đã chuẩn hóa" : "Đã xử lý"} {block.rows.toLocaleString("vi-VN")} dòng. {block.invalid_rows > 0 ? `${block.invalid_rows.toLocaleString("vi-VN")} dòng cần bạn kiểm tra; chưa thể dùng như dữ liệu đầy đủ.` : "Bạn có thể xem dữ liệu trước và sau khi chuẩn hóa."}</p><details><summary>Phép biến đổi đã duyệt</summary><p>{Array.from(new Set(block.transformations)).map(t=>transformLabels[t]||t).join("; ")}</p></details><button className="text-button" onClick={() => onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}>Kiểm tra dữ liệu trước/sau</button></section>;
             const snapshot = block.result.snapshot || block.result.run?.metric_snapshot;

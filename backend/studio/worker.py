@@ -78,7 +78,7 @@ from studio.repository import (
     reserve_document_request,
     reserve_gemini_request,
 )
-from studio.schema_mapping import compile_transform_plan, validate_mapping
+from studio.schema_mapping import TransformPlan, compile_transform_plan, validate_mapping
 from studio.storage import checksum, storage_path, write_parquet
 
 logger = logging.getLogger("studio.worker")
@@ -233,6 +233,22 @@ def _finish(db: Session, job: JobRow, result: dict[str, Any]) -> None:
     notify_job_finished(db, job)
 
 
+def _template_bindings(
+    db: Session, mapping: MappingRow, source: TableRow, target: DatasetProfile
+) -> tuple[TransformPlan, dict[str, str]] | None:
+    if not mapping.decision:
+        return None
+    contract = mapping_contract(mapping)
+    schema = db.get(SchemaRow, mapping.schema_id)
+    if contract.rules or schema is None:
+        return None
+    approved = TransformPlan(contract, SchemaDefinition.model_validate(schema.definition))
+    columns = compatible_column_bindings(
+        DatasetProfile.model_validate(source.profile), target, approved
+    )
+    return (approved, columns) if columns is not None else None
+
+
 def _approved_mapping_draft(
     db: Session, table: TableRow, profile: DatasetProfile
 ) -> tuple[str, SchemaDefinition, SchemaProposal, str | None] | None:
@@ -259,40 +275,27 @@ def _approved_mapping_draft(
         )
     )
     bounded = len(candidates) <= 10
-    candidates = [
-        candidate
-        for candidate in candidates
-        if (source := db.get(TableRow, candidate.source_table_id)) is not None
-        and compatible_column_bindings(DatasetProfile.model_validate(source.profile), profile)
-        is not None
-    ]
-    if not candidates:
+    compatible = []
+    for candidate in candidates:
+        source = db.get(TableRow, candidate.source_table_id)
+        resolved = _template_bindings(db, candidate, source, profile) if source else None
+        if source and resolved:
+            compatible.append((candidate, source, resolved))
+    if not compatible:
         return None
-    template = candidates[0]
+    template, _, (approved, bindings) = compatible[0]
     grant_id = None
     eligible = []
     if bounded:
-        for candidate in candidates:
+        for candidate, source, resolved in compatible:
             grant = current_reuse_grant(db, candidate)
             if grant is None:
                 continue
-            source = db.get(TableRow, candidate.source_table_id)
-            if source is not None and exact_reuse_source(db, source, table, candidate):
-                eligible.append((candidate, grant.id))
+            if exact_reuse_source(db, source, table, candidate):
+                eligible.append((candidate, grant.id, resolved))
     if len(eligible) == 1:
-        template, grant_id = eligible[0]
-    if template.decision is None:
-        return None
-    old = mapping_contract(template)
-    if old.rules:
-        return None
-    template_schema = db.get(SchemaRow, template.schema_id)
-    assert template_schema is not None
-    schema = SchemaDefinition.model_validate(template_schema.definition)
-    source = db.get(TableRow, template.source_table_id)
-    assert source is not None
-    bindings = compatible_column_bindings(DatasetProfile.model_validate(source.profile), profile)
-    assert bindings is not None
+        template, grant_id, (approved, bindings) = eligible[0]
+    old, schema = approved.mapping, approved.schema
     proposal = SchemaProposal(
         entity_kind=schema.entity_kind,
         grain=schema.grain,
@@ -499,9 +502,7 @@ def _reuse_mapping(job_id: str, token: str) -> None:
         def eligible() -> bool:
             grant = current_reuse_grant(db, template)
             current_profile = DatasetProfile.model_validate(target.profile)
-            bindings = compatible_column_bindings(
-                DatasetProfile.model_validate(source.profile), current_profile
-            )
+            bindings = _template_bindings(db, template, source, current_profile)
             expected = _approved_mapping_draft(db, target, current_profile)
             return (
                 grant is not None
@@ -544,8 +545,9 @@ def _reuse_mapping(job_id: str, token: str) -> None:
         schema = SchemaDefinition.model_validate(schema_row.definition)
         source_profile = DatasetProfile.model_validate(source.profile)
         target_profile = DatasetProfile.model_validate(target.profile)
-        bindings = compatible_column_bindings(source_profile, target_profile)
-        assert bindings is not None
+        resolved = _template_bindings(db, template, source, target_profile)
+        assert resolved is not None
+        _, bindings = resolved
         target_id, source_id = target.id, source.id
         dataset_id = version.dataset_id
         path = storage_path(settings.storage_root, parsed.storage_key)

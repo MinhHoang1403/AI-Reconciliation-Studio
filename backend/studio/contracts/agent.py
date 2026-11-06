@@ -269,6 +269,7 @@ class DownloadBlock(Contract):
     export_id: str
     run_id: str
     format: Literal["csv", "xlsx"]
+    displayed_query: bool = False
 
 
 ResultBlock = Annotated[
@@ -332,6 +333,7 @@ class WorkflowState(Contract):
     confirmed_contract_id: str | None = None
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
     query_selection: QuerySelection | None = None
+    export_query: DataQuery | None = None
 
 
 class WorkflowView(Contract):
@@ -380,6 +382,10 @@ class ReviewDecision(ReviewToken):
         MappingReviewDecision | PlanReviewDecision | ClarificationDecision,
         Field(discriminator="type"),
     ]
+
+
+class MappingReviewBatch(Contract):
+    decisions: list[ReviewDecision] = Field(min_length=2, max_length=3)
 
 
 class ReviewDraftUpdate(ReviewToken):

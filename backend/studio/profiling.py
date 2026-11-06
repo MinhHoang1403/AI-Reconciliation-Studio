@@ -145,7 +145,7 @@ ALIASES = {
     "gross_amount": {"gross amount", "gross", "tong truoc giam"},
     "net_amount": {"net amount", "net"},
     "description": {"description", "mo ta", "ten"},
-    "event_date": {"date", "ngay", "created at"},
+    "event_date": {"event date", "ngay phat sinh"},
     "currency": {"currency", "tien te"},
     "shop_id": {"shop", "shop id", "cua hang"},
     "platform": {"platform", "san"},
@@ -155,24 +155,42 @@ ALIASES = {
 def find_mapping_candidates(
     profile: DatasetProfile, schema: SchemaDefinition
 ) -> dict[str, list[str]]:
-    """F06: bounded alias/type shortlist, never approval or calibrated probability.
+    """F06: exact aliases, then unique compatible token containment for review.
 
     [D] name/instance/constraint approach inspired by Rahm–Bernstein taxonomy.
-    O(source fields × target fields); ambiguous Total never means gross/net.
+    O(source fields × target fields); generic labels never supply business roles.
     """
-    output = {}
+
+    def tokens(name: str) -> tuple[str, ...]:
+        return tuple(re.findall(r"[a-z0-9]+", normalized_name(name)))
+
+    target_names = {
+        field.id: {tokens(value) for value in {field.id, field.name} | ALIASES.get(field.id, set())}
+        for field in schema.fields
+    }
+    output: dict[str, list[str]] = {}
     for source in profile.columns:
-        name = normalized_name(source.name).strip()
+        name = tokens(source.name)
         compatible = [
             f
             for f in schema.fields
             if not (source.identifier_candidate and f.data_type == "decimal")
         ]
-        targets = [
-            f.id
-            for f in compatible
-            if name in ALIASES.get(f.id, set()) or name in {normalized_name(f.name), f.id}
-        ]
+        targets = [f.id for f in compatible if name in target_names[f.id]]
+        if not targets and name and set(name) not in ({"amount"}, {"total"}, {"date"}, {"code"}):
+            partial = [
+                f.id
+                for f in compatible
+                if (
+                    f.data_type == "string"
+                    or f.data_type == "date"
+                    and source.observations.get("date_formats")
+                    or f.data_type == "decimal"
+                    and source.observations.get("numeric_locales")
+                )
+                and any(len(alias) >= 2 and set(alias) < set(name) for alias in target_names[f.id])
+            ]
+            targets = partial if len(partial) == 1 else []
         output[source.column_id] = targets[:5]
     return output
 

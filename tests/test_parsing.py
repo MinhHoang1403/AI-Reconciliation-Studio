@@ -244,6 +244,30 @@ def test_T08_alias_candidates(profile, schema):
     assert candidates["c2"] == []
 
 
+def test_mapping_shortlist_abstains_for_generic_roles_and_competing_columns(profile, schema):
+    from studio.ai_gateway import manual_proposal
+    from studio.profiling import find_mapping_candidates
+
+    key = profile.columns[0]
+    money = profile.columns[1]
+    currency = key.model_copy(update={"column_id": "c7", "name": "Billing currency"})
+    generic_date = money.model_copy(update={"column_id": "c8", "name": "Date"})
+    second_key = key.model_copy(
+        update={
+            "column_id": "c9",
+            "name": "Tracking ID",
+            "evidence_ids": ["table:c9"],
+        }
+    )
+    new = profile.model_copy(update={"columns": [key, money, currency, generic_date, second_key]})
+    matches = find_mapping_candidates(new, schema)
+    assert matches["c8"] == []
+    proposal = manual_proposal(new, schema)
+    both_keys = [d for d in proposal.decisions if d.source_field in {key.column_id, "c9"}]
+    assert len(both_keys) == 2
+    assert all(d.candidate_target is None and d.decision == "AMBIGUOUS" for d in both_keys)
+
+
 def test_decimal_zero_and_paid_header_are_not_identifier_candidates():
     import polars as pl
     from studio.contracts import SourceColumn

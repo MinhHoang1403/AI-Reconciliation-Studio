@@ -44,7 +44,15 @@ def test_additive_migration_preserves_existing_approved_canonical(pg):  # noqa: 
     assert any(row["record_payload"].get("reference_id") == "000123" for row in preview["items"])
 
 
-def prepare_pair(pg, *, workbooks=False, grouped=False, partial=False, report_period=None):  # noqa: F811
+def prepare_pair(
+    pg,  # noqa: F811
+    *,
+    workbooks=False,
+    grouped=False,
+    partial=False,
+    report_period=None,
+    key_display_name=None,
+):
     from reconciliation_cases import FIXTURES
 
     client, factory, worker = pg
@@ -120,7 +128,7 @@ def prepare_pair(pg, *, workbooks=False, grouped=False, partial=False, report_pe
             fields=[
                 dict(
                     id=f,
-                    name=f,
+                    name=key_display_name if key_display_name and f == "tracking_id" else f,
                     data_type=t,
                     required=False,
                     **(
@@ -263,7 +271,9 @@ def test_owner_mapping_reuse_checks_full_table_and_records_original_approval(pg)
     assert not client.get(f"/api/datasets/{revoked}/artifacts").json()["canonical_datasets"]
 
 
-@pytest.mark.parametrize("change", ["period", "reorder", "description", "combined"])
+@pytest.mark.parametrize(
+    "change", ["period", "reorder", "description", "combined", "approved-label"]
+)
 def test_mapping_reuse_rebinds_period_and_column_positions_without_new_approval(pg, change):  # noqa: F811
     import csv
     import io
@@ -272,7 +282,11 @@ def test_mapping_reuse_rebinds_period_and_column_positions_without_new_approval(
     from studio.database import MappingRow
 
     client, factory, worker = pg
-    pid, plan = prepare_pair(pg, report_period="2026_10")
+    pid, plan = prepare_pair(
+        pg,
+        report_period="2026_10",
+        key_display_name="Shipment identifier" if change == "approved-label" else None,
+    )
     with factory() as db:
         original = db.get(CanonicalRow, plan.left.canonical_id)
         mapping_id = original.mapping_id
@@ -286,6 +300,10 @@ def test_mapping_reuse_rebinds_period_and_column_positions_without_new_approval(
     )
     records = list(csv.DictReader(io.StringIO((FIXTURES / "shipments.csv").read_text())))
     fields = list(records[0])
+    if change == "approved-label":
+        fields = ["Shipment identifier" if field == "tracking_id" else field for field in fields]
+        for row in records:
+            row["Shipment identifier"] = row.pop("tracking_id")
     if change in {"reorder", "combined"}:
         fields = list(reversed(fields))
     if change in {"description", "combined"}:

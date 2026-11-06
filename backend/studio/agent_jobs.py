@@ -17,6 +17,7 @@ from studio.agent_intents import (
     currency_bypass_requested,
     interpret_requests,
     resolve_attached_normalization,
+    resolve_displayed_export,
     resolve_named_reconciliation,
     resolve_plain_listing,
     resolve_ranked_results,
@@ -309,13 +310,16 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
         parent = get_scoped(db, JobRow, row.parent_job_id, actor)
         command = parent.payload.get("command")
         goal = row.goal
+        displayed_export = resolve_displayed_export(goal, catalogue)
         plain_listing = (
-            resolve_ranked_results(goal, catalogue)
+            displayed_export or resolve_ranked_results(goal, catalogue)
             or resolve_run_read(goal, catalogue)
             or resolve_plain_listing(goal, catalogue)
             or resolve_named_reconciliation(goal, catalogue)
         )
         if plain_listing is not None:
+            if displayed_export and displayed_export.intent == "EXPORT_RESULT":
+                state.export_query = catalogue.previous_query
             if plain_listing.intent == "SUMMARIZE_RESULTS":
                 context.group_id = context.case_id = None
                 row.context = context.model_dump(mode="json")
