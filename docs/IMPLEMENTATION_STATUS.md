@@ -1,23 +1,124 @@
 # Trạng thái triển khai và nghiệm thu
 
-**Hiện trạng06/11/2026 — Foundation Reliability Audit đang thực hiện:** nhánh `codex/foundation-reliability-hardening`, baseline `2eecb068`. Gemini đã nhận sáu HTTP200 mới và được chọn làm mặc định chính; Qwen phụ, cùng contracts/validators. Baseline đạt449Backend/PostgreSQL và139browser. Nhóm sửa parser/review/draft/idempotency đạt468Backend/PostgreSQL trên source mới; hai kiểm thử property/stateful bổ sung đạt riêng sau lượt đó. Chưa chạy full browser trên release hardening, chưa hoàn tất UAT hai provider và toàn bộ các gate của master prompt; **chưa FOUNDATION_ACCEPTED, chưa merge main**. Các kết luận và quota dưới đây là lịch sử theo ngày, không thay phần hiện trạng này.
+**Hiện trạng 06/11/2026 — Foundation Reliability Audit.** Bản local chạy `58cbc3c4781d6f331b7c67c2007844bb5b012bce`, đạt 479/479 Backend/PostgreSQL và 139/139 Playwright. Hai model đã tạo đề xuất và cập nhật review thực tế. Mỗi luồng chuẩn hóa đúng 5.458 dòng hợp lệ và 29 dòng lỗi. Hai cặp đối soát trên dự án Gemini khớp đáp án độc lập. **Chưa FOUNDATION_ACCEPTED, chưa hợp nhất main.** Các mốc bên dưới ghi lịch sử theo ngày.
 
 ## Foundation — lỗi đã tái hiện và phần kiểm chứng hiện có
+
+### A. Tổng quan
+
+Gemini là lựa chọn mặc định. Qwen 3:8B là lựa chọn phụ do người dùng chọn. Hai model dùng cùng hợp đồng định tuyến và sửa review. Bản local đã dùng được để thử tải tệp, sửa bản nháp, duyệt chuẩn hóa và chạy đối soát theo phạm vi đã kiểm chứng.
+
+### B. Git và baseline
+
+Nhánh làm việc `codex/foundation-reliability-hardening` xuất phát từ `2eecb068b0a866a538cda95a218ac9e375b10eb0` trên `codex/product-polish`. Đã xác minh origin của AI Reconciliation Studio. Các commit được đẩy theo nhóm, gồm parser `38d3f1b`, review và idempotency `1ed78ca`, thẻ dùng chung `ae2268b`, tương thích Gemini `923c8a0`, định tuyến Qwen `96ec609`, khôi phục trang `2d15785`, bộ chọn `ae15e71`, xác nhận dòng lỗi trong Chat `a99cc0b`, bố cục mobile `82efd82`, rút gọn định tuyến local `4347b07`, xem hạn hiệu lực `a28278d` và kiểm xác nhận dòng lỗi ở mọi đường duyệt `58cbc3c`.
+
+### C. Docker và khôi phục
+
+Backup `backup_2fbbe0bc84ed4c5e8b752f83099af041` được tạo trong 53,581 giây và restore trong 33,195 giây vào schema cô lập trên PostgreSQL hiện có. Đối chiếu 24 bảng và manifest 5.910 tệp. Kiểm tra checksum và đường dẫn đạt. Lần chạy đầu trên Backend bị dừng do áp lực bộ nhớ. Bản backup được xác minh nằm trên volume của Studio.
+
+Rollback đầu lượt sang cặp `5373cf7`/`729821e` rồi trở về baseline `a268abe` đã qua health và persistence. Sáu image Studio cũ được xác minh theo ID và kiểm tra không còn tham chiếu trước khi xóa. Hai volumes Studio, backup, cache, model Ollama và 27 container ngoài Studio được giữ.
+
+Trên `58cbc3c`, restart, tạo lại toàn bộ và tạo lại riêng Frontend đều vô hiệu hóa phiên demo cũ trước khi xác minh loopback. Mỗi lần đều khớp snapshot metadata, bản duyệt, canonical refs và toàn bộ checksum artifact. Sau đó `tools/rollback.ps1` thực sự chuyển Backend, Worker, Frontend sang cặp `a268abe` có cùng revision Git. Đối chiếu dữ liệu đạt trên cặp dự phòng và khi trở lại `58cbc3c` bằng `tools/start.ps1 -SkipBuild`.
+
+Sau full regression, xóa thêm đúng hai image Studio mang tag `rollback-before-mapping-recovery`. Cả hai không còn container tham chiếu. Tổng cộng đã bỏ tám image Studio cũ trong đợt này, giữ cặp hiện hành và một cặp dự phòng. Đối chiếu cuối cho thấy 27 container ngoài Studio, image của dự án khác và 36 volume trên máy có cùng định danh và trạng thái kiểm kê. Dung lượng tổng do Docker báo vẫn 38,91 GB cho image ở độ chính xác hiển thị vì có lớp dùng chung. Bốn dịch vụ Studio healthy, không có OOM hoặc restart ngoài dự kiến ở các container đang chạy.
+
+### D. Kiến trúc
+
+Audit theo nhóm tải và lưu nguồn, profile và chuẩn hóa, quy tắc và đối soát, hội thoại và AI, trình duyệt và vận hành. Dùng cùng DTO và bản nháp từ `AgentWorkflowRow` ở Chat và Dữ liệu. Hai provider cùng kiểm kiểu, source, scope và bằng chứng. Duyệt nghiệp vụ tiếp tục đi qua transaction, khóa nguồn, nonce và kiểm quyền. Xem [ma trận kiến trúc](ARCHITECTURE.md).
+
+### E. Lỗi và kiểm thử hồi quy
 
 | ID / mức | Tái hiện và nguyên nhân | Sửa và kiểm chứng | Hiện trạng |
 | --- | --- | --- | --- |
 | FND01 / P1 | Header CSV/XLSX trùng bị bỏ; dòng dữ liệu đầu thành header | Giữ nhãn trùng và technical column IDs, warning extraction; regression hai định dạng | PASS source, parser commit38d3f1b |
 | FND02 / P1 | Header CSV chỉ định sau ô quoted nhiều dòng bị hiểu theo logical index | Ánh xạ dòng vật lý bắt đầu record; từ chối dòng giữa quoted cell | PASS source, commit38d3f1b |
-| FND03 / P1 | Review có candidate và câu hỏi bị từ chối AI_INVALID_REVIEW; full union yêu cầu echo cả draft | Sparse typed edits, giữ phần hợp lệ và hỏi tiếp; MOCK transport Gemini/Ollama + PostgreSQL partial preview | PASS source; LIVE revision mới còn chờ |
-| FND04 / P2 | Chat giữ draft trong state component, Manager đọc proposal khác | Backend mở đọc cùng review theo bảng và lưu draft có nonce/source fence | API PASS; client/handoff còn thực hiện |
-| FND05 / P2 | Review hết30phút không có hành động gia hạn | Explicit renew, giữ unchanged-source/owner/editor/pending gates | API PASS; UI còn thực hiện |
+| FND03 / P1 | Review có đề xuất và câu hỏi bị từ chối AI_INVALID_REVIEW do yêu cầu lặp toàn bộ bản nháp | Chỉ nhận các thay đổi có kiểu, giữ phần hợp lệ và hỏi tiếp. Kiểm transport và PostgreSQL | PASS MOCK và lượt bổ sung LIVE Gemini/Qwen |
+| FND04 / P2 | Chat giữ draft trong state component, Manager đọc proposal khác | Cùng ReviewCard, API lưu draft có nonce và kiểm nguồn, khôi phục bảng/tab và mở đúng hội thoại | LIVE browser PASS, `ae2268b`, `2d15785`, `ae15e71` |
+| FND05 / P2 | Review hết 30 phút thiếu hành động gia hạn | Mở lại khi đúng chủ, nguồn còn nguyên và không có reply đang chạy | PostgreSQL và browser PASS, `1ed78ca`, `ae2268b` |
 | FND06 / P1 | POST duyệt mapping thủ công tạo revision mới khi gửi lại | Actor-scoped idempotency receipt cùng transaction/advisory lock, conflict409 | PostgreSQL PASS |
 | FND07 / P2 | Reply hợp lệ sau lỗi vẫn giữ error_code hiện hành | Xóa lỗi hiện hành khi không còn bước lỗi khác, giữ message/job cũ | Fault/recovery PostgreSQL PASS |
 | FND08 / P2 | Reply rule buộc plan hoàn chỉnh, khó giữ facts từng phần | Hợp nhất PlanningRequest chỉ những trường đã cung cấp, không đổi nguồn, preview/approval riêng | Unit/contract PASS; UAT tiếp tục |
+| FND09 / P1 | Gemini trả 400 với giới hạn mảng trong grammar review | Rút giới hạn khỏi envelope gửi provider, Backend vẫn từ chối trên 80 thay đổi | A/B LIVE 400→200 và reply UI PASS, `923c8a0` |
+| FND10 / P1 | Router Qwen nhận schema rộng hơn Gemini và bị AI_INVALID_INTENT | Cùng grammar cho từng intent và cùng validator cho hai model | Qwen LIVE tạo đúng ba review sau sửa, `96ec609` |
+| FND11 / P1 | Router chặn toàn bộ nguồn PARTIAL trước bước review | Cho lập đề xuất mới và yêu cầu xác nhận tách dòng lỗi ở cả UI lẫn Backend trước khi chạy | PostgreSQL, mock browser và hai oracle LIVE qua UI PASS, `a99cc0b` |
+| FND12 / P2 | Danh sách sửa cơ sở tiền thiếu lựa chọn phí khi có giá trị đề xuất sẵn | Bổ sung lựa chọn `fee` và `expected`, giá trị locale chưa chọn dùng null | Qwen duyệt nguồn ngân hàng và đúng 378/6, `a99cc0b` |
+| FND13 / P2 | Tên model dài làm ô nhập bị cắt ở 390 px | Danh sách đúng hai tên, model và nút gửi xuống hàng dưới ở điện thoại nhỏ | Browser 390–1920 px PASS, `ae15e71`, `82efd82` |
+| FND14 / P2 | Thẻ duyệt chỉ hiển thị ngày bắt đầu hiệu lực, khó phát hiện ngày kết thúc do model đề xuất | Hiện ngày kết thúc trong tóm tắt và cho sửa hoặc xóa trước khi duyệt | Browser MOCK PASS, `a28278d` |
+| FND15 / P1 | Màn hình đối soát thủ công đi qua API duyệt khác nên bỏ qua xác nhận tách dòng lỗi | Hàm duyệt dùng chung kiểm tra cả Chat và màn hình thủ công, ghi một sự kiện kiểm toán. UI hiện tên nguồn và số dòng lỗi trước khi duyệt | PostgreSQL và ca vận đơn trên Docker PASS, `58cbc3c` |
 
-Backup `backup_2fbbe0bc84ed4c5e8b752f83099af041` được tạo53,581giây và restore thực33,195giây trong schema cô lập trên PostgreSQL hiện có; đối chiếu24bảng và artifacts, guards checksum/path đạt, dữ liệu public giữ nguyên. Lần chạy đầu trên Backend bị dừng do áp lực bộ nhớ không được tính là backup đạt. Rollback thực sang cặp gần nhất5373cf7/729821e rồi trở về baselinea268abe đạt health/persistence. Sáu image Studio cũ đã được kiểm từng ID/không container tham chiếu và xóa; không prune, không xóa volumes/model/cache hoặc tác động27container ngoài project vốn đang dừng. Cặp hiện hành và rollback gần nhất vẫn được giữ; dọn sau release còn chờ.
+### F. AI Agent
 
-Đo một lượt trên host Windows, CSV tổng hợp, Polars2threads, không AI:75.000dòng parse89,86ms, profile1.112,64ms, normalization+write2.528,90ms, process peak222,83MiB. Đối soát75.000records tổng hai nguồn, mỗi nguồn37.500: match2.556,20ms, verify1.509,92ms,37.500exact groups, peak454,68MiB. Đây là phép đo từng stage bằng helper hiện có, **không phải p95 hoặc UAT75k qua Docker/UI**; chưa kết luận mọi định dạng/tác vụ đều nằm trong512MiB của Worker. Các mức10/100/1.000/10.000dòng cũng đã chạy có kiểm số dòng/invalid và giữ mã0đầu.
+Gemini đã nhận sáu HTTP 200 khi thử lại, gồm hai probe và luồng ba nguồn trên giao diện. Reply ánh xạ sau sửa đạt trong 1,378 giây. Qwen định tuyến sau sửa trong 30,898 giây. Ba đề xuất Qwen mất 18,274, 7,349 và 7,895 giây. Reply Qwen đạt trong 16,394 giây. Hai model giữ câu hỏi còn thiếu và để thẻ ở trạng thái chờ duyệt. Với cặp ngân hàng, Gemini trả HTTP 503 ở lượt bổ sung vai trò nguồn. Giữ job lỗi trong lịch sử và hoàn tất từ đề xuất đã có bằng xác nhận trực tiếp trên giao diện.
+
+### G. Data Foundation
+
+Mỗi dự án tổng hợp của Gemini và Qwen có ba nguồn với 2.418, 2.685 và 384 dòng. Số hợp lệ/lỗi lần lượt là 2.406/12, 2.674/11 và 378/6 theo bộ khóa bắt buộc. Tổng 5.458/29. Tệp gốc, checksum, bản chuẩn hóa và tệp lỗi giữ tham chiếu theo revision. Người vận hành dùng thẻ để xác nhận khóa, ngày và tiền theo đặc tả dữ liệu TEST.
+
+### H. Đối soát và oracle
+
+| Cặp nguồn | Khớp | Lệch tiền | Thiếu đối ứng | Tổng có dấu VND | Tổng tuyệt đối VND |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Đơn dự kiến và sự kiện thanh toán, 1:N | 2.040 | 200 | 215 | 7.867 | 60.883 |
+| Sự kiện thanh toán và sao kê ngân hàng, N:1 | 323 | 40 | 31 | −8.306 | 11.812 |
+
+Run `a725f99a-b85f-4a9b-8a9f-55dacb9b8f1a` đi qua Gemini, duyệt và chạy trong Chat. Run `9134d95e-f944-41e5-9389-010d36e9e265` dùng đề xuất Gemini, người vận hành xác nhận vai trò và phạm vi trên thẻ sau lượt gọi bổ sung bị 503. Oracle tính độc lập với Matcher. Verifier và các phép tính Decimal giữ hợp đồng đã duyệt.
+
+Hai tệp XLSX tải qua giao diện được mở và đọc lại. Mỗi tệp có tám sheet. Đếm nhóm và tổng Decimal trong `Matches` khớp oracle và `Summary`. Nhóm lệch thứ hai có đủ bằng chứng hai phía với 2 tham chiếu ở cặp đơn hàng và 8 tham chiếu ở cặp ngân hàng. Kiểm tra các ô của hai workbook phát hiện 0 công thức.
+
+Sau khi trở lại `58cbc3c`, đọc lại hai snapshot qua HTTP và đối chiếu đủ số nhóm, chênh lệch có dấu và chênh lệch tuyệt đối. Các ca vận đơn 1:1, 1:N và N:1 trong Playwright tiếp tục khớp oracle riêng.
+
+Hai cặp nguồn đã được Qwen hỗ trợ chuẩn hóa cũng khớp cả năm chỉ số trong bảng khi lập và duyệt quy tắc thủ công trên giao diện. Hai run là `453ee28e-6b7e-438d-82a4-5aa4f034e92e` và `5c4bf12b-1667-47c5-af60-2ff3e6969870`. Cả hai qua bước xác nhận dòng lỗi, xuất CSV/XLSX và mở lại đúng snapshot. Mỗi XLSX có tám sheet và không chứa ô công thức. Đây là bằng chứng của đường duyệt thủ công trên dữ liệu chuẩn hóa với Qwen.
+
+### I. Kiểm thử
+
+Baseline đạt 449 Backend/PostgreSQL và 139 Playwright. Revision `82efd82` đạt 478 Backend/PostgreSQL, 137/139 Playwright. Ca tải tệp chờ sau Qwen 90 giây trên Worker chung. Trace PostgreSQL ghi tác vụ tải xong ngay sau khi Qwen kết thúc. Ca mobile còn dùng giới hạn chiều cao của bố cục một hàng. Chạy lại riêng sau khi hết tải đồng thời và cập nhật kiểm tra theo hình học bố cục mới đạt 2/2. Sau đó `a28278d` đạt đủ 478 Backend/PostgreSQL và 139 Playwright trong 12,4 phút.
+
+Ca PostgreSQL mới của `58cbc3c` tái hiện bản trước trả HTTP 200 khi duyệt thiếu xác nhận tách dòng lỗi. Sau sửa, ca này và hai ca Chat liên quan đều đạt. Khi duyệt lần đầu nguồn `PARTIAL`, API yêu cầu giá trị boolean `true`. Quy tắc đã duyệt được giữ và gửi lại trả cùng hợp đồng.
+
+Full regression trên đúng `58cbc3c` sau rollback đạt **479/479 Backend/PostgreSQL** (133,14 giây) và **139/139 Playwright** (12,1 phút). Bộ trình duyệt có luồng thật qua Docker, ca giả lập lỗi provider/mạng và kiểm responsive. Ca vận đơn có ngày lỗi xác nhận nút duyệt bị khóa khi chưa đánh dấu, sau đó chạy đúng oracle. Bộ chọn model kiểm trực tiếp ở 390, 768, 1366, 1440 và 1920 px, chỉ có hai tên đã chốt, giữ Qwen sau reload và không tràn khung.
+
+Các kiểm tra mới có giả lập transport hai provider, chuỗi sửa bản nháp Hypothesis, đối chiếu số tiền theo phép đổi dấu, kiểm trả lời hợp lệ sau lỗi, thử khóa cũ, viewer, pending và nguồn thay đổi. Ba ca dữ liệu hóa đơn, lương và tồn kho bị từ chối khi dùng quy tắc đơn hàng không tương thích. Có một cảnh báo deprecation từ Starlette TestClient.
+
+Đo một lượt trên host Windows, CSV tổng hợp, Polars 2 luồng. Với 75.000 dòng, parse 89,86 ms, profile 1.112,64 ms, chuẩn hóa và ghi 2.528,90 ms, peak 222,83 MiB. Đối soát 75.000 dòng từ hai nguồn mất 2.556,20 ms ở Matcher và 1.509,92 ms ở Verifier, tạo 37.500 nhóm exact, peak 454,68 MiB. Đây là số đo theo bước trên host. Các mức 10/100/1.000/10.000 dòng cũng được kiểm số dòng, số lỗi và mã có 0 đầu.
+
+Trên Docker `a28278d`, Worker bị ngắt giữa chuẩn hóa 75.000 dòng tổng hợp. Phép thử đẩy lease của đúng tác vụ tổng hợp về thời điểm hết hạn để quan sát nhận lại. Sau hai lần nhận, chỉ một canonical 75.000 dòng được công bố, hội thoại tiếp tục và không phát sinh lượt cloud. Tổng thời gian bài thử 17,813 giây. Phép thử này đo khôi phục tác vụ, giới hạn đo độ trễ p95 và tải thực vẫn còn.
+
+### J. Toàn vẹn dữ liệu
+
+Đối chiếu snapshot trước và sau triển khai đạt cho metadata, bản duyệt, canonical refs và toàn bộ bytes artifact đã lưu. Hai dự án TEST thêm dữ liệu và lịch sử có chủ đích. Dữ liệu nghiệp vụ cũ được giữ trong volume. Backup và restore ở phần C áp dụng cho baseline đã ghi nhận.
+
+### K. GitHub và bản đang chạy
+
+Studio dùng một Compose project và bốn dịch vụ trên loopback. Cả Backend, Worker và Frontend mang source revision `58cbc3c`. Backend và Worker dùng chung image `sha256:ec809221ac408f94f1874f862c23faf03bdd0decff4a57cb2e95ddd7c79ef626`. Frontend dùng `sha256:b747bf3b7aef4708c845b33811e9bc597266e7a321ef51c11159684a36e7acb3`. Đối chiếu 45 tệp Python giữa source và image, cùng 7 tệp frontend giữa build, image và HTTP đã đạt.
+
+Commit vận hành `88e9946` xác minh cặp image dự phòng và cập nhật hướng dẫn kiểm thử. Nhánh nghiệm thu lưu mã và bằng chứng mô tả trên origin chính thức. Hai mốc `main` và `codex/product-polish` giữ tại `a4f70b2` và `2eecb06` trong vòng kiểm toán.
+
+### L. Giới hạn đang theo dõi
+
+Gemini từng trả 503 ở tác vụ bổ sung quy tắc, do đó vòng cloud dừng tại lượt này. Kết quả LIVE trên hai dự án TEST chứng minh các luồng được thử. Bộ câu hỏi chuẩn LIVE đầy đủ cho định tuyến và ngữ nghĩa còn thiếu bằng chứng. Một lượt suy luận chậm có thể làm tác vụ tệp đợi trên Worker chung, như trace của lần thử 90 giây ở phần I.
+
+Qwen nhận yêu cầu lập quy tắc dài qua Ollama nhưng vượt 90 giây ở router. Backend ghi `OLLAMA_UNAVAILABLE` với cờ chưa biết Ollama đã nhận đầy đủ hay chưa, giữ job và hội thoại. Qwen dùng RTX 3050 Laptop 6 GiB, lần gọi này đưa 24/37 lớp lên GPU. Probe sau khi rút gọn định tuyến ở `4347b07` trả đúng một intent sau 44,515 giây, còn thiếu một số dữ kiện phạm vi. Planner chuẩn vượt 90 giây trong phép thử tách riêng. Bản thử Planner rút gọn trả HTTP 200 sau 28,657 giây nhưng Backend chặn vì quan hệ gom nhóm sai. Bản thử Planner rút gọn đã được loại khỏi bản triển khai.
+
+Trên bản đang chạy, gửi lại yêu cầu lập quy tắc qua giao diện sau khi thay router. Qwen định tuyến thành công sau 43,786 giây. Planner trả HTTP 200 nhưng thiếu đề xuất hợp lệ sau 64,881 giây. Backend ghi `AI_PLAN_MISSING` và dừng trước duyệt. Trong lần hỏi ba chênh lệch lớn nhất của một run đã xác minh, Qwen hỏi nhầm về độ đầy đủ và ngày chốt nguồn. Luồng dừng ở thẻ hỏi làm rõ. Hai ca này giữ nguyên trong kết quả LIVE và cổng E/J vẫn chưa đạt toàn phần.
+
+### M. Bắt đầu thử local
+
+Mở <http://127.0.0.1:18180>, tạo dự án Kiểm thử và đính kèm ba tệp mẫu. Giữ mặc định **Gemini 3.5 Flash Lite** hoặc chọn **Qwen 3:8B**. Gửi “Tôi vừa tải dữ liệu lên. Hãy kiểm tra và đề xuất cách chuẩn hóa để tôi có thể đối soát.” Xem từng thẻ, lưu bản nháp nếu cần chuyển màn hình rồi xác nhận trước khi chuẩn hóa. Kiểm số dòng và lỗi của từng nguồn, sau đó chọn hai nguồn và duyệt quy tắc đối soát. Xem [hướng dẫn tự kiểm thử](USER_TEST_GUIDE.md).
+
+### Trạng thái các cổng nghiệm thu
+
+| Cổng | Kết quả | Phạm vi đã kiểm |
+| --- | --- | --- |
+| A. Git và baseline | PASS trong phạm vi | Giữ hai mốc Git gốc, xác minh restore, cặp image dự phòng và dọn image cũ |
+| B. Contracts | PASS theo hồi quy | Review từng phần, nonce, fencing, idempotency và duyệt nguồn có dòng lỗi |
+| C. Data Foundation | PASS trên bộ đã chạy | Upload, parse, profile, chuẩn hóa, lineage, dữ liệu lưu qua restart |
+| D. Đối soát | PASS trên các oracle | Tiền Decimal, dung sai, phạm vi, nhóm nguồn, bằng chứng, KPI và xuất báo cáo |
+| E. Agent | Một phần | Hai provider đạt mapping và bổ sung review LIVE. Lập quy tắc, chất lượng LIVE toàn bộ và giới hạn provider ở phần L |
+| F. Bảo mật | PASS theo bộ kiểm | Quyền duyệt, cách ly project, CSRF, loopback, upload, policy, idempotency và quét bí mật |
+| G. Frontend | PASS | 139 Playwright, lựa chọn model, hành vi keyboard, thiết bị nhỏ và các luồng nghiệp vụ |
+| H. Khôi phục | PASS theo các phép thử | Retry/timeout/fault, stale review, 75.000 dòng trên `a28278d`, backup/restore và các lần tạo lại |
+| I. Docker | PASS theo triển khai local | Cùng source revision, 4 healthy, checksum, replay oracle, rollback và trở lại bản chạy |
+| J. Người dùng | Một phần | Luồng thủ công đi hết qua giao diện. Hai model đạt chuẩn hóa. Bằng chứng LIVE theo provider ở phần F và L |
 
 **Mốc lịch sử — 02/11/2026:** UI AI Assistant và các kiểm tra kỹ thuật đã hoàn tất trên feature branch; **chưa đạt nghiệm thu toàn Agent-first MVP** vì chất lượng NLP chưa đạt và Gemini đã hết 50/50 attempts. Chưa merge hoặc release main. Đọc mục S để biết số đo tại thời điểm đó; các mục A–R là lịch sử.
 
