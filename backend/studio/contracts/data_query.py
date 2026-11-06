@@ -40,7 +40,9 @@ class QueryOperations(Contract):
     metric_id: Identifier | None = None
 
 
-QuerySourceKind = Literal["RAW_PREVIEW", "PREPARED", "CANONICAL", "VERIFIED_RUN", "EXCEPTIONS"]
+QuerySourceKind = Literal[
+    "RAW_PREVIEW", "PREPARED", "PREPARED_FINDINGS", "CANONICAL", "VERIFIED_RUN", "EXCEPTIONS"
+]
 
 
 class DataQuery(QueryOperations):

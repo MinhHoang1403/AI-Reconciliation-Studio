@@ -6,7 +6,7 @@ Theo yêu cầu hoàn tất mới, tiếp tục trên cùng nhánh `codex/intell
 
 **Mapping Memory:** đã tái hiện bốn failure trên source cũ với đổi kỳ tên tệp, đảo cột, thêm ghi chú và kết hợp ba thay đổi. Cả bốn giữ nguồn đọc được nhưng không tạo canonical. Bản sửa gắn lại các cột theo tên duy nhất, giữ mọi trường được duyệt, chỉ bỏ qua cột ghi chú thuần văn bản được thêm. Tên tệp chỉ được thay một token tháng hợp lệ trong cùng mẫu. Không fuzzy key, suy currency/timezone hoặc suy nghĩa cột từ giá trị trùng nhau. Preflight toàn bảng so định dạng theo trường đích thay vì vị trí cột. Mapping mới giữ signature/evidence nguồn đích và receipt có `column_bindings`; chữ ký người duyệt gốc không đổi.
 
-Trước sửa: **157 PostgreSQL PASS / 4 FAIL**, 139,42 giây. Sau sửa: **526/526 Backend/PostgreSQL PASS**, 149,59 giây, gồm 19 ca nhận diện/từ chối drift và bốn ca API/Worker mới. Ruff, mypy51files và repository/known-secret/history/path checks đạt. Một cảnh báo TestClient deprecation giữ nguyên. Bằng chứng ở `runtime/automation-reuse-{before,after}.log`. Docker vẫn chạy application `8db257a`; chưa triển khai source sửa này hoặc gọi nó là PASS LIVE.
+Trước sửa: **157 PostgreSQL PASS / 4 FAIL**, 139,42 giây. Sau sửa: **526/526 Backend/PostgreSQL PASS**, 149,59 giây, gồm 19 ca nhận diện/từ chối drift và bốn ca API/Worker mới. Ruff, mypy51files và repository/known-secret/history/path checks đạt. Một cảnh báo TestClient deprecation giữ nguyên. Bằng chứng ở `runtime/automation-reuse-{before,after}.log`. Lượt đo source ban đầu thực hiện khi Docker còn chạy `8db257a`.
 
 Đặc tả độc lập `tests/fixtures/mapping-business-specifications.json` định nghĩa bảy miền, 52 vai trò cột và 28 trường hợp mơ hồ ở mỗi split. Development/validation/holdout có cách đặt tên riêng; nhãn lấy từ mô tả nghiệp vụ. Các cột tiền cố ý có cùng phân bố, mã cũng có cùng giá trị để không thể dùng overlap thay nghĩa nghiệp vụ. Holdout chưa dùng để chỉnh thuật toán. `tools/benchmark-mapping.py` chạy từng phương án trong tiến trình riêng, so alias hiện tại, RapidFuzz+profile, Valentine COMA có instances và hybrid. Đây là phép đo gợi ý cột, không tự đo grain/timezone hoặc false auto-approval. Hai nội dung sau cần kiểm riêng qua workflow thật.
 
@@ -27,24 +27,52 @@ Valentine tăng recall trên tên cột tiếng Anh của holdout, nhưng valida
 | AP-02 | ParsedTableArtifact, query DSL | parse trong inference bận | LOCAL + MOCK | 75k/Qwen receipt, PostgreSQL | PASS baseline, chưa đủ ma trận tải |
 | AP-03 | PreparedTable | prepared/checksum/source row | LOCAL + ORACLE | 5.487dòng và prepared75k | PASS baseline |
 | AP-04 | Mapping preflight | date/null/locale/currency/key | LOCAL + ORACLE | 5.458hợp lệ/29lỗi | PASS baseline |
-| AP-05 | DATA_CONTRACTS quyền reuse | owner/grant/preflight/rebind | LOCAL PostgreSQL | 526suite, bốn regression mới | PASS source, chưa deploy/UI lại |
-| AP-06 | AUTOMATION_PRODUCT_PLAN§3 | business mapping benchmark | ORACLE | fixture độc lập + benchmark mới | IN_PROGRESS, chưa nghiệm thu holdout/AI |
-| AP-07 | AUTOMATION_PRODUCT_PLAN§4 | người mới Chat-only | Browser LIVE cần chạy | Bản cũ cần nhiều trường kỹ thuật | NOT_RUN đầy đủ |
-| AP-08 | PlanningRequest/PlanProposal | multiple candidates/ties | LOCAL/ORACLE/LIVE cần mở rộng | Hai luồng LIVE cũ có một candidate | IN_PROGRESS, không coi hai luồng là benchmark |
+| AP-05 | DATA_CONTRACTS quyền reuse | owner/grant/preflight/rebind | LOCAL PostgreSQL + Browser | 545 ca source và luồng bật reuse | PASS cho phạm vi đã kiểm |
+| AP-06 | AUTOMATION_PRODUCT_PLAN§3 | business mapping benchmark | ORACLE | 7 miền, Valentine/RapidFuzz/hybrid, replay | IN_PROGRESS, độ phủ tiếng Việt thấp |
+| AP-07 | AUTOMATION_PRODUCT_PLAN§4 | người mới Chat-only | LOCAL Browser | 3 tệp mới, 2 lượt bấm duyệt, 23 trường | IN_PROGRESS, có receipt một hành trình đầy đủ |
+| AP-08 | PlanningRequest/PlanProposal | multiple candidates/ties | LOCAL/ORACLE/LIVE | 10 ca mới, hai luồng LIVE ở baseline | IN_PROGRESS, cần kiểm LIVE trên image chốt |
 | AP-09 | review nonce/fingerprint/locks | permissions/idempotency/stale | LOCAL + MOCK | full PostgreSQL | PASS baseline, cần hồi quy chốt |
-| AP-10 | DataQueryPlan/QuerySelection | NLP/context/evidence/export | LOCAL + ORACLE/LIVE cần mở rộng | top3/ordinal/prepared cũ | IN_PROGRESS, chưa có holdout mới |
-| AP-11 | MetricSnapshot/report-2 | export read-back | LOCAL browser + ORACLE | Hai XLSX8sheet cũ | PASS baseline, cần journey mới |
+| AP-10 | DataQueryPlan/QuerySelection | NLP/context/evidence/export | LOCAL + ORACLE | holdout 32 câu, xuất bảng đang xem | IN_PROGRESS, cần chấm tuyến model và các truy vấn còn thiếu |
+| AP-11 | MetricSnapshot/report-2 | export read-back | LOCAL browser + ORACLE | XLSX đầy đủ và CSV một nhóm | PASS cho các oracle đã chạy |
 | AP-12 | AUTOMATION_PRODUCT_PLAN§6 | keyboard/IME/5widths | Browser | 139suite cũ | PASS baseline, cần replay UI sửa |
 | AP-13 | PG lease/fencing/publication | A–J concurrent/fault/isolation | LOCAL + MOCK + LIVE | Một75k+Qwen, chưa p50/p95 | IN_PROGRESS, chưa đủ ma trận |
 | AP-14 | backup/persistence/rollback | 24tables/7.838checksums | LOCAL restore drill | backup36c2… và rollback858→8db | PASS baseline, kiểm lại sau deploy |
 | AP-15 | Rules§11, release gates | full source/image/HTTP | LOCAL/Git | main3deac3f được giữ | NOT_RUN phát hành |
-| UAT A–H | AUTOMATION_PRODUCT_PLAN§8 + yêu cầu mới | fresh business journey, reuse, negatives, responsive | Browser/ORACLE/LIVE | Chưa có receipt cho hành trình mới | NOT_RUN đầy đủ |
+| UAT A–H | AUTOMATION_PRODUCT_PLAN§8 + yêu cầu mới | fresh business journey, reuse, negatives, responsive | Browser/ORACLE/LIVE | Receipt tồn kho và kiểm thử baseline | IN_PROGRESS, từng hành trình cần đối chiếu lại |
 
 Cache giữ **SKIPPED_BY_POLICY — NON_BLOCKING**. Không thử lại thao tác đã bị chặn, không tạo môi trường thứ hai, không tác động dự án khác. Tiếp tục các cổng còn thiếu trong cùng nhiệm vụ; chưa kết luận `READY_FOR_SEAMLESS_LOCAL_UAT`.
 
 Chat tự tạo bản xem trước và thẻ xác nhận khi gửi tệp không kèm câu hỏi. Backend dùng profile và preflight để điền dữ kiện kỹ thuật. Khi Planner có nhiều khóa với cùng số đối ứng trong kỳ, thẻ hiển thị các phương án đã kiểm và đợi người dùng chọn. Trong lúc luồng inference bận, Worker ưu tiên parse, sau đó nhận các job xác định được bằng hợp đồng job. Các bước tiếp nối có thể gọi model đi qua cùng luồng inference duy nhất. Câu hỏi đọc đơn giản dùng lớp dữ liệu, tên tệp chính xác hoặc run đã chọn. Câu có điều kiện ngoài phạm vi grammar được chuyển tới tuyến định tuyến có kiểu.
 
 Lượt hồi quy đầu phát hiện lỗi import làm hàm xem trước không tìm được kiểu trả về. Sau sửa, ca upload mới đạt tới trạng thái chờ duyệt và tái gửi trả đúng ID job. Test ban đầu so cả trạng thái trước và sau xử lý nên thất bại khi receipt chuyển `QUEUED` sang `SUCCEEDED`. Bản sửa assertion kiểm đúng ID bất biến và trạng thái mới. Sau sửa này, **528/528 Backend/PostgreSQL** đạt trong 153,78 giây. Sau phần truy vấn bổ sung, **380/380 ca offline** đạt trong 10,34 giây, 162 ca PostgreSQL được tách khỏi lần chạy offline. Các ca mới vẫn cần replay trên image và trình duyệt.
+
+### Chat với ba nguồn tồn kho mới
+
+Hai lượt Playwright trên Docker dùng ba tệp CSV mới với đáp án tính tay. Cặp được chọn có 1 nhóm khớp, 1 lệch và 2 thiếu đối ứng. Chênh lệch có dấu và tuyệt đối đều là 50,00 VND. Chat xác nhận kỳ, UTC, thời điểm chốt và độ phủ trước khi tạo thẻ duyệt rule. Lượt thứ hai tải CSV chỉ chứa nhóm đã lọc và dùng chính ID nhóm trong CSV để kiểm hộp bằng chứng có mã `0002`. Báo cáo đầy đủ tải dạng Excel và mở lại từ hội thoại sau reload. Hai lượt không tiêu thêm ngân sách Gemini.
+
+| Bằng chứng | Duyệt riêng `ba5f5c6` | Duyệt gộp `7eb4c85` |
+| --- | --- | --- |
+| Upload → bảng gốc | 2.050 ms | 2.093 ms |
+| Upload → thẻ review | 2.903 ms | 2.121 ms |
+| Upload → canonical | 7.971 ms | 5.126 ms |
+| Upload → verified | 13.721 ms | 11.363 ms |
+| Trường mapping và phạm vi đã điền | 23 | 23 |
+| Lượt bấm duyệt cho 4 quyết định | 4 | 2 |
+| Tổng lượt bấm được trình duyệt ghi nhận | 21 | 22, có thêm tải CSV và mở bằng chứng |
+
+Mỗi cột thời gian là một quan sát, chưa đủ mẫu để suy ra mức cải thiện ổn định. Receipts tương ứng trong `runtime/automation-inventory/ae5f7e8b` và `runtime/automation-inventory/ff698799`. Hai lượt cùng dùng schema mới, nên số trường điền không đo mức giảm so với luồng cấu hình thủ công cũ.
+
+`7eb4c85` chạy **545/545** backend/PostgreSQL trên source, gồm duyệt gộp từ chối token cũ không duyệt một phần, xuất đúng trang đã ghim, và dùng tên trường đã duyệt để gắn lại ánh xạ. Docker xác minh cùng revision cho backend, worker, frontend, cùng byte của 46 tệp backend và 7 assets frontend. Metadata nghiệp vụ, phê duyệt và 7.881 tệp artifact bảo toàn qua lần triển khai này.
+
+### Độ phủ ánh xạ, Planner và câu hỏi tiếng Việt
+
+Ứng viên ánh xạ dùng token theo tên trường và kiểu đã quan sát, giữ cột mơ hồ ở trạng thái cần xác nhận. Replay tập đã xem cho kết quả development 52/52, validation tiếng Việt 3/52, holdout cũ 36/52, đều không đề xuất sai trên 28 cột negative mỗi split. Phép đo bổ sung với tên cột khác sau khi chốt heuristic cho 24/25 precision và 24/52 recall. Một cột `Reference` mơ hồ bị gán nhầm do alias mặc định. Sau khi bỏ alias chung đó, replay cùng tập cho 24/24 precision, 24/52 recall, 0 đề xuất sai trên 28 cột negative và 10 khóa bỏ lỡ. Bằng chứng theo từng miền ở `runtime/automation-mapping-independent*.json`. Quyết định tái sử dụng mẫu đã duyệt vẫn qua gate riêng.
+
+Planner có 10 ca nghiệp vụ tổng hợp mới với khóa trái/phải tên khác nhau và tiền bằng nhau. Ba ca 1:1, 1:N và N:1 trả đúng khóa và số đối ứng theo oracle. Bảy ca còn lại giữ trạng thái cần quyết định khi không có khóa khớp, có trùng khóa, hai phía đều nhiều, lệch cơ sở tiền/currency hoặc thiếu grain/coverage. Đây là bằng chứng cho Planner xác định, tách với các lần chạy provider LIVE.
+
+Holdout `tests/fixtures/agent-read-holdout.json` có 32 yêu cầu và ngữ cảnh kho/phí/run, chấm cả nguồn, run, filter, sort, giới hạn, thứ tự và định dạng. Lượt đầu tuyến xác định xử lý đúng 17/32. Replay sau bổ sung cụm mở bảng và giới hạn phạm vi xuất đạt 21/32. Mười một câu còn lại cần tuyến định tuyến có kiểu hoặc câu hỏi làm rõ. Điểm này chưa đo độ chính xác end-to-end của model. Chat đọc cảnh báo ngày từ bản tự chuẩn bị và đối chiếu vị trí dòng, nhãn cột cùng giá trị gốc. Phạm vi chỉ gồm cảnh báo ngày đã phát hiện trong artifact.
+
+Lượt hồi quy trên source đạt **558/558** trước chỉnh sửa alias và phạm vi xuất. Bộ trình duyệt trên `7eb4c85` ban đầu có 129 ca qua và 11 ca thủ công dừng ở bộ chọn trường trùng nhãn. Các ca này giờ mở mục đề xuất thủ công riêng rồi dùng chính biểu mẫu đó. Ca đơn hàng/thanh toán đã chạy lại thành công với oracle cũ.
 
 ## Consolidation và baseline tích hợp — 06/11/2026
 

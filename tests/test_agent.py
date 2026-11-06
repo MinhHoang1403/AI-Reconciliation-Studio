@@ -1,6 +1,7 @@
 """Contract/safety MOCK; không dùng các ca này để báo độ chính xác Gemini live."""
 
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -1817,6 +1818,77 @@ def test_native_run_read_keeps_verified_scope_and_does_not_drop_filters(goal, in
         assert result.run_id == "run"
     cat.context.run_id = "foreign"
     assert resolve_run_read(goal, cat).intent == "CLARIFY"
+
+
+def test_inventory_read_holdout_reports_native_coverage_and_checks_resolved_slots():
+    from studio.agent_intents import (
+        resolve_displayed_export,
+        resolve_plain_listing,
+        resolve_ranked_results,
+        resolve_run_read,
+    )
+    from studio.contracts.data_query import DataQuery
+
+    cases = json.loads(
+        (Path(__file__).parent / "fixtures" / "agent-read-holdout.json").read_text(encoding="utf-8")
+    )
+    assert len(cases) == len({case["id"] for case in cases}) == 32
+    misses = []
+    for case in cases:
+        cat = catalogue()
+        stock = cat.datasets[0]
+        stock.name = "Phiếu kho tháng 11.xlsx"
+        stock.tables[0].table_id = "stock"
+        stock.tables[0].canonical_id = "stock-approved"
+        stock.tables[0].prepared_artifact_id = "stock-prepared"
+        fees = stock.model_copy(
+            update={"id": "fees-dataset", "name": "Sổ phí tháng 11.csv"}, deep=True
+        )
+        fees.tables[0].table_id = "fees"
+        fees.tables[0].canonical_id = None
+        cat.datasets.append(fees)
+        context = case["context"]
+        if context == "stock":
+            cat.context.dataset_id = stock.id
+            cat.datasets = [stock]
+        if context in {"run", "ranked", "switched-run"}:
+            cat.context.run_id = "run" if context != "switched-run" else "next-run"
+            cat.run_ids = [cat.context.run_id]
+            cat.verified_run_fields = ["group_id", "comparison_state", "linkage_state"]
+        if context in {"ranked", "switched-run"}:
+            cat.previous_query = DataQuery(
+                project_id="p", source_kind="VERIFIED_RUN", source_id="run"
+            )
+            cat.previous_groups = ["rank-1", "rank-2", "rank-3"]
+        goal = case["goal"]
+        intent = (
+            resolve_displayed_export(goal, cat)
+            or resolve_ranked_results(goal, cat)
+            or resolve_run_read(goal, cat)
+            or resolve_plain_listing(goal, cat)
+        )
+        if intent is None:
+            misses.append(case["id"])
+            continue
+        assert intent.intent == case["intent"], case["id"]
+        if intent.query:
+            assert intent.query.project_id == "p", case["id"]
+            assert intent.query.source_kind == case["source"], case["id"]
+            assert intent.query.source_id == case["ref"], case["id"]
+            assert bool(intent.query.aggregations) == case.get("count", False), case["id"]
+            if case.get("filter"):
+                assert [f.value for f in intent.query.filters] == [case["filter"]], case["id"]
+            if case.get("limit"):
+                assert intent.query.limit == case["limit"], case["id"]
+                assert intent.query.sort[0].field_id == "absolute_variance", case["id"]
+                assert intent.query.sort[0].descending, case["id"]
+        else:
+            assert intent.run_id == case.get("ref"), case["id"]
+            if case.get("format"):
+                assert intent.export_format == case["format"], case["id"]
+            assert intent.result_position == case.get("position"), case["id"]
+    assert len(misses) <= 16
+    print(json.dumps({"native_correct": len(cases) - len(misses), "typed_router_required": misses}))
 
 
 def test_reuse_scope_rejects_new_source_facts_instead_of_silently_discarding_them():

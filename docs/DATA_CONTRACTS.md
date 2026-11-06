@@ -30,6 +30,8 @@ Batch `POST /api/agent/workflows/{id}/decisions/batch` nhận hai hoặc ba th�
 
 Yêu cầu xuất bảng đang xem ghim truy vấn của trang kết quả đã xác minh trong cùng hội thoại. Cache bao gồm người yêu cầu, run, định dạng và tham số truy vấn. Worker kiểm lại quyền, chạy cùng Query DSL và xuất đúng trang đang xem. Tệp ghi rõ số dòng, query và snapshot toàn run, tách khỏi phạm vi của trang xuất. Báo cáo đầy đủ của run giữ định dạng cũ.
 
+`DataQuery.source_kind=PREPARED_FINDINGS` đọc dòng có cảnh báo ngày do bản tự chuẩn bị ghi nhận. ID nguồn là ID bảng. Kết quả giữ nguyên giá trị gốc, nhãn cột và vị trí dòng, mang phạm vi khám phá như `PREPARED`. Số đếm là số dòng có cảnh báo, kể cả khi một dòng có nhiều cột bị lỗi. Khi chưa chọn được đúng một bảng, Chat yêu cầu chọn nguồn trước.
+
 Các lệnh tường minh như “Cho tôi xem ba nhóm lệch tiền lớn nhất” dùng query xác định trên run hiện hành. Backend chỉ lấy nhóm `AMOUNT_MISMATCH`, sắp xếp theo chênh lệch tuyệt đối giảm dần và dùng `group_id` tăng dần để phân giải giá trị bằng nhau. Chỉ tiêu lấy từ hợp đồng đã duyệt. Lệnh “Giải thích nhóm thứ hai” gắn với nhóm ở vị trí đó trong trang đã lưu của cùng run, hoặc hỏi lại nếu thiếu trang.
 
 Planner kiểm ứng viên khóa chính xác trên canonical đúng kỳ, với tối đa 20.000 dòng tổng và sáu trường định danh mỗi phía. Số khóa trùng và số lần xuất hiện mỗi khóa chỉ dùng để chọn bản nháp. Trường tiền phải trùng chỉ tiêu, cơ sở tiền, đơn vị và currency đã duyệt. Trường hợp chỉ một ứng viên tốt nhất và vượt validator, bản nháp có nguồn `DETERMINISTIC`. `AI_PLAN_MISSING` được giữ trong trace và receipt, đồng thời trả bản nháp cần xác nhận với các dữ kiện còn thiếu. Hợp đồng duyệt và chạy đối soát giữ nguyên.

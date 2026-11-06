@@ -199,7 +199,7 @@ def validate_intents(
                 )
             if q.project_id != catalogue.context.project_id:
                 raise DomainError("AI_INVALID_SOURCE", "Query sai project.")
-            if q.source_kind == "PREPARED":
+            if q.source_kind in {"PREPARED", "PREPARED_FINDINGS"}:
                 selected = resolve_prepared_listing(goal, catalogue)
                 if selected is None or selected.query != q:
                     raise DomainError(
@@ -209,10 +209,13 @@ def validate_intents(
                 canonical.get(q.source_id)
                 if q.source_kind == "CANONICAL"
                 else tables.get(q.source_id)
-                if q.source_kind in {"RAW_PREVIEW", "PREPARED"}
+                if q.source_kind in {"RAW_PREVIEW", "PREPARED", "PREPARED_FINDINGS"}
                 else None
             )
-            if (q.source_kind in {"CANONICAL", "RAW_PREVIEW", "PREPARED"} and source is None) or (
+            if (
+                q.source_kind in {"CANONICAL", "RAW_PREVIEW", "PREPARED", "PREPARED_FINDINGS"}
+                and source is None
+            ) or (
                 q.source_kind in {"VERIFIED_RUN", "EXCEPTIONS"}
                 and q.source_id not in catalogue.run_ids
             ):
@@ -582,10 +585,26 @@ def resolve_displayed_export(goal: str, catalogue: IntentCatalogue) -> AgentInte
     """Require an explicit reference to the verified table currently in context."""
     normalized = " ".join(plain_question(goal).split()).rstrip("?.!")
     request = re.fullmatch(
-        r"(?:hay )?(?:xuat|tai) (?:danh sach|bang) (?:tren|nay|vua hien thi)(?: (excel|xlsx|csv))?",
+        r"(?:hay )?(?:xuat|tai) (?:danh sach|bang) "
+        r"(?:tren|nay|vua hien thi|dang xem|da loc|vua loc)(?: (excel|xlsx|csv))?",
         normalized,
     )
+    if request is None:
+        request = re.fullmatch(
+            r"(?:cho toi |gui toi )?(?:mot )?ban (excel|xlsx|csv) "
+            r"(?:cua |cho )(?:dung )?(?:cac )?(?:dong|ket qua|nhom) (?:da loc|vua loc)",
+            normalized,
+        )
     if not request:
+        export = re.search(
+            r"\b(?:xuat|tai) (?:bao cao|bang|danh sach|excel|xlsx|csv)\b", normalized
+        )
+        subset = re.search(r"\b(?:chi (?!tieu\b)|rieng |da loc\b|vua loc\b)", normalized)
+        if export and subset:
+            return AgentIntent(
+                intent="CLARIFY",
+                questions=["Hãy mở hoặc lọc bảng kết quả cần xuất, rồi chọn xuất bảng đang xem."],
+            )
         return None
     query = catalogue.previous_query
     if (
@@ -650,6 +669,7 @@ LAYER_TERMS: dict[str, QuerySourceKind] = {
     "ban goc": "RAW_PREVIEW",
     "du lieu tu chuan bi": "PREPARED",
     "ban tu chuan bi": "PREPARED",
+    "ban da chuan bi": "PREPARED",
     "bang da chuan bi": "PREPARED",
     "du lieu da chuan hoa": "CANONICAL",
     "bang da chuan hoa": "CANONICAL",
@@ -678,16 +698,22 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
         normalized = re.sub(source_suffix, "", normalized)
     layer = "|".join(re.escape(term) for term in LAYER_TERMS)
     view = re.fullmatch(
-        r"(?:(?:cho toi |cho |hay )?xem(?: truoc)?|mo|liet ke) (" + layer + r")", normalized
+        r"(?:cho toi |cho |hay )?(?:xem(?: truoc)?|mo|liet ke) (" + layer + r")", normalized
     )
     count = re.fullmatch(
         r"(?:hay )?dem (?:so )?(?:ban ghi|dong) (?:trong |cua )?(" + layer + r")", normalized
     )
     count_after = re.fullmatch(r"(" + layer + r") co bao nhieu (?:dong|ban ghi)", normalized)
-    match = view or count or count_after
+    date_rows = re.fullmatch(
+        r"(?:(?:(?:cho toi |hay )?(?:xem|liet ke)|co bao nhieu|dem) (?:cac |nhung |so )?"
+        r"|(?:cac |nhung )?)(?:dong|ban ghi) (?:bi )?"
+        r"(?:loi ngay(?: thang)?|co ngay (?:sai|khong hop le))(?: nam o dau)?",
+        normalized,
+    )
+    match = view or count or count_after or date_rows
     if not match:
         return None
-    layer_kind = LAYER_TERMS[match[1]]
+    layer_kind = "PREPARED_FINDINGS" if date_rows else LAYER_TERMS[match[1]]
     datasets = [
         dataset
         for dataset in catalogue.datasets
@@ -704,7 +730,7 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
             questions=["Bạn muốn xem bảng nào? Hãy chọn đúng tệp và bảng cần đọc."],
         )
     table = datasets[0].tables[0]
-    if layer_kind == "PREPARED" and table.prepared_artifact_id is None:
+    if layer_kind in {"PREPARED", "PREPARED_FINDINGS"} and table.prepared_artifact_id is None:
         return AgentIntent(
             intent="CLARIFY",
             questions=["Nguồn này chưa có bản tự chuẩn bị. Bạn có thể xem dữ liệu gốc."],
@@ -721,7 +747,11 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
             source_id=(table.canonical_id or table.table_id)
             if layer_kind == "CANONICAL"
             else table.table_id,
-            aggregations=[QueryAggregation(op="count")] if not view else [],
+            aggregations=[QueryAggregation(op="count")]
+            if count
+            or count_after
+            or (date_rows and normalized.startswith(("co bao nhieu ", "dem ")))
+            else [],
         ),
     )
 
@@ -731,7 +761,11 @@ def resolve_prepared_listing(goal: str, catalogue: IntentCatalogue) -> AgentInte
     selected = resolve_layer_listing(goal, catalogue)
     return (
         selected
-        if selected and (selected.query is None or selected.query.source_kind == "PREPARED")
+        if selected
+        and (
+            selected.query is None
+            or selected.query.source_kind in {"PREPARED", "PREPARED_FINDINGS"}
+        )
         else None
     )
 

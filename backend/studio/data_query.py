@@ -233,7 +233,7 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
         raise DomainError("RESOURCE_NOT_FOUND", "Quyền truy cập không còn hợp lệ.", 404)
     if query.metric_id and query.source_kind != "VERIFIED_RUN":
         raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ chọn metric cho kết quả đã xác minh.")
-    if query.source_kind in {"RAW_PREVIEW", "PREPARED", "CANONICAL"}:
+    if query.source_kind in {"RAW_PREVIEW", "PREPARED", "PREPARED_FINDINGS", "CANONICAL"}:
         canonical = None
         if query.source_kind == "CANONICAL":
             row = get_scoped(db, CanonicalRow, query.source_id, actor)
@@ -247,7 +247,7 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
             artifact = get_scoped(db, ArtifactRow, table.artifact_id, actor)
         if project_for_table(db, table).id != query.project_id:
             raise DomainError("RESOURCE_NOT_FOUND", "Nguồn không thuộc dự án.", 404)
-        if query.source_kind == "PREPARED":
+        if query.source_kind in {"PREPARED", "PREPARED_FINDINGS"}:
             artifact = read_prepared_artifact(db, actor, table, artifact)
         path = storage_path(settings.storage_root, artifact.storage_key)
         if checksum(path) != artifact.sha256:
@@ -270,6 +270,18 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
         else:
             fields = [c["id"] for c in table.parsed_contract["columns"]]
             labels = {c["id"]: c["name"] for c in table.parsed_contract["columns"]}
+            if query.source_kind == "PREPARED_FINDINGS":
+                flags = pl.col("_preparation_flags").list.filter(
+                    pl.element().str.starts_with("INVALID_DATE:")
+                )
+                names = {f"INVALID_DATE:{field}": label for field, label in labels.items()}
+                frame = frame.filter(flags.list.len() > 0).with_columns(
+                    flags.list.eval(pl.element().replace_strict(names, default=pl.element()))
+                    .list.join(", ")
+                    .alias("date_findings")
+                )
+                fields.insert(0, "date_findings")
+                labels["date_findings"] = "Cột có ngày không hợp lệ"
             frame = frame.with_columns(
                 pl.concat_list(
                     pl.struct(

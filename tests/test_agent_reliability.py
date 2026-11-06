@@ -136,7 +136,7 @@ def test_prepared_chat_preview_and_count_need_no_provider_or_mapping(pg, monkeyp
         files={
             "files": (
                 "prepared.csv",
-                b"ID,Date\n000123,2026-10-01\n000124,2026-10-02\n",
+                b"ID,Date\n000123,2026-10-01\n000124,2026-02-29\n",
                 "text/csv",
             )
         },
@@ -146,17 +146,30 @@ def test_prepared_chat_preview_and_count_need_no_provider_or_mapping(pg, monkeyp
     context = dict(project_id=pid, dataset_id=response.json()["items"][0]["id"])
     cid = conversation(client, context)
     for index, question in enumerate(
-        ("Xem dữ liệu tự chuẩn bị", "Đếm số dòng dữ liệu tự chuẩn bị")
+        (
+            "Xem dữ liệu tự chuẩn bị",
+            "Đếm số dòng dữ liệu tự chuẩn bị",
+            "Những dòng lỗi ngày tháng nằm ở đâu?",
+            "Có bao nhiêu bản ghi có ngày không hợp lệ?",
+        )
     ):
         queued = ask_agent(client, context, cid, text=question, key=f"prepared-{index}")
         drain(factory, worker)
         flow = workflow_for(client, factory, queued["job_id"])
         assert flow["state"] == "COMPLETED" and flow["detail"]["model_calls"] == 0
         data = next(b["result"] for b in flow["detail"]["blocks"] if b["type"] == "table")
-        assert data["source_kind"] == "PREPARED"
+        assert data["source_kind"] == ("PREPARED_FINDINGS" if index >= 2 else "PREPARED")
         assert data["verification_status"] == "RAW_UNVERIFIED"
-        if index:
-            assert data["rows"][0]["count_rows_0"] == 2
+        if index in {1, 3}:
+            assert data["rows"][0]["count_rows_0"] == (2 if index == 1 else 1)
+        elif index == 2:
+            row = data["rows"][0]
+            assert (row["date_findings"], row["c1"], row["c2"]) == (
+                "Date",
+                "000124",
+                "2026-02-29",
+            )
+            assert data["total_count"] == 1 and row["source_provenance"][0]["row"] == 3
         else:
             assert data["total_count"] == 2
             assert data["rows"][0]["c1"] == "000123"

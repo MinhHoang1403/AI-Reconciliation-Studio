@@ -46,14 +46,17 @@ for(const scenario of manifest.datasets){
       const table=tables.items.find((t:{sheet:string})=>t.sheet==='Giao dịch')||tables.items[0];
       await page.getByRole('combobox',{name:'Bảng / sheet',exact:true}).selectOption(table.id);
       await page.getByRole('tab',{name:'AI Smart Setup',exact:true}).click();
-      await page.getByLabel('Loại dữ liệu',{exact:true}).fill('reported_transaction');
+      const manualSummary=page.getByText('Tạo cách ghép cột thủ công riêng',{exact:true});
+      await manualSummary.click();
+      const manual=page.locator('details').filter({has:manualSummary}).locator('.mapping-studio');
+      await manual.getByLabel('Loại dữ liệu',{exact:true}).fill('reported_transaction');
       await page.getByRole('combobox',{name:'Bảng / sheet',exact:true}).selectOption(table.id);
-      await expect(page.getByLabel('Loại dữ liệu',{exact:true})).toHaveValue('reported_transaction');
+      await expect(manual.getByLabel('Loại dữ liệu',{exact:true})).toHaveValue('reported_transaction');
       const detail=scenario.cardinality==='ONE_TO_MANY'?i===1:scenario.cardinality==='MANY_TO_ONE'?i===0:false;
-      await page.getByLabel('Mỗi dòng đại diện cho điều gì?',{exact:true}).fill(detail?'transaction_part':'transaction');
+      await manual.getByLabel('Mỗi dòng đại diện cho điều gì?',{exact:true}).fill(detail?'transaction_part':'transaction');
       for(let n=0;n<f.headers.length;n++){
         const header=f.headers[n],field=f.order[n];
-        const row=page.locator('.mapping-row').filter({has:page.getByLabel(`Trường đích ${header}`,{exact:true})});
+        const row=manual.locator('.mapping-row').filter({has:page.getByLabel(`Trường đích ${header}`,{exact:true})});
         await row.getByLabel(`Trường đích ${header}`,{exact:true}).fill(field);
         await row.getByLabel(`Kiểu ${header}`,{exact:true}).selectOption(field==='amount'?'decimal':field==='event_date'?'date':'string');
         if(['scope','reference'].includes(field))await row.getByLabel('Thành phần khóa',{exact:true}).check();
@@ -68,9 +71,9 @@ for(const scenario of manifest.datasets){
           await row.getByLabel(`Đơn vị ${header}`,{exact:true}).fill(scenario.name.startsWith('E ')&&i===1?'USD':'VND');
         }
       }
-      const warningReview=page.getByLabel('Tôi đã kiểm tra các cảnh báo và vùng dữ liệu nguồn.',{exact:true});
+      const warningReview=manual.getByLabel('Tôi đã kiểm tra các cảnh báo và vùng dữ liệu nguồn.',{exact:true});
       if(await warningReview.isVisible())await warningReview.check();
-      await page.getByRole('button',{name:'Xác nhận ánh xạ',exact:true}).click();await expect(page.getByText('Đã cập nhật ánh xạ.',{exact:true})).toBeVisible();
+      await manual.getByRole('button',{name:'Xác nhận ánh xạ',exact:true}).click();await expect(page.getByText('Đã cập nhật ánh xạ.',{exact:true})).toBeVisible();
       await page.getByRole('tab',{name:'Chuẩn hóa',exact:true}).click();await page.getByRole('button',{name:'Chuẩn hóa dữ liệu',exact:true}).click();
       await expect.poll(async()=>{const a=await(await page.request.get(`/api/datasets/${dataset.id}/artifacts`)).json();return a.canonical_datasets.length;}).toBeGreaterThan(0);
       const artifacts=await(await page.request.get(`/api/datasets/${dataset.id}/artifacts`)).json();

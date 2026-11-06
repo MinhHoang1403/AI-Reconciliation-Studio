@@ -141,7 +141,7 @@ def profile_table(
 
 
 ALIASES = {
-    "reference_id": {"ma don", "order id", "order_id", "tracking id", "ma van don", "reference"},
+    "reference_id": {"ma don", "order id", "order_id", "tracking id", "ma van don"},
     "gross_amount": {"gross amount", "gross", "tong truoc giam"},
     "net_amount": {"net amount", "net"},
     "description": {"description", "mo ta", "ten"},

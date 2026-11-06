@@ -1,6 +1,6 @@
 import { test } from "./project-selection";
 import {expect} from "@playwright/test";
-import {mkdir,writeFile} from "node:fs/promises";
+import {mkdir,readFile,writeFile} from "node:fs/promises";
 
 test("Agent landing without a project does not create metadata or call cloud",async({page})=>{
   await page.addInitScript(()=>{if(!sessionStorage.getItem("agent-test-initialized")){localStorage.clear();sessionStorage.clear();sessionStorage.setItem("agent-test-initialized","1");}});
@@ -181,8 +181,19 @@ test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconcil
   const pageFile=page.waitForEvent('download');
   await work.getByRole('link',{name:'Tải bảng đang xem CSV',exact:true}).click();
   await (await pageFile).saveAs(`${folder}/displayed.csv`);
+  const rows=(await readFile(`${folder}/displayed.csv`,'utf8')).split(/\r?\n/).filter(row=>row.startsWith('Displayed results,'));
+  expect(rows).toHaveLength(2);
+  expect(rows[1]).toMatch(/^Displayed results,AMOUNT_MISMATCH,250\.00,200\.00,50\.00,50\.00,VND,[0-9a-f-]{36}$/);
+  const groupId=rows[1].split(',').at(-1);
   await send('Giải thích nhóm thứ một');
-  await expect(work).toContainText('0002');
+  await expect(work).toContainText('250.00 / 200.00 / 50.00');
+  const evidenceResponse=page.waitForResponse(response=>response.url().endsWith(`/runs/${runId}/groups/${groupId}/evidence`));
+  await work.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
+  expect((await evidenceResponse).ok()).toBe(true);
+  const evidence=page.getByRole('dialog',{name:'Bằng chứng đối soát',exact:true});
+  await expect(evidence).toContainText('0002');
+  await page.keyboard.press('Escape');
+  await expect(evidence).not.toBeVisible();
   await send('Xuất báo cáo Excel của lần đối soát này');
   const file=page.waitForEvent('download');
   await work.getByRole('link',{name:/Tải.*XLSX/i}).click();

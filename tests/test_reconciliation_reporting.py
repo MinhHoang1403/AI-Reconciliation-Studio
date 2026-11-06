@@ -254,6 +254,101 @@ def test_scoped_planner_matches_composite_anchor_to_detail_with_different_key(re
 
 
 @pytest.mark.parametrize(
+    "case,left_keys,right_keys,grains,expected",
+    [
+        (
+            "shipment",
+            ["0001", "0002"],
+            ["0002", "0003"],
+            ("dispatch", "dispatch"),
+            ("ONE_TO_ONE", 1),
+        ),
+        (
+            "invoice-lines",
+            ["0001", "0002"],
+            ["0001", "0001", "0002"],
+            ("invoice", "line"),
+            ("ONE_TO_MANY", 2),
+        ),
+        (
+            "settlement",
+            ["0001", "0002", "0002"],
+            ["0001", "0002"],
+            ("entry", "batch"),
+            ("MANY_TO_ONE", 2),
+        ),
+        ("disjoint", ["0001"], ["1"], ("dispatch", "dispatch"), None),
+        ("duplicate", ["0001", "0001"], ["0001"], ("dispatch", "dispatch"), None),
+        ("many-both", ["0001", "0001"], ["0001", "0001"], ("invoice", "line"), None),
+        ("mixed-amount-basis", ["0001"], ["0001"], ("dispatch", "dispatch"), None),
+        ("mixed-currency", ["0001"], ["0001"], ("dispatch", "dispatch"), None),
+        ("unknown-grain", ["0001"], ["0001"], ("unknown", "dispatch"), None),
+        ("missing-coverage", ["0001"], ["0001"], ("dispatch", "dispatch"), None),
+    ],
+)
+def test_planner_independent_business_cases(case, left_keys, right_keys, grains, expected):
+    from datetime import UTC, datetime
+
+    from studio.contracts.reconciliation import CanonicalRecord
+    from studio.reconciliation_planner import scoped_key_candidates
+
+    def rows(side, key_field, keys):
+        return [
+            CanonicalRecord(
+                id=f"{side}-{index}",
+                payload={
+                    key_field: value,
+                    "event_date": datetime(2026, 10, 15, tzinfo=UTC),
+                    "currency": "VND",
+                    "gross_amount": Decimal("7.75"),
+                },
+                invalid=False,
+                quality_flags=[],
+                provenance=[
+                    dict(
+                        file_id=side,
+                        source_table_id=side,
+                        source_row_id=f"{side}-{index}",
+                        sheet="CSV",
+                        row=index + 2,
+                    )
+                ],
+            )
+            for index, value in enumerate(keys)
+        ]
+
+    left_rows, right_rows = (
+        rows("left", "dispatch_ref", left_keys),
+        rows("right", "control_code", right_keys),
+    )
+    left = catalogue("left", left_rows, grain=grains[0], metric="billed_value")
+    right = catalogue("right", right_rows, grain=grains[1], metric="billed_value")
+    left.identifier_fields = ["dispatch_ref"]
+    right.identifier_fields = ["control_code"]
+    request = PlanningRequest.from_plan(
+        plan(left="left", right="right", platform="", entity="delivery", metric="billed_value")
+    )
+    if case == "mixed-amount-basis":
+        next(
+            f for f in right.schema_definition.fields if f.id == "gross_amount"
+        ).amount_basis = "net"
+    elif case == "mixed-currency":
+        next(f for f in right.schema_definition.fields if f.id == "gross_amount").currency = "USD"
+    elif case == "missing-coverage":
+        request.right.coverage_end = None
+    result = scoped_key_candidates(request, [left, right], left_rows, right_rows)
+    if expected is None:
+        assert result is None
+    else:
+        assert result and result.plan and len(result.candidates) == 1
+        assert (result.plan.cardinality, result.candidates[0].overlap) == expected
+        assert [(pair.left, pair.right) for pair in result.plan.join_keys] == [
+            ("dispatch_ref", "control_code")
+        ]
+        assert result.plan.comparison_metrics[0].metric_id == "billed_value"
+
+
+@pytest.mark.parametrize(
     "kind",
     [
         "different-ids",

@@ -1356,6 +1356,12 @@ def test_parse_can_publish_while_mapping_inference_is_waiting(pg, monkeypatch):
             worker.process_job(*parse_claim)
             table = client.get(f"/api/datasets/{incoming['id']}/tables").json()["items"][0]
             assert table["prepared"]["row_count"] == 1
+            query = client.post(
+                "/api/agent/queries",
+                json={"project_id": second, "source_kind": "PREPARED", "source_id": table["id"]},
+            )
+            assert query.status_code == 200
+            assert query.json()["rows"][0]["c1"] == "001"
             with factory() as db:
                 preview_claim = worker.claim_job(db, inference_busy=True)
             assert preview_claim[0] == request["job_id"]
@@ -1368,6 +1374,47 @@ def test_parse_can_publish_while_mapping_inference_is_waiting(pg, monkeypatch):
         finally:
             release.set()
         waiting.result()
+
+
+def test_two_authorized_workspace_queues_publish_scoped_artifacts(pg):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from studio.access import session_token_hash
+
+    owner, factory, worker = pg
+    token = secrets.token_urlsafe(32)
+    with factory() as db:
+        db.add(WorkspaceRow(id="second-queue", name="Synthetic second queue", policy={}))
+        db.flush()
+        db.add(MembershipRow(workspace_id="second-queue", actor_id="other-owner", role="owner"))
+        db.add(
+            SessionRow(
+                workspace_id="second-queue",
+                actor_id="other-owner",
+                token_hash=session_token_hash(token),
+                expires_at=now() + timedelta(hours=1),
+            )
+        )
+        db.commit()
+    other = TestClient(
+        owner.app, base_url="http://127.0.0.1:18180", headers={"Origin": "http://127.0.0.1:18180"}
+    )
+    other.cookies.set("studio_session", token)
+    pairs = [(owner, project(owner)), (other, project(other))]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        uploads = list(pool.map(lambda pair: upload(*pair, b"ID,Date\n001,2026-10-01\n"), pairs))
+    drain(factory, worker)
+    for index, (client, pid) in enumerate(pairs):
+        dataset, foreign = uploads[index], uploads[1 - index]
+        assert client.get(f"/api/jobs/{dataset['job_id']}").json()["status"] == "SUCCEEDED"
+        assert client.get(f"/api/jobs/{foreign['job_id']}").status_code == 404
+        assert client.get(f"/api/datasets/{foreign['id']}/tables").status_code == 404
+        (table,) = client.get(f"/api/datasets/{dataset['id']}/tables").json()["items"]
+        response = client.post(
+            "/api/agent/queries",
+            json={"project_id": pid, "source_kind": "PREPARED", "source_id": table["id"]},
+        )
+        assert response.status_code == 200 and response.json()["rows"][0]["c1"] == "001"
 
 
 def test_upload_mapping_memory_reuses_only_compatible_draft(pg):

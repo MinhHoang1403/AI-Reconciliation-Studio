@@ -259,9 +259,12 @@ def test_mapping_shortlist_abstains_for_generic_roles_and_competing_columns(prof
             "evidence_ids": ["table:c9"],
         }
     )
-    new = profile.model_copy(update={"columns": [key, money, currency, generic_date, second_key]})
+    generic_reference = key.model_copy(update={"column_id": "c10", "name": "Reference"})
+    new = profile.model_copy(
+        update={"columns": [key, money, currency, generic_date, second_key, generic_reference]}
+    )
     matches = find_mapping_candidates(new, schema)
-    assert matches["c8"] == []
+    assert matches["c8"] == matches["c10"] == []
     proposal = manual_proposal(new, schema)
     both_keys = [d for d in proposal.decisions if d.source_field in {key.column_id, "c9"}]
     assert len(both_keys) == 2
