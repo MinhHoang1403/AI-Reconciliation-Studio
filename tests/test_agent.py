@@ -228,6 +228,79 @@ def test_review_envelope_does_not_relax_backend_change_limit():
         MappingEdits(changes=[change] * 81)
 
 
+@pytest.mark.parametrize("provider_name", ["gemini", "ollama"])
+def test_routing_provider_grammar_excludes_tools_that_do_not_belong_to_intent(
+    config, provider_name
+):
+    """MOCK transport parity; public legacy DTO cannot be used as decoding grammar."""
+    config.gemini_api_key = SecretStr("synthetic-key")
+    config.allow_external_ai = True
+    config.external_ai_request_budget = None
+    config.local_demo_access = True
+    config.ollama_url = "http://host.docker.internal:11434"
+    result = dict(intents=[dict(intent="PREPARE_NORMALIZATION", dataset_ids=["dataset"])])
+
+    def transport(request):
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200, json={"models": [dict(name="qwen3:8b", size=10, digest="a" * 64)]}
+            )
+        body = json.loads(request.content)
+        schema = (
+            body["format"]
+            if provider_name == "ollama"
+            else body["generationConfig"]["responseJsonSchema"]
+        )
+        variants = schema["$defs"]["RoutingIntent"]["anyOf"]
+        normalize = next(
+            v for v in variants if v["properties"]["intent"]["enum"] == ["PREPARE_NORMALIZATION"]
+        )
+        assert set(normalize["properties"]) == {"intent", "dataset_ids"}
+        assert normalize["additionalProperties"] is False
+        query = next(v for v in variants if v["properties"]["intent"]["enum"] == ["QUERY_DATA"])
+        assert set(query["properties"]) == {"intent", "query"}
+        assert "maxItems" not in schema["properties"]["intents"]
+        if provider_name == "ollama":
+            return httpx.Response(
+                200,
+                json=dict(done=True, done_reason="stop", message=dict(content=json.dumps(result))),
+            )
+        return httpx.Response(
+            200,
+            json=dict(
+                candidates=[
+                    dict(finishReason="STOP", content=dict(parts=[dict(text=json.dumps(result))]))
+                ]
+            ),
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        provider = (
+            OllamaProvider(config, "QWEN_8B", client)
+            if provider_name == "ollama"
+            else GeminiProvider(config, client)
+        )
+        intents = interpret_requests(
+            provider,
+            ["Chuẩn bị chuẩn hóa dữ liệu"],
+            catalogue(),
+            WorkspacePolicy(
+                mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=None
+            ),
+            lambda: True,
+        )
+    assert intents == [AgentIntent(intent="PREPARE_NORMALIZATION", dataset_ids=["dataset"])]
+    assert provider.usage["routing_shape"] == [
+        dict(
+            intent="PREPARE_NORMALIZATION",
+            has_query=False,
+            has_reconciliation=False,
+            dataset_count=1,
+            question_count=0,
+        )
+    ]
+
+
 @pytest.mark.parametrize("foreign", [False, True])
 def test_rule_reply_preserves_unanswered_facts_and_source_identity(foreign):
     from studio.agent_preparation import RuleEdits, merge_planning_reply

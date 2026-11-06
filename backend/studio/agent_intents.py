@@ -17,7 +17,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-32"
+INTENT_REVISION = "agent-intent-33"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -592,6 +592,10 @@ def compile_routing(
                 raise DomainError("INPUT_AMBIGUOUS", "Có tệp trùng tên; cần chọn nguồn cụ thể.")
         if item.query:
             if item.intent not in {"QUERY_DATA", "CREATE_VISUALIZATION"}:
+                if diagnostics is not None:
+                    diagnostics["routing_error"] = dict(
+                        stage="unexpected_query", intent=item.intent
+                    )
                 raise DomainError("AI_INVALID_INTENT", "Intent không sử dụng công cụ truy vấn.")
             source = sources.get(item.query.source_ref)
             if source is None:
@@ -658,6 +662,10 @@ def compile_routing(
         selection = item.reconciliation
         if selection:
             if item.intent != "RECONCILE_DATASETS":
+                if diagnostics is not None:
+                    diagnostics["routing_error"] = dict(
+                        stage="unexpected_reconciliation", intent=item.intent
+                    )
                 raise DomainError("AI_INVALID_INTENT", "Intent không sử dụng kế hoạch đối soát.")
             left, right = selection.left_canonical_id, selection.right_canonical_id
             if left == right or left not in canonicals or right not in canonicals:
@@ -1086,6 +1094,17 @@ def interpret_requests(
             if isinstance(envelope, dict) and isinstance(envelope.get("intents"), list):
                 provider.usage["intent_count"] = len(envelope["intents"])
                 provider.usage["expected_intent_count"] = len(goals)
+                typed = RoutingBatch.model_validate(envelope)
+                provider.usage["routing_shape"] = [
+                    dict(
+                        intent=item.intent,
+                        has_query=item.query is not None,
+                        has_reconciliation=item.reconciliation is not None,
+                        dataset_count=len(item.dataset_ids),
+                        question_count=len(item.questions),
+                    )
+                    for item in typed.intents
+                ]
         except ValueError:
             pass
         return compile_routing(content, goals, catalogue, provider.usage)
@@ -1096,7 +1115,8 @@ def interpret_requests(
         reserve,
         validate,
         max_attempts=1,
-        response_schema=RoutingBatch.model_json_schema(mode="serialization")
-        if provider.local
-        else schema,
+        # Both providers must see the same per-intent tool envelope. The raw
+        # public RoutingBatch permits optional fields for legacy compatibility;
+        # it allowed Qwen to combine unrelated tool fields before semantic checks.
+        response_schema=schema,
     )

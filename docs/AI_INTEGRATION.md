@@ -10,6 +10,8 @@ Mỗi giá trị hợp nhất được validate, không dùng model_copy(update=
 
 A/B LIVE cùng review tổng hợp: grammar `changes.maxItems=80` trả400 INVALID_ARGUMENT, chỉ bỏ thuộc tính này khỏi envelope trả200 (1.914ms). Giữ ràng buộc <=80 ở MappingEdits trên Backend và test80/81; không thay semantic validation. Không kết luận mọi lỗi400 đều có nguyên nhân này.
 
+Audit Qwen nhận HTTP200 nhưng bị AI_INVALID_INTENT ở lượt router tự nhiên. Phát hiện Gateway local đang nhận public RoutingBatch rộng, trong khi Gemini đã nhận grammar chia theo từng intent; public DTO cho phép các optional tool fields cùng xuất hiện trước kiểm tra ngữ nghĩa. `agent-intent-33` truyền cùng grammar theo intent cho cả hai: chuẩn bị ánh xạ không được kèm query/reconciliation. Không thêm grammar khớp câu hỏi mẫu để thay suy luận. Trace routing_shape chỉ lưu enum intent/cờ tool/số nguồn và câu hỏi; không lưu raw output. Chưa có raw output của lượt lỗi cũ nên không quy kết chính xác thuộc tính nào model đã trộn. MOCK transport xác minh schema tương đương; LIVE sau sửa được báo riêng.
+
 Trần an toàn mặc định của workflow là8model calls, vẫn trong hard ceiling8 có sẵn: một router + ba proposal + ba phản hồi chủ động cần7calls. Không tăng timeout, không gọi per-row, không reset ledger và không tự retry unknown delivery. Mốc6calls bên dưới mô tả cấu hình lịch sử.
 
 ## Smart Mapping local theo profile và ngữ nghĩa — 05/11/2026
