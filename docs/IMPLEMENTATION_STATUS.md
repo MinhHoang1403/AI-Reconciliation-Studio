@@ -69,6 +69,18 @@ Hồi quy trên source Planner mới đạt **498/498 Backend/PostgreSQL**, tron
 
 Sidebar sáu mục theo kế hoạch tự động hóa §6.1 là yêu cầu mới thay bố cục ba mục ghi tại Rules §9.1. Vòng Playwright đầu trên `92dd889` đạt 134/139, năm ca visual còn kỳ vọng ba nút. Đã sửa kỳ vọng để kiểm đủ sáu mục và giữ kiểm tra focus.
 
+Lượt full Playwright sau sửa kỳ vọng đạt **139/139**, 13,8 phút, một worker, không retry hoặc bỏ case. Source `b6bcbba` đã push và triển khai với 46 file Python khớp Backend/Worker, bảy assets Frontend khớp HTTP và khớp toàn bộ checksum của frontend đã chạy full browser. Backend/Worker image `eaa6b45496eac2c1ee8083be835d3a25b07ebff9a9e8e86d1970cef962781596`, Frontend `a8ec6eccae5ec17d1c1c33a00c340bb50819ef8bc8409e9df1c523920159cdef`. Bốn dịch vụ healthy.
+
+Gemini LIVE sau sửa tạo đúng scope, vai trò, khóa ghép và quan hệ 1:N trên thẻ duyệt. Người kiểm thử xác nhận thẻ rồi run `b71e077c-442f-42eb-9563-3b17fb580e7b` khớp oracle 2.040 khớp, 200 lệch, 215 thiếu đối ứng và 7.867 / 60.883 VND. Định tuyến dùng một lượt Gemini trong 2,866 giây. Planner phía Backend không gọi provider. Ledger 380 → 381.
+
+Qwen LIVE chọn đúng hai nguồn và kỳ nhưng bỏ dữ kiện vai trò, ngày và phạm vi đã nêu. Workflow dừng ở thẻ cần bổ sung, không tạo run. Định tuyến trả hợp đồng hợp lệ sau 51,058 giây, 2.895 prompt token và 194 output token, 0 cloud requests. Trong lúc inference này đang chạy, một upload CSV tổng hợp 75.000 dòng được parse và tạo prepared xong trước khi inference kết thúc. Browser quan sát 5,677 giây, thời gian xử lý job parse là 3,631 giây. Đây là một lượt đồng thời, chưa phải p50/p95. Receipt ở `runtime/automation-live-planner-QWEN_8B.json`.
+
+### Bảo toàn và công cụ backup
+
+Lượt `backup_23e21b4d901442dc8ab9c43e93cd5897` có metadata 64.907.007 byte, bị OOM tại bước đọc toàn bộ metadata để restore. Exit137 được giữ, không có receipt PASS. Công cụ backup lập chỉ mục byte của từng bản ghi lúc ghi file, rồi đọc và insert từng batch200 từ chính file backup. Định dạng codec cũ giữ nguyên byte, được regression kiểm Unicode, ngày, Decimal và nhãn JSON không đáng tin.
+
+Backup mới `backup_675dc832f0084e79858fe51dfed4a107` khôi phục thử thành công **24 bảng và 7.634 tệp**, sao lưu 34,235 giây và restore34,747 giây. Metadata SHA-256 `13cf2fdd930f359a349292ba3e0ac5a3f56c3f92609b830a042443bb71b04dde`. Đã copy đúng backup sang host và kiểm đủ checksum 7.634 tệp. Toàn bộ metadata/tệp của candidate trước và sau recreate khớp. Các bản ghi và 7.203 tệp của baseline ban đầu vẫn đủ và không đổi. Không có migration database.
+
 ### Trạng thái các cổng phát hành
 
 | Cổng | Trạng thái và bằng chứng |
@@ -80,13 +92,13 @@ Sidebar sáu mục theo kế hoạch tự động hóa §6.1 là yêu cầu mớ
 | AP-05 | PASS trong phạm vi tái dùng exact, cấp/thu hồi quyền, loại drift và preflight |
 | AP-06 | NOT_RUN, chưa có tập holdout gán nhãn độc lập để đo precision/recall mapping hoặc số liệu Valentine |
 | AP-07 | PASS cho lần tải tương thích đã được cấp quyền. NOT_RUN cho nghiệm thu đầy đủ đề xuất AI mới không cần điền kỹ thuật lặp lại |
-| AP-08 | PASS cho ứng viên Backend trên canonical của hai run. FAIL với lượt Gemini trước sửa. Chờ nghiệm thu LIVE sau sửa |
+| AP-08 | PASS Gemini LIVE sau sửa với Backend proposal, duyệt UI và oracle. FAIL Qwen LIVE vì bỏ dữ kiện nguồn |
 | AP-09 | PASS local, duyệt quy tắc riêng qua API và hồi quy scope/quyền/idempotency |
 | AP-10 | PASS cho API raw/prepared và Chat top-N/giải thích theo vị trí. NOT_RUN cho câu hỏi tự nhiên tổng quát trên prepared |
 | AP-11 | PASS cho Product Journey CSV/XLSX, đối chiếu hai XLSX mới và snapshot sau reload |
 | AP-12 | PASS ở năm chiều rộng trong hồi quy sidebar sáu mục và focus |
-| AP-13 | PASS PostgreSQL với provider giả lập bị giữ. NOT_RUN cho đo tải đồng thời Qwen LIVE và 75.000 dòng |
-| AP-14 | PASS baseline rollback/restore và bảo toàn lúc triển khai candidate. Chưa có receipt restore của candidate mới |
+| AP-13 | PASS PostgreSQL với provider giả lập bị giữ và một lượt Qwen LIVE đồng thời với 75.000 dòng. NOT_RUN p50/p95 tải đồng thời |
+| AP-14 | PASS baseline rollback/restore, candidate restore24bảng/7.634tệp và bảo toàn lúc recreate |
 | AP-15 | NOT_RUN cho phát hành main. Giữ nhánh triển khai riêng cho đến khi các cổng bắt buộc đạt |
 
 ---

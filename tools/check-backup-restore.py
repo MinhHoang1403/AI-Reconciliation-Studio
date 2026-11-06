@@ -67,20 +67,28 @@ def capture(connection: Any, metadata: MetaData) -> dict[str, list[dict[str, Any
     }
 
 
-def write_metadata(path: Path, rows: dict[str, list[dict[str, Any]]]) -> None:
-    """Write the existing canonical codec without copying the entire snapshot in RAM."""
-    with path.open("w", encoding="utf-8", newline="") as stream:
-        stream.write('{"$map":{')
+def write_metadata(
+    path: Path, rows: dict[str, list[dict[str, Any]]]
+) -> dict[str, list[tuple[int, int]]]:
+    """Write the existing codec and index each row's byte range for bounded restore."""
+    offsets: dict[str, list[tuple[int, int]]] = {}
+    with path.open("wb") as stream:
+        stream.write(b'{"$map":{')
         for index, name in enumerate(sorted(rows)):
+            offsets[name] = []
             if index:
-                stream.write(",")
-            stream.write(json.dumps(name, ensure_ascii=False) + ":[")
+                stream.write(b",")
+            stream.write((json.dumps(name, ensure_ascii=False) + ":[").encode("utf-8"))
             for row_index, row in enumerate(rows[name]):
                 if row_index:
-                    stream.write(",")
-                stream.write(canonical(row))
-            stream.write("]")
-        stream.write("}}")
+                    stream.write(b",")
+                start = stream.tell()
+                payload = canonical(row).encode("utf-8")
+                stream.write(payload)
+                offsets[name].append((start, len(payload)))
+            stream.write(b"]")
+        stream.write(b"}}")
+    return offsets
 
 
 def verify_metadata(
@@ -139,7 +147,7 @@ def main() -> None:
         connection.execute(text("SET TRANSACTION READ ONLY"))
         rows = capture(connection, metadata)
         files = file_inventory(rows)
-        write_metadata(directory / "metadata.json", rows)
+        metadata_offsets = write_metadata(directory / "metadata.json", rows)
         for key in files:
             target = storage_path(directory / "files", key)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -190,14 +198,16 @@ def main() -> None:
             connection.execute(text(f'CREATE SCHEMA "{schema}"'))
             scoped = connection.execution_options(schema_translate_map={None: schema})
             metadata.create_all(scoped)
-            with (directory / "metadata.json").open(encoding="utf-8") as stream:
-                encoded_tables = json.load(stream)["$map"]
-            for table in metadata.sorted_tables:
-                decoded_rows = decode(encoded_tables.pop(table.name))
-                for offset in range(0, len(decoded_rows), 200):
-                    scoped.execute(table.insert(), decoded_rows[offset : offset + 200])
-                del decoded_rows
-            del encoded_tables
+            with (directory / "metadata.json").open("rb") as stream:
+                for table in metadata.sorted_tables:
+                    ranges = metadata_offsets[table.name]
+                    for offset in range(0, len(ranges), 200):
+                        batch = []
+                        for start, length in ranges[offset : offset + 200]:
+                            stream.seek(start)
+                            batch.append(decode(json.loads(stream.read(length))))
+                        scoped.execute(table.insert(), batch)
+                        del batch
             verify_metadata(scoped, metadata, rows)
         for key, digest in files.items():
             target = storage_path(restored, key)

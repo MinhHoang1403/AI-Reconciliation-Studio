@@ -1,5 +1,6 @@
 """Kiểu metadata phải round-trip, kể cả JSON upload giả mạo type tags."""
 
+import json
 import runpy
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -35,8 +36,15 @@ def test_streamed_backup_preserves_exact_existing_format(tmp_path):
         "dates": [{"at": datetime(2026, 11, 6, tzinfo=UTC), "null": None}],
     }
     target = tmp_path / "metadata.json"
-    module["write_metadata"](target, rows)
+    offsets = module["write_metadata"](target, rows)
     assert target.read_bytes() == module["canonical"](rows).encode("utf-8")
+    with target.open("rb") as stream:
+        for table, ranges in offsets.items():
+            restored = []
+            for start, length in ranges:
+                stream.seek(start)
+                restored.append(module["decode"](json.loads(stream.read(length))))
+            assert restored == rows[table]
 
 
 @pytest.mark.parametrize("actual", [[{"id": "changed"}], [], [{"id": "a"}, {"id": "b"}]])
