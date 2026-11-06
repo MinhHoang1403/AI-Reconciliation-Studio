@@ -2,6 +2,7 @@
 
 import secrets
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Annotated, Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from studio.access import Actor, require_editor
 from studio.agent_intents import validate_intents
-from studio.agent_preparation import approval_from_draft
+from studio.agent_preparation import approval_from_draft, validate_draft
 from studio.agent_workflows import (
     advance,
     digest,
@@ -27,11 +28,16 @@ from studio.contracts import DatasetProfile
 from studio.contracts.agent import (
     ClarificationDecision,
     IntentBatch,
+    MappingAssessment,
     MappingReviewDecision,
+    NormalizationDraft,
     PlanReviewDecision,
     QuerySelection,
     ReviewDecision,
+    ReviewDraftUpdate,
     ReviewReply,
+    ReviewRequest,
+    ReviewToken,
     TableBlock,
     WorkflowState,
     WorkflowView,
@@ -40,7 +46,9 @@ from studio.contracts.assistant import AssistantContext
 from studio.contracts.data_query import DataQuery, QueryResult, SourceRowRequest, SourceRowResult
 from studio.contracts.reconciliation import PlanProposal
 from studio.database import (
+    AgentWorkflowRow,
     AuditRow,
+    ConversationRow,
     JobRow,
     MappingRow,
     MessageRow,
@@ -68,7 +76,11 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         or body.decision.type != review.kind
     ):
         raise DomainError("STALE_CONTEXT", "Xác nhận không còn phù hợp; hãy mở lại thẻ.", 409)
-    decision_hash = digest(body.decision.model_dump(mode="json"))
+    decision_payload = body.decision.model_dump(mode="json")
+    if isinstance(body.decision, PlanReviewDecision) and not body.decision.invalid_rows_reviewed:
+        # Preserve the digest of decisions saved before this additive acknowledgement.
+        decision_payload.pop("invalid_rows_reviewed")
+    decision_hash = digest(decision_payload)
     if review.state == "DECIDED":
         if decision_hash != review.decision_sha256:
             raise DomainError("IDEMPOTENCY_CONFLICT", "Quyết định này đã có nội dung khác.", 409)
@@ -104,6 +116,11 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         )
         if not mapping_id:
             raise DomainError("REVIEW_REQUIRED", "Chưa có proposal cho bảng này.")
+        from studio.mapping_verification import assess_table_mapping
+
+        assessment = assess_table_mapping(db, actor, draft)
+        if not assessment.preflight_ready:
+            raise DomainError("MAPPING_PREFLIGHT_REQUIRED", "; ".join(assessment.questions))
         approval = approval_from_draft(
             draft, DatasetProfile.model_validate(table.profile), body.decision.extraction_reviewed
         )
@@ -112,8 +129,6 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         review.result_id = approved.id
     elif isinstance(body.decision, PlanReviewDecision):
         from studio.reconciliation_api import approve_plan
-        from studio.reconciliation_contracts import validate_reconciliation_contract
-        from studio.reconciliation_repository import selected_catalogue
 
         plan = body.decision.plan
         expected = review.planning_request
@@ -122,10 +137,6 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
             expected.right.canonical_id,
         ):
             raise DomainError("STALE_CONTEXT", "Nguồn đối soát khác yêu cầu đang chờ.", 409)
-        cats = selected_catalogue(
-            db, actor, row.project_id, [plan.left.canonical_id, plan.right.canonical_id]
-        )
-        validate_reconciliation_contract(plan, cats, actor.workspace_id, row.project_id)
         # Giữ nguyên proposal AI; quyết định sửa rule là một bản có nguồn HUMAN_REVIEW.
         proposal = PlanRow(
             workspace_id=actor.workspace_id,
@@ -136,7 +147,9 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         )
         db.add(proposal)
         db.flush()
-        contract = approve_plan(proposal.id, db, actor)
+        contract = approve_plan(
+            proposal.id, db, actor, invalid_rows_reviewed=body.decision.invalid_rows_reviewed
+        )
         state.confirmed_contract_id = contract.id
         review.result_id = contract.id
     elif isinstance(body.decision, ClarificationDecision):
@@ -170,11 +183,47 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
     return view(row)
 
 
+def editable_review(
+    db: Session, actor: Actor, workflow_id: str, binding: ReviewToken, *, renew: bool = False
+) -> tuple[AgentWorkflowRow, WorkflowState, ReviewRequest]:
+    """Fence draft writes with the same owner, source locks and nonce as approval.
+
+    Only an explicit renewal may cross expiry, and only with unchanged source state.
+    No provider request, approval, normalization or financial job is started here.
+    """
+    row = own_workflow(db, actor, workflow_id, lock=True)
+    require_editor(actor, db, row.id)
+    state = WorkflowState.model_validate(row.detail)
+    review = next((r for r in state.reviews if r.id == binding.review_id), None)
+    if review is None:
+        raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy thẻ xác nhận.", 404)
+    if review.pending_reply_job_id:
+        raise DomainError("REVIEW_REPLY_PENDING", "Chờ câu trả lời đang được xử lý.", 409)
+    lock_review_sources(db, actor, review)
+    if (
+        row.state not in {"WAITING_REVIEW", "RUNNING"}
+        or review.state != "OPEN"
+        or not secrets.compare_digest(review.nonce, binding.nonce)
+        or not secrets.compare_digest(review.fingerprint, binding.fingerprint)
+        or (not renew and review.expires_at <= now())
+        or review.fingerprint
+        != review_fingerprint(db, actor, review.kind, review.resource_id, review.evidence_refs)
+    ):
+        raise DomainError("STALE_CONTEXT", "Thẻ hoặc nguồn đã thay đổi; hãy mở lại thẻ.", 409)
+    return row, state, review
+
+
 def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]) -> APIRouter:
     router = APIRouter(prefix="/api/agent", tags=["Agent"])
     DB = Annotated[Session, Depends(database)]
     User = Annotated[Actor, Depends(current_actor)]
     Key = Annotated[str, Header(min_length=1, max_length=160, alias="Idempotency-Key")]
+
+    @router.post("/mapping-preflight", response_model=MappingAssessment)
+    def mapping_preflight(body: NormalizationDraft, db: DB, actor: User) -> MappingAssessment:
+        from studio.mapping_verification import assess_table_mapping
+
+        return assess_table_mapping(db, actor, body)
 
     @router.post("/source-rows", response_model=SourceRowResult)
     def source_row(body: SourceRowRequest, db: DB, actor: User) -> SourceRowResult:
@@ -280,6 +329,102 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     def workflow(workflow_id: str, db: DB, actor: User) -> WorkflowView:
         return view(own_workflow(db, actor, workflow_id))
 
+    @router.get("/tables/{table_id}/mapping-reviews", response_model=list[WorkflowView])
+    def mapping_reviews(table_id: str, db: DB, actor: User) -> list[WorkflowView]:
+        """Expose the existing actor-owned draft to both Chat and Data Manager."""
+        table = get_scoped(db, TableRow, table_id, actor)
+        project = project_for_table(db, table)
+        rows = db.scalars(
+            select(AgentWorkflowRow)
+            .join(ConversationRow, AgentWorkflowRow.conversation_id == ConversationRow.id)
+            .where(
+                AgentWorkflowRow.workspace_id == actor.workspace_id,
+                AgentWorkflowRow.project_id == project.id,
+                AgentWorkflowRow.actor_id == actor.id,
+                ConversationRow.deleted_at.is_(None),
+                AgentWorkflowRow.detail.contains(
+                    {"reviews": [dict(kind="MAPPING", resource_id=table.id, state="OPEN")]}
+                ),
+            )
+            .order_by(AgentWorkflowRow.updated_at.desc())
+            .limit(10)
+        )
+        return [view(own_workflow(db, actor, row.id)) for row in rows]
+
+    @router.post("/workflows/{workflow_id}/draft", response_model=WorkflowView)
+    def save_draft(
+        workflow_id: str, body: ReviewDraftUpdate, db: DB, actor: User, key: Key
+    ) -> WorkflowView:
+        row, state, review = editable_review(db, actor, workflow_id, body)
+        if sum(v is not None for v in (body.draft, body.plan, body.planning_request)) != 1:
+            raise DomainError("INVALID_REVIEW_DRAFT", "Chỉ lưu một bản nháp đúng loại thẻ.", 422)
+        if body.draft is not None and review.kind == "MAPPING":
+            table = get_scoped(db, TableRow, review.resource_id, actor)
+            validate_draft(body.draft, table.id, DatasetProfile.model_validate(table.profile))
+            review.normalization_draft = body.draft
+        elif review.kind == "RECONCILIATION" and (body.plan or body.planning_request):
+            from studio.contracts.reconciliation import PlanningRequest
+            from studio.reconciliation_contracts import validate_reconciliation_contract
+            from studio.reconciliation_planner import preview_plan, validate_planning_request
+            from studio.reconciliation_repository import selected_catalogue
+
+            request = PlanningRequest.from_plan(body.plan) if body.plan else body.planning_request
+            assert request is not None
+            expected = review.planning_request
+            if not expected or (request.left.canonical_id, request.right.canonical_id) != (
+                expected.left.canonical_id,
+                expected.right.canonical_id,
+            ):
+                raise DomainError("AI_INVALID_SOURCE", "Không được đổi nguồn đang chờ.", 422)
+            cats = selected_catalogue(
+                db,
+                actor,
+                row.project_id,
+                [
+                    request.left.canonical_id,
+                    request.right.canonical_id,
+                ],
+            )
+            validate_planning_request(request, cats, actor.workspace_id, row.project_id)
+            plan = body.plan or preview_plan(
+                request, review.suggestions, cats[0].canonical.entity_kind, review.plan
+            )
+            if plan:
+                validate_reconciliation_contract(plan, cats, actor.workspace_id, row.project_id)
+            review.planning_request, review.plan = request, plan
+        else:
+            raise DomainError("INVALID_REVIEW_DRAFT", "Bản nháp khác loại thẻ đang chờ.", 422)
+        review.nonce, review.expires_at = secrets.token_hex(16), now() + timedelta(minutes=30)
+        save(row, state)
+        db.add(
+            AuditRow(
+                workspace_id=actor.workspace_id,
+                actor_id=actor.id,
+                action="AGENT_DRAFT_SAVED",
+                resource_id=review.id,
+            )
+        )
+        db.commit()
+        return view(row)
+
+    @router.post("/workflows/{workflow_id}/renew-review", response_model=WorkflowView)
+    def renew_review(
+        workflow_id: str, body: ReviewToken, db: DB, actor: User, key: Key
+    ) -> WorkflowView:
+        row, state, review = editable_review(db, actor, workflow_id, body, renew=True)
+        review.nonce, review.expires_at = secrets.token_hex(16), now() + timedelta(minutes=30)
+        save(row, state)
+        db.add(
+            AuditRow(
+                workspace_id=actor.workspace_id,
+                actor_id=actor.id,
+                action="AGENT_REVIEW_RENEWED",
+                resource_id=review.id,
+            )
+        )
+        db.commit()
+        return view(row)
+
     @router.post("/workflows/{workflow_id}/query-pages", response_model=QueryResult)
     def query_page(workflow_id: str, body: DataQuery, db: DB, actor: User) -> QueryResult:
         """Remember displayed page for follow-up; original result and run stay unchanged."""
@@ -320,8 +465,10 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         payload = dict(
             workflow_id=row.id,
             conversation_id=row.conversation_id,
-            reply=body.model_dump(mode="json"),
+            reply=body.model_dump(mode="json", exclude_none=True),
         )
+        if body.model_choice is not None:
+            payload["model_choice"] = body.model_choice
         existing = db.scalar(
             select(JobRow).where(
                 JobRow.workspace_id == actor.workspace_id,
@@ -334,6 +481,9 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                     "IDEMPOTENCY_CONFLICT", "Mã trả lời đã dùng với nội dung khác.", 409
                 )
             return dict(job_id=existing.id, status=existing.status)
+        from studio.assistant_api import check_model_choice
+
+        check_model_choice(db, actor, body.model_choice)
         state = WorkflowState.model_validate(row.detail)
         review = next((r for r in state.reviews if r.id == body.review_id), None)
         if review:

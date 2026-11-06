@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense, type RefObject } from "react";
-import { MessageSquarePlus, Send, Trash2, Paperclip, MoreHorizontal, Sparkles, X, LoaderCircle } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense, type RefObject, type ReactNode } from "react";
+import { MessageSquarePlus, ArrowUp, Trash2, Plus, MoreHorizontal, Sparkles, X, LoaderCircle, Files, SlidersHorizontal } from "lucide-react";
 import { AgentWorkflowPanel } from "./AgentWorkflowPanel";
 import type { Review } from "./agentTypes";
 import { api, ApiError } from "./api";
@@ -16,15 +16,24 @@ import type {
   AssistantAnswer,
   AssistantContext,
   AssistantMessage,
+  AssistantModelOption,
   AssistantRule,
   Conversation,
   ConversationPage,
   FactReference,
+  ModelChoice,
   Suggestion,
 } from "./assistantTypes";
 
 const AssistantDataDrawer = lazy(() => import("./AssistantDataDrawer").then(m => ({default:m.AssistantDataDrawer})));
 const ReconciliationStudio = lazy(() => import("./ReconciliationStudio").then(m => ({default:m.ReconciliationStudio})));
+
+const composerModels = [
+  { id: "GEMINI", name: "Gemini 3.5 Flash Lite" },
+  { id: "QWEN_8B", name: "Qwen 3:8B" },
+] as const;
+const historicalModelLabel = (id: ModelChoice) =>
+  composerModels.find(model => model.id === id)?.name ?? "Qwen 27B";
 
 const labels: Record<string, string> = {
   VERIFIED_FACT: "Dữ kiện đã xác minh",
@@ -38,6 +47,7 @@ const labels: Record<string, string> = {
   DETERMINISTIC: "Backend xác định",
   CACHE: "Tái sử dụng facts",
   GEMINI: "Gemini",
+  OLLAMA: "Qwen Local",
   MOCK: "Kiểm thử mô phỏng",
   OPEN_EXCEPTIONS: "Mở ngoại lệ",
   OPEN_EVIDENCE: "Xem bằng chứng",
@@ -48,6 +58,23 @@ const labels: Record<string, string> = {
 };
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Không tải được hội thoại.";
+
+function sameRequestExceptModel(previous: string, next: string, reuseUploadedScope = false) {
+  try {
+    const before = JSON.parse(previous);
+    const after = JSON.parse(next);
+    delete before.model_choice;
+    delete after.model_choice;
+    if (reuseUploadedScope && !after.dataset_ids) delete before.dataset_ids;
+    return JSON.stringify(before) === JSON.stringify(after);
+  } catch {
+    return false;
+  }
+}
+
+function MessageInfo({createdAt, model}: {createdAt: string; model?: string}) {
+  return <details className="message-metadata" onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.currentTarget.open=false;event.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="Thông tin tin nhắn"><MoreHorizontal size={16} aria-hidden="true"/></summary><small>{new Date(createdAt).toLocaleString("vi-VN")}{model && ` · Model đã chọn: ${model}`}</small></details>;
+}
 
 /** Chỉ lưu chữ ký, không lưu bytes; hash tuần tự để giới hạn bộ nhớ khi nhiều tệp. */
 async function attachmentSignature(files: File[]): Promise<string> {
@@ -68,12 +95,14 @@ export function AssistantStudio({
   onReview,
   projectName,
   draftOwner,
+  initialConversationId,
   onContextChange,
   onUploadProject,
   agentEnabled = false,
   historyOpen, setHistoryOpen, historyReturnFocus, aiRequestsRemaining,
-  uploadLimits,
+  uploadLimits, projectSelector,
 }: {
+  projectSelector?: ReactNode;
   initialContext: AssistantContext;
   onNavigate: (target: Suggestion, context: AssistantContext) => void;
   cloudEnabled?: boolean;
@@ -81,16 +110,49 @@ export function AssistantStudio({
   onReview: (planId: string) => void;
   projectName: string;
   draftOwner: string;
+  initialConversationId?: string;
   onContextChange: (context: AssistantContext) => void;
   onUploadProject: (id: string) => Promise<void>;
   agentEnabled?: boolean;
-  aiRequestsRemaining?: number;
+  aiRequestsRemaining?: number | null;
   uploadLimits?: { maxBytes: number; maxFiles: number; extensions: string[] };
   historyOpen: boolean;
   setHistoryOpen: (open: boolean) => void;
   historyReturnFocus: RefObject<HTMLElement | null>;
 }) {
+  const modelStorageKey = `studio.assistant-model.${draftOwner}`;
+  const [modelChoice, setModelChoice] = useState<ModelChoice | null>(() => {
+    const saved = localStorage.getItem(modelStorageKey);
+    return saved === "GEMINI" || saved === "QWEN_8B" ? saved : null;
+  });
+  const [models, setModels] = useState<AssistantModelOption[]>([]);
+  const toolbarOptions = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !toolbarOptions.current?.contains(event.target) && toolbarOptions.current)
+        toolbarOptions.current.open = false;
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, []);
   const [context, setContext] = useState(initialContext);
+  const [modelRefresh, setModelRefresh] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = context.project_id ? `?project_id=${encodeURIComponent(context.project_id)}` : "";
+    void api<AssistantModelOption[]>(`/assistant/models${query}`, {signal: controller.signal})
+      .then(options => {
+        if (controller.signal.aborted) return;
+        const choices = Array.isArray(options) ? options : [];
+        setModels(choices);
+        const preferred = choices.find(option => option.preferred && option.available &&
+          composerModels.some(model => model.id === option.id));
+        if (preferred) setModelChoice(previous => previous || preferred.id);
+      })
+      .catch(() => { if (!controller.signal.aborted) setModels([]); });
+    return () => controller.abort();
+  }, [context.project_id, modelRefresh]);
+  const selectedModel = modelChoice || "GEMINI";
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [history, setHistory] = useState<Conversation[]>([]);
@@ -140,12 +202,65 @@ export function AssistantStudio({
   const deleteTrigger=useRef<HTMLElement|null>(null);
   const composerInput=useRef<HTMLTextAreaElement>(null);
   const transcript=useRef<HTMLDivElement>(null);
+  const transcriptContent=useRef<HTMLDivElement>(null);
+  const followTail=useRef(true);
+  const forceTail=useRef(false);
+  const prependAnchor=useRef<{height:number;top:number}|null>(null);
+  const prependedHeight=useRef<number|null>(null);
+  const loadingOlder=useRef(false);
+  const [olderLoading,setOlderLoading]=useState(false);
+  const [newContent,setNewContent]=useState(false);
   const lastMessageId=messages.at(-1)?.id;
-  useEffect(()=>{if(transcript.current)transcript.current.scrollTop=transcript.current.scrollHeight;},[lastMessageId]);
+  function scrollToTail(smooth=false){
+    const pane=transcript.current;
+    followTail.current=true;
+    setNewContent(false);
+    if(pane)pane.scrollTo({top:pane.scrollHeight,behavior:smooth&&!matchMedia("(prefers-reduced-motion: reduce)").matches?"smooth":"instant"});
+  }
+  useLayoutEffect(()=>{
+    const pane=transcript.current;
+    if(!pane)return;
+    if(prependAnchor.current){
+      const anchor=prependAnchor.current;
+      pane.scrollTop=anchor.top+pane.scrollHeight-anchor.height;
+      prependedHeight.current=transcriptContent.current?.getBoundingClientRect().height??null;
+      prependAnchor.current=null;
+    }else if(forceTail.current||followTail.current){
+      pane.scrollTop=pane.scrollHeight;
+      forceTail.current=false;
+    }
+  });
+  useEffect(()=>{
+    const pane=transcript.current,content=transcriptContent.current;
+    if(!pane||!content)return;
+    let lastHeight=content.getBoundingClientRect().height;
+    let lastPaneHeight=pane.clientHeight;
+    const observer=new ResizeObserver(()=>{
+      const height=content.getBoundingClientRect().height;
+      if(height===lastHeight&&pane.clientHeight===lastPaneHeight)return;
+      const grew=height>lastHeight;
+      lastHeight=height;
+      lastPaneHeight=pane.clientHeight;
+      const olderContent=height===prependedHeight.current;
+      prependedHeight.current=null;
+      if(olderContent)return;
+      if(prependAnchor.current||loadingOlder.current)return;
+      if(followTail.current)pane.scrollTop=pane.scrollHeight;
+      else if(grew)setNewContent(true);
+    });
+    observer.observe(content);
+    observer.observe(pane);
+    return()=>observer.disconnect();
+  },[]);
+  useEffect(()=>{if(lastMessageId&&!followTail.current)setNewContent(true);},[lastMessageId]);
   useEffect(()=>{
     const input=composerInput.current;
     if(!input)return;
-    const resize=()=>{input.style.height="auto";input.style.height=`${Math.min(input.scrollHeight,180)}px`;};
+    const resize = () => {
+      // Placeholder có thể xuống dòng khi bộ chọn thu hẹp ô nhập trên mobile.
+      input.style.height = "";
+      if (input.value) input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
+    };
     resize();
     let width=0;
     // Reflow saved drafts on orientation/sidebar changes too. Ignore height-only
@@ -194,8 +309,8 @@ export function AssistantStudio({
       composerInput.current?.focus({ preventScroll: true });
   }, [busy, loading]);
   useEffect(() => {
-    onContextChange(context);
-  }, [context]);
+    if (!initialConversationId || conversation) onContextChange(context);
+  }, [context, conversation]);
 
   async function loadHistory(append = false) {
     if (!initialContext.project_id) return;
@@ -250,28 +365,30 @@ export function AssistantStudio({
   }
   async function waitForAnswer(jobId: string, id: string, request: number) {
     setPendingJob(jobId);
-    for (let attempt = 0; attempt < 60; attempt++) {
+    // A slow accepted job remains observable beyond the initial 30-second burst.
+    // These are GETs only; leaving/changing the conversation cancels the monitor.
+    for (let attempt = 0; alive.current && request === sequence.current; attempt++) {
       const job = await api<Job>(`/jobs/${jobId}`, getOptions());
       if (!alive.current || request !== sequence.current) return;
       if (
         ["SUCCEEDED", "BLOCKED", "FAILED", "CANCELLED"].includes(job.status)
       ) {
         setPendingJob("");
-        await refreshMessages(id, request);
-        if (job.status !== "SUCCEEDED")
+        const page=await refreshMessages(id, request);
+        if (alive.current && request === sequence.current) setModelRefresh(value => value + 1);
+        if (job.status !== "SUCCEEDED"&&!page?.items.some(message=>message.job_id===jobId&&(message.role==="assistant"||message.error_code)))
           setError(
             `${jobErrors[job.error_code||""]||"Yêu cầu chưa có kết quả hợp lệ."} Lịch sử được giữ; không tự gửi lại nhà cung cấp AI.`,
           );
         return;
       }
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, attempt < 60 ? 500 : 2000));
     }
-    if (alive.current && request === sequence.current)
-      setError(
-        "Câu hỏi còn xử lý. Bấm Cập nhật hội thoại để tiếp tục xem, không cần gửi lại.",
-      );
   }
   async function openConversation(id: string, cached?: ConversationPage) {
+    followTail.current=true;
+    forceTail.current=true;
+    setNewContent(false);
     const request = ++sequence.current;
     evidenceSequence.current++;
     setEvidence(null);
@@ -307,11 +424,17 @@ export function AssistantStudio({
   useEffect(() => {
     alive.current = true;
     controller.current = new AbortController();
+    const initialSequence = sequence.current;
+    const initialSignal = controller.current.signal;
     restoreDraft(initialContext);
     void (async () => {
       try {
         await Promise.all([loadHistory(), loadRuns()]);
-        if (!alive.current || sequence.current !== 0) return;
+        if (initialSignal.aborted || !alive.current || sequence.current !== initialSequence) return;
+        if (initialConversationId) {
+          await openConversation(initialConversationId);
+          return;
+        }
         const saved = localStorage.getItem(storageKey);
         if (saved) {
           // A contextual link may resume only the exact same scope, never another run/case.
@@ -319,7 +442,7 @@ export function AssistantStudio({
             `/conversations/${saved}?limit=20`,
             getOptions(),
           );
-          if (!alive.current || sequence.current !== 0) return;
+          if (initialSignal.aborted || !alive.current || sequence.current !== initialSequence) return;
           const scoped = [
             "run_id",
             "dataset_id",
@@ -337,7 +460,7 @@ export function AssistantStudio({
             await openConversation(saved, savedPage);
         }
       } catch (err) {
-        if (alive.current) {
+        if (alive.current && !initialSignal.aborted) {
           setError(errorText(err));
           if (
             err instanceof ApiError &&
@@ -346,7 +469,7 @@ export function AssistantStudio({
             localStorage.removeItem(storageKey);
         }
       } finally {
-        if (alive.current) setLoading(false);
+        if (alive.current && !initialSignal.aborted) setLoading(false);
       }
     })();
     return () => {
@@ -359,6 +482,9 @@ export function AssistantStudio({
   }, []);
 
   function newConversation(next = context) {
+    followTail.current=true;
+    forceTail.current=true;
+    setNewContent(false);
     sequence.current++;
     evidenceSequence.current++;
     setEvidence(null);
@@ -384,18 +510,23 @@ export function AssistantStudio({
   async function send() {
     if ((!text.trim() && !files.length) || busy || pendingJob || sendLock.current) return;
     sendLock.current = true;
+    forceTail.current=true;
+    followTail.current=true;
+    setNewContent(false);
     const request = sequence.current;
     setBusy(true);
     setError("");
     let bootstrapProject="";
+    let uploadedDatasetIds: string[] | undefined;
     try {
       if(reviewReply&&conversation){
         if(!canEdit)throw new Error("Cần quyền chỉnh sửa để trả lời yêu cầu xác nhận.");
-        const body=JSON.stringify({review_id:reviewReply.id,nonce:reviewReply.nonce,
-          fingerprint:reviewReply.fingerprint,text:text.trim()});
+        let body=JSON.stringify({review_id:reviewReply.id,nonce:reviewReply.nonce,
+          fingerprint:reviewReply.fingerprint,text:text.trim(), ...(modelChoice ? {model_choice:modelChoice} : {})});
         const storage=replyKeyFor(context,conversation.id);
         let previous:{body:string;key:string}|null=null;
         try{previous=JSON.parse(sessionStorage.getItem(storage+".request")||"null");}catch{/* Invalid cache is not authority. */}
+        if (previous && sameRequestExceptModel(previous.body, body)) body = previous.body;
         const key=previous?.body===body?previous.key:crypto.randomUUID();
         sessionStorage.setItem(storage+".request",JSON.stringify({body,key}));
         const accepted=await api<{job_id:string}>(`/agent/workflows/${reviewReply.workflowId}/replies`,{method:"POST",body,headers:{"Idempotency-Key":key}});
@@ -416,8 +547,9 @@ export function AssistantStudio({
         sessionStorage.setItem(storage, JSON.stringify({signature, key}));
         const body=new FormData();files.forEach(file=>body.append("files",file));
         if(context.project_id)body.append("project_id",context.project_id);
-        const uploaded=await api<{project_id:string}>("/agent/attachments",{method:"POST",body,
+        const uploaded=await api<{project_id:string; items?: {id:string}[]}>("/agent/attachments",{method:"POST",body,
           headers:{"Idempotency-Key":key}});
+        uploadedDatasetIds = uploaded.items?.map(item => item.id);
         if(!alive.current||request!==sequence.current)return;
         setFiles([]);sessionStorage.removeItem(storage);
         if(!context.project_id){
@@ -429,7 +561,9 @@ export function AssistantStudio({
           localStorage.setItem(`studio.conversation.${uploaded.project_id}`,created.id);
           const question=text.trim()||"Kiểm tra các file vừa tải lên";
           const body=JSON.stringify({conversation_id:created.id,context:created.context,text:question,
-            mode:"AGENT",command:command||(!text.trim()?"EXPLORE_DATA":null)});
+            mode:"AGENT",command:command||(!text.trim()?"EXPLORE_DATA":null),
+            ...(uploadedDatasetIds?.length ? {dataset_ids:uploadedDatasetIds} : {}),
+            ...(modelChoice ? {model_choice:modelChoice} : {})});
           const key=createKey.current+"-message";
           const pendingKey=`studio.assistant-request.${draftOwner}.${uploaded.project_id}`;
           sessionStorage.setItem(pendingKey,JSON.stringify({body,key}));
@@ -463,11 +597,13 @@ export function AssistantStudio({
         sessionStorage.removeItem(previousDraft);
         sessionStorage.removeItem(`${previousDraft}.create`);
       }
-      const body = JSON.stringify({
+      let body = JSON.stringify({
         conversation_id: active.id,
         context: active.context,
         text: text.trim() || "Kiểm tra các file vừa tải lên",
         mode,
+        ...(modelChoice ? {model_choice:modelChoice} : {}),
+        ...(mode === "AGENT" && uploadedDatasetIds?.length ? {dataset_ids:uploadedDatasetIds} : {}),
         ...(mode==="AGENT"?{command:command||(!text.trim()?"EXPLORE_DATA":null)}:{}),
       });
       let previous = pendingRequest.current;
@@ -482,6 +618,8 @@ export function AssistantStudio({
           /* A malformed local draft is never authority to send a request. */
         }
       }
+      if (previous && sameRequestExceptModel(previous.body, body, !uploadedDatasetIds?.length))
+        body = previous.body;
       const key = previous?.body === body ? previous.key : crypto.randomUUID();
       pendingRequest.current = { body, key };
       sessionStorage.setItem(requestStorageKey, JSON.stringify({ body, key }));
@@ -512,7 +650,10 @@ export function AssistantStudio({
     }
   }
   async function olderMessages() {
-    if (!conversation || !messages.length) return;
+    if (!conversation || !messages.length || loadingOlder.current) return;
+    loadingOlder.current=true;
+    setOlderLoading(true);
+    followTail.current=false;
     const request = sequence.current;
     try {
       const page = await api<ConversationPage>(
@@ -520,10 +661,14 @@ export function AssistantStudio({
         getOptions(),
       );
       if (!alive.current || request !== sequence.current) return;
+      if(transcript.current)prependAnchor.current={height:transcript.current.scrollHeight,top:transcript.current.scrollTop};
       setMessages((old) => [...page.items, ...old]);
       setMoreMessages(page.has_more);
     } catch (err) {
       if (alive.current) setError(errorText(err));
+    } finally {
+      loadingOlder.current=false;
+      if(alive.current)setOlderLoading(false);
     }
   }
   async function openCitation(
@@ -621,34 +766,35 @@ export function AssistantStudio({
   }
   return (
     <section className={`assistant-studio ${messages.length?"has-conversation":"is-welcome"}`} aria-label="Hội thoại AI Assistant">
-      <div className="assistant-toolbar">
+      <div className="assistant-toolbar" aria-label="Công cụ hội thoại">
+        {projectSelector&&<div className="assistant-project-picker">{projectSelector}</div>}
         <div className="assistant-toolbar-actions">
-          {context.project_id&&<button className="text-button" onClick={()=>openDetail("OPEN_DATA",displayContext)}>Tệp đã tải</button>}
-          {context.project_id&&<button className="context-chip" data-run-id={displayContext.run_id||""} data-dataset-id={displayContext.dataset_id||""} aria-label="Đổi ngữ cảnh phân tích" title={displayContext.dataset_id&&sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:undefined} onClick={()=>setContextOpen(true)}>{displayContext.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:displayContext.dataset_id?(sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Nguồn đang xem"):"Dữ liệu dự án"}</button>}
+          {context.project_id&&<button className="icon-button" aria-label="Tệp đã tải" title="Tệp đã tải" onClick={()=>openDetail("OPEN_DATA",displayContext)}><Files size={18}/></button>}
+          {context.project_id&&<button className="icon-button context-chip" data-run-id={displayContext.run_id||""} data-dataset-id={displayContext.dataset_id||""} aria-label="Đổi ngữ cảnh phân tích" title={displayContext.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:displayContext.dataset_id?(sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Nguồn đang xem"):"Chọn dữ liệu phân tích"} onClick={()=>setContextOpen(true)}><SlidersHorizontal size={18}/><span className="visually-hidden">{displayContext.dataset_id&&sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Chọn dữ liệu phân tích"}</span></button>}
           {context.project_id&&<button className="icon-button" aria-label="Hội thoại mới" title="Hội thoại mới" disabled={busy||loading} onClick={()=>newConversation()}><MessageSquarePlus size={18}/></button>}
-          {conversation&&<details className="assistant-menu"><summary aria-label="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary><button className="text-button" disabled={busy||!!pendingJob} onClick={event=>{deleteTrigger.current=event.currentTarget;setConfirmDelete(true);}}><Trash2 size={15}/>Xóa hội thoại</button></details>}
-        <details className="assistant-policy">
-          <summary>
-            {(mode==="AGENT"?agentEnabled:cloudEnabled)
-              ? "AI theo chính sách dữ liệu"
-              : "Chế độ dữ kiện"}
-          </summary>
-          <p>
-            Dữ kiện lấy từ backend đã xác minh.{" "}
-            {(mode==="AGENT"?agentEnabled:cloudEnabled)
-              ? "Suy luận cloud cần policy và reservation riêng cho từng request."
-              : "Suy luận cloud của AI Assistant hiện chưa khả dụng theo chính sách hoặc hạn mức."}
-          </p>
-          {typeof aiRequestsRemaining==="number"&&<p>Gemini còn {aiRequestsRemaining} lượt theo chính sách hiện tại.</p>}
-          {context.project_id&&<button className="text-button" onClick={()=>onNavigate("OPEN_RECONCILIATION",displayContext)}>Thiết lập đối soát thủ công</button>}
-          <label>Xử lý yêu cầu<select aria-label="Chế độ hội thoại" value={mode} disabled={busy||!!pendingJob} onChange={e=>setMode(e.target.value as "AGENT"|"LEGACY")}><option value="AGENT">Thực hiện tác vụ dữ liệu</option><option value="LEGACY">Chỉ hỏi dữ kiện đã xác minh</option></select></label>
-        </details>
+          <details ref={toolbarOptions} className="assistant-policy assistant-menu" onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
+            <summary aria-label="Tùy chọn hội thoại" title="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary>
+            <div className="assistant-options">
+              <strong>Tùy chọn hội thoại</strong>
+              <p>{selectedModel !== "GEMINI" ? "Các yêu cầu cần suy luận sẽ dùng Qwen trên máy." : (mode==="AGENT"?agentEnabled:cloudEnabled)?"AI hỗ trợ theo quyền và chính sách dữ liệu của bạn.":"Chế độ dữ kiện đã xác minh đang được sử dụng; suy luận AI chưa khả dụng theo quyền hiện tại."}</p>
+              {selectedModel === "GEMINI" && typeof aiRequestsRemaining==="number"&&<p>Bạn còn {aiRequestsRemaining} lượt hỗ trợ AI theo quyền hiện tại.</p>}
+              <label>Xử lý yêu cầu<select aria-label="Chế độ hội thoại" value={mode} disabled={busy||!!pendingJob} onChange={e=>setMode(e.target.value as "AGENT"|"LEGACY")}><option value="AGENT">Thực hiện tác vụ dữ liệu</option><option value="LEGACY">Chỉ hỏi dữ kiện đã xác minh</option></select></label>
+              {context.project_id&&<button className="text-button" onClick={()=>onNavigate("OPEN_RECONCILIATION",displayContext)}>Thiết lập đối soát thủ công</button>}
+              {conversation&&<button className="text-button" disabled={busy||!!pendingJob} onClick={event=>{deleteTrigger.current=event.currentTarget;setConfirmDelete(true);}}><Trash2 size={15}/>Xóa hội thoại</button>}
+            </div>
+          </details>
         </div>
       </div>
       <div className="assistant-layout">
 
         <div className="assistant-conversation">
-          <div className="assistant-scroll" ref={transcript}>
+          <div className="assistant-scroll" ref={transcript} onScroll={()=>{
+            const pane=transcript.current;
+            if(!pane||loadingOlder.current||prependAnchor.current)return;
+            followTail.current=pane.scrollHeight-pane.scrollTop-pane.clientHeight<64;
+            if(followTail.current)setNewContent(false);
+          }}>
+            <div ref={transcriptContent}>
 
             {error && (
               <Notice tone="error">
@@ -677,6 +823,7 @@ export function AssistantStudio({
               {moreMessages && (
                 <button
                   className="text-button"
+                  disabled={olderLoading}
                   onClick={() => void olderMessages()}
                 >
                   Xem tin nhắn cũ hơn
@@ -691,7 +838,7 @@ export function AssistantStudio({
                   key={message.id}
                   aria-label={message.role === "user" ? "Tin nhắn của bạn" : "Phản hồi của trợ lý"}
                 >
-                  <details className="message-metadata"><summary aria-label="Thông tin tin nhắn"><MoreHorizontal size={14} aria-hidden="true"/></summary><small>{new Date(message.created_at).toLocaleString("vi-VN")}</small></details>
+                  {message.role==="user"&&<MessageInfo createdAt={message.created_at}/>}
                   {message.role === "user" ? (
                     <p>{message.text}</p>
                   ) : (
@@ -800,11 +947,13 @@ export function AssistantStudio({
                       </>
                     )
                   )}
-                  {message.role==="assistant"&&message.workflow_id&&<AgentWorkflowPanel id={message.workflow_id} canEdit={canEdit} onNavigate={(target,next)=>void agentNavigate(target,next)} onContext={next=>{if(message.workflow_id===latestWorkflowId&&next.project_id===context.project_id)setActiveWorkflowContext(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);}} onReply={(workflowId,review)=>{if(!conversation)return;
+                  {message.role==="assistant"&&message.workflow_id&&<AgentWorkflowPanel id={message.workflow_id} canEdit={canEdit} draftOwner={draftOwner} onNavigate={(target,next)=>void agentNavigate(target,next)} onContext={next=>{if(message.workflow_id===latestWorkflowId&&next.project_id===context.project_id)setActiveWorkflowContext(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);}} onReply={(workflowId,review)=>{if(!conversation)return;
                     if(files.length){setError("Bỏ tệp đính kèm trước khi bổ sung xác nhận.");return;}
                     const binding={workflowId,id:review.id,nonce:review.nonce,fingerprint:review.fingerprint,question:review.question};
                     setReviewReply(binding);sessionStorage.setItem(replyKeyFor(context,conversation.id),JSON.stringify(binding));composerInput.current?.focus();}}/>}
                   {message.role==="assistant"&&!message.answer&&!message.workflow_id&&<p>{message.text}</p>}
+                  {message.role==="user"&&message.error_code&&["FAILED","BLOCKED","CANCELLED"].includes(message.job_status||"")&&!messages.some(m=>m.role==="assistant"&&m.job_id===message.job_id)&&<Notice tone="error">{jobErrors[message.error_code]||"Yêu cầu này chưa hoàn tất. Hãy kiểm tra dữ liệu và kết quả đã lưu trước khi tạo yêu cầu mới."}<details><summary>Chi tiết hỗ trợ</summary>{message.error_code} · {message.job_id}</details></Notice>}
+                  {message.role==="assistant"&&<MessageInfo createdAt={message.created_at} model={message.model_choice ? historicalModelLabel(message.model_choice) : undefined}/>}
                 </article>
               ))}
             </div>
@@ -857,7 +1006,9 @@ export function AssistantStudio({
                 </button>
               </Notice>
             )}
+            </div>
           </div>
+          {newContent&&<button type="button" className="assistant-jump text-button" onClick={()=>scrollToTail(true)}>Tin nhắn mới · Xuống cuối</button>}
           {draftNotice && (
             <p className="draft-notice" role="status">
               {draftNotice}
@@ -874,7 +1025,7 @@ export function AssistantStudio({
           >
             {reviewReply&&<div className="review-reply-binding" role="status">Đang bổ sung: {reviewReply.question}<button type="button" className="icon-button" aria-label="Hủy trả lời xác nhận" onClick={()=>{setReviewReply(null);if(conversation)sessionStorage.removeItem(replyKeyFor(context,conversation.id));}}><X size={14}/></button></div>}
             <input ref={fileInput} type="file" accept=".csv,.xlsx" multiple hidden onChange={e=>{attach(e.target.files);e.target.value="";}}/>
-            <button type="button" className="icon-button" aria-label="Đính kèm CSV hoặc Excel" disabled={!canEdit||busy||!!reviewReply} onClick={()=>fileInput.current?.click()}><Paperclip size={20}/></button>
+            <button type="button" className="icon-button" aria-label="Đính kèm CSV hoặc Excel" disabled={!canEdit||busy||!!reviewReply} onClick={()=>fileInput.current?.click()}><Plus size={22}/></button>
             {files.length>0&&<div className="agent-file-chips">{files.map((file,i)=><span key={`${file.name}:${i}`}>{file.name} · {Math.ceil(file.size/1024)}KB<button type="button" className="icon-button" aria-label={`Bỏ ${file.name}`} disabled={busy} onClick={()=>setFiles(files.filter((_,n)=>n!==i))}><X size={14}/></button></span>)}</div>}
             <label>
               <span className="visually-hidden">Giao việc cho AI Assistant</span>
@@ -895,10 +1046,31 @@ export function AssistantStudio({
                 }}
                 maxLength={2000}
                 rows={1}
-                placeholder={reviewReply?"Nhập câu trả lời của bạn…":"Nhập yêu cầu của bạn..."}
+                placeholder={reviewReply?"Bổ sung thông tin…":"Nhập yêu cầu…"}
                 disabled={busy||loading}
               />
             </label>
+            <div className="composer-actions">
+            {(models.length > 0 || modelChoice) && <select
+              className="composer-model"
+              aria-label="Model cho tin nhắn mới"
+              value={selectedModel}
+              disabled={busy && !pendingJob}
+              onFocus={() => setModelRefresh(value => value + 1)}
+              onChange={event => {
+                const choice = models.find(option => option.id === event.target.value && option.available);
+                if (!choice) return;
+                localStorage.setItem(modelStorageKey, choice.id);
+                setModelChoice(choice.id);
+              }}
+            >
+              {composerModels.map(model => (
+                <option key={model.id} value={model.id}
+                  disabled={!models.some(option => option.id === model.id && option.available)}>
+                  {model.name}
+                </option>
+              ))}
+            </select>}
             <button
               className="composer-send"
               aria-label="Gửi câu hỏi"
@@ -908,9 +1080,10 @@ export function AssistantStudio({
               {busy ? (
                 <LoaderCircle size={18} className="spin" aria-label="Đang gửi" />
               ) : (
-                <Send size={18} aria-hidden="true" />
+                <ArrowUp size={20} aria-hidden="true" />
               )}
             </button>
+            </div>
           </form>
           {!messages.length&&<div className="agent-prompts">{[["Chuẩn hóa dữ liệu","PREPARE_NORMALIZATION"],["Đối soát các file",null],["Tra cứu thông tin",null],["Phân tích kết quả","SUMMARIZE_RESULTS"]].map(([title,action])=><button className="text-button" key={title} onClick={()=>{setText(title!);setCommand(action);composerInput.current?.focus();}}>{title}</button>)}</div>}
         </div>
@@ -1024,12 +1197,10 @@ export function AssistantStudio({
                 </p>
               </details>
             )}
-            {context.dataset_id && (
-              <p className="muted">
-                Nguồn đang xem: {context.dataset_id.slice(0, 8)}. Chọn run đã
-                xác minh để hỏi số liệu đối soát.
-              </p>
-            )}
+            {displayContext.dataset_id && <>
+              <p className="muted">Nguồn đang xem: {sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Tệp đang chọn"}. Phạm vi này chỉ gồm một nguồn.</p>
+              <button className="button secondary" disabled={busy||!!pendingJob||loading} onClick={()=>{newConversation({project_id:context.project_id});setContextOpen(false);}}>Dùng dữ liệu của dự án</button>
+            </>}
       </Modal>
       {evidence && (
         <ReconciliationEvidence

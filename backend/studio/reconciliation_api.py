@@ -9,7 +9,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import FileResponse
-from pydantic import Field
+from pydantic import Field, StrictBool
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
@@ -66,6 +66,10 @@ REPORT_REVISION = "report-2"
 class PlanInput(Contract):
     project_id: str
     plan: ReconciliationPlan
+
+
+class PlanApprovalInput(Contract):
+    invalid_rows_reviewed: StrictBool = False
 
 
 class AIPlanInput(Contract):
@@ -326,8 +330,12 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     @router.post(
         "/reconciliation-contracts/{plan_id}/approve", response_model=ReconciliationContract
     )
-    def approve(plan_id: str, db: DB, actor: User) -> ReconciliationContract:
-        result = approve_plan(plan_id, db, actor)
+    def approve(
+        plan_id: str, db: DB, actor: User, body: PlanApprovalInput | None = None
+    ) -> ReconciliationContract:
+        result = approve_plan(
+            plan_id, db, actor, invalid_rows_reviewed=bool(body and body.invalid_rows_reviewed)
+        )
         db.commit()
         return result
 
@@ -717,7 +725,9 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     return router
 
 
-def approve_plan(plan_id: str, db: Session, actor: Actor) -> ReconciliationContract:
+def approve_plan(
+    plan_id: str, db: Session, actor: Actor, *, invalid_rows_reviewed: bool = False
+) -> ReconciliationContract:
     require_editor(actor, db, plan_id)
     row = get_scoped(db, PlanRow, plan_id, actor)
     db.refresh(row, with_for_update=True)
@@ -735,6 +745,13 @@ def approve_plan(plan_id: str, db: Session, actor: Actor) -> ReconciliationContr
         row.project_id,
         [proposal.plan.left.canonical_id, proposal.plan.right.canonical_id],
     )
+    has_invalid_rows = any(cat.canonical.quality_status == "PARTIAL" for cat in cats)
+    if has_invalid_rows and not invalid_rows_reviewed:
+        raise DomainError(
+            "INVALID_ROWS_REVIEW_REQUIRED",
+            "Cần xác nhận các dòng lỗi chuẩn hóa đã được tách riêng trước khi đối soát.",
+            422,
+        )
     validate_reconciliation_contract(proposal.plan, cats, actor.workspace_id, row.project_id)
     contract = ReconciliationContract(
         id=identifier(),
@@ -763,6 +780,15 @@ def approve_plan(plan_id: str, db: Session, actor: Actor) -> ReconciliationContr
             resource_id=contract.id,
         )
     )
+    if has_invalid_rows:
+        db.add(
+            AuditRow(
+                workspace_id=actor.workspace_id,
+                actor_id=actor.id,
+                action="RECONCILIATION_INVALID_ROWS_REVIEWED",
+                resource_id=contract.id,
+            )
+        )
     db.flush()
     return contract
 

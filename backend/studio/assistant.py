@@ -9,8 +9,8 @@ from typing import Any
 import httpx
 from pydantic import ValidationError
 
-from studio.ai_gateway import GeminiProvider, route_ai_task
-from studio.config import Settings
+from studio.ai_gateway import route_ai_task, typed_provider
+from studio.config import ModelChoice, Settings
 from studio.contracts import WorkspacePolicy
 from studio.contracts.assistant import (
     AnswerFactSet,
@@ -80,7 +80,7 @@ def validate_answer(content: str, facts: AnswerFactSet) -> list[AnswerLine]:
                     fact_id=fact.id,
                     reference_ids=fact.reference_ids,
                     text=(
-                        "Kết quả xác nhận có chênh lệch theo rule đã duyệt; "
+                        "Kết quả xác nhận có chênh lệch theo quy tắc đã duyệt; "
                         "chưa chứng minh nguyên nhân hoặc khoản phí."
                     ),
                 )
@@ -223,12 +223,15 @@ def workflow_proposal(
         questions.append("Chưa xác nhận năm; không tự suy ra kỳ theo ngày hệ thống.")
     if status.ready_canonical_count < required:
         questions.append(
-            f"Chưa đủ {required} nguồn canonical READY; hoàn tất mapping/chuẩn hóa trước."
+            f"Cần {required} nguồn dữ liệu đã chuẩn hóa; "
+            "hãy kiểm tra và chuẩn hóa các nguồn còn thiếu."
         )
     if status.mapping_review_count:
         questions.append("Còn ánh xạ cần người dùng xác nhận.")
     if not status.approved_rule_ids:
-        questions.append("Chưa có rule được duyệt phù hợp; cần tạo và review kế hoạch.")
+        questions.append(
+            "Chưa có quy tắc đối soát phù hợp đã được duyệt; cần đề xuất quy tắc để bạn kiểm tra."
+        )
     return AssistantAnswer(
         status="REVIEW_REQUIRED",
         mode="DETERMINISTIC",
@@ -253,6 +256,7 @@ def answer_question(
     reserve: Callable[[], bool],
     *,
     client: httpx.Client | None = None,
+    model_choice: ModelChoice = "GEMINI",
 ) -> AssistantAnswer:
     """Một Gateway; deterministic trước, cloud riêng explicit và tối đa một HTTP attempt."""
     answer = deterministic_answer(question, facts)
@@ -262,11 +266,14 @@ def answer_question(
     if route == "DETERMINISTIC":
         assert answer is not None
         return answer
-    if (
-        route != "GEMINI"
-        or not config.assistant_cloud_enabled
-        or config.assistant_request_budget == 0
-        or not facts.snapshot
+    cloud = model_choice == "GEMINI"
+    if not facts.snapshot or (
+        cloud
+        and (
+            route != "GEMINI"
+            or not config.assistant_cloud_enabled
+            or config.assistant_request_budget == 0
+        )
     ):
         return AssistantAnswer(
             status="INSUFFICIENT_EVIDENCE" if not facts.snapshot else "PROVIDER_UNAVAILABLE",
@@ -276,14 +283,14 @@ def answer_question(
                 AnswerLine(
                     classification="INSUFFICIENT_EVIDENCE",
                     text=(
-                        "Chưa có fact phù hợp hoặc tác vụ suy luận cloud chưa được cấp phép. "
-                        "Không gửi request provider."
+                        "Chưa có thông tin phù hợp hoặc chưa được phép dùng AI bên ngoài. "
+                        "Bạn có thể xem dữ liệu và kiểm tra các kết quả đã lưu."
                     ),
                 )
             ],
             suggestions=["OPEN_DATA", "OPEN_EXCEPTIONS"],
         )
-    provider = GeminiProvider(config, client)
+    provider = typed_provider(config, model_choice, client)
     prompt = [
         dict(
             role="system",
@@ -311,17 +318,22 @@ def answer_question(
     ]
     try:
         lines = provider.request_typed(
-            prompt, policy, reserve, lambda content: validate_answer(content, facts), max_attempts=1
+            prompt,
+            policy,
+            reserve,
+            lambda content: validate_answer(content, facts),
+            max_attempts=1,
+            response_schema=ModelAnswer.model_json_schema() if provider.local else None,
         )
         receipt = provider.usage.get("tokens") or {}
         return AssistantAnswer(
             status="ANSWERED",
-            mode="GEMINI",
+            mode="GEMINI" if cloud else "OLLAMA",
             fact_set=facts,
             lines=lines,
             suggestions=["OPEN_EVIDENCE", "OPEN_RULE"],
-            provider="GEMINI",
-            model=config.gemini_model,
+            provider="GEMINI" if cloud else "OLLAMA",
+            model=provider.usage["model"],
             request_count=provider.usage["cloud_requests"],
             usage=AssistantUsage(
                 input_tokens=receipt.get("promptTokenCount"),
@@ -330,5 +342,8 @@ def answer_question(
                 cached_tokens=receipt.get("cachedContentTokenCount"),
             ),
         )
+    except DomainError as exc:
+        exc.provider_usage = dict(provider.usage)
+        raise
     finally:
         provider.close()

@@ -275,9 +275,9 @@ def main() -> None:
                 job = wait(state["planner_job_id"])
             else:
                 config = get("/settings")
-                assert (
-                    config["mapping_ai_provider"] == "GEMINI"
-                    and config["gemini_requests_remaining"] >= 1
+                assert config["mapping_ai_provider"] == "GEMINI" and (
+                    config["gemini_requests_remaining"] is None
+                    or config["gemini_requests_remaining"] >= 1
                 )
                 job = post(
                     "/reconciliation-plans/ai",

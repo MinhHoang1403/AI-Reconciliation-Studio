@@ -20,6 +20,10 @@ def main() -> None:
         try:
             models = client.get(settings.qwen_base_url.rstrip("/") + "/models")
             print(f"models: HTTP {models.status_code} (not an inference acceptance)")
+            if not models.is_success:
+                raise SystemExit(
+                    f"BLOCKED: model catalogue HTTP {models.status_code}; no inference sent"
+                )
             if models.is_success:
                 body = models.json()
                 ids = [m.get("id") for m in body.get("data", [])]
@@ -51,6 +55,7 @@ def main() -> None:
             )
         print("PASS LIVE: synthetic mapping JSON and semantic validators passed")
         print("proposal status:", proposal.status, "mapping decisions:", len(proposal.decisions))
+        print("provider usage receipt:", provider.usage)
 
 
 if __name__ == "__main__":

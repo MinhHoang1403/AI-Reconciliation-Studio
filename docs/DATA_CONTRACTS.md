@@ -2,6 +2,54 @@
 
 Định nghĩa thực thi nằm trong `backend/studio/contracts/`. OpenAPI tại `/openapi.json` và `/docs` mô tả request/response; endpoint này không cấp quyền đọc dữ liệu. Error envelope: `code`, `message_vi`, `details` đã redacted, `retryable`, `correlation_id`.
 
+## Parser giữ header và dòng vật lý — 06/11/2026
+
+`tabular-2` giữ header có nhãn trùng ở đúng vị trí, cảnh báo EMPTY_OR_DUPLICATE_HEADER và giữ từng cột c1/c2 riêng. Không chuyển dòng dữ liệu đầu thành header chỉ vì tên cột lặp. Với CSV, ParseConfig.header_row là dòng vật lý bắt đầu một bản ghi, cùng đơn vị với provenance; dòng nằm giữa một ô quoted nhiều dòng không phải header hợp lệ. Parser dừng ngay trong lúc đọc khi vượt số bản ghi/cột đã giới hạn; không tích lũy hết file trước khi từ chối. Raw/checksum, parser cũ và các artifact/revision lịch sử không bị viết lại. Parse signature mới tách kết quả mới khỏi cache của tabular-1.
+
+## Review dùng chung và khôi phục bản nháp — 06/11/2026
+
+Nguồn sự thật của thẻ review là `AgentWorkflowRow.detail.reviews`, tách khỏi proposal ánh xạ thủ công và approval bất biến. `GET /api/agent/tables/{table_id}/mapping-reviews` trả tối đa10 workflow có thẻ MAPPING OPEN đúng bảng, project, workspace và actor, loại hội thoại đã xóa. Chat và Dữ liệu phải đọc cùng thẻ này; không lấy proposal thủ công làm bản thay thế ngầm.
+
+Nguồn chuẩn hóa `PARTIAL` được chọn để tạo đề xuất đối soát mới trong Chat. `PlanReviewDecision.invalid_rows_reviewed` yêu cầu người dùng xác nhận đã xem các dòng lỗi bị tách trước khi duyệt và chạy phần hợp lệ. Workflow mở review riêng khi có nguồn `PARTIAL` và giữ cổng từ chối nguồn chưa dùng được. Cờ này độc lập với `ReconciliationPlan.allow_partial` dành cho độ phủ thời gian. Việc tái gửi quyết định cũ giữ tương thích digest. Review đối soát lấy khóa bảng trước bản chuẩn hóa theo cùng thứ tự với duyệt ánh xạ để tránh chờ khóa vòng tròn.
+
+`POST /api/agent/workflows/{id}/draft` nhận ReviewDraftUpdate: review_id/nonce/fingerprint và đúng một draft, plan hoặc planning_request cùng loại. Lưu bản nháp không tạo approval, canonical hay job AI. Mapping kiểm lại toàn bộ cột với profile; planning kiểm source và những facts đã cung cấp, plan hoàn chỉnh kiểm business contract. Nguồn/nonce cũ, hết hạn, viewer hoặc reply còn chạy bị chặn. Lưu thành công đổi nonce và gia hạn30phút; gửi nonce cũ trả409, client cần đọc bản hiện hành. `POST .../renew-review` là hành động người dùng để mở lại thời hạn; chỉ được gia hạn khi nguồn/fingerprint còn nguyên, không bỏ qua stale-source gate.
+
+`POST /api/mappings/{id}/approve` dùng Idempotency-Key theo actor/workspace. Gửi lại cùng key và nội dung trả nguyên snapshot approval đã lưu, kể cả revision đó được thay thế sau này; nội dung khác cùng key trả409. Advisory transaction lock và audit receipt được công bố cùng approval; không tạo bảng hoặc queue giả. Client cũ thiếu header vẫn tương thích nhưng không có receipt chống gửi lặp. Reject/approve cùng khóa bảng và đọc lại proposal sau khóa để tránh trạng thái cũ.
+
+## Smart Mapping local và lựa chọn ban đầu — 05/11/2026
+
+Adapter local dùng `MappingSemantics` nội bộ: entity, grain, tham chiếu khóa và nghĩa tiền. Schema giới hạn tham chiếu theo cột của bảng hiện tại; Backend vẫn từ chối cột sai/trùng. Backend tạo đầy đủ `NormalizationDraft` từ profile rồi dùng cùng assessment, preflight và approval. Đây là thay đổi cách chuẩn bị đề xuất; public draft, compiler, Decimal, Matcher và Verifier giữ nguyên. Grain unknown không được mang khóa suy đoán. Tham chiếu có thật chưa chứng minh khóa hoặc grain đúng nghiệp vụ.
+
+Tin nhắn có tệp đính kèm mang `dataset_ids` của đúng lần tải. Resolver local chỉ nhận lệnh chuẩn hóa explicit, kiểm toàn câu và exact scope; câu phủ định hoặc nhiều hành động không thuộc grammar tiếp tục qua router. Lỗi một đề xuất giữ những thẻ đã mở của nguồn trước để người dùng tiếp tục duyệt, không tạo lại các đề xuất đã nhận.
+
+`AssistantModelOption.preferred` mặc định false, là trường additive từ cấu hình `ASSISTANT_DEFAULT_MODEL`. Frontend chỉ chọn model ưu tiên khả dụng khi chưa có lựa chọn cá nhân. Model vẫn được đóng vào payload/job; đổi bộ chọn không đổi lần gửi chưa rõ phản hồi hoặc job đã nhận. Không có fallback cloud tự động.
+
+Khóa được chọn trong Chat draft vẫn là trường required theo contract hiện có. Trường khóa của màn hình thủ công có thể không required. So kết quả giữa hai đường phải kiểm cả điều kiện này: bản duyệt Chat của bộ ba nguồn báo thêm bốn dòng thiếu khóa, không phải phát sinh lỗi ngày hoặc mất dữ liệu. Số liệu và oracle từng cấu hình tại báo cáo mục AH.
+
+## Ngày và kiểm chứng Mapping Review — 05/11/2026
+
+`normalization-2` chấp nhận ba alias hiển thị hữu hạn: `YYYY-MM-DD`/`DD/MM/YYYY`/`MM/DD/YYYY` tương đương `%Y-%m-%d`/`%d/%m/%Y`/`%m/%d/%Y`. Không đoán thứ tự ngày/tháng. Compiler và transform kiểm cấu hình trước khi lặp dòng: `DATE_FORMAT_INVALID`, `TIMEZONE_INVALID`, `TIMEZONE_DATABASE_UNAVAILABLE` dừng tác vụ, không tạo hàng nghìn INVALID_DATE. Ngày sai thật là INVALID_DATE; DST mơ hồ/không tồn tại có mã riêng; timestamp có offset phải khớp vùng đã duyệt. Date-only vẫn theo contract timestamp UTC, đối chiếu calendar date sau khi chuyển về múi giờ đã duyệt. Không sửa canonical lịch sử; lần chạy mới dùng revision mới.
+
+ColumnProfile thêm `observations` mặc định rỗng, đọc tương thích hồ sơ cũ. Toàn cột có counts định dạng ngày/locale, zero-prefix, số âm/0 và currency codes cho phép; không gửi raw samples mới ra cloud. Agent làm mới hồ sơ từ parsed artifact đã kiểm checksum trước inference; `agent-normalization-5` yêu cầu định dạng Python, không lấy uniqueness/cột customer làm bằng chứng khóa giao dịch. Context bổ sung phạm vi nghiệp vụ/yêu cầu và tối đa3mẫu đã duyệt cùng workspace/scope/signature. Facts từ mẫu chỉ điền lại khi grain/entity/source-target/transform còn tương thích; luôn cần approval riêng cho nguồn mới. Backend enrich chỉ bản đề xuất; không suy timezone/gross-net của amount mơ hồ hoặc currency từ đa số. Chuỗi số có hai locale cho giá trị khác nhau phải hỏi, còn số nguyên cho cùng Decimal có thể đề xuất en-US tương đương.
+
+`POST /api/agent/mapping-preflight` nhận NormalizationDraft, trả MappingAssessment có số dòng/trường đã kiểm, câu hỏi còn thiếu, lỗi từng cột và số dòng dự kiến lỗi khi đủ cấu hình. `POST /api/tables/{id}/mapping-preflight` nhận ApprovalInput cho màn hình thủ công, trả NormalizationPreflight. Cả hai đọc scoped/checksum, dùng compiler/transform trong bộ nhớ, không ghi approval, job hay artifact. Mọi API duyệt kiểm lại, kể cả client bỏ qua preview. Transform lỗi toàn cột bị chặn trước approval. Nonce/fingerprint/TTL/idempotency/authorization và xác nhận cảnh báo extraction vẫn bắt buộc; trường khóa được duyệt trong draft là required, không biến thiếu mã thành khóa hợp lệ.
+
+RelatedKeyCheck chỉ đo overlap/duplicate/thiếu khóa cho vai trò tham chiếu/lô và scope khi có; đây là quan hệ tiềm năng, không tự duyệt cardinality hoặc chạy đối soát. Nguồn nhiều currency vẫn theo giới hạn field tiền đơn tiền tệ: phải chọn có ý thức, giá trị khác giữ CURRENCY_MISMATCH và raw lineage; không đổi tiền hoặc loại dòng. Review mặc định hiển thị tóm tắt/điểm cần xác nhận/bất thường; chỉnh chi tiết mở khi cần. Kết quả kiểm tra gắn đúng draft hiện tại; sửa draft khóa nút duyệt tới khi kiểm lại.
+
+## Trạng thái chuẩn hóa và phản hồi kết thúc — 04/11/2026
+
+`CHECK_DATASET_STATUS` là intent chỉ đọc metadata, không chuẩn hóa và không đọc số tiền. `read_processing_status` kiểm workspace/project, nguồn explicit hoặc ngữ cảnh, phiên bản cao nhất, bảng, ánh xạ đang dùng và revision chuẩn hóa hiện hành. DTO nội bộ `ProcessingStatus` giữ dataset/table/version/mapping/canonical refs và trạng thái `UPLOADED/PARSING/PARSE_FAILED/PARSED/MAPPING_REVIEW/MAPPED/READY/PARTIAL/FAILED/STALE`. Các trạng thái này chỉ thuộc DTO này; không thêm chúng vào enum Dataset hay Run. READY của nguồn không chứng minh contract readiness, coverage hoặc kết quả đối soát. Không phụ thuộc VerifiedRun. Hỏi mơ hồ trả clarification, không lấy hai nguồn đầu tiên khi có nhiều nguồn. Giới hạn ngữ cảnh được giữ; không dùng lịch sử văn bản để chứng minh trạng thái hiện hành.
+
+Gate câu hỏi trạng thái không nhận yêu cầu đề xuất/chuẩn bị/thiết lập/thực hiện/chỉnh sửa có mệnh đề “nếu chưa rõ” hoặc “khi đã đọc xong”. Từ đã/chưa trong mệnh đề phụ không biến lệnh chuẩn hóa thành câu hỏi chỉ đọc. Những câu này tiếp tục router hành động và các cổng phê duyệt, không trả trạng thái rồi giả là đã thực hiện đề xuất.
+
+Yêu cầu kiểm tra hai nguồn trong phạm vi có số nguồn khác hai trả clarification; không hoàn tất câu hỏi bằng trạng thái của riêng nguồn đang xem. Người dùng có thể chọn **Đổi ngữ cảnh phân tích → Dùng dữ liệu của dự án** để mở hội thoại ở phạm vi dự án. Thao tác chọn phạm vi không ghi dữ liệu, không gọi AI và giữ hội thoại/bản nháp riêng của từng phạm vi.
+
+`MessageView` thêm `job_status` và `error_code` nullable, additive, đọc từ job cùng scope. Terminal failure của câu hỏi/Agent/reply công bố tối đa một assistant message với UUID ổn định và constraint `(job_id, role)`, cùng transaction với lỗi; chỉ dùng thông báo đã redacted. Không hồi sinh hội thoại đã xóa hoặc quyền đã thu hồi. Lỗi unknown delivery/rate limit không tự gửi lại; lỗi kỹ thuật giữ trạng thái lỗi, không giả success. Exhausted lease thông báo kết thúc và giải phóng pending reply đúng workflow. Lịch sử lỗi cũ chưa có assistant reply vẫn hiển thị lỗi từ job DTO, không sửa nội dung lịch sử gốc. Phản hồi mới đã lưu không bị lặp thành hai thông báo lỗi trên giao diện.
+
+Khi hết lần phục hồi lease, parse job chuyển nguồn sang FAILED; reconciliation job chưa có snapshot chuyển run sang BLOCKED, cùng transaction với terminal job và thông báo workflow. Không giữ nguồn/run ở trạng thái đang chạy vô hạn. Phía trình duyệt tiếp tục GET theo dõi job chậm sau đợt polling ban đầu, giảm nhịp xuống hai giây; rời/đổi hội thoại dừng theo dõi. GET này không gửi lại yêu cầu provider hoặc tăng số lần thực thi nghiệp vụ.
+
+`resolve_plain_listing` có đường preview nhiều nguồn chỉ đọc [D]: lời yêu cầu xem/kiểm tra không có filter/tiền/kỳ/phép tính, dùng nguồn trong catalogue hiện tại. Yêu cầu “hai nguồn” chỉ thực hiện khi đã xác định đúng hai; số lượng khác hỏi lại, không chọn hai nguồn đầu. `EXPLORE_DATA` đọc bảng gốc, không đưa ra kết luận tiền hoặc bỏ approval. Bộ lọc, thời gian và hành động tài chính vẫn qua typed router/validator; output model thừa/thiếu intent tiếp tục bị từ chối. Regression D07 không hợp thức hóa output hai intent thành một; đường preview xác định tránh gọi model cho yêu cầu chỉ đọc này.
+
 ## Hội thoại: bổ sung thông tin và phê duyệt — 03/11/2026
 
 `ReviewRequest.kind` quyết định hành vi, không phân loại bằng CSS. `CLARIFICATION` nhận `options` optional (mặc định rỗng): mỗi lựa chọn do server tạo gồm id/label/typed intent của metric đã duyệt. Chọn qua decisions hoặc trả lời qua replies đều giữ owner/project/conversation/nonce/fingerprint/expiry, idempotency và pending-job guards. Lựa chọn có options phải khớp nguyên intent được cung cấp; không dùng một lựa chọn để đổi nguồn/filter tùy ý. Không gắn `user_confirmed=true` cho câu chat.
@@ -183,3 +231,15 @@ Một child job SUCCEEDED không đủ kết luận toàn workflow COMPLETED. H�
 - EXCEPTION_FIELDS dùng chung giữa catalogue và native query: case_id/group_id/type/state/notes. Catalogue nguồn có kind/schema/readiness/project scope/current run; tệp trùng tên cần context/ID.
 
 Không migration mới trong nhiệm vụ này. API query, MetricSnapshot, Decimal/null/provenance, mappings/reviews/permissions và dataset/run revisions giữ nguyên.
+
+## Trần request AI local và trình bày kết quả — 04/11/2026
+
+`WorkspacePolicy.external_request_budget` nhận integer không âm hoặc `null`; null bỏ trần tích lũy, không bật cloud. Global/task config tương ứng nhận null qua `unlimited` chỉ trong local demo explicit. Settings DTO `gemini_requests_remaining`, `ai_task_allowances.*.remaining/configured_ceiling` nullable: remaining là min các trần hữu hạn còn hiệu lực; tất cả unlimited thì null, permissionOFF thì0. Ledger/reservations cũ giữ nguyên. Parser request/credit/SHA và workflow caps không đổi. Không có schema migration vì policy là JSONB; cập nhật policy local phải audit quyền mới, không dùng null cho workspace chưa được cấp quyền.
+
+Query/MetricSnapshot/Decimal/provenance không đổi: Chat xem trước10dòng của trang, chế độ chi tiết dùng chính query/page hiện có. Mở rộng không gửi inference hoặc query mới; pagination/sort vẫn qua API được kiểm scope, lưu selection và kiểm ordinal đúng trang. NULL hiển thị dấu gạch, không thành0; IDs và tên cột không dịch bằng replace-all. Định dạng tiền trong tóm tắt chỉ thao tác chuỗi Decimal, không float/tính lại. Dữ liệu gốc đã đọc không được gọi đã chuẩn hóa; PARTIAL luôn nói rõ dữ liệu chưa đầy đủ.
+
+Rollback về image trước khi hỗ trợ null cần khôi phục **cấu hình hạn mức hữu hạn và policy tương thích từ backup/audit**, giữ mọi reservations phát sinh; không chạy image cũ trực tiếp với `unlimited`/null hoặc reset ledger. Raw/canonical/runs/exports không cần chuyển đổi.
+
+Routing27 bổ sung `ReconciliationSelection.left_source/right_source` kiểu PlanningSource và effective dates optional cho dữ kiện người dùng đã nêu. Compiler giữ nguyên toàn bộ facts vào PlanningRequest; canonical IDs trong facts phải khớp hai nguồn được chọn. Reuse confirmed_run_id từ chối mọi facts mới mâu thuẫn, không âm thầm bỏ chúng; missing vẫn null. Source/coverage/timezone/date guards và Planner validator giữ nguyên; complete proposal vẫn phải được người dùng duyệt. Đây là sửa mất dữ kiện giữa router và Planner, không tự suy coverage từ kỳ hoặc tự phê duyệt.
+
+Routing28 phân biệt time_basis (ngày phát sinh/hạch toán) với timezone, từ chối facts mới lấy UTC/múi giờ làm ý nghĩa ngày; không viết lại quy tắc đã duyệt lịch sử. Count một giá trị được trình bày bằng giá trị đếm Backend trả, không lấy số dòng trong bảng aggregate làm số giao dịch.

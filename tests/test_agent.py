@@ -4,13 +4,411 @@ import json
 
 import httpx
 import pytest
-from pydantic import ValidationError
-from studio.agent_intents import interpret_requests, validate_intents
-from studio.ai_gateway import GeminiProvider
+from hypothesis import settings as hypothesis_settings
+from hypothesis import strategies as st
+from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
+from pydantic import SecretStr, ValidationError
+from studio.agent_intents import (
+    interpret_requests,
+    resolve_attached_normalization,
+    validate_intents,
+)
+from studio.agent_preparation import propose_normalization
+from studio.ai_gateway import GeminiProvider, OllamaProvider
 from studio.config import Settings
 from studio.contracts import WorkspacePolicy
 from studio.contracts.agent import AgentIntent, IntentCatalogue
 from studio.errors import DomainError
+
+
+class ReviewDraftStateMachine(RuleBasedStateMachine):
+    """Model editing sequences without cloud: partial edits, replay and invalid updates."""
+
+    def __init__(self):
+        super().__init__()
+        from studio.contracts.agent import ReviewRequest
+        from studio.database import now
+
+        self.review = ReviewRequest(
+            id="review",
+            kind="MAPPING",
+            question="Múi giờ?",
+            reason="missing",
+            resource_id="table",
+            nonce="b" * 32,
+            fingerprint="a" * 64,
+            expires_at=now(),
+            expected_effects=[],
+            normalization_draft=dict(
+                table_id="table",
+                entity_kind="invoice",
+                grain="one invoice",
+                fields=[
+                    dict(source_field="c1", target_id="day", name="Day", data_type="date"),
+                    dict(source_field="c2", target_id="amount", name="Amount", data_type="decimal"),
+                ],
+            ),
+        )
+        self.timezone = None
+        self.currency = None
+
+    @rule(timezone=st.sampled_from([None, "UTC", "Asia/Ho_Chi_Minh", "America/New_York"]))
+    def edit_timezone(self, timezone):
+        self.apply("c1", "timezone", timezone)
+        self.timezone = timezone
+
+    @rule(currency=st.sampled_from([None, "VND", "USD", "EUR"]))
+    def edit_currency(self, currency):
+        self.apply("c2", "currency", currency)
+        self.currency = currency
+
+    @rule()
+    def invalid_source_and_type_do_not_destroy_known_facts(self):
+        before = self.review.normalization_draft.model_dump_json()
+        self.apply("foreign", "timezone", "UTC")
+        self.apply("c1", "timezone", "Wrong/Zone")
+        self.apply("c2", "business_key", "true")
+        assert self.review.normalization_draft.model_dump_json() == before
+
+    def apply(self, source, prop, value):
+        from studio.agent_preparation import MappingEdits, merge_mapping_edits
+
+        edits = MappingEdits.model_validate(
+            dict(
+                changes=[dict(source_field=source, property=prop, value=value)],
+                questions=["Còn thiếu phạm vi?"],
+            )
+        )
+        first = merge_mapping_edits(self.review, edits)
+        self.review.normalization_draft = first.draft
+        second = merge_mapping_edits(self.review, edits)
+        assert first == second  # replay cannot multiply or erase facts
+        assert first.questions == ["Còn thiếu phạm vi?"] or len(first.questions) > 1
+
+    @invariant()
+    def known_facts_identity_and_approval_boundary_are_preserved(self):
+        draft = self.review.normalization_draft
+        assert draft.table_id == "table" and draft.grain == "one invoice"
+        assert [(f.source_field, f.target_id) for f in draft.fields] == [
+            ("c1", "day"),
+            ("c2", "amount"),
+        ]
+        assert draft.fields[0].timezone == self.timezone
+        assert draft.fields[1].currency == self.currency
+        assert self.review.state == "OPEN" and self.review.result_id is None
+
+
+TestReviewDraftState = ReviewDraftStateMachine.TestCase
+TestReviewDraftState.settings = hypothesis_settings(max_examples=25, stateful_step_count=30)
+
+
+@pytest.mark.parametrize("provider_name", ["gemini", "ollama"])
+@pytest.mark.parametrize("invalid", [False, True])
+def test_review_partial_edits_keep_valid_facts_and_questions(config, provider_name, invalid):
+    """MOCK provider protocol parity, not a live model accuracy measurement."""
+    from studio.agent_preparation import interpret_review_reply
+    from studio.contracts.agent import ReviewRequest
+    from studio.database import now
+
+    config.gemini_api_key = SecretStr("synthetic-key")
+    config.allow_external_ai = True
+    config.external_ai_request_budget = None
+    config.local_demo_access = True
+    config.ollama_url = "http://host.docker.internal:11434"
+    review = ReviewRequest(
+        id="review",
+        kind="MAPPING",
+        question="Xác nhận ngày và tiền?",
+        reason="unknown",
+        resource_id="table",
+        fingerprint="a" * 64,
+        nonce="b" * 32,
+        expires_at=now(),
+        expected_effects=[],
+        normalization_draft=dict(
+            table_id="table",
+            entity_kind="order",
+            grain="one order",
+            fields=[
+                dict(
+                    source_field="c1",
+                    target_id="day",
+                    name="Ngày",
+                    data_type="date",
+                    timezone=None,
+                    date_format="%Y-%m-%d",
+                    question="Múi giờ?",
+                ),
+                dict(
+                    source_field="c2",
+                    target_id="total",
+                    name="Tiền",
+                    data_type="decimal",
+                    amount_basis=None,
+                    question="Gross hay net?",
+                ),
+            ],
+        ),
+    )
+    before = review.model_dump_json()
+    changes = [dict(source_field="c1", property="timezone", value="UTC")]
+    if invalid:
+        changes.extend(
+            [
+                dict(source_field="outside", property="currency", value="VND"),
+                dict(source_field="c2", property="locale", value="wrong"),
+                dict(source_field="c2", property="business_key", value="true"),
+                dict(source_field="c1", property="date_format", value="%Q"),
+            ]
+        )
+    output = dict(changes=changes, questions=["Cột tiền là gross hay net?"])
+
+    def transport(request):
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200, json={"models": [{"name": "qwen3:8b", "size": 10, "digest": "a" * 64}]}
+            )
+        body = json.loads(request.content)
+        schema = (
+            body["format"]
+            if provider_name == "ollama"
+            else body["generationConfig"]["responseJsonSchema"]
+        )
+        assert "NormalizationDraft" not in schema.get("$defs", {})
+        assert "maxItems" not in schema["properties"]["changes"]
+        assert schema["$defs"]["MappingFieldChange"]["properties"]["source_field"]["enum"] == [
+            "c1",
+            "c2",
+        ]
+        if provider_name == "ollama":
+            return httpx.Response(
+                200,
+                json=dict(done=True, done_reason="stop", message=dict(content=json.dumps(output))),
+            )
+        return httpx.Response(
+            200,
+            json=dict(
+                candidates=[
+                    dict(finishReason="STOP", content=dict(parts=[dict(text=json.dumps(output))]))
+                ]
+            ),
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        provider = (
+            OllamaProvider(config, "QWEN_8B", client)
+            if provider_name == "ollama"
+            else GeminiProvider(config, client)
+        )
+        result = interpret_review_reply(
+            provider,
+            review,
+            "Ngày theo UTC, chưa biết gross hay net.",
+            WorkspacePolicy(
+                mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=None
+            ),
+            lambda: True,
+        )
+    assert result.draft.fields[0].timezone == "UTC"
+    assert result.draft.fields[0].date_format == "%Y-%m-%d"
+    assert result.draft.fields[1].amount_basis is None
+    assert result.draft.fields[1].locale is None
+    assert not result.draft.fields[1].business_key
+    assert result.questions[0] == output["questions"][0]
+    assert review.model_dump_json() == before
+    assert result.plan is result.intent is None
+
+
+def test_review_envelope_does_not_relax_backend_change_limit():
+    from studio.agent_preparation import MappingEdits
+
+    change = dict(source_field="c1", property="timezone", value="UTC")
+    assert len(MappingEdits(changes=[change] * 80).changes) == 80
+    with pytest.raises(ValidationError):
+        MappingEdits(changes=[change] * 81)
+
+
+@pytest.mark.parametrize("provider_name", ["gemini", "ollama"])
+def test_routing_provider_grammar_excludes_tools_that_do_not_belong_to_intent(
+    config, provider_name
+):
+    """MOCK transport parity; public legacy DTO cannot be used as decoding grammar."""
+    config.gemini_api_key = SecretStr("synthetic-key")
+    config.allow_external_ai = True
+    config.external_ai_request_budget = None
+    config.local_demo_access = True
+    config.ollama_url = "http://host.docker.internal:11434"
+    result = dict(intents=[dict(intent="PREPARE_NORMALIZATION", dataset_ids=["dataset"])])
+
+    def transport(request):
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200, json={"models": [dict(name="qwen3:8b", size=10, digest="a" * 64)]}
+            )
+        body = json.loads(request.content)
+        schema = (
+            body["format"]
+            if provider_name == "ollama"
+            else body["generationConfig"]["responseJsonSchema"]
+        )
+        variants = schema["$defs"]["RoutingIntent"]["anyOf"]
+        normalize = next(
+            v for v in variants if v["properties"]["intent"]["enum"] == ["PREPARE_NORMALIZATION"]
+        )
+        assert set(normalize["properties"]) == {"intent", "dataset_ids"}
+        assert normalize["additionalProperties"] is False
+        query = next(v for v in variants if v["properties"]["intent"]["enum"] == ["QUERY_DATA"])
+        assert set(query["properties"]) == {"intent", "query"}
+        bounds = schema["properties"]["intents"]
+        if provider_name == "ollama":
+            assert bounds["minItems"] == bounds["maxItems"] == 1
+        else:
+            assert "maxItems" not in bounds
+        if provider_name == "ollama":
+            return httpx.Response(
+                200,
+                json=dict(done=True, done_reason="stop", message=dict(content=json.dumps(result))),
+            )
+        return httpx.Response(
+            200,
+            json=dict(
+                candidates=[
+                    dict(finishReason="STOP", content=dict(parts=[dict(text=json.dumps(result))]))
+                ]
+            ),
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        provider = (
+            OllamaProvider(config, "QWEN_8B", client)
+            if provider_name == "ollama"
+            else GeminiProvider(config, client)
+        )
+        intents = interpret_requests(
+            provider,
+            ["Chuẩn bị chuẩn hóa dữ liệu"],
+            catalogue(),
+            WorkspacePolicy(
+                mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=None
+            ),
+            lambda: True,
+        )
+    assert intents == [AgentIntent(intent="PREPARE_NORMALIZATION", dataset_ids=["dataset"])]
+    assert provider.usage["routing_shape"] == [
+        dict(
+            intent="PREPARE_NORMALIZATION",
+            has_query=False,
+            has_reconciliation=False,
+            dataset_count=1,
+            question_count=0,
+        )
+    ]
+
+
+@pytest.mark.parametrize("foreign", [False, True])
+def test_rule_reply_preserves_unanswered_facts_and_source_identity(foreign):
+    from studio.agent_preparation import RuleEdits, merge_planning_reply
+    from studio.contracts.agent import ReviewRequest
+    from studio.database import now
+
+    review = ReviewRequest(
+        id="review",
+        kind="RECONCILIATION",
+        question="Kỳ và múi giờ?",
+        reason="unknown",
+        resource_id="proposal",
+        fingerprint="a" * 64,
+        nonce="b" * 32,
+        expires_at=now(),
+        expected_effects=[],
+        planning_request=dict(
+            left=dict(canonical_id="left", role="orders", filters={"platform": "A"}),
+            right=dict(canonical_id="right"),
+            period_start="2026-10-01",
+        ),
+    )
+    before = review.model_dump_json()
+    edits = RuleEdits.model_validate(
+        dict(
+            request=dict(
+                left=dict(canonical_id="foreign" if foreign else "left"),
+                right=dict(canonical_id="right"),
+                timezone="UTC",
+            ),
+            questions=["Ngày kết thúc kỳ là ngày nào?"],
+        )
+    )
+    if foreign:
+        with pytest.raises(DomainError, match="AI_INVALID_SOURCE"):
+            merge_planning_reply(review, edits)
+    else:
+        result = merge_planning_reply(review, edits)
+        assert str(result.planning_request.period_start) == "2026-10-01"
+        assert result.planning_request.period_end is None
+        assert result.planning_request.left.filters == {"platform": "A"}
+        assert result.planning_request.left.role == "orders"
+        assert result.planning_request.right.completeness is None
+        assert result.planning_request.timezone == "UTC"
+        assert result.plan is None and result.questions
+    assert review.model_dump_json() == before
+
+
+@pytest.mark.parametrize("bad_column", [False, True])
+def test_local_mapping_semantics_cannot_change_source_shape_or_guess_money(
+    config, profile, bad_column
+):
+    config.local_demo_access = True
+    config.ollama_url = "http://host.docker.internal:11434"
+    amount_profile = profile.columns[1]
+    amount_profile.observations.update(nonempty_count=5, numeric_locales={"vi-VN": 4})
+
+    def transport(request):
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200, json={"models": [{"name": "qwen3:8b", "size": 10, "digest": "a" * 64}]}
+            )
+        payload = json.loads(request.content)
+        assert "fields" not in payload["format"]["properties"]
+        assert payload["format"]["properties"]["key_columns"]["items"]["enum"] == ["c1"]
+        assert payload["format"]["$defs"]["MoneyHint"]["properties"]["column"]["enum"] == ["c2"]
+        return httpx.Response(
+            200,
+            json={
+                "done": True,
+                "done_reason": "stop",
+                "message": {
+                    "content": json.dumps(
+                        {
+                            "entity_kind": "order",
+                            "grain": "unknown",
+                            "key_columns": ["c1"],
+                            "money": [
+                                {"column": "outside" if bad_column else "c2", "meaning": "gross"}
+                            ],
+                        }
+                    )
+                },
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        provider = OllamaProvider(config, "QWEN_8B", client)
+        if bad_column:
+            with pytest.raises(DomainError, match="INVALID_SOURCE_FIELD"):
+                propose_normalization(
+                    provider, profile.source_table_id, profile, WorkspacePolicy(), lambda: True
+                )
+            return
+        draft = propose_normalization(
+            provider, profile.source_table_id, profile, WorkspacePolicy(), lambda: True
+        )
+    assert [(f.source_field, f.data_type) for f in draft.fields] == [
+        ("c1", "string"),
+        ("c2", "decimal"),
+    ]
+    assert not any(f.business_key for f in draft.fields)
+    amount = draft.fields[1]
+    assert amount.amount_basis is amount.semantic_metric is amount.currency is None
 
 
 def catalogue():
@@ -37,6 +435,58 @@ def catalogue():
             ],
         )
     )
+
+
+@pytest.mark.parametrize(
+    ("goal", "attached", "accepted"),
+    [
+        ("Vui lòng chuẩn hóa các tệp đã đính kèm.", ["dataset"], True),
+        (
+            "Tôi muốn kiểm tra và chuẩn hóa các bộ dữ liệu vừa tải lên. "
+            "Hãy tự phân tích, đề xuất cách xử lý phù hợp và chỉ hỏi tôi "
+            "khi cần xác nhận thông tin quan trọng.",
+            ["dataset"],
+            True,
+        ),
+        ("Đừng chuẩn hóa các tệp đã đính kèm.", ["dataset"], False),
+        ("Chuẩn hóa các tệp rồi đối soát.", ["dataset"], False),
+        ("Chuẩn hóa các tệp.", [], False),
+        ("Chuẩn hóa các tệp.", ["outside"], False),
+    ],
+)
+def test_explicit_local_normalization_binds_only_attached_scope(goal, attached, accepted):
+    result = resolve_attached_normalization(goal, catalogue(), attached)
+    if accepted:
+        assert result and result.intent == "PREPARE_NORMALIZATION"
+        assert result.dataset_ids == ["dataset"]
+    else:
+        assert result is None
+
+
+@pytest.mark.parametrize(
+    "goal",
+    [
+        "Xem trước cả hai nguồn đã thanh toán",
+        "Kiểm tra các file tháng 10",
+        "Cho tôi xem trước hai file và tổng tiền",
+        "Xem trước cả hai nguồn rồi đối soát",
+        "Cho tôi xem trước hai file của dự án khác",
+        "Xem trước các giao dịch PAID",
+    ],
+)
+def test_multi_source_preview_does_not_hijack_filters_periods_or_write_actions(goal):
+    from studio.agent_intents import resolve_plain_listing
+
+    assert resolve_plain_listing(goal, routing_catalogue()) is None
+
+
+def test_multi_source_preview_clarifies_count_and_does_not_choose_arbitrary_sources():
+    from studio.agent_intents import resolve_plain_listing
+
+    cat = catalogue()
+    assert resolve_plain_listing("Xem trước cả hai nguồn", cat).intent == "CLARIFY"
+    cat.datasets = []
+    assert resolve_plain_listing("Kiểm tra các file vừa tải lên", cat).intent == "CLARIFY"
 
 
 @pytest.mark.parametrize("selection", ["unique", "ambiguous", "missing", "previous", "foreign"])
@@ -788,6 +1238,14 @@ def test_routing_refuses_partial_reconciliation_and_duplicate_normalization_sour
             ["Đối soát kỳ hiện tại"],
             cat,
         )
+    selection.pop("confirmed_run_id")
+    candidate = compile_routing(
+        json.dumps(dict(intents=[dict(intent="RECONCILE_DATASETS", reconciliation=selection)])),
+        ["Đề xuất quy tắc đối soát hai nguồn chuẩn hóa"],
+        cat,
+    )[0]
+    assert candidate.planning_request.left.canonical_id == selection["left_canonical_id"]
+    assert candidate.planning_request.allow_partial is None  # coverage is a separate fact
     cat.datasets[1].name = cat.datasets[0].name
     intent = dict(intent="PREPARE_NORMALIZATION", dataset_ids=[cat.datasets[0].id])
     with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
@@ -967,7 +1425,8 @@ def test_plain_listing_resolves_only_unique_alias_and_never_filters_or_unknown_s
     assert resolve_plain_listing("Cho xem các dòng của B", cat) is None
 
 
-def test_full_run_variance_uses_snapshot_while_filtered_analysis_remains_query():
+@pytest.mark.parametrize("with_count", [False, True])
+def test_full_run_variance_uses_snapshot_while_filtered_analysis_remains_query(with_count):
     from studio.agent_intents import compile_routing, routing_sources
 
     cat = routing_catalogue()
@@ -981,6 +1440,8 @@ def test_full_run_variance_uses_snapshot_while_filtered_analysis_remains_query()
         currency_field=None,
         aggregations=[dict(op="sum_decimal", field_id="absolute_variance")],
     )
+    if with_count:
+        query["aggregations"].insert(0, dict(op="count", field_id=None))
     body = dict(intents=[dict(intent="QUERY_DATA", query=query)])
     result = compile_routing(json.dumps(body), ["Tổng chênh lệch tuyệt đối của kết quả"], cat)[0]
     assert (
@@ -1083,3 +1544,129 @@ def test_chart_explicit_paid_and_unpaid_categories_keeps_the_entire_population()
     intent["query"]["filters"] = [dict(field_id="payment_status", op="eq", value="PAID")]
     with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
         validate(intent, "Vẽ phân bố cả PAID và UNPAID theo trạng thái thanh toán")
+
+
+def test_new_reconciliation_scope_keeps_explicit_source_and_effective_facts():
+    from studio.agent_intents import compile_routing
+    from studio.contracts.reconciliation import PlanningRequest
+
+    cat = routing_catalogue()
+    expected = PlanningRequest.from_plan(cat.confirmed_plan)
+    selection = dict(
+        left_canonical_id=expected.left.canonical_id,
+        right_canonical_id=expected.right.canonical_id,
+        left_source=expected.left.model_dump(mode="json"),
+        right_source=expected.right.model_dump(mode="json"),
+        period_start=str(expected.period_start),
+        period_end=str(expected.period_end),
+        timezone=expected.timezone,
+        effective_from=str(expected.effective_from),
+    )
+    goal = "Đối soát hai nguồn đầy đủ trong kỳ " + json.dumps(selection, ensure_ascii=False)
+    before = cat.model_dump_json()
+    routed = compile_routing(
+        json.dumps({"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": selection}]}),
+        [goal],
+        cat,
+    )[0]
+    assert routed.planning_request.model_dump(
+        exclude={"intent", "allow_partial"}
+    ) == expected.model_dump(exclude={"intent", "allow_partial"})
+    assert cat.model_dump_json() == before
+    assert routed.planning_request.allow_partial is None
+    for side in ("left", "right"):
+        changed = json.loads(json.dumps(selection))
+        changed[side + "_source"]["canonical_id"] = "foreign-source"
+        with pytest.raises(DomainError, match="AI_INVALID_SOURCE"):
+            compile_routing(
+                json.dumps(
+                    {"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": changed}]}
+                ),
+                [goal],
+                cat,
+            )
+    changed = json.loads(json.dumps(selection))
+    changed["left_source"]["coverage_start"] = "2027-01-01"
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        compile_routing(
+            json.dumps({"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": changed}]}),
+            [goal],
+            cat,
+        )
+    minimal = {
+        k: v for k, v in selection.items() if k in {"left_canonical_id", "right_canonical_id"}
+    }
+    result = compile_routing(
+        json.dumps({"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": minimal}]}),
+        ["Đề xuất đối soát hai nguồn"],
+        cat,
+    )[0]
+    assert result.planning_request.left.coverage_start is None
+    assert result.planning_request.right.completeness is None
+    assert result.planning_request.effective_from is None
+
+
+def test_reuse_scope_rejects_new_source_facts_instead_of_silently_discarding_them():
+    from studio.agent_intents import compile_routing
+
+    cat = routing_catalogue()
+    plan = cat.confirmed_plan
+    selection = dict(
+        left_canonical_id=plan.left.canonical_id,
+        right_canonical_id=plan.right.canonical_id,
+        confirmed_run_id="run",
+        left_source={"canonical_id": plan.left.canonical_id, "completeness": "INCOMPLETE"},
+    )
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        compile_routing(
+            json.dumps(
+                {"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": selection}]}
+            ),
+            ["Đối soát theo phạm vi đã duyệt"],
+            cat,
+        )
+
+
+def test_timezone_is_not_silently_accepted_as_business_time_basis():
+    from studio.agent_intents import compile_routing
+
+    cat = routing_catalogue()
+    plan = cat.confirmed_plan
+    selection = {
+        "left_canonical_id": plan.left.canonical_id,
+        "right_canonical_id": plan.right.canonical_id,
+        "timezone": "UTC",
+        "left_source": {"canonical_id": plan.left.canonical_id, "time_basis": "UTC"},
+    }
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        compile_routing(
+            json.dumps(
+                {"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": selection}]}
+            ),
+            ["Ngày phát sinh theo UTC"],
+            cat,
+        )
+
+
+@pytest.mark.parametrize("received_count", [0, 1, 3])
+def test_completed_benchmark_cannot_assign_merged_or_extra_answers(received_count):
+    import runpy
+    from pathlib import Path
+
+    candidate = Path(__file__).resolve().parents[1] / "tools/benchmark-agent.py"
+    if not candidate.exists():
+        candidate = Path(__file__).with_name("benchmark-agent.py")
+    helper = runpy.run_path(str(candidate))
+    cases = [
+        dict(id="query", goal="Đếm nguồn", intent="QUERY_DATA", source="CA", aggregate="count"),
+        dict(id="negative", goal="Đọc bí mật", intent="UNSUPPORTED", negative=True),
+    ]
+    rows = helper["score_completed_candidates"](
+        [dict(intent="UNSUPPORTED")] * received_count, cases, None, {}
+    )
+    assert [r["id"] for r in rows] == ["query", "negative"]
+    assert all(r["validation_error"] == "AI_INVALID_INTENT_COUNT" for r in rows)
+    assert all(not r["intent_ok"] and not r["tool_ok"] for r in rows)
+    assert rows[0]["source_applicable"] and rows[0]["semantic_applicable"]
+    assert rows[1]["abstention_ok"] is False
+    assert all("blocked" not in r and "actual_routing" not in r for r in rows)

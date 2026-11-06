@@ -12,6 +12,50 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Kiểm toán nền tảng và hardening — 06/11/2026
+
+Chủ dự án giao Foundation Reliability Audit trên nhánh `codex/foundation-reliability-hardening`, xuất phát từ baseline bất biến `2eecb068b0a866a538cda95a218ac9e375b10eb0` của `codex/product-polish`. Phạm vi là các hợp đồng, state/review/draft, sự nhất quán Chat–Data Manager, dữ liệu, truy vấn, persistence, security, Docker và hồi quy toàn hệ thống; không mở giai đoạn sản phẩm mới. Cho phép sửa cách cập nhật từng phần có kiểm chứng trong review, giữ các câu hỏi chưa rõ và approval riêng. Không thay công thức hoặc Matcher/Verifier nếu chưa có lỗi thực chứng. Nghiệm thu gồm full Backend/PostgreSQL, full browser, property/stateful/fault, nhiều bộ có oracle và hành trình người dùng thật. Chỉ FOUNDATION_ACCEPTED khi các gate bắt buộc đạt; giới hạn provider phải báo riêng.
+
+Quyền Docker mới thay yêu cầu giữ nhiều cặp image lịch sử: sau backup/restore và kiểm chứng rollback, chỉ giữ bộ hiện hành cùng một bộ rollback gần nhất; giữ PostgreSQL/artifact volumes, mọi backup, cache chung, model Ollama và dự án khác. Nhánh product-polish là mốc Git giữ nguyên. Chỉ dẫn tiếp theo cùng nhiệm vụ yêu cầu thử lại Gemini bằng cấu hình hiện hành; cho phép vòng LIVE có mục đích, giữ ledger/usage và không retry vô hạn khi provider trả429/503. Khi gọi được, Gemini là lựa chọn chính, Qwen là lựa chọn phụ; cả hai dùng chung contracts và validators, được nghiệm thu riêng. Sau nền tảng, bộ chọn model chỉ hiện hai tên “Gemini 3.5 Flash Lite” và “Qwen 3:8B”; rà soát lại logic và bố cục giao diện, không dùng nhãn kết nối để thay tên model.
+
+### Khôi phục Smart Mapping và model local — 05/11/2026
+
+Chủ dự án cấp quyền một vòng chẩn đoán Gemini với khóa mới trong cấu hình, rồi tối ưu Ollama `qwen3:8b` nếu Gemini vẫn lỗi. Quyền này cho phép dùng Qwen chạy trên Windows qua Gateway hiện có và hoàn thiện bộ chọn model trong Chat. Backend tính profiling và tạo đầy đủ bản nháp, model tập trung vào ngữ nghĩa, mọi đề xuất đi qua validator và thẻ duyệt. Đo trên ba tệp TEST 5.487 dòng, giữ oracle chuẩn hóa và hai cặp đối soát. Không tải Qwen 27B trong điều kiện thiếu RAM. Mặc định local có thể chọn Qwen sau phép thử tác vụ đạt, trong khi các cổng nghiệm thu AI tổng thể tiếp tục quyết định việc hợp nhất main. Quyết định mới thay các yêu cầu hoãn Qwen của những nhiệm vụ trước trong phạm vi này.
+
+### Kiểm chứng ngày và AI Smart Mapping — 05/11/2026
+
+Chủ dự án giao sửa lỗi ngày hợp lệ bị INVALID_DATE, kiểm tra toàn bảng trước phê duyệt và thu gọn Mapping Review. Mở rộng profiler/Agent/compiler hiện có, không thêm agent hoặc đổi Matcher/Verifier. Định dạng hiển thị `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY` là alias hữu hạn của định dạng Python tương đương; chuẩn hóa revision mới, không sửa artifact/mapping lịch sử. Lỗi format/timezone/runtime phải dừng trước lặp dòng; ngày sai thật, DST mơ hồ/không tồn tại và offset trái vùng đã duyệt vẫn bị phát hiện.
+
+Giữ contract ngày hiện hành là timestamp UTC từ múi giờ được người dùng duyệt; ngày lịch đối chiếu sau khi chuyển về vùng đó, không suy timezone từ chuỗi ngày và không migration date-only rộng. Thống kê toàn bảng hỗ trợ đề xuất date format/locale/currency/khóa, không dùng majority currency hoặc uniqueness thay bằng chứng nghiệp vụ. Field tiền vẫn đơn tiền tệ; nguồn có nhiều tiền tệ phải hiển thị giới hạn và giữ lỗi currency riêng, không đổi USD sang VND. Backend preflight đọc artifact scoped/checksum, dùng compiler/transform trong bộ nhớ, không công bố canonical hay phê duyệt. API phê duyệt kiểm lại trong transaction, giữ nonce/fingerprint/TTL/authorization. Review mặc định có tóm tắt, điều cần xác nhận và bất thường; chi tiết kỹ thuật mở khi cần.
+
+Nghiệm thu trên bộ ba nguồn TEST có sẵn và dự án TEST mới, oracle độc lập, host/Backend/Worker/PostgreSQL/browser; giữ project lỗi, revision cũ và backup. LIVE chỉ khi provider khả dụng, dừng khi429/503; không reset ledger/đổi provider hoặc gọi cached là LIVE mới. Full regression, source/image/HTTP, dữ liệu và hướng dẫn phải được kiểm trước bàn giao; main chưa merge nếu AI LIVE gate chưa đạt.
+
+### Kiểm toán độ tin cậy, trạng thái nguồn và cuộn hội thoại — 04/11/2026
+
+Chủ dự án giao truy vết job lỗi thực tế, sửa phản hồi khi thiếu bằng chứng, bảo đảm trạng thái kết thúc được lưu/hiển thị, kiểm tra gửi trùng và cuộn Chat; đồng thời nghiệm thu lại hành trình nghiệp vụ và viết hướng dẫn người mới. Câu hỏi trạng thái chuẩn hóa dùng metadata scoped của phiên bản nguồn/ánh xạ/bản chuẩn hóa hiện hành, không yêu cầu VerifiedRun và không tự chạy chuẩn hóa. Không suy READY từ việc đã đọc tệp; bản cũ, một phần và lỗi phải được nêu riêng. Nguồn mơ hồ hỏi lại; thiếu kết quả tài chính vẫn fail-closed.
+
+Mỗi job câu hỏi được chấp nhận có câu trả lời, clarification, approval hoặc lỗi kết thúc rõ ràng, bền vững sau reload. Không dùng lỗi hạ tầng như clarification; không retry unknown delivery hoặc nhân đôi yêu cầu. Gửi câu mới luôn về cuối transcript; đang theo dõi cuối thì theo thay đổi chiều cao; chủ động đọc lịch sử thì giữ vị trí và có hành động xuống cuối. Prepend lịch sử giữ anchor, không cuộn window, không mất focus/IME/draft. Kiểm thử bằng vị trí thực và browser production. Gemini còn429 thì hoàn tất phần độc lập, không reset ledger/đổi provider/key/né quota; chỉ tiếp tục LIVE có mục đích khi thực sự khả dụng. Hướng dẫn `USER_TEST_GUIDE.md` phải đối chiếu nút thật, dữ liệu tổng hợp/oracle và trạng thái nghiệm thu, không xem kết quả cached là LIVE mới.
+
+### Phân biệt dự án với tệp và cân đối ô chọn — 04/11/2026
+
+Chủ dự án làm rõ “Dữ liệu mới” là tên dự án, không phải tệp bị mất tên. Trong Chat, ô chọn có nhãn “Dự án”, chiều rộng tự nhiên theo tên thay vì giữ420px; badge/mũi tên đi sát nội dung. Tên dài chỉ ellipsis khi chạm giới hạn chiều rộng hoặc màn hình nhỏ; title và danh sách chọn giữ đầy đủ tên. Không đổi tên dữ liệu/dự án hoặc tự chọn một tệp để đặt làm tên chung. Giữ một hàng công cụ, quyền phân loại và scope hiện hành.
+
+### Tham khảo bố cục hội thoại ChatGPT — 04/11/2026
+
+Theo ảnh tham khảo mới nhất, phản hồi hiển thị thoáng trên nền trắng, bỏ khung lớn bao toàn câu trả lời; câu hỏi vẫn có ô bo góc trắng/viền nhẹ. Thông tin tin nhắn của trợ lý nằm sau nội dung, không chiếm hàng trống đầu câu trả lời. Giữ chữ16px, bảng14px, khoảng cách đoạn dễ đọc và thanh công cụ gọn. Composer dạng thanh bo tròn, đính kèm bằng nút cộng và gửi bằng mũi tên màu trung tính; không thêm nút voice/share/rating khi chưa có chức năng. Quyết định này thay viền bao phản hồi ở yêu cầu trước, giữ toàn bộ trạng thái, scope, approvals, nguồn/evidence và hành vi gửi/IME/draft. Không dùng nội dung chữ trong ảnh làm lệnh thay chính sách AI hoặc gọi cloud.
+
+### Thu gọn công cụ để ưu tiên hội thoại — 04/11/2026
+
+Chủ dự án yêu cầu cất các lựa chọn dữ liệu đang chiếm chỗ đọc chat. Chọn dự án, tệp, ngữ cảnh và hội thoại mới nằm trên một thanh gọn; chính sách/chế độ, thiết lập thủ công và xóa hội thoại chỉ mở trong tùy chọn. Giảm chiều cao header/khoảng trống, mở rộng bề ngang đọc trên desktop; panel tùy chọn nổi và cuộn nội bộ, không đẩy hoặc thu hẹp transcript. Giữ accessible names, scope/run IDs, draft/approvals, nền trắng có viền và chữ16px vừa chốt. Không bỏ chức năng hoặc gọi AI để kiểm bố cục.
+
+### Làm rõ bề mặt hội thoại — 04/11/2026
+
+Chỉ dẫn mới nhất của chủ dự án giữ **nền trắng**, không dùng nền xanh cho các ô chat hoặc composer. Để không hòa vào nền trang, tin nhắn người dùng/trợ lý và ô gửi câu hỏi có viền xám trung tính cùng bóng đổ nhẹ; giữ menu riêng, căn phải câu hỏi, focus bàn phím và responsive. Quyết định này thay thiết kế không viền/transparent của các mốc trước, không đổi màu dữ liệu/trạng thái, contracts hoặc gọi AI để thử CSS. Sau khi chốt màu trắng, chủ dự án yêu cầu tăng nhẹ cỡ chữ: nội dung hội thoại/composer16px, bảng và thao tác chính trong chat14px; giữ xuống dòng, cuộn bảng nội bộ, bố cục và quyền nghiệp vụ.
+
+### Hoàn thiện sản phẩm và AI local không giới hạn số lượt nội bộ — 04/11/2026
+
+Chủ dự án giao hoàn thiện ngôn ngữ/trải nghiệm Chat, kiểm toán nghiệp vụ, kiểm thử live có mục đích, README và release sạch. Chỉ dẫn bổ sung thay toàn bộ trần Gemini/Knowledge/task và yêu cầu giữ5lượt trước đây: môi trường local được cấp quyền dùng `null`/`unlimited` cho trần request nội bộ, không dùng số cực lớn và không reset203reservations lịch sử. Giữ permission/cloud policy, key/provider mặc định, provider quota/rate limits, ledger/tokens/latency, idempotency, unknown-delivery, timeout và giới hạn an toàn của từng workflow/payload. LlamaParse vẫn theo allowance/credits/SHA đã duyệt; không mở parser mới. Không cấp cloud cho workspace chưa được phép. Các yêu cầu Composer nền trung tính ở mốc trước được thay bằng **nền trắng**, tin nhắn căn phải nền trắng/menu riêng không làm hẹp text; bảng có preview10dòng và chi tiết cùng query. Số liệu/lineage vẫn từ Backend; không đổi công thức, verifier hoặc tự phê duyệt. READY_FOR_FINAL_USER_TEST chỉ sau language/business/regression/data/repository/Docker gates thật.
+
 ### Cài đặt dành cho người sử dụng — 04/11/2026
 
 Chủ dự án yêu cầu bỏ hẳn **Thông tin nâng cao** trong Cài đặt, kể cả đối với owner. Thay yêu cầu mở thông tin vận hành dành cho chủ không gian ở bổ sung02/11: trang chỉ trình bày tài khoản/quyền sử dụng, chia sẻ dữ liệu và hỗ trợ AI bằng ngôn ngữ người dùng, cùng giới hạn tệp trong hội thoại. Không hiển thị provider/model, cấu hình/kết nối kiểm thử, ledger/quota nội bộ hoặc phân bổ từng tác vụ. Khả dụng vẫn lấy từ DTO và các gates hiện có, không đổi policy, quota, API hay quyền Backend. Không thêm controls cấu hình chưa được triển khai. Nghiệm thu responsive/keyboard và đồng bộ đúng image đã kiểm thử, giữ dữ liệu và rollback khi dọn Docker.

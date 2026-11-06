@@ -70,6 +70,7 @@ def profile_table(
                 samples=observed[:5],
                 evidence_ids=[f"{table_id}:{col.id}"],
                 identifier_candidate=identifier,
+                observations=column_observations(nonempty),
             )
         )
     return DatasetProfile(
@@ -150,4 +151,85 @@ def default_schema(workspace_id: str, schema_id: str) -> SchemaDefinition:
         fields=[
             SchemaField.model_validate({"id": i, "name": n, "data_type": t}) for i, n, t in names
         ],
+    )
+
+
+def column_observations(values: list[str]) -> dict[str, int | str | list[str] | dict[str, int]]:
+    """[D] Thống kê toàn cột, không thay bằng chứng ngữ nghĩa.
+
+    Giá trị gốc chỉ dùng local; không suy tiền tệ từ đa số.
+    """
+    from collections import Counter
+    from datetime import datetime
+
+    from studio.errors import DomainError
+    from studio.normalization import parse_decimal
+
+    date_counts: dict[str, int] = {}
+    formats = {
+        r"\d{4}-\d{2}-\d{2}": ["%Y-%m-%d"],
+        r"\d{2}/\d{2}/\d{4}": ["%d/%m/%Y", "%m/%d/%Y"],
+        r"\d{4}-\d{2}-\d{2}[ T].+": [
+            "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+        ],
+    }
+    for pattern, candidates in formats.items():
+        subset = [v for v in values if re.fullmatch(pattern, v)]
+        for fmt in candidates:
+            count = 0
+            for v in subset:
+                try:
+                    datetime.strptime(v, fmt)
+                    count += 1
+                except ValueError:
+                    pass
+            if count:
+                date_counts[fmt] = count
+    numeric: dict[str, int] = {}
+    negative = zero = 0
+    for locale in ("en-US", "vi-VN"):
+        count = 0
+        for value in values:
+            if not re.fullmatch(r"[+\-\d.,]+", value):
+                continue
+            try:
+                number = parse_decimal(value, locale)
+                count += 1
+                if locale == "en-US" and number is not None:
+                    negative += number < 0
+                    zero += number == 0
+            except DomainError:
+                pass
+        numeric[locale] = count
+    return dict(
+        nonempty_count=len(values),
+        leading_zero_count=sum(bool(re.fullmatch(r"0\d+", v)) for v in values),
+        date_formats=date_counts,
+        numeric_locales=numeric,
+        negative_en_us=negative,
+        zero_en_us=zero,
+        currency_counts=dict(
+            Counter(
+                v
+                for v in values
+                if v
+                in {
+                    "VND",
+                    "USD",
+                    "EUR",
+                    "GBP",
+                    "JPY",
+                    "CNY",
+                    "KRW",
+                    "SGD",
+                    "THB",
+                    "AUD",
+                    "CAD",
+                    "CHF",
+                    "HKD",
+                }
+            )
+        ),
     )

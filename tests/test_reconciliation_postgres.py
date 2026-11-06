@@ -4,7 +4,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import func, select, text
-from studio.database import CanonicalRow, RunRow
+from studio.database import AuditRow, CanonicalRow, ReconciliationContractRow, RunRow
 from test_postgres import approve, drain, pg, project, upload  # noqa: F401, F811
 
 pytestmark = pytest.mark.integration
@@ -44,7 +44,7 @@ def test_additive_migration_preserves_existing_approved_canonical(pg):  # noqa: 
     assert any(row["record_payload"].get("reference_id") == "000123" for row in preview["items"])
 
 
-def prepare_pair(pg, *, workbooks=False, grouped=False):  # noqa: F811
+def prepare_pair(pg, *, workbooks=False, grouped=False, partial=False):  # noqa: F811
     from reconciliation_cases import FIXTURES
 
     client, factory, worker = pg
@@ -52,6 +52,8 @@ def prepare_pair(pg, *, workbooks=False, grouped=False):  # noqa: F811
     ids = []
     for filename in ("shipments.csv", "delivery-confirmations.csv"):
         raw = (FIXTURES / filename).read_bytes()
+        if partial and filename == "shipments.csv":
+            raw = raw.replace(b",25.00,", b",invalid_amount,", 1)
         detail = grouped and filename == "delivery-confirmations.csv"
         grain = "delivery_line" if detail else "delivery"
         if detail:
@@ -199,6 +201,39 @@ def create_approved_run(pg, *, workbooks=False, grouped=False):  # noqa: F811
     )
     assert response.status_code == 202, response.text
     return pid, p, rule.json(), response.json()
+
+
+def test_manual_approval_requires_explicit_confirmation_for_invalid_rows(pg):  # noqa: F811
+    client, factory, _ = pg
+    pid, plan = prepare_pair(pg, partial=True)
+    sources = client.get(f"/api/projects/{pid}/canonical-catalogue").json()["items"]
+    assert any(c["canonical"]["quality_status"] == "PARTIAL" for c in sources)
+    saved = client.post(
+        "/api/reconciliation-plans",
+        json={"project_id": pid, "plan": plan.model_dump(mode="json")},
+        headers={"Idempotency-Key": "manual-partial-rule"},
+    )
+    assert saved.status_code == 201, saved.text
+    endpoint = f"/api/reconciliation-contracts/{saved.json()['id']}/approve"
+    for options in ({}, {"json": {"invalid_rows_reviewed": False}}):
+        blocked = client.post(endpoint, **options)
+        assert blocked.status_code == 422, blocked.text
+        assert blocked.json()["code"] == "INVALID_ROWS_REVIEW_REQUIRED"
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(ReconciliationContractRow)) == 0
+    approved = client.post(endpoint, json={"invalid_rows_reviewed": True})
+    assert approved.status_code == 200, approved.text
+    assert client.post(endpoint).json() == approved.json()
+    with factory() as db:
+        events = (
+            select(func.count())
+            .select_from(AuditRow)
+            .where(
+                AuditRow.action == "RECONCILIATION_INVALID_ROWS_REVIEWED",
+                AuditRow.resource_id == approved.json()["id"],
+            )
+        )
+        assert db.scalar(events) == 1
 
 
 def test_T20_T34_T35_rule_approval_snapshot_exports_and_workflow(pg):  # noqa: F811
@@ -671,3 +706,80 @@ def test_source_evidence_real_columns_multisheet_prefix_and_viewer(pg):  # noqa:
         ).status_code
         == 403
     )
+
+
+def test_planner_unlimited_reserves_beyond_historical_ceiling(pg, monkeypatch):  # noqa: F811
+    from pydantic import SecretStr
+    from sqlalchemy import func
+    from studio import reconciliation_jobs
+    from studio.config import settings
+    from studio.database import AuditRow, TraceRow, WorkspaceRow
+    from studio.errors import DomainError
+
+    client, factory, worker = pg
+    pid, plan = prepare_pair(pg)
+    monkeypatch.setattr(settings, "allow_external_ai", True)
+    monkeypatch.setattr(settings, "external_ai_request_budget", None)
+    monkeypatch.setattr(settings, "planner_request_budget", None)
+    monkeypatch.setattr(settings, "gemini_api_key", SecretStr("synthetic"))
+    with factory() as db:
+        row = db.get(WorkspaceRow, "demo")
+        row.policy = dict(
+            row.policy, mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=None
+        )
+        for i in range(31):
+            db.add(
+                AuditRow(
+                    workspace_id="demo",
+                    actor_id="test-owner",
+                    action="RECONCILIATION_PLANNER_ATTEMPT",
+                    resource_id=f"historical-{i}",
+                )
+            )
+        db.commit()
+    attempts = []
+
+    def propose(provider, catalogue, draft, policy, reserve, *args):
+        attempts.append(reserve())
+        raise DomainError("GEMINI_UNAVAILABLE", "Synthetic provider unavailable after reservation")
+
+    monkeypatch.setattr(reconciliation_jobs, "propose_plan", propose)
+    response = client.post(
+        "/api/reconciliation-plans/ai",
+        json={
+            "project_id": pid,
+            "request": {
+                "left": {"canonical_id": plan.left.canonical_id},
+                "right": {"canonical_id": plan.right.canonical_id},
+            },
+        },
+        headers={"Idempotency-Key": "unlimited-planner"},
+    )
+    assert response.status_code == 202
+    assert (
+        client.post(
+            "/api/reconciliation-plans/ai",
+            json={
+                "project_id": pid,
+                "request": {
+                    "left": {"canonical_id": plan.left.canonical_id},
+                    "right": {"canonical_id": plan.right.canonical_id},
+                },
+            },
+            headers={"Idempotency-Key": "unlimited-planner"},
+        ).json()
+        == response.json()
+    )
+    drain(factory, worker)
+    assert attempts == [True]
+    with factory() as db:
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(AuditRow)
+                .where(AuditRow.action == "RECONCILIATION_PLANNER_ATTEMPT")
+            )
+            == 32
+        )
+        trace = db.scalar(select(TraceRow).where(TraceRow.job_id == response.json()["job_id"]))
+        assert trace.outcome == "GEMINI_UNAVAILABLE"

@@ -228,7 +228,10 @@ def test_assistant_worker_crash_fencing_and_unknown_delivery_hold(pg, monkeypatc
     drain(factory, worker)
     job = client.get(f"/api/jobs/{two['job_id']}").json()
     assert (job["status"], job["error_code"]) == ("BLOCKED", "AI_DELIVERY_UNKNOWN")
-    assert len(client.get(f"/api/conversations/{cid}").json()["items"]) == 3
+    messages = client.get(f"/api/conversations/{cid}").json()["items"]
+    assert len(messages) == 4
+    assert messages[-1]["error_code"] == "AI_DELIVERY_UNKNOWN"
+    assert "Không tự gửi lại" in messages[-1]["text"]
 
 
 def test_language_request_checks_preparation_and_never_auto_runs(pg):  # noqa: F811
@@ -286,7 +289,8 @@ def test_reviewed_template_action_idempotent_and_unapproved_until_human_confirma
     )
 
 
-def test_task_budget_reservation_failure_receipt_and_no_blind_resend(pg, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("ceiling", [1, None])
+def test_task_budget_reservation_failure_receipt_and_no_blind_resend(pg, monkeypatch, ceiling):  # noqa: F811
     import studio.assistant_jobs as jobs
     from pydantic import SecretStr
     from sqlalchemy import func, select
@@ -301,7 +305,7 @@ def test_task_budget_reservation_failure_receipt_and_no_blind_resend(pg, monkeyp
     monkeypatch.setattr(settings, "allow_external_ai", True)
     monkeypatch.setattr(settings, "external_ai_request_budget", 10)
     monkeypatch.setattr(settings, "assistant_cloud_enabled", True)
-    monkeypatch.setattr(settings, "assistant_request_budget", 1)
+    monkeypatch.setattr(settings, "assistant_request_budget", ceiling)
     monkeypatch.setattr(settings, "gemini_api_key", SecretStr("synthetic"))
     with factory() as db:
         db.get(WorkspaceRow, "demo").policy = dict(
@@ -310,7 +314,8 @@ def test_task_budget_reservation_failure_receipt_and_no_blind_resend(pg, monkeyp
         db.commit()
     attempts = []
 
-    def mocked(question, facts, policy, config, reserve):
+    def mocked(question, facts, policy, config, reserve, *, model_choice):
+        assert model_choice == "GEMINI"
         allowed = reserve()
         attempts.append(allowed)
         if allowed:
@@ -329,23 +334,17 @@ def test_task_budget_reservation_failure_receipt_and_no_blind_resend(pg, monkeyp
     assert client.get(f"/api/jobs/{one['job_id']}").json()["status"] == "BLOCKED"
     assert ask(client, cid, context, key="exhausted").status_code == 202
     drain(factory, worker)
-    assert attempts == [True, False]
+    assert attempts == ([True, True] if ceiling is None else [True, False])
     with factory() as db:
-        assert (
-            db.scalar(
-                select(func.count())
-                .select_from(AuditRow)
-                .where(AuditRow.action == "GEMINI_REQUEST_RESERVED")
-            )
-            == 1
-        )
-        assert (
-            db.scalar(
-                select(func.count())
-                .select_from(AuditRow)
-                .where(AuditRow.action == "ASSISTANT_REQUEST_RESERVED")
-            )
-            == 1
-        )
+        assert db.scalar(
+            select(func.count())
+            .select_from(AuditRow)
+            .where(AuditRow.action == "GEMINI_REQUEST_RESERVED")
+        ) == (2 if ceiling is None else 1)
+        assert db.scalar(
+            select(func.count())
+            .select_from(AuditRow)
+            .where(AuditRow.action == "ASSISTANT_REQUEST_RESERVED")
+        ) == (2 if ceiling is None else 1)
         trace = db.scalar(select(TraceRow).where(TraceRow.job_id == one["job_id"]))
         assert trace.usage == dict(reserved_attempts=1, tokens=None, cost_estimate=None)

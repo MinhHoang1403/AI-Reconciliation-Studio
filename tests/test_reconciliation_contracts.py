@@ -66,6 +66,15 @@ def test_T18_gross_net_and_stale_scope_blocked():
             validate_reconciliation_contract(plan(), cats, "demo", "project")
 
 
+@pytest.mark.parametrize("domain", ["invoice", "payroll", "inventory"])
+def test_same_numeric_columns_do_not_make_cross_domain_sources_comparable(domain):
+    cats = sources()
+    other = cats[1]
+    other.canonical.entity_kind = other.schema_definition.entity_kind = domain
+    with pytest.raises(DomainError, match="ENTITY_INCOMPATIBLE"):
+        validate_reconciliation_contract(plan(), cats, "demo", "project")
+
+
 def test_T19_incomplete_coverage_needs_explicit_partial():
     p = plan()
     p.right.completeness = "INCOMPLETE"
@@ -98,6 +107,17 @@ def test_rule_precision_period_currency_and_rigid_fuzzy_constraints():
 def test_AI_cannot_approve_reconciliation_rule():
     with pytest.raises(ValidationError):
         PlanProposal.model_validate(dict(status="APPROVED", plan=plan().model_dump()))
+
+
+def test_reply_to_complete_plan_keeps_existing_rule_without_new_suggestions():
+    from studio.contracts.reconciliation import PlanningRequest
+    from studio.reconciliation_planner import preview_plan
+
+    previous = plan()
+    request = PlanningRequest.from_plan(previous)
+    candidate = preview_plan(request, None, previous.entity_kind, previous)
+    assert candidate == previous
+    assert validate_reconciliation_contract(candidate, sources(), "demo", "project") == previous
 
 
 def test_domain_templates_never_invent_settlement_or_currency():

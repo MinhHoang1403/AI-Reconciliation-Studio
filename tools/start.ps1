@@ -13,7 +13,20 @@ if (-not (Test-Path -LiteralPath '.env')) {
     # The company URL is supplied by the operator in the ignored .env, never bundled in JS.
     [System.IO.File]::WriteAllText((Join-Path $PWD '.env'), $config)
 }
-if ($SkipBuild) { docker compose up -d --no-build --wait } else { docker compose up -d --build --wait }
+if ($SkipBuild) {
+    docker compose up -d --no-build --wait
+} else {
+    # Keep source identity in ordinary builds as well as release builds.
+    $taskPreviousGitLabels = $env:BUILDX_GIT_LABELS
+    try {
+        $env:BUILDX_GIT_LABELS = 'full'
+        docker compose up -d --build --wait
+        $taskBuildExitCode = $LASTEXITCODE
+    } finally {
+        $env:BUILDX_GIT_LABELS = $taskPreviousGitLabels
+    }
+    if ($taskBuildExitCode -ne 0) { throw 'Docker build or startup failed.' }
+}
 if ($LASTEXITCODE -ne 0) { throw 'Docker services did not become healthy.' }
 & (Join-Path $PSScriptRoot 'verify-local.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Loopback verification failed.' }

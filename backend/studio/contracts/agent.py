@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
+from studio.config import ModelChoice
 from studio.contracts import Contract, SchemaDefinition
 from studio.contracts.assistant import AssistantAnswer, AssistantContext, Identifier, ToolResult
 from studio.contracts.data_query import (
@@ -14,9 +15,15 @@ from studio.contracts.data_query import (
     QueryOperations,
     QueryResult,
 )
-from studio.contracts.reconciliation import PlanningRequest, PlanningSuggestions, ReconciliationPlan
+from studio.contracts.reconciliation import (
+    PlanningRequest,
+    PlanningSource,
+    PlanningSuggestions,
+    ReconciliationPlan,
+)
 
 IntentName = Literal[
+    "CHECK_DATASET_STATUS",
     "EXPLORE_DATA",
     "PREPARE_NORMALIZATION",
     "RECONCILE_DATASETS",
@@ -64,6 +71,40 @@ class NormalizationDraft(Contract):
     entity_kind: str = Field(min_length=1, max_length=100)
     grain: str = Field(min_length=1, max_length=200)
     fields: list[NormalizationField] = Field(min_length=1, max_length=40)
+
+
+class MappingCheck(Contract):
+    field_id: str
+    name: str
+    state: Literal["VERIFIED", "NEEDS_CONFIRMATION", "BLOCKED"]
+    messages: list[str] = Field(default_factory=list)
+    error_counts: dict[str, int] = Field(default_factory=dict)
+    affected_rows: int = 0
+
+
+class RelatedKeyCheck(Contract):
+    table_id: str
+    source_name: str
+    fields: list[str]
+    shared_keys: int
+    left_duplicate_rows: int
+    right_duplicate_rows: int
+    missing_key_rows: int
+
+
+class MappingAssessment(Contract):
+    draft: NormalizationDraft
+    source_rows: int
+    verified_fields: int
+    pending_fields: int
+    checks: list[MappingCheck]
+    questions: list[str]
+    preflight_ready: bool
+    predicted_invalid_rows: int | None = None
+    error_counts: dict[str, int] = Field(default_factory=dict)
+    source_sha256: str
+    currencies: list[str] = Field(default_factory=list)
+    related_keys: list[RelatedKeyCheck] = Field(default_factory=list)
 
 
 class SourceColumn(Contract):
@@ -131,6 +172,10 @@ class ReconciliationSelection(Contract):
     period_start: date | None = None
     period_end: date | None = None
     timezone: str | None = Field(default=None, max_length=100)
+    left_source: PlanningSource | None = None
+    right_source: PlanningSource | None = None
+    effective_from: date | None = None
+    effective_to: date | None = None
 
 
 class RoutingIntent(Contract):
@@ -249,6 +294,7 @@ class ReviewRequest(Contract):
     state: Literal["OPEN", "DECIDED", "INVALIDATED"] = "OPEN"
     expected_effects: list[str]
     normalization_draft: NormalizationDraft | None = None
+    extraction_review_required: bool | None = None
     plan: ReconciliationPlan | None = None
     suggestions: PlanningSuggestions | None = None
     planning_request: PlanningRequest | None = None
@@ -274,6 +320,7 @@ class WorkflowState(Contract):
     reviews: list[ReviewRequest] = Field(default_factory=list, max_length=10)
     blocks: list[ResultBlock] = Field(default_factory=list, max_length=30)
     model_calls: int = 0
+    model_choice: ModelChoice | None = None
     error_code: str | None = None
     confirmed_mapping_ids: list[str] = Field(default_factory=list, max_length=10)
     confirmed_contract_id: str | None = None
@@ -308,6 +355,7 @@ class MappingReviewDecision(Contract):
 class PlanReviewDecision(Contract):
     type: Literal["RECONCILIATION"]
     plan: ReconciliationPlan
+    invalid_rows_reviewed: bool = False
 
 
 class ClarificationDecision(Contract):
@@ -315,21 +363,28 @@ class ClarificationDecision(Contract):
     intent: AgentIntent
 
 
-class ReviewDecision(Contract):
+class ReviewToken(Contract):
     review_id: Identifier
     nonce: str = Field(min_length=16, max_length=64)
     fingerprint: str = Field(pattern="^[a-f0-9]{64}$")
+
+
+class ReviewDecision(ReviewToken):
     decision: Annotated[
         MappingReviewDecision | PlanReviewDecision | ClarificationDecision,
         Field(discriminator="type"),
     ]
 
 
-class ReviewReply(Contract):
-    review_id: Identifier
-    nonce: str = Field(min_length=16, max_length=64)
-    fingerprint: str = Field(pattern="^[a-f0-9]{64}$")
+class ReviewDraftUpdate(ReviewToken):
+    draft: NormalizationDraft | None = None
+    plan: ReconciliationPlan | None = None
+    planning_request: PlanningRequest | None = None
+
+
+class ReviewReply(ReviewToken):
     text: str = Field(min_length=1, max_length=2000)
+    model_choice: ModelChoice | None = None
 
 
 class ReviewInterpretation(Contract):
@@ -338,4 +393,6 @@ class ReviewInterpretation(Contract):
     draft: NormalizationDraft | None = None
     plan: ReconciliationPlan | None = None
     intent: AgentIntent | None = None
+    planning_request: PlanningRequest | None = None
+    suggestions: PlanningSuggestions | None = None
     questions: list[str] = Field(default_factory=list, max_length=5)

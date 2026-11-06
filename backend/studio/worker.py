@@ -97,6 +97,47 @@ def claim_job(db: Session) -> tuple[str, str] | None:
     if job.attempts >= 3:
         job.status, job.error_code = "FAILED", "JOB_RETRY_EXHAUSTED"
         job.claim_token = None
+        job.lease_until = None
+        if job.kind == "parse":
+            dataset = db.get(DatasetRow, job.payload["dataset_id"])
+            if dataset:
+                dataset.status = "FAILED"
+        elif job.kind == "reconcile":
+            from studio.database import RunRow
+
+            run = db.get(RunRow, job.payload["run_id"])
+            if run and run.metric_snapshot is None:
+                run.status = "BLOCKED"
+        from studio.agent_jobs import persist_request_failure
+        from studio.agent_workflows import notify_job_finished, save
+        from studio.contracts.agent import WorkflowState
+        from studio.database import AgentWorkflowRow
+
+        notify_job_finished(db, job)
+        row = db.scalar(
+            select(AgentWorkflowRow)
+            .where(
+                AgentWorkflowRow.parent_job_id == job.id
+                if job.kind == "agent"
+                else AgentWorkflowRow.id == job.payload.get("workflow_id", "")
+            )
+            .with_for_update()
+        )
+        if row and row.state not in {"COMPLETED", "CANCELLED_BEFORE_NEXT_STEP"}:
+            state = WorkflowState.model_validate(row.detail)
+            state.error_code = job.error_code
+            if job.kind == "agent_review":
+                for review in state.reviews:
+                    if review.pending_reply_job_id == job.id:
+                        review.pending_reply_job_id = None
+                        review.reply_questions = [
+                            "Chưa đọc được câu trả lời sau các lần phục hồi. "
+                            "Hãy kiểm tra thông tin trước khi tiếp tục."
+                        ]
+            else:
+                row.state = "FAILED"
+            save(row, state)
+        persist_request_failure(db, job)
         db.commit()
         return None
     job.status, job.attempts = "RUNNING", job.attempts + 1
@@ -673,6 +714,7 @@ def process_job(job_id: str, token: str) -> None:
                 if run is not None and run.metric_snapshot is None:
                     run.status = "BLOCKED"
             if job.status in {"FAILED", "BLOCKED"}:
+                from studio.agent_jobs import persist_request_failure
                 from studio.agent_workflows import notify_job_finished, save
                 from studio.contracts.agent import WorkflowState
                 from studio.database import AgentWorkflowRow
@@ -706,8 +748,9 @@ def process_job(job_id: str, token: str) -> None:
                     if row and row.state != "CANCELLED_BEFORE_NEXT_STEP":
                         state = WorkflowState.model_validate(row.detail)
                         state.error_code = code
-                        row.state = "BLOCKED"
+                        row.state = "FAILED" if code == "WORKER_INTERNAL_ERROR" else "BLOCKED"
                         save(row, state)
+                persist_request_failure(db, job)
             db.commit()
 
 

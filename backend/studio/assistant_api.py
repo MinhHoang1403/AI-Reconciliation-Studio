@@ -10,10 +10,14 @@ from sqlalchemy import and_, delete, or_, select, text
 from sqlalchemy.orm import Session
 
 from studio.access import Actor
+from studio.ai_gateway import OllamaProvider, require_local_model, route_ai_task
 from studio.assistant_tools import read_tool, scoped_context
+from studio.config import ModelChoice, settings
+from studio.contracts import WorkspacePolicy
 from studio.contracts.assistant import (
     AssistantAnswer,
     AssistantContext,
+    AssistantModelOption,
     ConversationInput,
     ConversationView,
     Identifier,
@@ -22,9 +26,36 @@ from studio.contracts.assistant import (
     ToolRequest,
     ToolResult,
 )
-from studio.database import AgentWorkflowRow, AuditRow, ConversationRow, JobRow, MessageRow, now
+from studio.database import (
+    AgentWorkflowRow,
+    AuditRow,
+    ConversationRow,
+    JobRow,
+    MessageRow,
+    TraceRow,
+    WorkspaceRow,
+    now,
+)
 from studio.errors import DomainError
 from studio.repository import enqueue_job, get_scoped
+
+
+def check_model_choice(
+    db: Session, actor: Actor, choice: ModelChoice | None, *, legacy: bool = False
+) -> None:
+    if choice is None:
+        return
+    if choice != "GEMINI":
+        require_local_model(settings, choice)
+        return
+    workspace = db.get(WorkspaceRow, actor.workspace_id)
+    assert workspace is not None
+    policy = WorkspacePolicy.model_validate(workspace.policy)
+    enabled = settings.assistant_cloud_enabled if legacy else settings.agent_cloud_enabled
+    if not enabled or not settings.allow_external_ai or route_ai_task(policy) != "GEMINI":
+        raise DomainError("CLOUD_AI_DISABLED", "AI đám mây chưa được cấp phép.", 403)
+    if not settings.gemini_api_key.get_secret_value():
+        raise DomainError("GEMINI_KEY_MISSING", "Gemini chưa được cấu hình.", 409)
 
 
 def own_conversation(db: Session, actor: Actor, ident: str) -> ConversationRow:
@@ -50,6 +81,73 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     DB = Annotated[Session, Depends(database)]
     User = Annotated[Actor, Depends(current_actor)]
     Key = Annotated[str, Header(min_length=1, max_length=160, alias="Idempotency-Key")]
+
+    @router.get("/assistant/models", response_model=list[AssistantModelOption])
+    def models(
+        db: DB, actor: User, project_id: Identifier | None = None
+    ) -> list[AssistantModelOption]:
+        if project_id:
+            scoped_context(db, actor, AssistantContext(project_id=project_id))
+        gemini = AssistantModelOption(
+            id="GEMINI", label="Gemini", available=True, status="UNVERIFIED"
+        )
+        try:
+            check_model_choice(db, actor, "GEMINI")
+        except DomainError as exc:
+            gemini.available = False
+            gemini.status = "NOT_CONFIGURED" if exc.code == "GEMINI_KEY_MISSING" else "NOT_ALLOWED"
+        options = [gemini]
+        local_digest = None
+        if settings.local_demo_access and settings.ollama_url:
+            choice = settings.ollama_choice
+            local = AssistantModelOption(
+                id=choice,
+                label="Qwen 8B" if choice == "QWEN_8B" else "Qwen 27B",
+                available=True,
+                status="UNVERIFIED",
+            )
+            adapter = OllamaProvider(settings, choice)
+            try:
+                local_digest = adapter.installed_digest()
+            except DomainError as exc:
+                local.available = False
+                local.status = (
+                    "NOT_CONFIGURED" if exc.code == "OLLAMA_MODEL_MISSING" else "UNAVAILABLE"
+                )
+            finally:
+                adapter.close()
+            options.append(local)
+        for option in options:
+            option.preferred = option.id == settings.assistant_default_model
+            if not option.available:
+                continue
+            conditions = (
+                TraceRow.usage["model"].astext == settings.gemini_model
+                if option.id == "GEMINI"
+                else TraceRow.usage["digest"].astext == local_digest
+            )
+            trace = db.scalar(
+                select(TraceRow)
+                .where(
+                    TraceRow.workspace_id == actor.workspace_id,
+                    TraceRow.provider == ("GEMINI" if option.id == "GEMINI" else "OLLAMA"),
+                    conditions,
+                )
+                .join(JobRow, JobRow.id == TraceRow.job_id)
+                .order_by(JobRow.created_at.desc(), JobRow.id.desc())
+                .limit(1)
+            )
+            if (
+                option.id == "GEMINI"
+                and trace
+                and trace.outcome in {"VALIDATED", "VALIDATED_PROPOSAL"}
+            ):
+                option.status = "READY"
+            elif trace and trace.usage.get("http_status") == 429:
+                option.status = "LIMITED"
+            elif trace and trace.outcome in {"OLLAMA_UNAVAILABLE", "GEMINI_UNAVAILABLE"}:
+                option.status = "UNAVAILABLE"
+        return options
 
     @router.post("/assistant/tools", response_model=ToolResult)
     def tool(body: ToolRequest, db: DB, actor: User) -> ToolResult:
@@ -148,6 +246,17 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             )
         )
 
+        jobs_by_id = {
+            j.id: j
+            for j in db.scalars(
+                select(JobRow).where(
+                    JobRow.id.in_([r.job_id for r in rows]),
+                    JobRow.workspace_id == actor.workspace_id,
+                    JobRow.project_id == conversation.project_id,
+                )
+            )
+        }
+
         def workflow_for_message(message: MessageRow) -> str | None:
             job = db.get(JobRow, message.job_id)
             condition = AgentWorkflowRow.parent_job_id == message.job_id
@@ -174,6 +283,9 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                     context=AssistantContext.model_validate(r.context),
                     answer=AssistantAnswer.model_validate(r.answer) if r.answer else None,
                     workflow_id=workflow_for_message(r),
+                    job_status=jobs_by_id[r.job_id].status,
+                    error_code=jobs_by_id[r.job_id].error_code,
+                    model_choice=jobs_by_id[r.job_id].payload.get("model_choice"),
                     created_at=r.created_at,
                 )
                 for r in reversed(rows[:limit])
@@ -209,6 +321,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         ident = str(uuid5(NAMESPACE_URL, f"message:{actor.workspace_id}:{actor.id}:{key}"))
         existing = db.get(MessageRow, ident)
         if existing is None:
+            check_model_choice(db, actor, body.model_choice, legacy=body.mode == "LEGACY")
             pending = db.scalar(
                 select(JobRow.id)
                 .where(
@@ -240,7 +353,8 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                 dict(dataset_ids=body.dataset_ids, command=body.command)
                 if body.mode == "AGENT"
                 else {}
-            ),
+            )
+            | ({"model_choice": body.model_choice} if body.model_choice else {}),
         )
         if existing is None:
             db.add(

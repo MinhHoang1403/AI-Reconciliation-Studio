@@ -46,7 +46,7 @@ class MappingStatus(StrEnum):
 class WorkspacePolicy(Contract):
     mode: Literal["LOCAL_ONLY", "CLOUD_ALLOWED"] = "LOCAL_ONLY"
     allow_external_ai: bool = False
-    external_request_budget: int = Field(default=0, ge=0)
+    external_request_budget: int | None = Field(default=0, ge=0)
     allow_cloud_parsing: bool = False
     parser_request_budget: int = Field(default=0, ge=0)
     parser_allowed_sha256: list[Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]] = Field(
@@ -155,6 +155,7 @@ class ColumnProfile(Contract):
     samples: list[str | None]
     evidence_ids: list[str]
     identifier_candidate: bool
+    observations: dict[str, int | str | list[str] | dict[str, int]] = Field(default_factory=dict)
 
 
 class DatasetProfile(Contract):

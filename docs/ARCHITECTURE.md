@@ -1,5 +1,19 @@
 # Kiến trúc ứng dụng
 
+**Bổ sung06/11/2026 — hardening đang nghiệm thu:** sửa parser có revision riêng; review từng phần được kiểm kiểu trước hợp nhất rồi tái kiểm source ở bước công bố. Draft-save/renew và đọc review theo bảng dùng `AgentWorkflowRow` hiện có, cùng owner/source locks/nonce/fingerprint; không thêm bảng, service hoặc bộ compiler. Receipt duyệt thủ công dùng audit và advisory transaction lock hiện có. Preview plan được lắp từ PlanningRequest và PlanningSuggestions tại một hàm dùng chung, sau đó vẫn qua validator nghiệp vụ. Các phép tính tài chính, Matcher và Verifier giữ nguyên. Trạng thái kiểm chứng hiện hành ở báo cáo triển khai; không đồng nhất bổ sung code với nghiệm thu sản phẩm toàn bộ.
+
+| Ranh giới audit | Module và bằng chứng kiểm tra |
+| --- | --- |
+| Tải, lưu, đọc nguồn | `access`, `api`, `storage`, `parsing`, `document_parser`, `worker`. Kiểm scope, định dạng, giới hạn, checksum và vị trí nguồn; replay CSV/XLSX và bằng chứng tài liệu đã lưu |
+| Profile, ánh xạ, chuẩn hóa | `profiling`, `mapping_verification`, `schema_mapping`, `normalization`, `date_parsing`. Kiểm lỗi/null/zero, khóa, tiền tệ, ngày, tiền Decimal, revision và artifact; đối chiếu 5.487 dòng TEST với đáp án độc lập |
+| Quy tắc, đối soát, kiểm chứng | `reconciliation_*`, `verification`, `data_query`. Kiểm canonical revision, coverage, cardinality, tổng có dấu, nguồn và run; kiểm đối chiếu oracle và hồi quy nhiều ngành |
+| Hội thoại và AI | `assistant_*`, `agent_*`, `ai_gateway`. Kiểm loại tool theo intent, ID nguồn, review, scope, trạng thái lỗi, model bind và giữ ledger khi lần gửi chưa rõ |
+| Trình duyệt và vận hành | `App`, `AssistantStudio`, `ReviewCard`, `MappingStudio`, `navigation`, Docker và tools. Kiểm focus, resize, reload, dữ liệu trong hai màn hình, health, backup và rollback |
+
+**Bổ sung05/11/2026 — ngày và Smart Mapping:** mở rộng profiler/Agent/compiler hiện có. `date_parsing` kiểm quy tắc ngày và timezone trước lặp dòng, alias hiển thị hữu hạn, DST/offset không bị bỏ qua. `mapping_verification` tái sử dụng compiler và normalization trong bộ nhớ để kiểm toàn bảng; không có engine chuẩn hóa thứ hai, approval giả được lưu hoặc artifact preview được công bố. Hai endpoint preflight cùng auth/scope/checksum; approval kiểm lại nguyên tử. Metadata mới additive trên DTO/JSON, không migration. Review thu gọn và phản hồi preflight được bind với đúng draft, request cũ abort khi sửa/rời màn hình. Giữ ngày là timestamp theo contract đã duyệt; field tiền đơn currency được giải thích rõ khi nguồn có nhiều tiền tệ. Docker build kiểm IANA UTC/Việt Nam/New York; image hiện tại đã có CSDL hệ thống, thiếu gói Python tzdata không tự chứng minh thiếu timezone.
+
+**Bổ sung04/11/2026 — product polish:** request ceilings local có kiểu nullable, audit và quyền cloud độc lập; per-attempt receipts giữ token/status/latency/model, delivery chưa rõ không resend. Routing27 giữ source/effective facts vào PlanningRequest, không suy coverage từ kỳ; reuse từ chối facts mâu thuẫn. Chat nền trắng, menu tin nhắn dùng grid thay float; preview10dòng và chi tiết cùng query, pagination/source provenance không đổi. Backend/Worker phải build lại vì source đã đổi trong nhiệm vụ này; các mốc giữDAC bên dưới là lịch sử, không là runtime hiện tại. Matcher/Verifier/Decimal/storage/approvals không đổi.
+
 Data Foundation và Reconciliation đã nghiệm thu theo [kế hoạch](PROJECT_PLAN.md). Assistant đã hợp nhất main tiêu thụ các contracts hiện có; không viết lại engine hay verifier. Bằng chứng, giới hạn và trạng thái release hiện hành tại [báo cáo triển khai](IMPLEMENTATION_STATUS.md).
 
 ## Contextual Assistant
@@ -22,7 +36,7 @@ Xóa hội thoại yêu cầu đúng actor và CSRF/Origin: xóa nội dung mess
 
 Workflow ngôn ngữ là đề xuất review, không là tool ghi. UI chọn hai hoặc ba nguồn READY, mẫu đã duyệt, kỳ/coverage và snapshot time cụ thể; ba nguồn tạo hai cặp theo rule, không JOIN ba nguồn. API reuse cũ kiểm signatures/semantics/effective dates và idempotency, trả PROPOSED. Người dùng mở kế hoạch, kiểm tra lại điều kiện, lưu và duyệt qua workflow Đối soát hiện có rồi mới chạy. Danh sách bản nháp có phân trang lấy từ PlanRow hiện có, chỉ của actor/project; không thêm workflow store. Shortlist trong câu trả lời không thay danh sách đầy đủ các mẫu đã duyệt hay kiểm quyền backend.
 
-Migration `create_conversations` không đổi migrations cũ/runs/artifacts; downgrade từ chối bỏ hội thoại đã lưu. Rollback image main dùng override đã kiểm compatibility, bỏ riêng bước Alembic startup cũ vốn không biết revision mới; không downgrade DB. Backup drill dùng transaction snapshot, metadata phản chiếu schema hiện tại và published-file checksums; restore vào schema UUID trong PostgreSQL hiện có, đối chiếu toàn bộ metadata/hội thoại/quotas và từng file. Xem lệnh vận hành, copy backup ra host và giới hạn production tại [README](../README.md).
+Migration `create_conversations` không đổi migrations cũ/runs/artifacts; downgrade từ chối bỏ hội thoại đã lưu. Rollback image main dùng override đã kiểm compatibility, bỏ riêng bước Alembic startup cũ vốn không biết revision mới; không downgrade DB. Backup drill dùng transaction snapshot, metadata phản chiếu schema hiện tại và published-file checksums; restore vào schema UUID trong PostgreSQL hiện có, đối chiếu toàn bộ metadata/hội thoại/quotas và từng file. Xem lệnh vận hành, copy backup ra host và giới hạn production tại [hướng dẫn kiểm thử và khôi phục](TESTING_GUIDE.md#quy-trình-kiểm-thử-và-khôi-phục-hiện-hành).
 
 ## Thành phần đang chạy
 

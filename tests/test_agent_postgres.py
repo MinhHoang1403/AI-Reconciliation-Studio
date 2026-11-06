@@ -107,6 +107,66 @@ def workflow_for(client, factory, jid):
     return response.json()
 
 
+def test_model_selection_pins_jobs_and_local_never_reserves_cloud(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+    from studio.config import settings
+    from studio.database import TraceRow
+
+    client, factory, worker = pg
+    context = dict(project_id=project(client))
+    cid = conversation(client, context)
+    monkeypatch.setattr(settings, "local_demo_access", True)
+    monkeypatch.setattr(settings, "ollama_url", "http://host.docker.internal:11434")
+    monkeypatch.setattr(settings, "allow_external_ai", False)
+    choices = []
+
+    class FakeLocalProvider:
+        usage = {"cloud_requests": 0, "model": "qwen3:8b"}
+
+        def close(self):
+            pass
+
+    def provider(_config, choice):
+        choices.append(choice)
+        return FakeLocalProvider()
+
+    def interpret(_provider, _goals, _catalogue, _policy, reserve):
+        assert reserve()
+        assert not reserve()
+        return [AgentIntent(intent="CLARIFY", questions=["Bạn cần xem nguồn nào?"])]
+
+    monkeypatch.setattr(agents, "typed_provider", provider)
+    monkeypatch.setattr(agents, "interpret_requests", interpret)
+    body = dict(conversation_id=cid, context=context, mode="AGENT", text="Tra cứu thông tin")
+    headers = {"Idempotency-Key": "local-pinned"}
+    first = client.post(
+        "/api/assistant/messages", json=body | {"model_choice": "QWEN_8B"}, headers=headers
+    )
+    assert first.status_code == 202
+    job_id = first.json()["job_id"]
+    mismatch = client.post(
+        "/api/assistant/messages", json=body | {"model_choice": "GEMINI"}, headers=headers
+    )
+    assert mismatch.status_code == 409
+    blocked = client.post(
+        "/api/assistant/messages",
+        json=body | {"model_choice": "GEMINI"},
+        headers={"Idempotency-Key": "cloud-blocked"},
+    )
+    assert blocked.status_code == 403
+    drain(factory, worker)
+    result = workflow_for(client, factory, job_id)
+    assert result["detail"]["model_choice"] == "QWEN_8B"
+    assert result["detail"]["model_calls"] == 1 and result["state"] == "WAITING_REVIEW"
+    assert choices == ["QWEN_8B"]
+    with factory() as db:
+        assert not db.scalar(
+            select(AuditRow.id).where(AuditRow.action == "GEMINI_REQUEST_RESERVED")
+        )
+        local = db.scalar(select(TraceRow).where(TraceRow.provider == "OLLAMA"))
+        assert local and local.usage["cloud_requests"] == 0
+
+
 def test_explicit_auto_approval_request_is_refused_before_model_or_tools(pg, monkeypatch):  # noqa: F811
     import studio.agent_jobs as agents
 
@@ -398,29 +458,46 @@ def test_displayed_page_changed_during_inference_never_explains_a_different_grou
     assert not result["detail"]["blocks"] and result["context"]["group_id"] is None
 
 
-def mapping_fixture(pg, monkeypatch):  # noqa: F811
+def mapping_fixture(pg, monkeypatch, *, second_source_error=False):  # noqa: F811
     import studio.agent_jobs as agents
 
     client, factory, worker = pg
     pid = project(client)
-    result = client.post(
-        "/api/datasets/uploads",
-        data=dict(project_id=pid, request_ai_mapping="false"),
-        files=[
+    files = [
+        (
+            "files",
+            (
+                "synthetic.csv",
+                b"id,amount,date\n000701,25.00,2026-10-01\n000702,12.75,2026-10-02\n",
+                "text/csv",
+            ),
+        )
+    ]
+    if second_source_error:
+        files.append(
             (
                 "files",
                 (
-                    "synthetic.csv",
-                    b"id,amount,date\n000701,25.00,2026-10-01\n000702,12.75,2026-10-02\n",
+                    "synthetic-second.csv",
+                    b"id,amount,date\n000801,25.00,2026-10-01\n000802,12.75,2026-10-02\n",
                     "text/csv",
                 ),
             )
-        ],
+        )
+    result = client.post(
+        "/api/datasets/uploads",
+        data=dict(project_id=pid, request_ai_mapping="false"),
+        files=files,
     )
     assert result.status_code == 202, result.text
     drain(factory, worker)
 
-    def mock_draft(provider, table_id, profile, policy, reserve):
+    calls = []
+
+    def mock_draft(provider, table_id, profile, policy, reserve, context=None):
+        calls.append(table_id)
+        if second_source_error and len(calls) > 1:
+            raise DomainError("OLLAMA_UNAVAILABLE", "Provider mock timeout", 503)
         return NormalizationDraft.model_validate(
             dict(
                 table_id=table_id,
@@ -466,13 +543,22 @@ def mapping_fixture(pg, monkeypatch):  # noqa: F811
     wf = workflow_for(client, factory, queued["job_id"])
     assert wf["state"] == "WAITING_REVIEW", wf
     review = wf["detail"]["reviews"][0]
-    assert review["resource_label"].startswith("synthetic.csv")
+    assert review["resource_label"].startswith("synthetic")
     body = dict(
         review_id=review["id"],
         nonce=review["nonce"],
         fingerprint=review["fingerprint"],
-        decision=dict(type="MAPPING", draft=review["normalization_draft"]),
+        decision=dict(type="MAPPING", draft=review["normalization_draft"].copy()),
     )
+    # Quy ước được người vận hành TEST xác nhận; không coi timezone/basis từ model là bằng chứng.
+    from copy import deepcopy
+
+    body["decision"]["draft"] = deepcopy(body["decision"]["draft"])
+    for field in body["decision"]["draft"]["fields"]:
+        if field["data_type"] == "date":
+            field["timezone"] = "UTC"
+        if field["data_type"] == "decimal":
+            field["amount_basis"] = "gross"
     return wf, body
 
 
@@ -528,6 +614,30 @@ def test_agent_mock_mapping_review_atomic_resume_reopen_idempotency(pg, monkeypa
         ).status_code
         == 409
     )
+
+
+def test_mapping_timeout_keeps_earlier_review_usable_without_resend(pg, monkeypatch):  # noqa: F811
+    client, factory, worker = pg
+    workflow, approval = mapping_fixture(pg, monkeypatch, second_source_error=True)
+    assert workflow["detail"]["error_code"] == "OLLAMA_UNAVAILABLE"
+    assert len(workflow["detail"]["reviews"]) == 1
+    path = f"/api/agent/workflows/{workflow['id']}"
+    response = client.post(
+        path + "/decisions", json=approval, headers={"Idempotency-Key": "partial"}
+    )
+    assert response.status_code == 200, response.text
+    drain(factory, worker)
+    final = client.get(path).json()
+    assert final["state"] == "PARTIAL"
+    assert final["detail"]["reviews"][0]["state"] == "DECIDED"
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 1
+        assert (
+            db.scalar(
+                select(func.count()).select_from(JobRow).where(JobRow.kind == "agent_prepare")
+            )
+            == 2
+        )
 
 
 @pytest.mark.parametrize("reason", ["nonce", "expiry", "revision", "viewer", "cancel"])
@@ -714,7 +824,12 @@ def test_agent_attachment_invalid_input_rolls_back_bootstrap(pg):  # noqa: F811
         assert db.scalar(select(func.count()).select_from(ProjectRow)) == 0
 
 
-def test_agent_mock_new_rule_requires_review_before_real_verified_run(pg, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("partial_source", [False, True])
+def test_agent_mock_new_rule_requires_review_before_real_verified_run(
+    pg,  # noqa: F811
+    monkeypatch,
+    partial_source,
+):
     from datetime import date
 
     import studio.agent_jobs as agents
@@ -725,6 +840,11 @@ def test_agent_mock_new_rule_requires_review_before_real_verified_run(pg, monkey
     client, factory, worker = pg
     pid, plan, _, first = create_approved_run(pg)
     drain(factory, worker)
+    if partial_source:
+        with factory() as db:
+            source = db.get(CanonicalRow, plan.left.canonical_id)
+            source.contract = dict(source.contract, quality_status="PARTIAL")
+            db.commit()
     revised = plan.model_copy(update={"period_end": date(2026, 10, 15)})
     request = PlanningRequest.from_plan(revised)
     monkeypatch.setattr(
@@ -752,6 +872,11 @@ def test_agent_mock_new_rule_requires_review_before_real_verified_run(pg, monkey
         decision=dict(type="RECONCILIATION", plan=review["plan"]),
     )
     path = f"/api/agent/workflows/{wf['id']}/decisions"
+    if partial_source:
+        blocked = client.post(path, json=decision, headers={"Idempotency-Key": "missing-review"})
+        assert blocked.status_code == 422
+        assert blocked.json()["code"] == "INVALID_ROWS_REVIEW_REQUIRED"
+        decision["decision"]["invalid_rows_reviewed"] = True
     accepted = client.post(path, json=decision, headers={"Idempotency-Key": "approve-period"})
     assert accepted.status_code == 200, accepted.text
     drain(factory, worker)
@@ -859,7 +984,8 @@ def test_agent_mock_exact_key_explanation_preserves_zero_prefix_and_evidence(pg,
                 )
 
 
-def test_agent_durable_unknown_delivery_reserves_once_and_never_resends(pg, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("ceiling", [2, None])
+def test_agent_durable_unknown_delivery_reserves_once_and_never_resends(pg, monkeypatch, ceiling):  # noqa: F811
     import studio.agent_jobs as agents
     from pydantic import SecretStr
     from studio.config import settings
@@ -870,12 +996,12 @@ def test_agent_durable_unknown_delivery_reserves_once_and_never_resends(pg, monk
     pid = project(client)
     monkeypatch.setattr(settings, "allow_external_ai", True)
     monkeypatch.setattr(settings, "gemini_api_key", SecretStr("synthetic-test-only"))
-    monkeypatch.setattr(settings, "external_ai_request_budget", 2)
+    monkeypatch.setattr(settings, "external_ai_request_budget", ceiling)
     monkeypatch.setattr(settings, "agent_cloud_enabled", True)
-    monkeypatch.setattr(settings, "agent_request_budget", 2)
+    monkeypatch.setattr(settings, "agent_request_budget", ceiling)
     with factory() as db:
         db.get(WorkspaceRow, "demo").policy = WorkspacePolicy(
-            mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=2
+            mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=ceiling
         ).model_dump(mode="json")
         db.commit()
     calls = []
@@ -918,7 +1044,7 @@ def test_agent_durable_unknown_delivery_reserves_once_and_never_resends(pg, monk
         )
 
 
-@pytest.mark.parametrize("answer", ["complete", "ambiguous", "wrong-source"])
+@pytest.mark.parametrize("answer", ["complete", "partial", "ambiguous", "wrong-source"])
 def test_agent_review_natural_reply_is_bound_preview_never_auto_approval(pg, monkeypatch, answer):  # noqa: F811
     import studio.agent_jobs as agents
     from studio.contracts.agent import ReviewInterpretation
@@ -936,7 +1062,10 @@ def test_agent_review_natural_reply_is_bound_preview_never_auto_approval(pg, mon
         lambda *args: (
             ReviewInterpretation(questions=["Bạn muốn gross hay net?"])
             if answer == "ambiguous"
-            else ReviewInterpretation(draft=candidate)
+            else ReviewInterpretation(
+                draft=candidate,
+                questions=["Múi giờ nào?"] if answer == "partial" else [],
+            )
         ),
     )
     body = dict(
@@ -964,7 +1093,9 @@ def test_agent_review_natural_reply_is_bound_preview_never_auto_approval(pg, mon
     review = current["detail"]["reviews"][0]
     assert review["state"] == "OPEN" and review["pending_reply_job_id"] is None
     messages = client.get(f"/api/conversations/{wf['conversation_id']}").json()["items"]
-    assert messages[-2 if answer != "wrong-source" else -1]["text"] == body["text"]
+    assert messages[-2]["text"] == body["text"]
+    if answer == "wrong-source":
+        assert messages[-1]["role"] == "assistant" and messages[-1]["error_code"]
     if answer != "wrong-source":
         assert messages[-1]["role"] == "assistant" and messages[-1]["answer"] is None
         assert "xác nhận" in messages[-1]["text"]
@@ -992,6 +1123,8 @@ def test_agent_review_natural_reply_is_bound_preview_never_auto_approval(pg, mon
         assert review["normalization_draft"] == original["normalization_draft"]
     else:
         assert review["normalization_draft"]["fields"][1]["amount_basis"] == "net"
+        if answer == "partial":
+            assert review["reply_questions"] == ["Múi giờ nào?"]
         assert (
             client.post(
                 path + "/decisions",
@@ -1006,6 +1139,10 @@ def test_agent_review_natural_reply_is_bound_preview_never_auto_approval(pg, mon
             fingerprint=review["fingerprint"],
             decision=dict(type="MAPPING", draft=review["normalization_draft"]),
         )
+        # Reply chỉ xác nhận net; người vận hành chọn UTC ở bước quyết định cuối.
+        for field in decision["decision"]["draft"]["fields"]:
+            if field["data_type"] == "date":
+                field["timezone"] = "UTC"
         assert (
             client.post(
                 path + "/decisions",

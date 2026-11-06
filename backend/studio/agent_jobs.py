@@ -16,9 +16,11 @@ from studio.agent_intents import (
     approval_bypass_requested,
     currency_bypass_requested,
     interpret_requests,
+    resolve_attached_normalization,
     resolve_plain_listing,
 )
 from studio.agent_preparation import (
+    LOCAL_PREPARATION_REVISION,
     PREPARATION_REVISION,
     REVIEW_REVISION,
     interpret_review_reply,
@@ -36,10 +38,10 @@ from studio.agent_workflows import (
     save,
     wait_for,
 )
-from studio.ai_gateway import GeminiProvider
+from studio.ai_gateway import typed_provider
 from studio.assistant_api import own_conversation
 from studio.assistant_tools import agent_catalogue
-from studio.config import settings
+from studio.config import request_limit_reached, settings
 from studio.contracts import DatasetProfile, WorkspacePolicy
 from studio.contracts.agent import (
     AgentIntent,
@@ -62,11 +64,54 @@ from studio.database import (
     WorkspaceRow,
     now,
 )
-from studio.errors import DomainError
+from studio.errors import DomainError, request_failure_message
 from studio.repository import get_scoped, project_for_table, reserve_gemini_request
 
 Fence = Callable[[Session, str, str], JobRow]
 Finish = Callable[[Session, JobRow, dict[str, Any]], None]
+
+
+def persist_request_failure(db: Session, job: JobRow) -> None:
+    """Publish one durable terminal reply in the same transaction as job failure.
+
+    The stable response ID and (job, role) constraint make recovery idempotent.
+    Deleted conversations and revoked membership never resurrect private history.
+    """
+    if job.kind not in {"agent", "agent_review", "assistant"}:
+        return
+    message = db.scalar(
+        select(MessageRow).where(MessageRow.job_id == job.id, MessageRow.role == "user")
+    )
+    if message is None or message.job_id != job.id:
+        return
+    conversation = db.get(ConversationRow, message.conversation_id, with_for_update=True)
+    if (
+        conversation is None
+        or conversation.deleted_at
+        or conversation.workspace_id != job.workspace_id
+        or conversation.project_id != job.project_id
+        or (job.payload.get("actor_id") and conversation.actor_id != job.payload["actor_id"])
+        or db.get(MembershipRow, (job.workspace_id, conversation.actor_id)) is None
+    ):
+        return
+    response_id = str(uuid5(NAMESPACE_URL, f"assistant-response:{job.id}"))
+    if (
+        db.scalar(
+            select(MessageRow.id).where(MessageRow.job_id == job.id, MessageRow.role == "assistant")
+        )
+        is None
+    ):
+        db.add(
+            MessageRow(
+                id=response_id,
+                conversation_id=conversation.id,
+                job_id=job.id,
+                role="assistant",
+                text=request_failure_message(job.error_code or ""),
+                context=message.context,
+                answer=None,
+            )
+        )
 
 
 def selection_fingerprint(catalogue: IntentCatalogue) -> str:
@@ -92,7 +137,7 @@ def model_call(
 ) -> Any:
     """Không giữ transaction khi gọi mạng; reserve trước và refence khi công bố."""
     with factory() as db:
-        fence(db, job_id, token)
+        job = fence(db, job_id, token)
         row = db.get(AgentWorkflowRow, workflow_id)
         assert row is not None
         actor = owner(db, row)
@@ -100,19 +145,28 @@ def model_call(
         if workspace is None:
             raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy workspace.", 404)
         policy = WorkspacePolicy.model_validate(workspace.policy)
+        state = WorkflowState.model_validate(row.detail)
+        reply_choice = (
+            ReviewReply.model_validate(job.payload["reply"]).model_choice
+            if job is not None and job.kind == "agent_review"
+            else None
+        )
+        choice = reply_choice or state.model_choice or "GEMINI"
+        cloud = choice == "GEMINI"
+        reservation = "AGENT_REQUEST_RESERVED" if cloud else "AGENT_LOCAL_REQUEST_RESERVED"
         prior = db.scalar(
             select(AuditRow.id).where(
-                AuditRow.action == "AGENT_REQUEST_RESERVED", AuditRow.resource_id == job_id
+                AuditRow.action == reservation, AuditRow.resource_id == job_id
             )
         )
         if prior:
             raise DomainError("AI_DELIVERY_UNKNOWN", "Request đã gửi; không tự gửi lại.", 409)
         workspace_id = actor.workspace_id
-    provider = GeminiProvider(settings)
+    provider = typed_provider(settings, choice)
     started, outcome = time.monotonic(), "VALIDATED"
 
     def reserve() -> bool:
-        if not settings.agent_cloud_enabled or settings.agent_request_budget == 0:
+        if cloud and (not settings.agent_cloud_enabled or settings.agent_request_budget == 0):
             return False
         with factory() as db:
             fence(db, job_id, token)
@@ -122,24 +176,28 @@ def model_call(
             state = WorkflowState.model_validate(row.detail)
             if row.state == "CANCELLED_BEFORE_NEXT_STEP":
                 return False
-            allowed = reserve_gemini_request(db, workspace_id, job_id, settings)
+            if cloud and not reserve_gemini_request(db, workspace_id, job_id, settings):
+                return False
             count = (
-                db.scalar(
-                    select(func.count())
-                    .select_from(AuditRow)
-                    .where(AuditRow.action == "AGENT_REQUEST_RESERVED")
+                (
+                    db.scalar(
+                        select(func.count())
+                        .select_from(AuditRow)
+                        .where(AuditRow.action == "AGENT_REQUEST_RESERVED")
+                    )
+                    or 0
                 )
-                or 0
+                if cloud
+                else 0
             )
             prior = db.scalar(
                 select(AuditRow.id).where(
-                    AuditRow.action == "AGENT_REQUEST_RESERVED", AuditRow.resource_id == job_id
+                    AuditRow.action == reservation, AuditRow.resource_id == job_id
                 )
             )
             if (
-                not allowed
-                or prior
-                or count >= settings.agent_request_budget
+                prior
+                or (cloud and request_limit_reached(count, settings.agent_request_budget))
                 or state.model_calls >= settings.agent_max_model_calls
             ):
                 db.rollback()
@@ -150,7 +208,7 @@ def model_call(
                 AuditRow(
                     workspace_id=workspace_id,
                     actor_id=actor.id,
-                    action="AGENT_REQUEST_RESERVED",
+                    action=reservation,
                     resource_id=job_id,
                 )
             )
@@ -158,7 +216,17 @@ def model_call(
             return True
 
     try:
-        return call(provider, policy, reserve)
+        result = call(provider, policy, reserve)
+        if isinstance(result, ReviewInterpretation):
+            provider.usage["review_shape"] = dict(
+                draft_fields=len(result.draft.fields) if result.draft else 0,
+                has_plan=result.plan is not None,
+                has_planning_request=result.planning_request is not None,
+                has_suggestions=result.suggestions is not None,
+                has_intent=result.intent is not None,
+                question_count=len(result.questions),
+            )
+        return result
     except DomainError as exc:
         outcome = exc.code
         raise
@@ -169,9 +237,13 @@ def model_call(
                 TraceRow(
                     workspace_id=workspace_id,
                     job_id=job_id,
-                    provider="GEMINI",
+                    provider="GEMINI" if cloud else "OLLAMA",
                     task_id=task,
-                    prompt_revision=revision,
+                    prompt_revision=(
+                        LOCAL_PREPARATION_REVISION
+                        if not cloud and task == "prepare_normalization"
+                        else revision
+                    ),
                     usage=provider.usage,
                     latency_ms=int((time.monotonic() - started) * 1000),
                     outcome=outcome,
@@ -195,6 +267,13 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
         }:
             return
         context = AssistantContext.model_validate(row.context)
+        from studio.dataset_status import asks_processing_status
+
+        if asks_processing_status(row.goal):
+            state.intent = AgentIntent(intent="CHECK_DATASET_STATUS", dataset_ids=state.dataset_ids)
+            save(row, state)
+            db.commit()
+            return
         catalogue = agent_catalogue(db, actor, context, state.dataset_ids, workflow_id=row.id)
         expected_selection = selection_fingerprint(catalogue)
         ids = [d.id for d in catalogue.datasets]
@@ -250,6 +329,13 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
             save(row, state)
             db.commit()
             return
+        if state.model_choice in {"QWEN_8B", "QWEN_27B"}:
+            attached = resolve_attached_normalization(goal, catalogue, state.dataset_ids)
+            if attached is not None:
+                state.intent = attached
+                save(row, state)
+                db.commit()
+                return
     try:
         intents = model_call(
             job_id,
@@ -341,7 +427,8 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                     fingerprint=digest(job.payload),
                     state="CREATED",
                     detail=WorkflowState(
-                        dataset_ids=job.payload.get("dataset_ids", [])
+                        dataset_ids=job.payload.get("dataset_ids", []),
+                        model_choice=job.payload.get("model_choice"),
                     ).model_dump(),
                 )
                 db.add(row)
@@ -450,6 +537,56 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 table = get_scoped(db, TableRow, current.resource_id, actor)
                 validate_draft(output.draft, table.id, DatasetProfile.model_validate(table.profile))
                 current.normalization_draft = output.draft
+            if output.planning_request:
+                from studio.reconciliation_contracts import (
+                    validate_planning_suggestions,
+                    validate_reconciliation_contract,
+                )
+                from studio.reconciliation_planner import (
+                    missing_confirmations,
+                    preview_plan,
+                    validate_planning_request,
+                )
+                from studio.reconciliation_repository import selected_catalogue
+
+                expected = current.planning_request
+                supplied = output.planning_request
+                if (
+                    current.kind != "RECONCILIATION"
+                    or not expected
+                    or (supplied.left.canonical_id, supplied.right.canonical_id)
+                    != (expected.left.canonical_id, expected.right.canonical_id)
+                ):
+                    raise DomainError("AI_INVALID_SOURCE", "Không được đổi nguồn đang chờ.")
+                cats = selected_catalogue(
+                    db,
+                    actor,
+                    row.project_id,
+                    [
+                        supplied.left.canonical_id,
+                        supplied.right.canonical_id,
+                    ],
+                )
+                validate_planning_request(supplied, cats, actor.workspace_id, row.project_id)
+                if output.suggestions:
+                    validate_planning_suggestions(output.suggestions, cats)
+                plan_preview = preview_plan(
+                    supplied, output.suggestions, cats[0].canonical.entity_kind, current.plan
+                )
+                if plan_preview:
+                    validate_reconciliation_contract(
+                        plan_preview, cats, actor.workspace_id, row.project_id
+                    )
+                current.planning_request = supplied
+                current.suggestions = output.suggestions
+                current.plan = plan_preview
+                if not plan_preview and not output.questions:
+                    missing = missing_confirmations(supplied)
+                    output.questions = [
+                        "Cần xác nhận thêm phạm vi: " + ", ".join(missing)
+                        if missing
+                        else "Cần hoàn thiện khóa, chỉ tiêu và quan hệ đối soát."
+                    ]
             if output.plan:
                 from studio.reconciliation_contracts import validate_reconciliation_contract
                 from studio.reconciliation_repository import selected_catalogue
@@ -507,12 +644,16 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 output.questions = output.intent.questions
             current.reply_questions = output.questions or (
                 []
-                if any([output.draft, output.plan, output.intent])
+                if any([output.draft, output.plan, output.intent, output.planning_request])
                 else ["Cần thêm thông tin để tiếp tục."]
             )
             current.pending_reply_job_id = None
             current.nonce = secrets.token_hex(16)
             current.expires_at = now() + timedelta(minutes=30)
+            # A successful correction resolves the current reply error; failed
+            # messages/jobs remain immutable history. Unrelated failed steps stay visible.
+            if not any(step.status in {"FAILED", "BLOCKED"} for step in state.steps):
+                state.error_code = None
             if continued:
                 assert output.intent is not None
                 # No business approval: advance still enforces every mapping,
@@ -522,6 +663,8 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                     dict(type="CLARIFICATION", intent=output.intent.model_dump(mode="json"))
                 )
                 state.intent = output.intent
+                if reply.model_choice is not None:
+                    state.model_choice = reply.model_choice
                 state.error_code = None
                 row.state = "RUNNING"
                 db.add(
@@ -585,7 +728,55 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             table = get_scoped(db, TableRow, table_id, actor)
             if project_for_table(db, table).id != row.project_id:
                 raise DomainError("RESOURCE_NOT_FOUND", "Nguồn không thuộc dự án.", 404)
-            profile = DatasetProfile.model_validate(table.profile)
+            import polars as pl
+
+            from studio.contracts import SourceColumn
+            from studio.database import ArtifactRow
+            from studio.profiling import profile_table
+            from studio.storage import checksum, storage_path
+
+            artifact = get_scoped(db, ArtifactRow, table.artifact_id, actor)
+            path = storage_path(settings.storage_root, artifact.storage_key)
+            if checksum(path) != artifact.sha256:
+                raise DomainError("PARSED_CHECKSUM_MISMATCH", "Dữ liệu nguồn không khớp checksum.")
+            profile = profile_table(
+                pl.read_parquet(path),
+                [SourceColumn.model_validate(c) for c in table.parsed_contract["columns"]],
+                table.id,
+                actor.workspace_id,
+                artifact.id,
+            )
+            from studio.database import DatasetRow, MappingRow, SchemaRow, VersionRow
+            from studio.profiling import source_signature
+
+            project = project_for_table(db, table)
+            version = db.get(VersionRow, table.dataset_version_id)
+            assert version is not None  # Bảng và project đã được kiểm scope ở trên.
+            dataset = get_scoped(db, DatasetRow, version.dataset_id, actor)
+            source_label = {"name": dataset.name[:180], "sheet": table.sheet[:120]}
+            patterns = db.scalars(
+                select(MappingRow)
+                .where(
+                    MappingRow.workspace_id == actor.workspace_id,
+                    MappingRow.business_scope == project.business_scope,
+                    MappingRow.signature == source_signature(profile),
+                    MappingRow.status == "APPROVED",
+                )
+                .order_by(MappingRow.created_at.desc())
+                .limit(3)
+            ).all()
+            mapping_context = {
+                "business_scope": project.business_scope[:500],
+                "request": row.goal[:1000],
+                "approved_patterns": [
+                    {
+                        "schema": db.get(SchemaRow, m.schema_id).definition,
+                        "decisions": m.decision["decisions"],
+                    }
+                    for m in patterns
+                    if m.decision
+                ],
+            }
         draft = model_call(
             job_id,
             token,
@@ -595,7 +786,12 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             factory,
             fence,
             lambda provider, policy, reserve: propose_normalization(
-                provider, table_id, profile, policy, reserve
+                provider,
+                table_id,
+                profile,
+                policy,
+                reserve,
+                mapping_context | {"source": source_label} if provider.local else mapping_context,
             ),
         )
         with factory() as db:
@@ -603,6 +799,43 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             row = db.get(AgentWorkflowRow, row_id)
             assert row is not None
             owner(db, row)
+            from studio.mapping_verification import assess_table_mapping
+
+            assessment = assess_table_mapping(db, owner(db, row), draft, enrich=True)
+            draft = assessment.draft
+            from studio.date_parsing import date_format, date_zone
+
+            # Chỉ lấy facts từ mẫu đã duyệt cùng workspace/scope/signature và grain.
+            # Đây vẫn là đề xuất mới, không chuyển approval của nguồn cũ sang nguồn mới.
+            for pattern in mapping_context["approved_patterns"]:
+                previous = pattern["schema"]
+                if previous["grain"] != draft.grain or previous["entity_kind"] != draft.entity_kind:
+                    continue
+                fields = {f["id"]: f for f in previous["fields"]}
+                by_source = {d["source_field"]: d for d in pattern["decisions"]}
+                for field in draft.fields:
+                    decision = by_source.get(field.source_field)
+                    if not decision or decision["candidate_target"] != field.target_id:
+                        continue
+                    transform = decision["transformation_candidate"]
+                    if (
+                        field.data_type == "date"
+                        and transform["op"] == "parse_date"
+                        and field.date_format
+                        and date_format(field.date_format) == date_format(transform["format"])
+                    ):
+                        date_zone(transform["timezone"])
+                        field.timezone = transform["timezone"]
+                    if (
+                        field.data_type == "decimal"
+                        and fields.get(field.target_id, {}).get("data_type") == "decimal"
+                    ):
+                        old = fields[field.target_id]
+                        field.semantic_metric, field.amount_basis = (
+                            old.get("semantic_metric"),
+                            old.get("amount_basis"),
+                        )
+                break
             finish(db, job, {"drafts": [draft.model_dump(mode="json")]})
             db.commit()
         return

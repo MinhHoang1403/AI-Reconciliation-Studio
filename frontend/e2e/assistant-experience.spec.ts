@@ -3,6 +3,34 @@ import {expect} from "@playwright/test";
 import {mkdir} from "node:fs/promises";
 import {createHash} from "node:crypto";
 
+test('[MOCK CONTRACT] single-source context can explicitly return to project data without a write',async({page})=>{
+  const context={project_id:'scope-project',dataset_id:'scope-b'};
+  const conversation={id:'scope-conversation',context,title:'Hội thoại của nguồn B',created_at:'2026-11-05T00:00:00Z',archived:false};
+  const writes:string[]=[];
+  await page.addInitScript(()=>{if(!sessionStorage.getItem('scope-fixture-initialized')){localStorage.setItem('studio.project','scope-project');localStorage.setItem('studio.conversation.scope-project','scope-conversation');sessionStorage.setItem('scope-fixture-initialized','1');}});
+  await page.route('**/api/**',async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(route.request().method()!=='GET')writes.push(path);
+    if(path==='/api/session')return route.fulfill({json:{workspace_id:'test',actor_id:'reader',role:'owner'}});
+    if(path==='/api/settings')return route.fulfill({json:{workspace_name:'TEST scope',agent_cloud_enabled:false,assistant_cloud_enabled:false,policy:{allow_external_ai:false}}});
+    if(path==='/api/projects/scope-project')return route.fulfill({json:{id:context.project_id,name:'TEST scope',business_scope:'Synthetic',classification:'TEST'}});
+    if(path==='/api/datasets/scope-b')return route.fulfill({json:{id:'scope-b',name:'Chứng từ B.xlsx',project_id:context.project_id}});
+    if(path==='/api/conversations')return route.fulfill({json:{items:[conversation],has_more:false}});
+    if(path==='/api/conversations/scope-conversation')return route.fulfill({json:{conversation,items:[],has_more:false}});
+    return route.fulfill({json:{items:[],total:0,has_more:false}});
+  });
+  await page.goto('/#page=assistant&project=scope-project&dataset_id=scope-b');
+  const input=page.getByLabel('Câu hỏi cho AI Assistant',{exact:true});await expect(input).toBeEnabled();
+  await input.fill('Bản nháp riêng của nguồn B');
+  await page.getByRole('button',{name:'Đổi ngữ cảnh phân tích',exact:true}).click();
+  const modal=page.getByRole('dialog',{name:'Đổi ngữ cảnh phân tích',exact:true});await expect(modal).toContainText('Chứng từ B.xlsx');
+  await modal.getByRole('button',{name:'Dùng dữ liệu của dự án',exact:true}).click();await expect(modal).toBeHidden();
+  await expect(page).not.toHaveURL(/dataset_id=/);await expect(input).toHaveValue('');
+  expect(await page.evaluate(()=>Object.values(sessionStorage).includes('Bản nháp riêng của nguồn B'))).toBe(true);
+  await page.reload();await expect(input).toBeEnabled();await expect(page).not.toHaveURL(/dataset_id=/);
+  expect(writes).toEqual([]);
+});
+
 test('[LOCAL] composer reflows an unchanged draft when the viewport narrows and widens',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await page.setViewportSize({width:1440,height:900});await page.goto('/');
@@ -83,12 +111,22 @@ for(const width of [390,768,1366,1440,1920]) {
     const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
     await expect(input).toBeEnabled();
     const form=page.locator('.assistant-composer');
-    const box=await form.boundingBox();expect(box!.height).toBeLessThanOrEqual(64);
     const send=form.getByRole('button',{name:'Gửi câu hỏi',exact:true});
+    const box=await form.boundingBox();
+    const model=form.getByRole('combobox',{name:'Model cho tin nhắn mới',exact:true});
+    if(width===390 && await model.isVisible()){
+      await expect(model.locator('option')).toHaveText(['Gemini 3.5 Flash Lite','Qwen 3:8B']);
+      const inputBox=(await input.boundingBox())!;
+      const modelBox=(await model.boundingBox())!;
+      expect(box!.height).toBeLessThanOrEqual(110);
+      expect(modelBox.y).toBeGreaterThanOrEqual(inputBox.y+inputBox.height);
+      expect(inputBox.width).toBeGreaterThan(box!.width*0.75);
+      await expect(send).toBeInViewport();
+    }else expect(box!.height).toBeLessThanOrEqual(64);
     await expect(send).toHaveText('');await expect(send).toBeDisabled();
     await input.click();
     await expect(page.locator('.app-shell')).toHaveAttribute('data-focus-mode','pointer');
-    expect(await form.evaluate(el=>getComputedStyle(el).borderTopWidth)).toBe('0px');
+    expect(await form.evaluate(el=>getComputedStyle(el).borderTopWidth)).toBe('1px');
     expect(await form.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
     expect(await form.evaluate(el=>getComputedStyle(el).boxShadow)).not.toContain('inset');
     expect(await input.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');

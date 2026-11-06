@@ -159,24 +159,24 @@ def lock_review_sources(db: Session, actor: Actor, review: ReviewRequest) -> Non
         db.refresh(table, with_for_update=True)
     elif review.kind == "RECONCILIATION":
         ids = sorted(set(review.evidence_refs))
-        canonicals = list(
-            db.scalars(
-                select(CanonicalRow)
-                .where(
-                    CanonicalRow.workspace_id == actor.workspace_id,
-                    CanonicalRow.id.in_(ids),
-                )
-                .order_by(CanonicalRow.id)
-                .with_for_update()
-                .execution_options(populate_existing=True)
-            )
+        scoped = select(CanonicalRow).where(
+            CanonicalRow.workspace_id == actor.workspace_id, CanonicalRow.id.in_(ids)
         )
-        tables = sorted({c.source_table_id for c in canonicals})
+        tables = set(db.scalars(scoped.with_only_columns(CanonicalRow.source_table_id)))
+        # Mapping approval holds table locks before marking canonical rows stale.
+        # Take the same order, then refresh canonical state for the fingerprint.
         list(
             db.scalars(
                 select(TableRow)
                 .where(TableRow.id.in_(tables), TableRow.workspace_id == actor.workspace_id)
                 .order_by(TableRow.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        )
+        list(
+            db.scalars(
+                scoped.order_by(CanonicalRow.id)
                 .with_for_update()
                 .execution_options(populate_existing=True)
             )
@@ -227,6 +227,9 @@ def make_review(
         question=question,
         reason=reason,
         normalization_draft=draft,
+        extraction_review_required=bool(table.parsed_contract["warnings"])
+        if kind == "MAPPING"
+        else None,
         expected_effects=[
             "Giữ nguyên dữ liệu gốc và lịch sử.",
             "Chỉ chạy bước tiếp theo sau quyết định hợp lệ.",
@@ -298,9 +301,12 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
     step.status = "SUCCEEDED" if child.status == "SUCCEEDED" else "BLOCKED"
     row.waiting_job_id = None
     if child.status != "SUCCEEDED":
-        row.state = (
-            "PARTIAL" if any(isinstance(b, DatasetBlock) for b in state.blocks) else "BLOCKED"
-        )
+        if child.kind == "agent_prepare" and any(r.state == "OPEN" for r in state.reviews):
+            row.state = "WAITING_REVIEW"
+        else:
+            row.state = (
+                "PARTIAL" if any(isinstance(b, DatasetBlock) for b in state.blocks) else "BLOCKED"
+            )
         state.error_code = child.error_code or "WORKFLOW_STEP_FAILED"
         state.blocks.append(
             ProgressBlock(text="Một bước bị chặn; các kết quả đã lưu vẫn được giữ.")
@@ -329,7 +335,7 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
             kind="RECONCILIATION",
             resource_id=result["plan_id"],
             question="Xác nhận khóa, số tiền, kỳ và phạm vi đối soát.",
-            reason="Rule mới cần quyết định của bạn trước khi chạy.",
+            reason="Quy tắc mới cần bạn kiểm tra và duyệt trước khi đối soát.",
         )
     elif child.kind == "reconcile":
         step.result_id = result["run_id"]
@@ -358,6 +364,65 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
         return
     intent = state.intent
     context = AssistantContext.model_validate(row.context)
+    if intent.intent == "CHECK_DATASET_STATUS":
+        from studio.dataset_status import read_processing_status, status_description
+
+        try:
+            statuses = read_processing_status(
+                db, actor, context, state.dataset_ids or intent.dataset_ids, row.goal
+            )
+        except DomainError as exc:
+            if exc.code != "INPUT_AMBIGUOUS":
+                raise
+            make_review(
+                db,
+                row,
+                state,
+                kind="CLARIFICATION",
+                resource_id=row.id,
+                question=exc.message_vi,
+                reason="Cần chọn đúng nguồn để kiểm tra trạng thái.",
+            )
+            save(row, state)
+            return
+        if not statuses:
+            state.blocks.append(
+                ProgressBlock(
+                    text="Dự án chưa có tệp dữ liệu. Hãy dùng dấu cộng để tải CSV hoặc XLSX."
+                )
+            )
+        elif (
+            not state.dataset_ids
+            and not intent.dataset_ids
+            and not context.dataset_id
+            and len({s.dataset_id for s in statuses}) > 2
+            and any(w in row.goal.lower().split() for w in ["hai", "2", "này", "trên"])
+        ):
+            make_review(
+                db,
+                row,
+                state,
+                kind="CLARIFICATION",
+                resource_id=row.id,
+                question="Bạn muốn kiểm tra nguồn nào? Các tệp trong dự án: "
+                + "; ".join(dict.fromkeys(s.name for s in statuses)),
+                reason="Cần xác định đúng nguồn trước khi trả lời về hai bộ dữ liệu.",
+            )
+            save(row, state)
+            return
+        else:
+            state.blocks.extend(ProgressBlock(text=status_description(s)) for s in statuses)
+            state.blocks.append(
+                ProgressBlock(
+                    text=(
+                        "Đây là trạng thái chuẩn hóa, chưa xác nhận các điều kiện của một q"
+                        "uy tắc đối soát hoặc kết quả đối soát."
+                    )
+                )
+            )
+        row.state = "COMPLETED"
+        save(row, state)
+        return
     catalogue = agent_catalogue(
         db, actor, context, state.dataset_ids or intent.dataset_ids, workflow_id=row.id
     )
@@ -458,6 +523,13 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                 elif not any(r.resource_id == table.table_id for r in state.reviews):
                     waiting_tables.append(table.table_id)
         if waiting_tables:
+            if any(s.tool == "propose_mapping" and s.status == "BLOCKED" for s in state.steps):
+                # Một đề xuất lỗi không hủy thẻ đã tạo. Không tự gửi thêm request AI.
+                row.state = (
+                    "WAITING_REVIEW" if any(r.state == "OPEN" for r in state.reviews) else "PARTIAL"
+                )
+                save(row, state)
+                return
             if len(state.steps) >= settings.agent_max_steps:
                 raise DomainError("AGENT_STEP_LIMIT", "Đã đạt giới hạn bước.")
             if (
@@ -564,11 +636,17 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
             confirmed = p.model_dump(mode="json", exclude_unset=True)
             from studio.reconciliation_planner import missing_confirmations
 
+            partial_source = any(
+                table.canonical_id in {p.left.canonical_id, p.right.canonical_id}
+                and table.canonical_status == "PARTIAL"
+                for dataset in catalogue.datasets
+                for table in dataset.tables
+            )
             matches = []
             for candidate in approved:
                 old = ReconciliationContract.model_validate(candidate.definition)
                 data = old.plan.model_dump(mode="json")
-                if missing_confirmations(p):
+                if partial_source or missing_confirmations(p):
                     continue
                 match = all(
                     all(data[k][f] == v for f, v in value.items())
@@ -603,6 +681,7 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                 actor,
                 PlanAction(name="prepare_reconciliation_plan", context=context, request=p),
                 row.id,
+                model_choice=state.model_choice,
             )
             assert isinstance(ref, JobReference)
             intent.planning_request = p
@@ -691,6 +770,22 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
         row.state = "COMPLETED"
     elif intent.intent in {"EXPLAIN_RESULT", "SUMMARIZE_RESULTS"}:
         context.run_id = intent.run_id or context.run_id
+        if context.run_id is None:
+            make_review(
+                db,
+                row,
+                state,
+                kind="CLARIFICATION",
+                resource_id=row.id,
+                question=(
+                    "Bạn muốn xem kết quả đối soát nào? Hãy chọn một kết quả đã xác min"
+                    "h trong ngữ cảnh. Nếu chưa đối soát, hãy kiểm tra chuẩn hóa nguồn "
+                    "trước."
+                ),
+                reason="Chưa có kết quả đối soát được chọn; không thể đưa ra kết luận tài chính.",
+            )
+            save(row, state)
+            return
         if intent.intent == "SUMMARIZE_RESULTS":
             context.group_id = context.case_id = None
         if intent.result_position is not None:
@@ -789,8 +884,11 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                     row.id,
                 )
                 assert isinstance(result, QueryResult)
+                count = f"{table.row_count:,}".replace(",", ".")
                 state.blocks.append(
-                    ProgressBlock(text=f"{dataset.name} · {table.sheet}: {table.row_count} dòng.")
+                    ProgressBlock(
+                        text=f"Tôi đã đọc {count} dòng từ {dataset.name} · {table.sheet}."
+                    )
                 )
                 state.blocks.append(TableBlock(result=result))
                 tools_used += 1

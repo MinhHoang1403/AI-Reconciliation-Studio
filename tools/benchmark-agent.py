@@ -69,7 +69,27 @@ def score_completed_candidates(candidates, cases, catalogue, ids):
     This never executes or repairs an action. The original batch/job remains BLOCKED.
     Other items use the same production validator independently, not an LLM judge.
     """
-    assert len(candidates) == len(cases)
+    if len(candidates) != len(cases):
+        # No positional attribution is trustworthy after a merged/missing reply.
+        # Keep every requested case in the denominator without inventing an answer.
+        return [
+            dict(
+                id=case["id"],
+                intent_ok=False,
+                source_applicable=case.get("source") is not None,
+                source_ok=False,
+                semantic_applicable=any(
+                    case.get(k) for k in ("key", "aggregate", "filter", "group", "scope", "format")
+                ),
+                semantic_ok=False,
+                tool_ok=False,
+                abstention_ok=False if case.get("negative") else None,
+                validation_error="AI_INVALID_INTENT_COUNT",
+                received_count=len(candidates),
+                expected_count=len(cases),
+            )
+            for case in cases
+        ]
     results = []
     for candidate, case in zip(candidates, cases, strict=True):
         try:
@@ -240,6 +260,13 @@ def main() -> None:
     parser.add_argument("--contexts", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--execute-live", action="store_true")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        choices=range(1, 11),
+        default=10,
+        help="One goal matches the user request; larger batches measure batch routing",
+    )
     parser.add_argument("--suite", choices=["gold", "variants"], default="gold")
     parser.add_argument("--cases", nargs="+", help="Canary IDs; never changes the full gold rubric")
     parser.add_argument("--repair-known", choices=["payment-status-grouping"])
@@ -249,7 +276,7 @@ def main() -> None:
         help="Score known HTTP200/STOP typed candidates per case; keep original failed jobs",
     )
     args = parser.parse_args()
-    assert args.execute_live and settings.agent_cloud_enabled and settings.agent_request_budget > 0
+    assert args.execute_live and settings.agent_cloud_enabled and settings.agent_request_budget != 0
     gold = json.loads(args.gold.read_text(encoding="utf-8"))
     contexts = json.loads(args.contexts.read_text(encoding="utf-8"))
     expected_count, expected_negative = (80, 20) if args.suite == "gold" else (24, 8)
@@ -282,8 +309,8 @@ def main() -> None:
         cases = [
             g for g in gold if g["domain"] == domain and (not args.cases or g["id"] in args.cases)
         ]
-        for offset in range(0, len(cases), 10):
-            subset = cases[offset : offset + 10]
+        for offset in range(0, len(cases), args.batch_size):
+            subset = cases[offset : offset + args.batch_size]
             selection_hash = digest([g["id"] for g in subset])[:12]
             key = f"nl-gold:{INTENT_REVISION}:{version[:12]}:{context_hash[:12]}:{selection_hash}"
             token = str(uuid5(NAMESPACE_URL, key + ":claim"))
@@ -496,6 +523,7 @@ def main() -> None:
     measured = [r for r in results if not r.get("blocked")]
     summary = dict(
         suite=args.suite,
+        batch_size=args.batch_size,
         prompt_revision=INTENT_REVISION,
         stopped_on_block=stopped,
         requested_total=sum(1 for g in gold if not args.cases or g["id"] in args.cases),
@@ -520,6 +548,8 @@ def main() -> None:
         encoding="utf-8",
     )
     print(json.dumps(summary))
+    if stopped:
+        raise SystemExit(2)  # Propagate provider stop to callers; never start the next suite.
 
 
 if __name__ == "__main__":

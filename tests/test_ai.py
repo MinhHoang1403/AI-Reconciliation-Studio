@@ -5,6 +5,7 @@ import httpx
 import pytest
 from studio.ai_gateway import (
     GeminiProvider,
+    OllamaProvider,
     QwenProvider,
     build_evidence_context,
     route_ai_task,
@@ -13,6 +14,67 @@ from studio.ai_gateway import (
 from studio.contracts import MappingStatus, SchemaProposal, WorkspacePolicy
 from studio.document_parser import parse_document
 from studio.errors import DomainError
+
+
+@pytest.mark.parametrize("response_kind", ["valid", "timeout", "incomplete", "remote_tag"])
+def test_local_provider_uses_only_installed_model_and_typed_content(config, response_kind):
+    config.local_demo_access = True
+    config.ollama_url = "http://host.docker.internal:11434"
+    requests = []
+    reservations = []
+    schema = {"type": "object", "properties": {"value": {"type": "string"}}}
+
+    def transport(request):
+        requests.append(request)
+        assert request.url.host == "host.docker.internal"
+        if request.url.path == "/api/tags":
+            model = {"name": "qwen3:8b", "size": 1000, "digest": "a" * 64}
+            if response_kind == "remote_tag":
+                model["remote_model"] = "untrusted"
+            return httpx.Response(200, json={"models": [model]})
+        assert request.url.path == "/api/chat"
+        body = json.loads(request.content)
+        assert body["model"] == "qwen3:8b"
+        assert body["format"] == schema and body["think"] is False
+        assert "x-goog-api-key" not in request.headers
+        if response_kind == "timeout":
+            raise httpx.ReadTimeout("test", request=request)
+        return httpx.Response(
+            200,
+            json={
+                "done": True,
+                "done_reason": "length" if response_kind == "incomplete" else "stop",
+                "message": {"content": '{"value":"ok"}', "thinking": "ignore this"},
+            },
+        )
+
+    def reserve():
+        reservations.append(True)
+        return True
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        provider = OllamaProvider(config, "QWEN_8B", client)
+        prompt = [{"role": "user", "content": "test"}]
+        if response_kind == "valid":
+            result = provider.request_typed(
+                prompt, WorkspacePolicy(), reserve, json.loads, response_schema=schema
+            )
+            assert result == {"value": "ok"}
+        else:
+            errors = {
+                "timeout": "OLLAMA_UNAVAILABLE",
+                "incomplete": "AI_INCOMPLETE_OUTPUT",
+                "remote_tag": "OLLAMA_MODEL_MISSING",
+            }
+            with pytest.raises(DomainError, match=errors[response_kind]):
+                provider.request_typed(
+                    prompt, WorkspacePolicy(), reserve, json.loads, response_schema=schema
+                )
+        assert provider.usage["cloud_requests"] == 0
+        assert len(requests) == (1 if response_kind == "remote_tag" else 2)
+        assert len(reservations) == (0 if response_kind == "remote_tag" else 1)
+        if response_kind == "timeout":
+            assert provider.usage["delivery_unknown"] is True
 
 
 def model_response(body):
@@ -47,7 +109,12 @@ def test_T09_qwen_invalid_json_retry_bounded(config, profile, schema):
 
 @pytest.mark.parametrize(
     "status,expected,count",
-    [(403, "QWEN_ACCESS_DENIED", 1), (500, "QWEN_UNAVAILABLE", 2), (400, "QWEN_HTTP_ERROR", 1)],
+    [
+        (403, "QWEN_ACCESS_DENIED", 1),
+        (429, "QWEN_RATE_LIMITED", 1),
+        (500, "QWEN_UNAVAILABLE", 2),
+        (400, "QWEN_HTTP_ERROR", 1),
+    ],
 )
 def test_qwen_http_contract(status, expected, count, config, profile, schema):
     calls = []
@@ -74,7 +141,7 @@ def test_qwen_timeout_bounded(config, profile, schema):
     with httpx.Client(transport=httpx.MockTransport(transport)) as client:
         with pytest.raises(DomainError, match="QWEN_UNAVAILABLE"):
             QwenProvider(config, client).propose(profile, schema)
-    assert len(calls) == 2
+    assert len(calls) == 1  # Read timeout: delivery is unknown, so never resend blindly.
 
 
 @pytest.mark.parametrize(
@@ -310,7 +377,7 @@ def test_gemini_contract(kind, config, profile, schema):
         else:
             with pytest.raises(DomainError):
                 provider.propose(profile, schema, policy, lambda: kind != "budget")
-    assert len(calls) == (0 if kind in {"missing_key", "budget"} else 2 if kind == "invalid" else 1)
+    assert len(calls) == (0 if kind in {"missing_key", "budget"} else 1)
 
 
 @pytest.mark.parametrize("kind", ["success", "missing_key", "failed", "timeout", "invalid", "http"])
@@ -437,3 +504,95 @@ def test_gemini_schema_error_keeps_only_safe_status_not_provider_message(config)
     assert provider.usage["provider_error_status"] == "INVALID_ARGUMENT"
     assert provider.usage["schema_complexity_rejected"] is True
     assert "Synthetic-private-marker" not in json.dumps(provider.usage)
+
+
+@pytest.mark.parametrize("value", [None, "unlimited", "UNLIMITED"])
+def test_explicit_unlimited_configuration_is_local_only(value):
+    from pydantic import ValidationError
+    from studio.config import Settings, remaining_requests, request_limit_reached
+
+    config = Settings(
+        _env_file=None,
+        local_demo_access=True,
+        external_ai_request_budget=value,
+        agent_request_budget=value,
+        planner_request_budget=value,
+        assistant_request_budget=value,
+    )
+    assert config.external_ai_request_budget is None
+    assert config.agent_request_budget is None
+    assert not request_limit_reached(211, None)
+    assert request_limit_reached(211, 210)
+    assert remaining_requests((None, 211), (None, 184)) is None
+    assert remaining_requests((None, 211), (2, 1)) == 1
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, local_demo_access=False, external_ai_request_budget=value)
+
+
+@pytest.mark.parametrize("error", [None, 403, 429, "timeout", "cloud-off", "missing-key"])
+def test_unlimited_keeps_provider_permissions_receipts_and_bounded_delivery(config, error):
+    from pydantic import SecretStr
+    from studio.ai_gateway import GeminiProvider
+
+    config.local_demo_access = True
+    config.allow_external_ai = error != "cloud-off"
+    config.external_ai_request_budget = None
+    config.gemini_api_key = SecretStr("" if error == "missing-key" else "synthetic-key")
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=None
+    )
+    calls = []
+
+    def transport(request):
+        calls.append(request)
+        if error == "timeout":
+            raise httpx.ReadTimeout("synthetic unknown delivery", request=request)
+        if isinstance(error, int):
+            return httpx.Response(
+                error,
+                json={
+                    "error": {
+                        "status": "PERMISSION_DENIED" if error == 403 else "RESOURCE_EXHAUSTED"
+                    }
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [{"content": {"parts": [{"text": "{}"}]}}],
+                "usageMetadata": {
+                    "promptTokenCount": 9,
+                    "candidatesTokenCount": 3,
+                    "totalTokenCount": 12,
+                },
+            },
+        )
+
+    provider = GeminiProvider(config, httpx.Client(transport=httpx.MockTransport(transport)))
+    try:
+        if error is None:
+            assert (
+                provider.request_typed(
+                    [{"content": "test"}, {"content": "synthetic"}],
+                    policy,
+                    lambda: True,
+                    json.loads,
+                    max_attempts=2,
+                )
+                == {}
+            )
+            assert provider.usage["tokens"]["totalTokenCount"] == 12
+            assert provider.usage["attempts"][0]["tokens"]["totalTokenCount"] == 12
+            assert provider.usage["attempts"][0]["latency_ms"] >= 0
+        else:
+            with pytest.raises(DomainError):
+                provider.request_typed(
+                    [{"content": "test"}, {"content": "synthetic"}],
+                    policy,
+                    lambda: True,
+                    json.loads,
+                    max_attempts=2,
+                )
+        assert len(calls) == (0 if error in {"cloud-off", "missing-key"} else 1)
+    finally:
+        provider.close()

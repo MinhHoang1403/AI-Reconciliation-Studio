@@ -28,6 +28,13 @@ class ApprovalInput(Contract):
     extraction_reviewed: bool = False
 
 
+class NormalizationPreflight(Contract):
+    source_rows: int
+    predicted_invalid_rows: int
+    error_counts: dict[str, int]
+    source_sha256: str
+
+
 class ProjectList(Contract):
     items: list[Project]
     total: int

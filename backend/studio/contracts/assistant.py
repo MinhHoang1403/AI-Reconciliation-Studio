@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
+from studio.config import ModelChoice
 from studio.contracts import Contract
 from studio.contracts.reconciliation import (
     ExceptionCase,
@@ -163,7 +164,7 @@ class AssistantUsage(Contract):
 
 class AssistantAnswer(Contract):
     status: Literal["ANSWERED", "INSUFFICIENT_EVIDENCE", "PROVIDER_UNAVAILABLE", "REVIEW_REQUIRED"]
-    mode: Literal["DETERMINISTIC", "GEMINI", "MOCK", "CACHE"]
+    mode: Literal["DETERMINISTIC", "GEMINI", "OLLAMA", "MOCK", "CACHE"]
     fact_set: AnswerFactSet
     lines: list[AnswerLine]
     proposal: WorkflowProposal | None = None
@@ -182,6 +183,7 @@ class MessageInput(Contract):
     text: str = Field(min_length=1, max_length=2000)
     context: AssistantContext
     mode: Literal["LEGACY", "AGENT"] = "LEGACY"
+    model_choice: ModelChoice | None = None
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
     command: Literal["PREPARE_NORMALIZATION", "EXPLORE_DATA", "SUMMARIZE_RESULTS"] | None = None
 
@@ -207,4 +209,17 @@ class MessageView(Contract):
     context: AssistantContext
     answer: AssistantAnswer | None = None
     workflow_id: str | None = None
+    job_status: str | None = None
+    error_code: str | None = None
+    model_choice: ModelChoice | None = None
     created_at: datetime
+
+
+class AssistantModelOption(Contract):
+    id: ModelChoice
+    label: str
+    available: bool
+    preferred: bool = False
+    status: Literal[
+        "READY", "UNVERIFIED", "UNAVAILABLE", "LIMITED", "NOT_CONFIGURED", "NOT_ALLOWED"
+    ]

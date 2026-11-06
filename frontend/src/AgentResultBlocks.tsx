@@ -4,7 +4,7 @@ import { BarChart } from "echarts/charts";
 import { AriaComponent, GridComponent, TooltipComponent } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 import { api } from "./api";
-import { Badge, DataTable, Modal, Notice, Spinner } from "./components";
+import { Badge, DataTable, formatDecimal, Modal, Notice, Spinner } from "./components";
 import { label } from "./reconciliationTypes";
 import {statusText} from "./types";
 import type { AgentBlock, Chart, Query, QueryResult } from "./agentTypes";
@@ -21,6 +21,7 @@ function QueryTable({ initial, workflowId, selection }: {
 }) {
     const [data, setData] = useState(initial);
     const [busy, setBusy] = useState(false);
+    const [expanded, setExpanded] = useState(false);
     const [error, setError] = useState("");
     const [source, setSource] = useState<Record<string, unknown>[] | null>(null);
     const [sourceRefs,setSourceRefs]=useState<SourceRef[]>([]);
@@ -82,21 +83,37 @@ function QueryTable({ initial, workflowId, selection }: {
     if(restoring)return <Spinner/>;
     const visibleFields=data.fields.filter(field=>!['group_id','case_id','canonical_record_id','metric_id'].includes(field));
     const groupKey=data.query.source_kind==='VERIFIED_RUN'&&data.rows.some(row=>row.business_key!=null);
+    const grouped = (data.query.group_by?.length || 0) > 0 || (data.query.aggregations?.length || 0) > 0;
+    const previewRows = data.rows.slice(0, 10);
+    const countOnly = !data.query.group_by?.length && data.query.aggregations?.length === 1 && data.query.aggregations[0].op === "count";
+    const count = countOnly && data.rows[0] ? data.rows[0][data.fields[0]] : null;
+    const columns: ColumnDef<Record<string, unknown>>[] = [{id:'position',header:'Vị trí trong trang',cell:info=>info.row.index+1},...(groupKey?[{id:'business_key',accessorKey:'business_key',header:'Khóa giao dịch'}]:[]),...visibleFields.map<ColumnDef<Record<string, unknown>>>(field => ({ id: field, accessorKey: field,
+        header: () => <button className="text-button" disabled={busy} onClick={() => void page(0, [{ field_id: field, descending: !data.query.sort.find(s => s.field_id === field)?.descending }])}>{data.field_labels?.[field]||queryLabels[field]||field} ↕</button>,
+        cell: info => info.getValue() == null ? "—" :
+          ['VERIFIED_RUN','EXCEPTIONS'].includes(data.query.source_kind)&&['linkage_state','comparison_state','state','type'].includes(field)?label(String(info.getValue())):String(info.getValue()) })), {
+        id: "evidence", header: () => <span>Nguồn</span>, cell: info => <button className="text-button" disabled={busy || !Array.isArray(info.row.original.source_provenance)} onClick={() => void evidence(info.row.original)}>Xem dòng gốc</button>,
+    }];
+    const pagination = <div className="agent-pagination"><button className="button secondary" disabled={busy || !data.offset} onClick={() => void page(Math.max(0, data.offset - data.limit))}>Trước</button>
+      <span>Trang {Math.floor(data.offset / data.limit) + 1} · {data.rows.length} dòng trong trang</span>
+      <button className="button secondary" disabled={busy || !data.truncated} onClick={() => void page(data.offset + data.limit)}>Tiếp</button>{busy && <Spinner />}</div>;
     return <section className="agent-table" aria-label="Kết quả truy vấn">
-    <p><strong>{data.total_count} kết quả</strong> · {data.input_count} dòng khớp điều kiện · <Badge status={data.verification_status}/></p>
+    {countOnly && count !== null && <p>Kết quả đếm: <strong>{typeof count === "number" ? count.toLocaleString("vi-VN") : String(count)} {data.query.source_kind === "VERIFIED_RUN" ? "nhóm giao dịch" : "dòng dữ liệu"}</strong> phù hợp với điều kiện bạn chọn.</p>}
+    {!countOnly && <p><strong>{data.total_count.toLocaleString("vi-VN")} {grouped ? "nhóm kết quả" : "dòng dữ liệu"}</strong>{data.total_count === 0 ? ". Chưa tìm thấy dữ liệu phù hợp với điều kiện bạn chọn." : ". Bạn có thể xem dữ liệu và mở từng dòng gốc bên dưới."}</p>}
+    <p className="muted">Đang xem {previewRows.length} dòng trong trang {Math.floor(data.offset / data.limit) + 1}{data.rows.length > 10 ? `; trang này có ${data.rows.length} dòng.` : "."}</p>
+    {data.query.source_kind === "RAW_PREVIEW" && <p>Đây là dữ liệu gốc đã đọc từ tệp. Ý nghĩa các cột chưa được xác nhận; dữ liệu chưa được chuẩn hóa.</p>}
+    {data.verification_status === "PARTIAL_VERIFIED" && <Notice tone="warning">Kết quả chỉ được kiểm chứng một phần. Hãy kiểm tra các dữ liệu chưa đủ điều kiện trước khi kết luận.</Notice>}
     {data.warnings.map(w => <p className="muted" key={w}>{w}</p>)}
-    {!data.evidence_complete && <Notice tone="warning">Bằng chứng hiển thị bị giới hạn; lineage gốc vẫn được lưu.</Notice>}
+    {!data.evidence_complete && <Notice tone="warning">Chỉ hiển thị một phần bằng chứng; thông tin nguồn đầy đủ vẫn được lưu.</Notice>}
     {error && <Notice tone="error">{error}</Notice>}
-    <DataTable rows={data.rows} columns={[{id:'position',header:'Vị trí',cell:info=>info.row.index+1},...(groupKey?[{id:'business_key',accessorKey:'business_key',header:'Khóa giao dịch'}]:[]),...visibleFields.map<ColumnDef<Record<string, unknown>>>(field => ({ id: field, accessorKey: field,
-                header: () => <button className="text-button" disabled={busy} onClick={() => void page(0, [{ field_id: field, descending: !data.query.sort.find(s => s.field_id === field)?.descending }])}>{data.field_labels?.[field]||queryLabels[field]||field} ↕</button>,
-                cell: info => info.getValue() == null ? "—" :
-                  ['VERIFIED_RUN','EXCEPTIONS'].includes(data.query.source_kind)&&['linkage_state','comparison_state','state','type'].includes(field)?label(String(info.getValue())):String(info.getValue()) })), {
-                id: "evidence", header: () => <span>Nguồn</span>, cell: info => <button className="text-button" disabled={busy || !Array.isArray(info.row.original.source_provenance)} onClick={() => void evidence(info.row.original)}>Xem dòng gốc</button>,
-            }]}/>
-    <div className="agent-pagination"><button className="button secondary" disabled={busy || !data.offset} onClick={() => void page(Math.max(0, data.offset - data.limit))}>Trước</button>
-      <span>Trang {Math.floor(data.offset / data.limit) + 1} · {data.rows.length} dòng hiển thị</span>
-      <button className="button secondary" disabled={busy || !data.truncated} onClick={() => void page(data.offset + data.limit)}>Tiếp</button>{busy && <Spinner />}</div>
-    <details><summary>Điều kiện và nguồn</summary><p>{data.query.filters.map(f => `${f.field_id} ${f.op} ${JSON.stringify(f.value)}`).join("; ") || "Toàn bộ nguồn"}</p><p>Tổng/đếm: toàn bộ dữ liệu khớp điều kiện.</p><small>{data.source_refs.join(" · ")}</small></details>
+    <DataTable rows={previewRows} columns={columns}/>
+    {pagination}
+    {data.rows.length > 0 && <button className="text-button" onClick={()=>setExpanded(true)}>Xem đầy đủ dữ liệu</button>}
+    <Modal title="Dữ liệu chi tiết" wide open={expanded} onOpenChange={setExpanded}>
+      <p>{data.total_count.toLocaleString("vi-VN")} {grouped ? "nhóm kết quả" : "dòng dữ liệu"} phù hợp. Mỗi trang tối đa {data.limit} dòng; số liệu tổng hợp tính trên toàn bộ dữ liệu phù hợp.</p>
+      {error && <Notice tone="error">{error}</Notice>}
+      <DataTable rows={data.rows} columns={columns}/>{pagination}
+    </Modal>
+    <details><summary>Điều kiện và nguồn</summary><p>{data.query.filters.map(f => `${f.field_id} ${f.op} ${JSON.stringify(f.value)}`).join("; ") || "Toàn bộ nguồn"}</p><p>{data.input_count.toLocaleString("vi-VN")} dòng được dùng trước khi phân nhóm và phân trang. <Badge status={data.verification_status}/></p><small>{data.source_refs.join(" · ")}</small></details>
     <Modal title="Dòng dữ liệu nguồn" open={source !== null} onOpenChange={open => {if(!open){scope.current++;setBusy(false);setSource(null);}}}>
       <p>{sourceRefs.length} dòng nguồn trong bằng chứng hiển thị. Chọn từng dòng để xem chính xác.</p>
       <div className="agent-pagination">{sourceRefs.map((ref,i)=><button className="button secondary" key={`${ref.source_table_id}:${ref.row}:${i}`} disabled={busy||i===sourceIndex} onClick={()=>void evidence({source_provenance:sourceRefs},i)}>{ref.sheet} · dòng {ref.row}</button>)}</div>
@@ -154,9 +171,9 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
             if (block.type === "download")
                 return <a className="button secondary" key={i} href={`/api/exports/${block.export_id}/download`}>Tải {block.format.toUpperCase()}</a>;
             if (block.type === "dataset_summary")
-                return <section className="agent-dataset" key={i}><h4>{block.name}</h4><Badge status={block.status}/><p>{block.rows} dòng · {block.invalid_rows} dòng lỗi</p><details><summary>Phép biến đổi đã duyệt</summary><p>{Array.from(new Set(block.transformations)).map(t=>transformLabels[t]||t).join("; ")}</p></details><button className="text-button" onClick={() => onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}>Kiểm tra dữ liệu trước/sau</button></section>;
+                return <section className="agent-dataset" key={i}><h4>{block.name}</h4><Badge status={block.status}/><p>{block.status === "READY" ? "Đã chuẩn hóa" : "Đã xử lý"} {block.rows.toLocaleString("vi-VN")} dòng. {block.invalid_rows > 0 ? `${block.invalid_rows.toLocaleString("vi-VN")} dòng cần bạn kiểm tra; chưa thể dùng như dữ liệu đầy đủ.` : "Bạn có thể xem dữ liệu trước và sau khi chuẩn hóa."}</p><details><summary>Phép biến đổi đã duyệt</summary><p>{Array.from(new Set(block.transformations)).map(t=>transformLabels[t]||t).join("; ")}</p></details><button className="text-button" onClick={() => onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}>Kiểm tra dữ liệu trước/sau</button></section>;
             const snapshot = block.result.snapshot || block.result.run?.metric_snapshot;
-            return <section className="agent-facts" key={i}>{snapshot && <><h4>{block.result.run?.status==="PARTIAL_VERIFIED"?"Kết quả đã xác minh một phần":"Kết quả đã xác minh"}</h4><p>{snapshot.comparison_counts?.EQUAL??0} nhóm khớp chính xác, {snapshot.comparison_counts?.AMOUNT_MISMATCH??0} nhóm lệch tiền và {snapshot.linkage_counts?.UNMATCHED??0} nhóm thiếu đối ứng.</p>{!!snapshot.comparison_counts?.WITHIN_TOLERANCE&&<p>{snapshot.comparison_counts.WITHIN_TOLERANCE} nhóm trong sai số đã duyệt.</p>}<p>Tỷ lệ khớp: {snapshot.full_match_rate.percent ?? "N/A"}{snapshot.full_match_rate.percent !== null ? "%" : ""} ({snapshot.full_match_rate.numerator}/{snapshot.full_match_rate.denominator})</p>{snapshot.monetary.map(m => <p key={m.metric_id}>Chênh lệch tuyệt đối: {m.absolute_variance} {m.currency} · có dấu: {m.signed_variance} {m.currency}</p>)}<details><summary>Phạm vi và mẫu số đã xác minh</summary><p>Kỳ {snapshot.period_start} → {snapshot.period_end} · {snapshot.timezone}</p><p>{snapshot.eligible_definition}</p><p>Đơn vị so sánh: {snapshot.comparison_unit}</p>{Object.entries(snapshot.excluded_counts||{}).map(([name,count])=><p key={name}>{label(name)}: {count}</p>)}{snapshot.monetary.map(m=><p key={m.metric_id}>Chỉ tiêu: {m.metric_id} · {m.currency}</p>)}</details></>}
+            return <section className="agent-facts" key={i}>{snapshot && <><h4>{block.result.run?.status==="PARTIAL_VERIFIED"?"Kết quả đã xác minh một phần":"Kết quả đã xác minh"}</h4><p>{(snapshot.comparison_counts?.EQUAL??0).toLocaleString("vi-VN")} nhóm khớp chính xác, {(snapshot.comparison_counts?.AMOUNT_MISMATCH??0).toLocaleString("vi-VN")} nhóm lệch tiền và {(snapshot.linkage_counts?.UNMATCHED??0).toLocaleString("vi-VN")} nhóm chưa tìm thấy đối ứng.</p>{!!snapshot.comparison_counts?.WITHIN_TOLERANCE&&<p>{snapshot.comparison_counts.WITHIN_TOLERANCE} nhóm trong sai số đã duyệt.</p>}<p>Tỷ lệ khớp: {snapshot.full_match_rate.percent ?? "N/A"}{snapshot.full_match_rate.percent !== null ? "%" : ""} ({snapshot.full_match_rate.numerator}/{snapshot.full_match_rate.denominator})</p>{snapshot.monetary.map(m => <p key={m.metric_id}>Chênh lệch tuyệt đối: {formatDecimal(m.absolute_variance)} {m.currency} · có dấu: {formatDecimal(m.signed_variance)} {m.currency}</p>)}<details><summary>Phạm vi và cách tính tỷ lệ</summary><p>Kỳ {snapshot.period_start} → {snapshot.period_end} · {snapshot.timezone}</p><p>{snapshot.eligible_definition}</p><p>Đơn vị so sánh: {snapshot.comparison_unit}</p>{Object.entries(snapshot.excluded_counts||{}).map(([name,count])=><p key={name}>{label(name)}: {count}</p>)}{snapshot.monetary.map(m=><p key={m.metric_id}>Chỉ tiêu: {m.metric_id} · {m.currency}</p>)}</details></>}
       {(!snapshot||block.result.group)&&block.answer?.lines.map((line, j) => <p key={j}>{line.text}</p>)}
       {block.result.group && <><p>{label(block.result.group.linkage_state)} · {label(block.result.group.comparison_state)}</p><p>Nguyên nhân nghiệp vụ chưa được chứng minh nếu thiếu chứng từ hoặc quy định.</p></>}
       <button className="text-button" onClick={() => onNavigate(block.result.group ? "OPEN_EVIDENCE" : "OPEN_REPORT", context)}>Mở kết quả và bằng chứng</button></section>;

@@ -1,6 +1,154 @@
 # Trạng thái triển khai và nghiệm thu
 
-**Kết quả hiện tại — 02/11/2026:** UI AI Assistant và các kiểm tra kỹ thuật đã hoàn tất trên feature branch; **chưa đạt nghiệm thu toàn Agent-first MVP** vì chất lượng NLP chưa đạt và Gemini đã hết 50/50 attempts. Chưa merge hoặc release main. Đọc mục S để biết số đo mới; các mục A–R là lịch sử, không thay kết quả hiện tại.
+## Consolidation và baseline tích hợp — 06/11/2026
+
+Đang thực hiện theo yêu cầu hợp nhất mới: cho phép đưa Foundation hợp lệ vào main khi hồi quy local đạt, dù Planner/Query AI LIVE chưa hoàn tất. Quyền này thay lệnh giữ main ở các báo cáo lịch sử; không biến các cổng AI chưa đạt thành PASS. Công đoạn tự động hóa chỉ bắt đầu sau baseline tích hợp, Docker và rollback được kiểm chứng.
+
+### Kiểm kê, bảo toàn và cleanup
+
+Git đầu lượt: main `a4f70b2`, product-polish `2eecb06`, Foundation `4124d17`; cả ba bằng origin sau fetch. Main là tổ tiên của product-polish, product-polish là tổ tiên của Foundation. Không có commit chưa push hoặc sửa tracked file của người dùng. Kế hoạch `AUTOMATION_PRODUCT_PLAN.md` là tệp chưa tracked được cung cấp mới; bản gốc và SHA-256 được giữ trong runtime, chưa triển khai nội dung ở công đoạn này.
+
+Rà soát cây source, imports, nội dung trùng hoàn toàn, thân hàm trùng, migrations, call sites, dependencies/lockfiles và cấu hình build. Chưa có bằng chứng đủ để xóa source, test hoặc dependency: số xóa tương ứng **0/0/0**. API Assistant cũ vẫn có tuyến tương thích; parser tài liệu, công cụ rollback, oracle và tests bảo mật vẫn cần giữ. Không có cache/runtime được tracked. Tài liệu kiến trúc, contracts, kế hoạch Agent và báo cáo lịch sử tiếp tục có giá trị truy vết; không xóa báo cáo thất bại. README trỏ tới quy trình hiện hành trong TESTING_GUIDE, các liên kết backup lỗi thời đã sửa. Không thay dependency hoặc hợp đồng tài chính.
+
+Xóa cache có thể tái tạo bị bộ kiểm duyệt tự động chặn với thông báo `blocked by policy`; không cache nào bị xóa. Giữ nguyên traces, screenshots, dữ liệu TEST, backups, cache chung và model Ollama. Markdown của 12 tài liệu tracked đạt; kế hoạch mới có 40 lỗi khoảng trắng bảng, giữ nguyên bản gốc để xử lý định dạng khi đọc kế hoạch ở công đoạn sau.
+
+### Lỗi backup đã sửa và bằng chứng
+
+Công cụ backup cũ giữ nhiều bản metadata đồng thời và bị OOM kill trong Worker 512 MiB, exit137. Lượt `backup_0e52b435f88841cf9d3f8d5e1298c023` không có receipt restore PASS, được giữ nguyên, không dùng làm mốc khôi phục. Schema thử của lượt lỗi đã được dọn trước khi tiến trình bị dừng ở bước đối chiếu cuối; không ghi vào public.
+
+`tools/check-backup-restore.py` ghi định dạng metadata cũ theo từng dòng, đối chiếu từng bảng và restore theo batch200; giải phóng bản giải mã sau mỗi bảng. Không tăng tài nguyên, tạo server hoặc đổi backup codec. Bốn ca regression bổ sung kiểm bytes tương thích và phát hiện sửa/mất/thêm bản ghi; ca codec chống giả type tags vẫn giữ.
+
+Backup `backup_676b5d2f0d06435b8032cd8bc228bb95` đạt restore trên PostgreSQL hiện có: **24 bảng, 6.755 tệp**, backup31,379giây, restore40,475giây. Metadata SHA-256 `9fc3cea0c5f2b5a94b26da07af68b8596c9927437c310b163743769da0bdb7d2` trùng bản trước sửa. Toàn bộ metadata sản xuất và artifact checksum không đổi. Backup giữ trên volume và bản sao host tại `runtime/backups/backup_676b5d2f0d06435b8032cd8bc228bb95`; kiểm SHA-256 metadata và đủ6.755tệp trên host PASS. Receipt/log trong `runtime/consolidation/`, không vào Git.
+
+### Kiểm chứng đang thực hiện
+
+Baseline Backend/PostgreSQL **479/479 PASS**, 134,90giây; năm ca backup sau sửa PASS (gồm một ca cũ, bốn ca mới). Ruff, mypy50files, TypeScript, ESLint, production build, dependency consistency, secret/history/path scan và Markdown tracked PASS. GitHub hiện Public, origin chính thức đúng; không có workflow CI hoặc GitHub Actions run để dùng làm bằng chứng CI PASS.
+
+Đã đối chiếu45tệp Backend giữa source và hai container,7tệp Frontend giữa dist/image/HTTP: cùng application revision `58cbc3c`; repository HEAD `4124d17` có thêm tài liệu/công cụ. Bốn dịch vụ healthy, queue không có tác vụ active trước backup. Sau sửa công cụ, full Backend/PostgreSQL **483/483 PASS**,183,60giây; full Playwright **139/139 PASS**,12,7phút, không retry/skip. Merge/main regression, Docker đồng bộ và rollback của baseline mới đang chờ hoàn tất; chưa tuyên bố công đoạn1 PASS hoặc READY_FOR_SEAMLESS_LOCAL_UAT.
+
+---
+
+**Hiện trạng 06/11/2026 — Foundation Reliability Audit.** Bản local chạy `58cbc3c4781d6f331b7c67c2007844bb5b012bce`, đạt 479/479 Backend/PostgreSQL và 139/139 Playwright. Hai model đã tạo đề xuất và cập nhật review thực tế. Mỗi luồng chuẩn hóa đúng 5.458 dòng hợp lệ và 29 dòng lỗi. Hai cặp đối soát trên dự án Gemini khớp đáp án độc lập. **Chưa FOUNDATION_ACCEPTED, chưa hợp nhất main.** Các mốc bên dưới ghi lịch sử theo ngày.
+
+## Foundation — lỗi đã tái hiện và phần kiểm chứng hiện có
+
+### A. Tổng quan
+
+Gemini là lựa chọn mặc định. Qwen 3:8B là lựa chọn phụ do người dùng chọn. Hai model dùng cùng hợp đồng định tuyến và sửa review. Bản local đã dùng được để thử tải tệp, sửa bản nháp, duyệt chuẩn hóa và chạy đối soát theo phạm vi đã kiểm chứng.
+
+### B. Git và baseline
+
+Nhánh làm việc `codex/foundation-reliability-hardening` xuất phát từ `2eecb068b0a866a538cda95a218ac9e375b10eb0` trên `codex/product-polish`. Đã xác minh origin của AI Reconciliation Studio. Các commit được đẩy theo nhóm, gồm parser `38d3f1b`, review và idempotency `1ed78ca`, thẻ dùng chung `ae2268b`, tương thích Gemini `923c8a0`, định tuyến Qwen `96ec609`, khôi phục trang `2d15785`, bộ chọn `ae15e71`, xác nhận dòng lỗi trong Chat `a99cc0b`, bố cục mobile `82efd82`, rút gọn định tuyến local `4347b07`, xem hạn hiệu lực `a28278d` và kiểm xác nhận dòng lỗi ở mọi đường duyệt `58cbc3c`.
+
+### C. Docker và khôi phục
+
+Backup `backup_2fbbe0bc84ed4c5e8b752f83099af041` được tạo trong 53,581 giây và restore trong 33,195 giây vào schema cô lập trên PostgreSQL hiện có. Đối chiếu 24 bảng và manifest 5.910 tệp. Kiểm tra checksum và đường dẫn đạt. Lần chạy đầu trên Backend bị dừng do áp lực bộ nhớ. Bản backup được xác minh nằm trên volume của Studio.
+
+Rollback đầu lượt sang cặp `5373cf7`/`729821e` rồi trở về baseline `a268abe` đã qua health và persistence. Sáu image Studio cũ được xác minh theo ID và kiểm tra không còn tham chiếu trước khi xóa. Hai volumes Studio, backup, cache, model Ollama và 27 container ngoài Studio được giữ.
+
+Trên `58cbc3c`, restart, tạo lại toàn bộ và tạo lại riêng Frontend đều vô hiệu hóa phiên demo cũ trước khi xác minh loopback. Mỗi lần đều khớp snapshot metadata, bản duyệt, canonical refs và toàn bộ checksum artifact. Sau đó `tools/rollback.ps1` thực sự chuyển Backend, Worker, Frontend sang cặp `a268abe` có cùng revision Git. Đối chiếu dữ liệu đạt trên cặp dự phòng và khi trở lại `58cbc3c` bằng `tools/start.ps1 -SkipBuild`.
+
+Sau full regression, xóa thêm đúng hai image Studio mang tag `rollback-before-mapping-recovery`. Cả hai không còn container tham chiếu. Tổng cộng đã bỏ tám image Studio cũ trong đợt này, giữ cặp hiện hành và một cặp dự phòng. Đối chiếu cuối cho thấy 27 container ngoài Studio, image của dự án khác và 36 volume trên máy có cùng định danh và trạng thái kiểm kê. Dung lượng tổng do Docker báo vẫn 38,91 GB cho image ở độ chính xác hiển thị vì có lớp dùng chung. Bốn dịch vụ Studio healthy, không có OOM hoặc restart ngoài dự kiến ở các container đang chạy.
+
+### D. Kiến trúc
+
+Audit theo nhóm tải và lưu nguồn, profile và chuẩn hóa, quy tắc và đối soát, hội thoại và AI, trình duyệt và vận hành. Dùng cùng DTO và bản nháp từ `AgentWorkflowRow` ở Chat và Dữ liệu. Hai provider cùng kiểm kiểu, source, scope và bằng chứng. Duyệt nghiệp vụ tiếp tục đi qua transaction, khóa nguồn, nonce và kiểm quyền. Xem [ma trận kiến trúc](ARCHITECTURE.md).
+
+### E. Lỗi và kiểm thử hồi quy
+
+| ID / mức | Tái hiện và nguyên nhân | Sửa và kiểm chứng | Hiện trạng |
+| --- | --- | --- | --- |
+| FND01 / P1 | Header CSV/XLSX trùng bị bỏ; dòng dữ liệu đầu thành header | Giữ nhãn trùng và technical column IDs, warning extraction; regression hai định dạng | PASS source, parser commit38d3f1b |
+| FND02 / P1 | Header CSV chỉ định sau ô quoted nhiều dòng bị hiểu theo logical index | Ánh xạ dòng vật lý bắt đầu record; từ chối dòng giữa quoted cell | PASS source, commit38d3f1b |
+| FND03 / P1 | Review có đề xuất và câu hỏi bị từ chối AI_INVALID_REVIEW do yêu cầu lặp toàn bộ bản nháp | Chỉ nhận các thay đổi có kiểu, giữ phần hợp lệ và hỏi tiếp. Kiểm transport và PostgreSQL | PASS MOCK và lượt bổ sung LIVE Gemini/Qwen |
+| FND04 / P2 | Chat giữ draft trong state component, Manager đọc proposal khác | Cùng ReviewCard, API lưu draft có nonce và kiểm nguồn, khôi phục bảng/tab và mở đúng hội thoại | LIVE browser PASS, `ae2268b`, `2d15785`, `ae15e71` |
+| FND05 / P2 | Review hết 30 phút thiếu hành động gia hạn | Mở lại khi đúng chủ, nguồn còn nguyên và không có reply đang chạy | PostgreSQL và browser PASS, `1ed78ca`, `ae2268b` |
+| FND06 / P1 | POST duyệt mapping thủ công tạo revision mới khi gửi lại | Actor-scoped idempotency receipt cùng transaction/advisory lock, conflict409 | PostgreSQL PASS |
+| FND07 / P2 | Reply hợp lệ sau lỗi vẫn giữ error_code hiện hành | Xóa lỗi hiện hành khi không còn bước lỗi khác, giữ message/job cũ | Fault/recovery PostgreSQL PASS |
+| FND08 / P2 | Reply rule buộc plan hoàn chỉnh, khó giữ facts từng phần | Hợp nhất PlanningRequest chỉ những trường đã cung cấp, không đổi nguồn, preview/approval riêng | Unit/contract PASS; UAT tiếp tục |
+| FND09 / P1 | Gemini trả 400 với giới hạn mảng trong grammar review | Rút giới hạn khỏi envelope gửi provider, Backend vẫn từ chối trên 80 thay đổi | A/B LIVE 400→200 và reply UI PASS, `923c8a0` |
+| FND10 / P1 | Router Qwen nhận schema rộng hơn Gemini và bị AI_INVALID_INTENT | Cùng grammar cho từng intent và cùng validator cho hai model | Qwen LIVE tạo đúng ba review sau sửa, `96ec609` |
+| FND11 / P1 | Router chặn toàn bộ nguồn PARTIAL trước bước review | Cho lập đề xuất mới và yêu cầu xác nhận tách dòng lỗi ở cả UI lẫn Backend trước khi chạy | PostgreSQL, mock browser và hai oracle LIVE qua UI PASS, `a99cc0b` |
+| FND12 / P2 | Danh sách sửa cơ sở tiền thiếu lựa chọn phí khi có giá trị đề xuất sẵn | Bổ sung lựa chọn `fee` và `expected`, giá trị locale chưa chọn dùng null | Qwen duyệt nguồn ngân hàng và đúng 378/6, `a99cc0b` |
+| FND13 / P2 | Tên model dài làm ô nhập bị cắt ở 390 px | Danh sách đúng hai tên, model và nút gửi xuống hàng dưới ở điện thoại nhỏ | Browser 390–1920 px PASS, `ae15e71`, `82efd82` |
+| FND14 / P2 | Thẻ duyệt chỉ hiển thị ngày bắt đầu hiệu lực, khó phát hiện ngày kết thúc do model đề xuất | Hiện ngày kết thúc trong tóm tắt và cho sửa hoặc xóa trước khi duyệt | Browser MOCK PASS, `a28278d` |
+| FND15 / P1 | Màn hình đối soát thủ công đi qua API duyệt khác nên bỏ qua xác nhận tách dòng lỗi | Hàm duyệt dùng chung kiểm tra cả Chat và màn hình thủ công, ghi một sự kiện kiểm toán. UI hiện tên nguồn và số dòng lỗi trước khi duyệt | PostgreSQL và ca vận đơn trên Docker PASS, `58cbc3c` |
+
+### F. AI Agent
+
+Gemini đã nhận sáu HTTP 200 khi thử lại, gồm hai probe và luồng ba nguồn trên giao diện. Reply ánh xạ sau sửa đạt trong 1,378 giây. Qwen định tuyến sau sửa trong 30,898 giây. Ba đề xuất Qwen mất 18,274, 7,349 và 7,895 giây. Reply Qwen đạt trong 16,394 giây. Hai model giữ câu hỏi còn thiếu và để thẻ ở trạng thái chờ duyệt. Với cặp ngân hàng, Gemini trả HTTP 503 ở lượt bổ sung vai trò nguồn. Giữ job lỗi trong lịch sử và hoàn tất từ đề xuất đã có bằng xác nhận trực tiếp trên giao diện.
+
+### G. Data Foundation
+
+Mỗi dự án tổng hợp của Gemini và Qwen có ba nguồn với 2.418, 2.685 và 384 dòng. Số hợp lệ/lỗi lần lượt là 2.406/12, 2.674/11 và 378/6 theo bộ khóa bắt buộc. Tổng 5.458/29. Tệp gốc, checksum, bản chuẩn hóa và tệp lỗi giữ tham chiếu theo revision. Người vận hành dùng thẻ để xác nhận khóa, ngày và tiền theo đặc tả dữ liệu TEST.
+
+### H. Đối soát và oracle
+
+| Cặp nguồn | Khớp | Lệch tiền | Thiếu đối ứng | Tổng có dấu VND | Tổng tuyệt đối VND |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Đơn dự kiến và sự kiện thanh toán, 1:N | 2.040 | 200 | 215 | 7.867 | 60.883 |
+| Sự kiện thanh toán và sao kê ngân hàng, N:1 | 323 | 40 | 31 | −8.306 | 11.812 |
+
+Run `a725f99a-b85f-4a9b-8a9f-55dacb9b8f1a` đi qua Gemini, duyệt và chạy trong Chat. Run `9134d95e-f944-41e5-9389-010d36e9e265` dùng đề xuất Gemini, người vận hành xác nhận vai trò và phạm vi trên thẻ sau lượt gọi bổ sung bị 503. Oracle tính độc lập với Matcher. Verifier và các phép tính Decimal giữ hợp đồng đã duyệt.
+
+Hai tệp XLSX tải qua giao diện được mở và đọc lại. Mỗi tệp có tám sheet. Đếm nhóm và tổng Decimal trong `Matches` khớp oracle và `Summary`. Nhóm lệch thứ hai có đủ bằng chứng hai phía với 2 tham chiếu ở cặp đơn hàng và 8 tham chiếu ở cặp ngân hàng. Kiểm tra các ô của hai workbook phát hiện 0 công thức.
+
+Sau khi trở lại `58cbc3c`, đọc lại hai snapshot qua HTTP và đối chiếu đủ số nhóm, chênh lệch có dấu và chênh lệch tuyệt đối. Các ca vận đơn 1:1, 1:N và N:1 trong Playwright tiếp tục khớp oracle riêng.
+
+Hai cặp nguồn đã được Qwen hỗ trợ chuẩn hóa cũng khớp cả năm chỉ số trong bảng khi lập và duyệt quy tắc thủ công trên giao diện. Hai run là `453ee28e-6b7e-438d-82a4-5aa4f034e92e` và `5c4bf12b-1667-47c5-af60-2ff3e6969870`. Cả hai qua bước xác nhận dòng lỗi, xuất CSV/XLSX và mở lại đúng snapshot. Mỗi XLSX có tám sheet và không chứa ô công thức. Đây là bằng chứng của đường duyệt thủ công trên dữ liệu chuẩn hóa với Qwen.
+
+### I. Kiểm thử
+
+Baseline đạt 449 Backend/PostgreSQL và 139 Playwright. Revision `82efd82` đạt 478 Backend/PostgreSQL, 137/139 Playwright. Ca tải tệp chờ sau Qwen 90 giây trên Worker chung. Trace PostgreSQL ghi tác vụ tải xong ngay sau khi Qwen kết thúc. Ca mobile còn dùng giới hạn chiều cao của bố cục một hàng. Chạy lại riêng sau khi hết tải đồng thời và cập nhật kiểm tra theo hình học bố cục mới đạt 2/2. Sau đó `a28278d` đạt đủ 478 Backend/PostgreSQL và 139 Playwright trong 12,4 phút.
+
+Ca PostgreSQL mới của `58cbc3c` tái hiện bản trước trả HTTP 200 khi duyệt thiếu xác nhận tách dòng lỗi. Sau sửa, ca này và hai ca Chat liên quan đều đạt. Khi duyệt lần đầu nguồn `PARTIAL`, API yêu cầu giá trị boolean `true`. Quy tắc đã duyệt được giữ và gửi lại trả cùng hợp đồng.
+
+Full regression trên đúng `58cbc3c` sau rollback đạt **479/479 Backend/PostgreSQL** (133,14 giây) và **139/139 Playwright** (12,1 phút). Bộ trình duyệt có luồng thật qua Docker, ca giả lập lỗi provider/mạng và kiểm responsive. Ca vận đơn có ngày lỗi xác nhận nút duyệt bị khóa khi chưa đánh dấu, sau đó chạy đúng oracle. Bộ chọn model kiểm trực tiếp ở 390, 768, 1366, 1440 và 1920 px, chỉ có hai tên đã chốt, giữ Qwen sau reload và không tràn khung.
+
+Các kiểm tra mới có giả lập transport hai provider, chuỗi sửa bản nháp Hypothesis, đối chiếu số tiền theo phép đổi dấu, kiểm trả lời hợp lệ sau lỗi, thử khóa cũ, viewer, pending và nguồn thay đổi. Ba ca dữ liệu hóa đơn, lương và tồn kho bị từ chối khi dùng quy tắc đơn hàng không tương thích. Có một cảnh báo deprecation từ Starlette TestClient.
+
+Đo một lượt trên host Windows, CSV tổng hợp, Polars 2 luồng. Với 75.000 dòng, parse 89,86 ms, profile 1.112,64 ms, chuẩn hóa và ghi 2.528,90 ms, peak 222,83 MiB. Đối soát 75.000 dòng từ hai nguồn mất 2.556,20 ms ở Matcher và 1.509,92 ms ở Verifier, tạo 37.500 nhóm exact, peak 454,68 MiB. Đây là số đo theo bước trên host. Các mức 10/100/1.000/10.000 dòng cũng được kiểm số dòng, số lỗi và mã có 0 đầu.
+
+Trên Docker `a28278d`, Worker bị ngắt giữa chuẩn hóa 75.000 dòng tổng hợp. Phép thử đẩy lease của đúng tác vụ tổng hợp về thời điểm hết hạn để quan sát nhận lại. Sau hai lần nhận, chỉ một canonical 75.000 dòng được công bố, hội thoại tiếp tục và không phát sinh lượt cloud. Tổng thời gian bài thử 17,813 giây. Phép thử này đo khôi phục tác vụ, giới hạn đo độ trễ p95 và tải thực vẫn còn.
+
+### J. Toàn vẹn dữ liệu
+
+Đối chiếu snapshot trước và sau triển khai đạt cho metadata, bản duyệt, canonical refs và toàn bộ bytes artifact đã lưu. Hai dự án TEST thêm dữ liệu và lịch sử có chủ đích. Dữ liệu nghiệp vụ cũ được giữ trong volume. Backup và restore ở phần C áp dụng cho baseline đã ghi nhận.
+
+### K. GitHub và bản đang chạy
+
+Studio dùng một Compose project và bốn dịch vụ trên loopback. Cả Backend, Worker và Frontend mang source revision `58cbc3c`. Backend và Worker dùng chung image `sha256:ec809221ac408f94f1874f862c23faf03bdd0decff4a57cb2e95ddd7c79ef626`. Frontend dùng `sha256:b747bf3b7aef4708c845b33811e9bc597266e7a321ef51c11159684a36e7acb3`. Đối chiếu 45 tệp Python giữa source và image, cùng 7 tệp frontend giữa build, image và HTTP đã đạt.
+
+Commit vận hành `88e9946` xác minh cặp image dự phòng và cập nhật hướng dẫn kiểm thử. Nhánh nghiệm thu lưu mã và bằng chứng mô tả trên origin chính thức. Hai mốc `main` và `codex/product-polish` giữ tại `a4f70b2` và `2eecb06` trong vòng kiểm toán.
+
+### L. Giới hạn đang theo dõi
+
+Gemini từng trả 503 ở tác vụ bổ sung quy tắc, do đó vòng cloud dừng tại lượt này. Kết quả LIVE trên hai dự án TEST chứng minh các luồng được thử. Bộ câu hỏi chuẩn LIVE đầy đủ cho định tuyến và ngữ nghĩa còn thiếu bằng chứng. Một lượt suy luận chậm có thể làm tác vụ tệp đợi trên Worker chung, như trace của lần thử 90 giây ở phần I.
+
+Qwen nhận yêu cầu lập quy tắc dài qua Ollama nhưng vượt 90 giây ở router. Backend ghi `OLLAMA_UNAVAILABLE` với cờ chưa biết Ollama đã nhận đầy đủ hay chưa, giữ job và hội thoại. Qwen dùng RTX 3050 Laptop 6 GiB, lần gọi này đưa 24/37 lớp lên GPU. Probe sau khi rút gọn định tuyến ở `4347b07` trả đúng một intent sau 44,515 giây, còn thiếu một số dữ kiện phạm vi. Planner chuẩn vượt 90 giây trong phép thử tách riêng. Bản thử Planner rút gọn trả HTTP 200 sau 28,657 giây nhưng Backend chặn vì quan hệ gom nhóm sai. Bản thử Planner rút gọn đã được loại khỏi bản triển khai.
+
+Trên bản đang chạy, gửi lại yêu cầu lập quy tắc qua giao diện sau khi thay router. Qwen định tuyến thành công sau 43,786 giây. Planner trả HTTP 200 nhưng thiếu đề xuất hợp lệ sau 64,881 giây. Backend ghi `AI_PLAN_MISSING` và dừng trước duyệt. Trong lần hỏi ba chênh lệch lớn nhất của một run đã xác minh, Qwen hỏi nhầm về độ đầy đủ và ngày chốt nguồn. Luồng dừng ở thẻ hỏi làm rõ. Hai ca này giữ nguyên trong kết quả LIVE và cổng E/J vẫn chưa đạt toàn phần.
+
+### M. Bắt đầu thử local
+
+Mở <http://127.0.0.1:18180>, tạo dự án Kiểm thử và đính kèm ba tệp mẫu. Giữ mặc định **Gemini 3.5 Flash Lite** hoặc chọn **Qwen 3:8B**. Gửi “Tôi vừa tải dữ liệu lên. Hãy kiểm tra và đề xuất cách chuẩn hóa để tôi có thể đối soát.” Xem từng thẻ, lưu bản nháp nếu cần chuyển màn hình rồi xác nhận trước khi chuẩn hóa. Kiểm số dòng và lỗi của từng nguồn, sau đó chọn hai nguồn và duyệt quy tắc đối soát. Xem [hướng dẫn tự kiểm thử](USER_TEST_GUIDE.md).
+
+### Trạng thái các cổng nghiệm thu
+
+| Cổng | Kết quả | Phạm vi đã kiểm |
+| --- | --- | --- |
+| A. Git và baseline | PASS trong phạm vi | Giữ hai mốc Git gốc, xác minh restore, cặp image dự phòng và dọn image cũ |
+| B. Contracts | PASS theo hồi quy | Review từng phần, nonce, fencing, idempotency và duyệt nguồn có dòng lỗi |
+| C. Data Foundation | PASS trên bộ đã chạy | Upload, parse, profile, chuẩn hóa, lineage, dữ liệu lưu qua restart |
+| D. Đối soát | PASS trên các oracle | Tiền Decimal, dung sai, phạm vi, nhóm nguồn, bằng chứng, KPI và xuất báo cáo |
+| E. Agent | Một phần | Hai provider đạt mapping và bổ sung review LIVE. Lập quy tắc, chất lượng LIVE toàn bộ và giới hạn provider ở phần L |
+| F. Bảo mật | PASS theo bộ kiểm | Quyền duyệt, cách ly project, CSRF, loopback, upload, policy, idempotency và quét bí mật |
+| G. Frontend | PASS | 139 Playwright, lựa chọn model, hành vi keyboard, thiết bị nhỏ và các luồng nghiệp vụ |
+| H. Khôi phục | PASS theo các phép thử | Retry/timeout/fault, stale review, 75.000 dòng trên `a28278d`, backup/restore và các lần tạo lại |
+| I. Docker | PASS theo triển khai local | Cùng source revision, 4 healthy, checksum, replay oracle, rollback và trở lại bản chạy |
+| J. Người dùng | Một phần | Luồng thủ công đi hết qua giao diện. Hai model đạt chuẩn hóa. Bằng chứng LIVE theo provider ở phần F và L |
+
+**Mốc lịch sử — 02/11/2026:** UI AI Assistant và các kiểm tra kỹ thuật đã hoàn tất trên feature branch; **chưa đạt nghiệm thu toàn Agent-first MVP** vì chất lượng NLP chưa đạt và Gemini đã hết 50/50 attempts. Chưa merge hoặc release main. Đọc mục S để biết số đo tại thời điểm đó; các mục A–R là lịch sử.
 
 Bối cảnh lịch sử: Quality Hardening + UX Refinement trước đây nằm trên `codex/interface-quality`, từ main `0b9421e`. Các nhiệm vụ P/Q triển khai Assistant trên `codex/assistant-automation` và dừng trước merge. Mục R ghi ủy quyền hợp nhất mới cùng gate live đang BLOCKED; không thay đổi kết luận lịch sử ở mục N.
 
@@ -1806,3 +1954,523 @@ Source `a7c1e8b` đã commit/push lên `origin/codex/local-session-recovery` c�
 ### G. Điều kiện sử dụng
 
 **READY_FOR_LOCAL_TEST**: root/health/live/ready/session/settings/projects đều200 sau cleanup, đúng demo/demo-owner/owner. Assistant, History, Settings, chart/evidence/XLSX và reload đã được kiểm lại trên browser thật sau cleanup, không uncaught page errors hoặc mutation từ Settings/readback. Phạm vi sẵn sàng là local CSV/XLSX và các luồng đã kiểm; không phải bảo đảm mọi câu tự nhiên hoặc deployment Internet/nhiều người dùng. Sau reboot/Docker/Backend restart hoặc Frontend recreate, dùng `./tools/start.ps1 -SkipBuild` rồi **Thử kết nối lại**; không bỏ bảo mật để tự cấp proof từ browser.
+
+## AC. Hoàn thiện sản phẩm, AI local và nghiệm thu — 04/11/2026
+
+### A. Tình trạng sản phẩm
+
+**Chưa đạt `READY_FOR_FINAL_USER_TEST`: phần nghiệm thu AI còn `BLOCKED_AI_PROVIDER`.** Gemini đã trả HTTP 429 thực tế. Dừng gọi mới, không đổi tài khoản/key/model hoặc tăng quota nội bộ để vượt giới hạn nhà cung cấp. Những cổng local bên dưới được kiểm chứng riêng; không dùng chúng để tuyên bố AI đã hoàn tất.
+
+Giao diện và các luồng dữ liệu local có thể mở để kiểm tra. Bản Docker hiện tại là candidate đã qua kiểm tra local, chưa phát hành lên `main`. Không phát hiện lỗi P0/P1 trong các luồng đã kiểm tra; còn các giới hạn hiểu ngôn ngữ và coverage LIVE chưa đủ, nên không khẳng định phần mềm không còn lỗi. Không nghiệm thu triển khai Internet, nhiều người dùng đồng thời hoặc nghiên cứu người dùng độc lập.
+
+Giữ kiến trúc, Matcher/Verifier, công thức, Decimal, migrations và dependencies. Không tạo service, framework, worktree hoặc môi trường Docker thứ hai. Các mục trước của tài liệu là snapshots lịch sử; trạng thái hiện hành được mô tả trong mục AC này.
+
+### B. Ngôn ngữ và các lỗi đã sửa
+
+| Nguyên nhân | Thay đổi và kiểm chứng |
+| --- | --- |
+| Trạng thái đọc tệp dễ bị hiểu thành đã chuẩn hóa | Hiển thị “Đã đọc dữ liệu; chưa chuẩn hóa”; dataset READY/PARTIAL, đề xuất và verified được phân biệt. Nút duyệt nói rõ việc lưu ánh xạ và chuẩn hóa, hoặc lưu quy tắc và chạy đối soát. |
+| DTO định tuyến làm mất phạm vi người dùng đã nêu | Thêm source facts có kiểu, giữ coverage/snapshot/date/effective dates sang Planner; kiểm canonical IDs và từ chối facts mới mâu thuẫn khi reuse. Missing vẫn null, không nới gates. |
+| UTC bị dùng làm ý nghĩa ngày | `time_basis` tách khỏi timezone; yêu cầu mới không được dùng UTC thay ngày phát sinh/hạch toán. Run mới đã kiểm tra dùng `event_date`, UTC riêng. |
+| Count kèm tổng lệch toàn run bị dựng lại bằng query | Chuyển sang MetricSnapshot đã verified khi không có filter/group; truy vấn phạm vi con vẫn dùng typed query. Có regression cho cả sum riêng và count kèm sum. |
+| AI tự điền currency vào danh sách ngoại lệ | Prompt nhắc fields phải thuộc đúng source; unknown field vẫn bị Backend chặn. Không tự bỏ validation hoặc bịa trường tiền tệ. |
+| “Kết quả đang mở” bị hiểu là ngoại lệ OPEN | Prompt phân biệt tổng quan run đang xem với công việc xử lý ngoại lệ; còn phải xác minh nốt các cách nói sau blocker provider. Không tuyên bố đã hết lỗi NLP. |
+| Timeout/429 và usage lỗi dễ bị hiểu sai | Không resend read/write timeout hoặc delivery chưa rõ; known connect failure/5xx mới retry có giới hạn và backoff. 429 có mã rate-limit riêng; safe usage của lỗi Assistant được giữ trong trace. |
+| Harness trả exit thành công khi provider đã dừng | CLI nay trả exit 2 khi stopped. Launcher phải lưu/kiểm exitcode ngay, trước bước copy receipts. Thiếu/thừa/gộp replies được ghi FAIL cho toàn bộ ca không gán được, giữ mẫu số; ba regression cho số reply 0/1/3 khi yêu cầu 2 đều đạt. |
+
+Files chính: `agent_intents.py`, `contracts/agent.py`, `contracts/reconciliation.py`, `agent_workflows.py`, `assistant.py`, `ai_gateway.py`, `assistant_jobs.py`, `errors.py`; các job handlers/config/repository/API và tests được cập nhật tương ứng. Không sửa raw/canonical hoặc lịch sử để che các lần thử thất bại.
+
+### C. Giao diện và yêu cầu màu trắng mới nhất
+
+Chủ dự án đã yêu cầu giữ **nền trắng**, không dùng nền xanh cho ô chat hoặc ô gửi câu hỏi. Commit `2ab64e0` áp dụng:
+
+- Tin nhắn người dùng, phản hồi trợ lý và composer có nền trắng, viền xám trung tính 1px và bóng nhẹ để tách khỏi nền trang. Hover composer chỉ làm đậm viền; bàn phím vẫn có chỉ báo focus riêng.
+- Tin nhắn người dùng căn phải; nội dung/menu dùng grid riêng, không float làm ép chữ. Giữ xuống dòng chủ động, mã có số 0 đầu và chữ tiếng Việt.
+- Preview 10 dòng; “Dữ liệu chi tiết” mở toàn bộ trang của cùng query/result, không gọi AI hoặc fetch lại chỉ vì mở. Pagination/sort/evidence giữ nguồn và trang đang xem.
+- Kết quả count lấy giá trị Backend, kể cả 0; không nhầm một dòng tổng hợp là một giao dịch. Số dòng đầu vào, tổng nhóm và trang hiện tại được tách rõ.
+- Decimal được định dạng bằng chuỗi, không qua float; chỉ áp dụng với trường có kiểu. NULL khác 0; giá trị nguồn/evidence giữ nguyên để truy vết.
+- Settings chỉ có thông tin sử dụng, quyền và riêng tư; không có panel provider/model/ledger/kiểm thử nâng cao.
+
+Sau khi chốt màu trắng, chủ dự án yêu cầu chữ lớn hơn. Commit `e9867ab` tăng chữ câu hỏi/phản hồi lên 16px, bảng và thao tác trong chat lên 14px. Ô nhập vốn kế thừa 12px từ label toàn cục, nay được kế thừa đúng 16px từ composer; giữ chiều cao một dòng và không che nút gửi. Bảng chi tiết cũng dùng 14px.
+
+TypeScript, ESLint và production build đạt. Trước deploy: 11 ca viền trắng đạt trong 32,8 giây; sau sửa cỡ chữ, 16 ca liên quan đạt trong 2,0 phút trên 5 viewport: 390/768/1366/1440/1920. Ảnh hội thoại thật `after/white-chat-*.png`, `white-answer-*.png` và receipt `white-surfaces.json` nằm trong `runtime/product-polish` tại máy nghiệm thu. Đã xác minh cả ba bề mặt là trắng, có viền và bóng, không tràn ngang; ledger không tăng khi kiểm màu.
+
+Ảnh baseline của release a7c1e8b còn tại `runtime/session-recovery/after`. Bộ chụp “before” đầu đợt này dừng vì local proof đã hết hiệu lực sau restart; không trình bày bộ chụp thất bại đó là baseline thành công. Ảnh sau và hashes được chụp lại trên chính assets Docker hiện tại.
+
+#### Thu gọn công cụ theo yêu cầu tiếp theo
+
+Commit `7157f6a` gộp chọn dự án và các thao tác vào một thanh cao tối đa 40px. Tệp đã tải, chọn ngữ cảnh và hội thoại mới dùng nút biểu tượng có tên truy cập/title; chính sách/chế độ, thiết lập thủ công và xóa hội thoại nằm trong menu ba chấm. Escape đóng và trả focus về nút mở; bấm ra ngoài đóng menu. Menu nổi và cuộn nội bộ, không làm co/đẩy transcript. Project picker vẫn tìm kiếm/chọn/phân loại theo cùng quyền, không tạo nguồn “latest” mới hoặc bỏ kiểm tra scope/run.
+
+Giảm topbar/khoảng trống và tăng bề ngang đọc desktop tối đa 1.120px. Đo cùng hội thoại ở 1.440px: vùng đọc rộng 920→1.120px, bắt đầu y179,5→114px, thêm 65,5px chiều cao đọc; ở 1.366px rộng 920→1.064px. Mobile 390px vẫn rộng 358px, bắt đầu y174→112px. Không thay sidebar của các trang khác; giữ chữ 16px, bảng 14px và nền trắng đã duyệt.
+
+Mười ca bố cục gồm 23 trạng thái và đọc bảng ở 5 viewport đạt trong 1,6 phút trên candidate. Đã kiểm menu không đổi bounding box transcript, nằm trong viewport, Escape/focus, bấm ra ngoài, không tràn ngang và mở đúng dữ liệu. Một lượt candidate trước đó có navigation ERR_ABORTED khi build assets đang thay; giữ log và chạy lại trên dist ổn định, không gọi đó là lỗi nghiệp vụ hoặc bỏ ca. `compact-before.json`, `compact-after.json`, screenshots `compact-after/chat-*.png` và `options-*.png` giữ bằng chứng thực tế trên máy nghiệm thu.
+
+### D. Nghiệp vụ, hành trình và bảo toàn dữ liệu
+
+| Hành trình | Bằng chứng |
+| --- | --- |
+| A — Tải và đọc tệp | Browser thật tải CSV/XLSX tổng hợp, giữ bytes/hash và báo trạng thái đọc; full UAT kiểm tệp hỏng/quá dung lượng, multi-sheet và dòng nguồn. |
+| B — Chuẩn hóa | LIVE đề xuất mapping, người kiểm thử duyệt 2 nguồn rồi chuẩn hóa 5+5 dòng. Có kiểm mã 0 đầu, số âm/0, locale và COMPLETED khác PAID. Không tự duyệt. |
+| C — Đối soát | LIVE tạo đề xuất; xác nhận completeness còn thiếu bằng UI, duyệt quy tắc rồi Matcher và Verifier chạy. Run `be230b6f-d0b3-4246-9b76-7f83564ef63d`: 3 EQUAL, 1 AMOUNT_MISMATCH, 2 UNMATCHED; signed/absolute variance 0.50 VND, đúng oracle tính tay. |
+| D — Tra cứu/phân tích | LIVE count lệch, top 1, hỏi tiếp theo vị trí, UNPAID riêng, chart đủ 5 dòng và thiếu đối ứng. G 1000 được đọc lại bằng typed query: top 3 trong 19 nhóm lệch, evidence đúng dòng thứ hai; chart 686 PAID + 200 UNPAID + 114 COMPLETED. |
+| E — Xuất/khôi phục | Tải XLSX thật qua browser và đọc lại đúng run/snapshot; CSV/XLSX của UAT so với oracle, không có formula injection. Reload, History, Settings, draft/cookie và recreate đều được kiểm riêng. |
+
+Giữ nguyên 11 tình huống, 24 tệp, 2.131 dòng UAT: đơn hàng/thanh toán, thu chia kỳ, chi gộp ngân hàng, ngày ghi sổ, khóa composite vận đơn, nhiều lần xử lý, gộp vận đơn, cấu trúc khác, không tương thích, biên/bảo mật và 1.000 giao dịch. G 1000: **966 khớp / 19 lệch tiền / 15 thiếu đối ứng / 7.03 VND**. Kết quả đọc lại run cũ là LOCAL/CACHED, không phải inference mới.
+
+Run tổng hợp trước dùng `time_basis=UTC` được giữ là lịch sử chẩn đoán; run mới dùng `event_date`, timezone UTC riêng. Model có thể để completeness null dù câu tự nhiên đã nói đầy đủ; UI buộc xác nhận, không tự điền để chạy.
+
+Backup trước đổi policy: `backup_d66ade0c9753404ea12dc99938051927`, 24 bảng; metadata SHA256 `9f56d8058d7c64757b68acd48acb973827d0fd786e2f84234d1e4d25d4393e0a`. Backup 21,971 giây, restore UUID schema trong cùng PostgreSQL 16,231 giây đạt; phát hiện checksum hỏng và chặn path traversal, không overwrite public. Bản sao host đã kiểm metadata và 3.712 tệp theo manifest. Đây vẫn là backup cùng máy, chưa phải phục hồi thảm họa ngoài máy.
+
+So nguyên PK/full rows của 24 bảng gốc và checksum mọi tệp cũ: không mất/đổi dữ liệu; chỉ một thay đổi được cấp quyền là demo policy.external_request_budget từ 210 thành null. Giữ nguyên 203 reservations gốc. Snapshot/verify khi recreate kiểm 20 bảng nghiệp vụ và 3 nhóm artifact/run/export, không chỉ counts; HttpOnly/SameSite Strict cookie và draft được giữ. Trước/sau deploy màu trắng cũng kiểm lại toàn bộ metadata/artifact hiện tại và đạt.
+
+### E. AI không còn trần nội bộ, nhưng còn giới hạn provider
+
+Global, Agent, Planner, Assistant và workspace demo dùng `unlimited` → typed null, không số cực lớn và không reset usage. Chỉ cấu hình unlimited trong local demo được cấp quyền; default cài mới vẫn cloud OFF/0. Null không cấp permission/key. `.env` và policy có backup riêng ngoài Git cùng audit thay đổi. LlamaParse giữ nguyên request/credit/SHA allowance; không mở parser cloud mới.
+
+Giữ reservation lock, quyền cloud, privacy, idempotency, timeout, giới hạn của workflow/model/tool/payload, backoff và stop khi unknown delivery. Provider 429 không được coi là cần tăng quota nội bộ. Không đổi Gemini mặc định, key hoặc account; Knowledge không bị dùng để vượt blocker Gemini.
+
+| Phép đo | Intent | Nguồn | Slots | Dispatch | Abstention | Giới hạn |
+| --- | --- | --- | --- | --- | --- | --- |
+| Routing 30, 80 gold LIVE theo lô | 79/80 | 60/60 | 34/34 | 80/80 | 20/20 | N08 hỏi lại thay vì UNSUPPORTED; không tính EBITDA |
+| Routing 30, 24 variants đo đủ | 23/24 | 15/16 | 10/10 | 23/24 | 8/8 | Giữ V16 sai; một batch gộp 2 câu bị chặn, các ca còn lại được đo riêng, không bỏ failure |
+| Routing 31, 80 gold observed | 79/80 | 59/60 | 33/34 | 79/80 | 20/20 | Một batch bị chặn; chỉ chấm từng response đã biết HTTP200/STOP. L14 đảo PAID/UNPAID bị guard chặn, không thực thi |
+| Routing 31, 24 variants theo lô | Chưa đủ | Chưa đủ | Chưa đủ | Chưa đủ | Chưa đủ | Có trộn/gộp câu; không lấy kết quả revision cũ thay revision mới |
+| Routing 31, 1 goal/request, gold | 26/26 đã đo | 26/26 | 15/15 | 26/26 | Chưa đo | D27 nhận 429; 54 ca chưa validated |
+| Routing 31, 1 goal/request, variants | 15/15 đã đo | 11/11 | 7/7 | 15/15 | 4/4 | V12 nhận 429; 9 ca chưa validated |
+
+Một goal/request khớp cách Chat gửi yêu cầu. Giữ nguyên 104 ca gốc: **41 ca đo đơn đã validated, 63 ca còn thiếu**, gồm 2 ca bị 429 và 61 ca chưa gửi theo phép đo một goal/request. Không báo 104/104. IDs và receipts tại `runtime/product-polish/provider-blocker-pending.json`; V16 chưa được chốt lại bằng phép đo đơn. Benchmark chỉ đo router, không chứng minh 80/24 workflow đã thực thi, không phải accuracy tổng quát.
+
+Các revisions 28–29 và failure cũ vẫn còn receipts: gold 28 intent 78/80, variants 28 intent 23/24; gold 29 dừng vì unknown field, variants 29 đạt 24/24 trong một lượt. Không xóa hoặc sửa expected output để tăng tỷ lệ.
+
+Ledger Gemini **203 → 311**, thêm **108 HTTP attempts: 106 HTTP200 và 2 HTTP429**. Token đo được: prompt 1.617.148, output 48.860, total 1.666.008; cached content 15.042 thuộc usage, không tự trừ thành hóa đơn. Latency 108 receipts/trace: p50 4.140ms, p95 7.396ms, không phải latency toàn hành trình. 103 attempts có receipt từng lần; 5 lần đầu chỉ có receipt tổng của một call. Những trace Assistant xác định không gọi HTTP được tách riêng. **Chi phí hóa đơn NOT VERIFIED.**
+
+D27 chạm 429 trước; harness lúc đó trả exit 0 khiến launcher tiếp tục variants thêm 16 attempts trước 429 ở V12. Đây là lỗi orchestration của Codex, không phải Gateway tự retry D27. CLI đã sửa exit 2 và evaluator giữ các ca lỗi trong mẫu số. Không gọi provider tiếp để retest 429. Chưa đủ bằng chứng xác định đây là quota ngày, RPM hay token quota. Sau khi điều kiện provider được khôi phục mới đo nốt với attempt IDs mới có audit; không overwrite failure hoặc resend delivery chưa rõ.
+
+Knowledge: `/models` HTTP200, model `knowledge` có mặt; mapping tổng hợp LIVE qua JSON/semantic validators, 2 decisions PROPOSED, không tự duyệt. Có 2 HTTP attempts; receipt cũ chỉ giữ token lần cuối: prompt 2.497, output 1.390, total 3.887, trong đó reasoning 1.048 đã nằm trong output. Tổng token của cả 2 attempts và latency Knowledge chưa đo; billed cost NOT VERIFIED. Không coi đây là đã nghiệm thu mọi workflow Knowledge.
+
+### F. Kiểm chứng và gates
+
+Backend/PostgreSQL đầy đủ **337 PASS / 82,01 giây**, tăng 25 ca so baseline 312: 22 ca cho runtime và 3 ca cho harness. Một deprecation warning từ Starlette TestClient/httpx; không có test failure. Ruff đạt, mypy 47 files đạt; TypeScript/ESLint/production build đạt.
+
+Frontend giữ 121 ca cũ, thêm 5 ca đọc dữ liệu thành 126. Các vòng trước đổi viền đều 126/126, vòng cuối 11,8 phút; sau cleanup 8/8 smoke trong 55,5 giây. Một vòng kiểm viền trắng có 123 PASS/3 FAIL do harness chạy chồng: hai runners dùng chung thư mục trace gây ENOENT khi teardown; việc collection chạy lại generator tệp UAT làm SHA256 XLSX không còn khớp manifest đã nạp ở runner trước. Candidate cỡ chữ vòng đầu còn bắt được textarea vẫn 12px; đã sửa label inheritance, không đổi expected để che lỗi. Lượt candidate tách output đạt 16/16. Giữ đầy đủ log/trace; lượt full sau tăng chữ chạy riêng sau khi mọi runner khác kết thúc đạt 126/126 trong 11,8 phút. Không tăng timeout hoặc gọi AI để chữa các lỗi này. Lượt full trên thanh công cụ gọn ghi bên dưới. Không cộng replay thành test độc lập.
+
+Security và các bất biến được kiểm: CSRF/Host/origin, viewer/isolation, cloud OFF, unknown delivery, zero-prefix, NULL/âm/locale, Decimal, grouping/cardinality/coverage, export injection và preservation. Tests có cả MOCK CONTRACT và LOCAL; chỉ những hành trình có receipt provider mới gọi là LIVE. Chưa có nghiên cứu screen-reader/thiết bị vật lý hoặc soak/multi-user mới trong đợt này.
+
+#### Kết quả bàn giao local sau thanh công cụ gọn
+
+- Full Playwright **126/126 PASS trong 11,7 phút** trên assets Docker của `7157f6a`, một runner, output riêng; không xen build hoặc regenerate fixtures. Đủ 11 tình huống UAT, kể cả F biên/bảo mật và G 1.000 giao dịch, tệp hỏng/quá dung lượng; các ca lỗi harness trước đã được chạy lại trong full suite này.
+- Kiểm trình duyệt thật ở 5 viewport đạt: nền trắng/viền/bóng, chữ 16px, một thanh công cụ, menu không đẩy khung chat, Escape/focus/click ngoài, không page errors hoặc tràn ngang. Cached readback của run LIVE mới và G 1000 cùng tải/đọc lại Excel tiếp tục đạt; không gọi model mới để kiểm CSS.
+- So 24 bảng/tất cả PK gốc và 3.712 tệp gốc: không missing/changed/checksum failure; chỉ đúng policy demo 210→null được cấp quyền. Toàn bộ metadata hiện tại và **3.502 artifacts + 364 run artifacts + 663 exports = 4.529 tệp** cũng qua checksum/snapshot/verify. Số dự án hiện tại 440, datasets 961, canonicals 780, runs 364; 78 dự án phát sinh trong đợt này đều TEST, giữ để audit thay vì xóa lịch sử nhằm làm counts nhỏ đi.
+- Không có job đang queued/running/retryable khi snapshot bàn giao. Ledger vẫn 311, bốn config ceilings và workspace limit đều null; parser request allowance vẫn 2. Các traces tăng do regression xác định được tách khỏi 108 HTTP attempts đã đo. Không có inference mới sau khi dừng vì 429.
+- Docker hiện 4/4 Studio healthy, chỉ 4 images riêng Studio: cặp current và cặp rollback; PostgreSQL và 2 volumes ứng dụng giữ nguyên. Toàn host có 51 images/31 containers/36 volumes; 27 containers ngoài Studio và mọi volumes đối chiếu nguyên trạng. Shared build cache không dọn toàn host. Langfuse 6/6 healthy; UI/health/ready/đọc observation cũ HTTP200.
+- Source/OCI/HTTP hashes và phiên demo-owner/demo/owner được kiểm lại sau lần frontend recreate cuối. Frontend container/image revision `7157f6a`, Backend/Worker `98d93c9`; không thay backend code khi làm UI. Tài liệu và harness mới hơn không cần recreate Backend.
+
+**Kết luận:** giao diện và các cổng kỹ thuật/nghiệp vụ local đã đạt trong phạm vi đo. Cổng AI live đầy đủ và phát hành main còn BLOCKED do HTTP429 cùng 63 ca đo đơn chưa hoàn tất; không gán nhãn READY_FOR_FINAL_USER_TEST. Hệ thống không bị trần request nội bộ cũ chặn, nhưng không thể cam kết provider khả dụng hoặc hiểu đúng mọi câu.
+
+### G. KEEP / DELETE / ARCHIVE
+
+Inventory có trước xóa tại `runtime/product-polish/cleanup-inventory.json`. 20/21 TS/TSX modules reachable; `vite-env.d.ts` là ambient type declaration cần giữ. Không có production component đủ bằng chứng để xóa. Bỏ các declarations CSS float/nền cũ đã được thay; giữ contracts, migrations, tests, manual fallback, security, lockfiles, `.venv`, node_modules, current dist và mọi backup.
+
+Đã xóa đúng Frontend a7c1e8b không còn container tham chiếu; giữ current và cặp rollback dac8dd1. Đã xóa 3 nhánh local/remote `assistant-automation`, `assistant-conversation`, `demo-acceptance` sau khi xác minh SHA remote khớp và đã merge origin/main. Giữ `product-polish` để xử lý AI gate. Không xóa container nghiệp vụ hoặc tệp dữ liệu để giảm counts.
+
+Xóa cache bị kiểm duyệt tự động chặn với lý do “blocked by policy”; 6 thư mục cache khoảng 30MB được giữ, không lách qua công cụ khác. Shared build cache và tài nguyên dự án khác được giữ; không global prune. Tài liệu/receipts lịch sử giữ để audit trong các vị trí sẵn có, không tạo archive framework mới.
+
+27 containers ngoài Studio và toàn bộ 36 volumes được đối chiếu nguyên trạng. Langfuse có 6 dịch vụ healthy; UI/health/ready và đọc observation cũ HTTP200, không restart hoặc đổi deployment của Langfuse.
+
+### H. README và khởi động
+
+README được viết lại thành giới thiệu giá trị, hành trình sử dụng, phạm vi/quyền riêng tư và **2 lệnh**: `tools/start.ps1` hoặc `tools/start.ps1 -SkipBuild`. Thông tin backup/tests/usage ở tài liệu kỹ thuật. Build chuẩn tự giữ nhãn Git và khôi phục biến môi trường trước đó; cả hai lệnh kiểm HTTP/session/identity sau healthcheck và đã chạy thực tế.
+
+Sau máy/Docker/Backend khởi động lại, dùng `-SkipBuild`, rồi bấm “Thử kết nối lại” nếu trang đang mở. Không xóa cookie hoặc dữ liệu để sửa kết nối. Không đưa request ledger hoặc biến môi trường lên Settings.
+
+### I. GitHub, Docker và khả năng khôi phục
+
+Các nhóm source đã push trên `codex/product-polish`: `0285d0a`, `2bcf27a`, `d32c488`, `ef966fc`, `fb76d10`, `75cfb16`, `98d93c9`, `1f82518`, `210f75b`, `2ab64e0`, `e9867ab`, `7157f6a`. **Main giữ `a4f70b2`** vì AI gate còn blocker; chưa fast-forward, không force-push. Commit bàn giao docs và SHA local/remote báo riêng để tránh hash tự tham chiếu. Không commit runtime, backups, `.env` hoặc keys.
+
+Một Compose `ai-reconciliation-studio`, 4 services, 2 persistent volumes. Backend/Worker dùng source `98d93c9`, Frontend `7157f6a`; app code không đổi trong các commits harness/docs về sau. 42 Backend Python files khớp host/image ở cả hai dịch vụ; 7 frontend files khớp host/image/HTTP; Chromium resources được so SHA256 với cache tắt, không service worker. Proof/session được xác minh sau lần đổi container identity cuối.
+
+Giữ cặp rollback `dac8dd1` cùng backup env/policy trước unlimited. Image cũ cần khôi phục cấu hình/policy hữu hạn tương thích, giữ mọi reservations mới. Script chặn trước Docker mutation nếu đang null/unlimited; negative compatibility test đạt. Không gọi đó là đã diễn tập rollback thực về mã cũ trong đợt này; không downgrade schema hoặc reset ledger. Candidate hiện tại chưa gắn nhãn accepted khi AI gate chưa đủ.
+
+#### Định danh bản Docker đã đối chiếu
+
+| Dịch vụ | Source revision | Image ID/digest |
+| --- | --- | --- |
+| frontend | `7157f6a8dc0a18d12458f2b695b625eca497f4a1` | `sha256:a1a9639479953e52415dbc5554b98a39ab685e1060657c86d5cee536fd92248a` |
+| backend | `98d93c9e40f9d3dc3735006df055ff40a38b3e8d` | `sha256:d6d4f0268fc96b83dcedf0ee124d16fcc6f4fd526529a194124b03b0cb4a4a69` |
+| worker | `98d93c9e40f9d3dc3735006df055ff40a38b3e8d` | `sha256:d6d4f0268fc96b83dcedf0ee124d16fcc6f4fd526529a194124b03b0cb4a4a69` |
+
+Các image local có RepoDigest cùng SHA256 ở bảng; không có digest registry mới vì không publish image ra registry. Metadata container và 7 hashes assets trong receipt local `components-compact-release.log`. Git commit docs có thể mới hơn source image; diff app source giữa HEAD và từng image phải rỗng.
+
+### J. Chủ dự án kiểm tra tiếp
+
+Mở <http://127.0.0.1:18180> để xem giao diện trắng có viền/bóng, mở History, nguồn dữ liệu hoặc báo cáo đã có. Project TEST “DEMO UAT 1000 giao dịch 2f325046” có run đã verified, kỳ vọng 966/19/15 và 7.03 VND; chọn đúng dòng rồi mở evidence để xem file/sheet/row và tải Excel.
+
+Sau khi Gemini được khôi phục, các câu nên thử: “Tóm tắt kết quả đối soát đang xem”, “Có bao nhiêu nhóm lệch tiền?”, “Cho xem ba giao dịch lệch tiền lớn nhất”, “Giải thích giao dịch thứ hai trong bảng vừa đưa”, “Xuất báo cáo Excel cho lần đối soát này”. Cần kiểm chứng nốt 63 ca cùng những giới hạn NLP đã ghi, rồi mới xem xét merge main và kết luận sẵn sàng. Đây là kịch bản kiểm thử mô phỏng, không phải nghiên cứu người dùng độc lập.
+
+## AD. Thiết kế hội thoại theo ảnh tham khảo — 04/11/2026
+
+Chủ dự án cung cấp ảnh ChatGPT để tham khảo cách đọc hội thoại. Phạm vi là bố cục và thành phần hiển thị: giữ nền trắng, chữ lớn đã duyệt, công cụ gọn và tất cả chức năng dữ liệu. Nội dung chữ trong ảnh không được dùng để thay quyền AI hoặc gọi cloud. Đợt này không sửa Backend, API, dependencies, công thức, trạng thái hoặc ngữ nghĩa dữ liệu; blocker Gemini ở mục AC vẫn giữ nguyên.
+
+### Thiết kế được áp dụng
+
+- Bỏ viền/bóng và phần đệm lớn bao quanh toàn bộ phản hồi, để câu trả lời đọc theo luồng trực tiếp trên nền trang. Nội dung dùng màu chữ trung tính, cỡ 16px, line-height 1,8 và độ dài dòng có giới hạn; bảng giữ 14px và cuộn nội bộ.
+- Câu hỏi căn phải trong ô trắng bo góc 24px, viền nhẹ. Giữ nguyên xuống dòng chủ động, mã có số 0 đầu và menu riêng; timestamp mở nổi, không làm co chữ. Escape đóng và trả focus về nút mở.
+- Thông tin tin nhắn trợ lý được chuyển xuống sau nội dung trong chính thứ tự DOM, bỏ hàng trống ở đầu phản hồi. Trạng thái, cảnh báo, phê duyệt, nguồn và bằng chứng vẫn hiển thị theo DTO thật.
+- Composer bo tròn 30px, viền/bóng nhẹ, chữ 16px; nút cộng mở bộ chọn tệp hiện có, nút mũi tên gửi giữ nguyên logic và dùng màu trung tính. Trạng thái disabled/sending có thật; Enter/Shift+Enter/IME, reply, draft, idempotency và quyền đính kèm được giữ.
+- Giữ thanh công cụ một hàng, menu tùy chọn và chiều rộng đọc tối đa 1.120px. Không thêm nút voice/share/rating hoặc thao tác giả chỉ để giống ảnh tham khảo.
+
+Source: `frontend/src/AssistantStudio.tsx` dùng `MessageInfo` cho thông tin tin nhắn và đặt footer đúng vai trò; `frontend/src/styles.css` cập nhật bề mặt, typography, spacing và composer. `assistant-layout.spec.ts` bảo vệ bề mặt mới, vị trí footer, timestamp không đổi bounding box đoạn chữ, Escape/focus và viewport bounds. Yêu cầu mới đã được ghi ở đầu PROJECT_PLAN; thiết kế viền bao phản hồi ở mục AC là snapshot trước chỉ dẫn này.
+
+### Kiểm chứng
+
+TypeScript, ESLint và production build đạt. Candidate có **35 ca giao diện/tương tác đạt trong 2,5 phút**; sau chỉnh timestamp, chạy lại **5 ca ở 5 viewport đạt trong 22,3 giây**. Đây là replay của catalogue hiện có, không cộng thành 40 ca mới. Các ca bao gồm 23 trạng thái Assistant, nhập/gửi, giữ draft, review/clarification, Settings, đọc bảng/evidence và phân trang.
+
+Đã xem screenshots desktop/mobile và đo trình duyệt thật tại 390/768/1366/1440/1920. Không tràn ngang hoặc page errors; phản hồi không viền, menu thông tin nằm sau nội dung, composer luôn có chỗ. Bản nháp hai dòng được nhập và reload còn nguyên, nút gửi bật đúng với mũi tên nền trung tính; không bấm gửi. Ledger trước/sau vẫn **311**. Receipts/screenshots tại `runtime/product-polish/reference-before`, `reference-candidate`, `reference-after` và các JSON tương ứng, đã ignored khỏi Git.
+
+Trước/sau recreate riêng Frontend, snapshot/verify toàn bộ metadata và artifacts hiện có đạt; không đổi Backend/Worker hoặc volumes. Sau mutation đã chạy verifier chính thức qua HTTP/session. Định danh source/image/HTTP, full browser regression và Git handover được ghi bổ sung sau lượt cuối bên dưới. Không gọi Gemini/Knowledge để kiểm CSS; LIVE 429 và 63 ca AI còn thiếu không được coi là đã giải quyết bởi đợt thiết kế này.
+
+### Cân đối và làm rõ ô chọn dự án
+
+Chủ dự án xác nhận “Dữ liệu mới” là tên dự án, không phải tệp mất tên. Nguyên nhân gây nhầm là ô chọn giữ chiều rộng 420px và đẩy badge/mũi tên ra xa nội dung. `ProjectSelector.tsx` nay có nhãn “Dự án” khi dùng trong Chat, `title` giữ đầy đủ tên; các trang khác giữ cách hiển thị phạm vi nghiệp vụ hiện có. App chỉ bật nhãn trong thanh Chat.
+
+Ô chọn co theo tên thay vì giữ khoảng trống: tên ngắn gọn tự nhiên, tên dài được giãn tối đa 560px và co lại theo màn hình. Badge và mũi tên đi cùng nội dung; ellipsis chỉ khi thiếu chỗ. Danh sách chọn vẫn giữ nguyên tên đầy đủ, tìm kiếm/phân trang/keyboard và quyền phân loại. Không sửa tên dự án/tệp, không tự chọn một tệp để đặt làm tên chung hoặc thay context/run.
+
+Đã chạy **20 ca liên quan đạt trong 2,0 phút** trên candidate: tên ngắn/dài ở 5 viewport, header không vượt44px/không đè nút công cụ, caption và title đúng, danh sách5/50/120dự án và khôi phục ID ngoài trang. Kiểm trình duyệt thật thêm hai dự án TEST có tên ngắn/dài: kích thước tự giãn đúng, mở/đóng danh sách và focus đúng, ledger không tăng. Screenshots/receipts tại `runtime/product-polish/project-picker-candidate` và `project-picker-after`.
+
+Bố cục theo ảnh tham khảo ở commit `279d3e1` đã đạt full **126/126 trong 12,5 phút** trước yêu cầu cân đối tên. Commit `e2f3153` bổ sung nhãn/kích thước ô chọn; các kết quả final dưới đây áp dụng sau lần triển khai này, không lấy lượt cũ thay lượt mới. Backend/Worker vẫn source `98d93c9`; không thay policy, quota hoặc gọi AI khi sửa header.
+
+### Nghiệm thu bản hiện hành sau cân đối tên
+
+Full Playwright **126/126 PASS trong 11,7 phút** trên chính assets Docker của `e2f3153`, chạy tuần tự với output riêng. Đã kiểm đủ 11 tình huống UAT và bộ 1.000 giao dịch, tệp hỏng/quá dung lượng, chọn dự án, ngữ cảnh, lịch sử, reply/review, bảng, modal, evidence, CSV/XLSX và reload. Các ca bao gồm MOCK CONTRACT và LOCAL; không gọi đó là đã nghiệm thu thêm AI LIVE.
+
+Đối chiếu trình duyệt thật: ô tên ngắn “Dữ liệu mới” khoảng 223px, tên UAT dài khoảng 359px ở desktop; không giữ khoảng trống 420px. Tên dài synthetic được kiểm với giới hạn 560px và đầy đủ title; ở 5 viewport không đè nút công cụ hoặc gây tràn ngang. Caption “Dự án” phân biệt rõ nhóm dữ liệu với các tệp bên trong. Tất cả screenshots/receipts ở `project-picker-after`, `reference-after` và JSON tương ứng.
+
+Sau lần recreate Frontend cuối, HTTP/session verifier đạt, cả 4 dịch vụ Studio healthy. Metadata và toàn bộ **3.748 artifacts + 390 run artifacts + 713 exports = 4.851 tệp** hiện tại qua checksum/snapshot/verify. So PK/full rows của 24 bảng gốc và 3.712 tệp gốc không missing/changed/file failure ngoài đúng thay đổi policy đã ghi ở AC. Không có job đang queued/running/retryable khi bàn giao. Ledger Gemini vẫn311, không có inference mới trong đợt thiết kế.
+
+Giữ một Compose hiện có, 2 volumes Studio, 27 containers ngoài Studio và toàn bộ 36 volumes host. Chỉ 4 images riêng Studio là cặp current và cặp rollback cần giữ; không phát sinh container/project thử nghiệm, không xóa volumes hoặc dữ liệu để làm sạch. Langfuse6/6healthy, UI/health/ready/đọc observation cũ HTTP200. Chính sách cache đã bị chặn ở AC được giữ nguyên, không thử lách.
+
+TypeScript/ESLint/build, 11 tài liệu Markdown không lỗi và repository secrets/history/links checks đạt. Source UI đã commit/push `279d3e1` và `e2f3153` trên nhánh `codex/product-polish`. Commit báo cáo và xác minh SHA local/remote được ghi riêng trong bàn giao; chưa merge main vì nghiệm thu AI ở AC vẫn BLOCKED, không gán READY_FOR_FINAL_USER_TEST cho toàn hệ thống.
+
+| Dịch vụ | Source revision | Image ID/digest đã xác minh |
+| --- | --- | --- |
+| frontend | `e2f31538ca1391f0c8ab3223ec87cbc49f4a1d46` | `sha256:3743d305bd8dec13a490223593ee1d2492f2b105d958fc5d7979a11f300d3650` |
+| backend | `98d93c9e40f9d3dc3735006df055ff40a38b3e8d` | `sha256:d6d4f0268fc96b83dcedf0ee124d16fcc6f4fd526529a194124b03b0cb4a4a69` |
+| worker | `98d93c9e40f9d3dc3735006df055ff40a38b3e8d` | `sha256:d6d4f0268fc96b83dcedf0ee124d16fcc6f4fd526529a194124b03b0cb4a4a69` |
+
+42 Backend Python files và 7 frontend files khớp host/image/HTTP; Chromium resources khớp với cache tắt, không service worker. Các commit docs sau source không làm thay code ứng dụng trong image.
+
+## AE. Độ tin cậy, phục hồi lỗi, cuộn Chat và hướng dẫn người dùng — 05/11/2026
+
+Phạm vi được giao: truy vết lỗi thật, trạng thái chuẩn hóa, phản hồi kết thúc, gửi trùng/cuộn Chat, kiểm toán nghiệp vụ, kiểm thử và hướng dẫn người mới. Tiếp tục cùng nhánh `codex/product-polish`, một Compose Studio; không thay engine, Verifier, công thức, Decimal, approval, quyền cloud/parser hoặc dữ liệu cũ.
+
+### A. Nguyên nhân job bị báo lỗi
+
+Job `64a84041-5fe4-4380-8764-bbf9839de525`, owner đúng workspace/project, nhận câu “2 bộ dữ liệu trên đã được chuẩn hoá chưa”. Trace cho thấy Gemini **HTTP200/STOP**, `agent-intent-31`, output được kiểm kiểu nhưng chọn **SUMMARIZE_RESULTS**. Hai dataset đã có mapping APPROVED và canonical READY, không stale: normalize jobs thành công lúc08:48:52 và08:48:55UTC; câu hỏi lúc09:07:01UTC. Đây không phải thiếu dữ liệu chuẩn hóa hoặc provider429 tại job đó.
+
+`agent_workflows.advance` đi vào nhánh SUMMARIZE_RESULTS → `facts()` chọn tool `get_run_summary`. `context.run_id` là null; `assistant_tools.read_tool` gặp điều kiện `row is None or row.status not in {VERIFIED, PARTIAL_VERIFIED} or not row.metric_snapshot`, ném INSUFFICIENT_EVIDENCE. Gate financial này đúng với câu hỏi kết quả đối soát, nhưng routing đã dùng sai loại bằng chứng cho câu hỏi trạng thái nguồn.
+
+Worker lưu job FAILED và workflow BLOCKED/error_code; transaction `advance` bị rollback trước đoạn tạo assistant MessageRow trong `execute_agent`. Do đó không có phản hồi trợ lý cho lượt này. Frontend khi đó chỉ hiện lỗi chung tạm thời, không có lỗi cụ thể bền vững trong transcript sau mở lại. Nguyên nhân đã chứng minh bằng metadata/job/workflow/trace; không suy ra chỉ từ một dòng log.
+
+Trong hội thoại có hai user message khác nhau với cùng nội dung, hai jobs `e168cf34-e77a-4695-a55c-e9bacc501f38` và `64a84041-5fe4-4380-8764-bbf9839de525`, lúc09:06:09 và09:07:01UTC, khóa idempotency khác nhau, mỗi job một attempt. Đây là hai logical requests; không có HAR gốc để kết luận người dùng chủ động gửi lại hay trình duyệt tự tạo lần gửi mới. Không xóa/gộp hai lịch sử hợp lệ hoặc quy trách nhiệm cho người dùng từ DB alone.
+
+### B. Sửa Agent và vòng đời lỗi
+
+- `dataset_status.py`: DTO đọc metadata scoped; xác định phiên bản nguồn mới nhất, active mapping và revision normalization hiện hành. Phân biệt upload/đang đọc/đọc lỗi/đã đọc/chờ duyệt/đã duyệt/READY/PARTIAL/FAILED/stale. Không cần VerifiedRun và không gọi AI để trả lời các biến thể câu hỏi trạng thái được nhận diện.
+- `agent_jobs.interpret` ưu tiên câu hỏi trạng thái; `agent_workflows.advance` công bố phản hồi từ metadata. Nguồn không xác định hỏi lại; thiếu tệp hướng dẫn tải. READY chỉ là chuẩn hóa, không tuyên bố đối soát hoặc đủ coverage cho một contract.
+- SUMMARIZE_RESULTS không có run chuyển thành câu hỏi chọn kết quả hợp lệ; financial tool vẫn fail-closed. Không biến lỗi lập trình/hạ tầng thành clarification chung.
+- `persist_request_failure` tạo tối đa một assistant reply cùng transaction với terminal failure, UUID ổn định/unique job-role, thông báo redacted theo lỗi. Không hồi sinh hội thoại đã xóa/quyền bị thu hồi. MessageView thêm job_status/error_code để UI còn trình bày được các lỗi cũ chưa có assistant reply, không sửa lịch sử cũ.
+- Phân biệt thiếu bằng chứng/thông tin, sai trường/chỉ tiêu, thiếu quyền/phiên, stale, provider429/timeout/unknown delivery và worker failure. Không lưu exception body, path hay credentials trong phản hồi.
+- Khi hết ba attempts/lease, parse source chuyển FAILED, run chưa có snapshot chuyển BLOCKED, workflow/pending reply nhận lỗi kết thúc. Không treo trạng thái “đang chạy” hoặc giả publish thành công.
+- Trình duyệt không ngừng quan sát job sau60poll ban đầu; GET chậm lại hai giây và dừng khi rời/đổi hội thoại. Không POST lại hoặc gọi provider để kiểm trạng thái.
+
+Trên đúng dự án của lỗi gốc, tạo hội thoại TEST riêng, gửi lại câu hỏi gốc qua Chromium thật: job `83408844-1f07-4c00-8c91-50d52a61ab5b`, workflow `c88e6e32-0a81-5ace-af7c-46ac96f19821`, SUCCEEDED/COMPLETED, CHECK_DATASET_STATUS, hai nguồn READY, model_calls0. Reload vẫn có phản hồi; ledger313→313. Không sửa hai job thất bại cũ. Receipt `reported-status-browser.json`, ảnh trong hướng dẫn.
+
+LIVE còn tái hiện D07 “Cho tôi xem trước cả hai nguồn giao nhận”: model trả hai intents cho một mục tiêu, bị AI_INVALID_INTENT_COUNT chặn. Đường preview chỉ đọc trong `resolve_plain_listing` nay xử lý plural preview từ đúng catalogue mà không hỏi model; thiếu/khác số nguồn thì hỏi lại. Filter/tiền/kỳ/tác vụ write vẫn qua router typed. Không hợp thức hóa output model sai hoặc đổi golden expected. Các biến thể có regression PostgreSQL; đây là sửa LOCAL xác định, không đổi kết quả chấm LIVE D07 thành PASS.
+
+### C. Cuộn hội thoại
+
+Trước sửa, effect chỉ phụ thuộc lastMessageId: bảng/thẻ workflow đến muộn cùng message ID không cuộn theo; thêm lịch sử hoặc mở lại tin cũ chưa có trạng thái đọc rõ ràng. Bản sửa chỉ điều khiển `.assistant-scroll`, không window:
+
+- Gửi câu mới luôn xuống cuối, gồm khi đang đọc ở trên; giữ focus và bộ gõ/draft.
+- Theo dõi cuối bằng refs và ResizeObserver có cleanup, theo cả nội dung và chiều cao pane.
+- Chủ động đọc cũ thì không kéo xuống; có nút quay về mới nhất, tôn trọng reduced motion.
+- Prepend giữ anchor theo chênh lệch chiều cao. Nội dung lịch sử cũ không tạo thông báo “Tin nhắn mới”; resize pane đơn thuần cũng không giả là tin mới.
+- Reload/mở hội thoại xem phần mới nhất; bảng/modal và thông tin tin nhắn giữ khả năng quay lại vị trí đọc.
+
+Regression đo scrollTop/scrollHeight, bounding box, phần tử trong viewport, window.scrollY và POST count; có390/1440/1920px, phản hồi chậm, bảng dài, clarification, approval, lỗi terminal, double-click và clock vượt60poll. Ca cũ đo metadata phải đưa câu hỏi cũ vào viewport trước khi đo; giữ so sánh bounding box chính xác, không nới yêu cầu để che reflow. Lỗi thông báo nhầm sau prepend có receipt FAIL trước sửa và **9/9 PASS** sau sửa.
+
+### D. Hành trình nghiệp vụ và tài liệu
+
+Giữ 11 bộ UAT tổng hợp với oracle độc lập, không sửa đáp án: CSV/XLSX/multi-sheet, tiền Decimal/âm/NULL/0, zero-prefix, duplicate,1:1/1:N/N:1/composite, tolerance, currency/coverage và evidence/export. Bộ1.000 giữ966EQUAL/19AMOUNT_MISMATCH/15UNMATCHED/7,03VND; bộ nhỏ đúng run giữ3/1/2/0,50VND. Đã đọc lại qua browser, typed read tools, chart, evidence và tải XLSX rồi kiểm snapshot/formula injection; đó là LOCAL/CACHED, không LIVE inference mới.
+
+`USER_TEST_GUIDE.md` dành cho người mới, README liên kết ngắn. Có vị trí/nút thật, hai tệp tổng hợp A25/B24, đáp án từng mã và tổng chênh lệch, đường AI và manual fallback, phê duyệt, dữ liệu lỗi/stale, chọn explicit phiên bản chuẩn hóa, chọn đúng run, bảng/chart/evidence/export, History/draft/reload, lỗi và khôi phục kết nối. Các ảnh chỉ có dữ liệu tổng hợp của runtime thực, không mockup hoặc credentials.
+
+Khi tự làm theo hướng dẫn đã phát hiện bước chọn bản chuẩn hóa còn thiếu: nút Đã chuẩn hóa/Dòng lỗi khóa cho đến khi chọn **Phiên bản chuẩn hóa**. Đã bổ sung bước, giữ guard chọn revision, không tự chọn bản cũ. Hướng dẫn cũng phân biệt một cụm khóa mơ hồ000002 với ba dòng chưa liên kết của báo cáo; bộ A có27mục kết quả,19/24đơn vị eligible khớp79,17%, không tự dùng19/27 làm KPI. Tiền trống không thành0; raw Decimal `264.600` được giải thích là264,600VND, không phải hàng nghìn.
+
+### E. Cổng kiểm chứng và giới hạn
+
+Baseline trước sửa337Backend/PostgreSQL PASS. Sau các sửa bổ sung khi làm theo hướng dẫn, source `f2de497` **400/400 PASS**123,75giây; đúng backend/worker Docker cùng source **400/400 PASS**138,42giây. Lượt391 trước đó là mốc trung gian, không thay gate của bản hiện hành. Ruff, mypy43files, ESLint, TypeScript/build, repository secrets/history/links và Markdown đạt tại các receipts nhiệm vụ. Một cảnh báo deprecation của Starlette TestClient còn được ghi; không phải test failure hoặc lý do nâng đồng loạt dependencies.
+
+Full browser đầu trên `bf07d16`:129PASS/5FAIL; năm failure là đo metadata khi Playwright tự cuộn câu hỏi từ ngoài viewport, đã sửa cách đo và giữ assertions. Candidate sau sửa chờ job chậm/metadata **19/19 PASS**; thêm kiểm notification prepend phát hiện lỗi thật, sửa và9/9PASS. Full regression production tại source `f2de497`: **136/136 PASS,14,9phút**, gồm11bộ UAT LOCAL có oracle, upload→review→normalization→verification→evidence→CSV/XLSX→reload, security/recovery/responsive và các ca MOCK CONTRACT được ghi riêng trong tên. Receipt `reliability-final-browser.log`; không gọi đây là136ca AI LIVE. Cập nhật CSS `cdef8fb` sau đó **19/19ca bố cục/cuộn PASS,2,3phút** trên Docker mới (`reliability-spacing-browser.log`). Đo hai nút Xem bằng chứng/Hỏi vì sao lệch: trước sửa gap0 FAIL, sau sửa gap12px ở390/768/1366/1440/1920, không document overflow; mở đúng evidence tiếp tục PASS (`guide-evidence.json`, `reliability-spacing-before.log`/`after.log`). Không tuyên bố full136 được chạy lại trên image CSS mới; diff chỉ một CSS declaration, Backend không thay.
+
+### F. Backup, runtime và Git
+
+Backup mới `backup_8ea050f8963f480da761d396be4bb1a5`: metadata SHA256 `87b95f751847c7a37c1c30a85c2489ea7dc06ac61577b62fd8894602bc7b34d2`,24bảng/4.851tệp, restore UUID schema PASS, checksum corruption/path traversal bị chặn, public không đổi. Backup43,954giây/restore30,337giây; bản host độc lập kiểm lại đủ4.851SHA. Giữ cả backup gốc ở AC và hai volumes.
+
+Backend/Worker source **`f2de497978ddd344c0108e06000cda4e65e41703`**; Frontend source **`cdef8fbd90af1916defd17ab8eced9b132683420`** bổ sung đúng một rule CSS giãn hai nút ở bảng kết quả. Backend/Worker image `sha256:851850744ae750021359cac496c93c602c973ec9a874113692ec546c9dd31222`; Frontend image `sha256:7620b3d1d0268efa358a32bfa199071a1ba82497cb8075fa1c249adf9df949f6`.43Python files và7HTML/assets khớp host/image/HTTP; backend/worker cùng image và Git diff backend từ source image tới HEAD rỗng. Các sửa code gồm `bf07d16`, `4de04f0`, `b6071c0`, `91646b4`, `f2de497`, `cdef8fb`; sau lỗi GitHub commit_refs/Internal Server Error tạm thời, push bình thường đã thành công, không force hoặc đổi remote. Official origin không đổi. Main chưa merge khi AI LIVE còn chưa qua đủ gate.
+
+Recreate Backend/Worker và Frontend đã snapshot/verify metadata/artifact bytes không đổi; cả4serviceshealthy, loopback18180 và session verifier đạt. Sau khởi động lại môi trường05/11 dùng đúng start-SkipBuild để khôi phục proof, không xóa cookie/volume hoặc dữ liệu. Receipt snapshot/verify của deploy logic: `reliability-scope-persistence-before.log` và `reliability-scope-persistence-after.log`; cập nhật CSS cuối có `reliability-spacing-persistence-before.log`/`after.log` PASS. Mã nguồn/image/HTTP hiện hành tại `reliability-release-components.log`; diff Backend từ source image tới HEAD rỗng. Không rebuild Backend vì chỉ đổi CSS.
+
+### G. Lỗi bổ sung tìm được qua hướng dẫn thực tế
+
+Câu “Đề xuất cách chuẩn hóa hai nguồn dữ liệu. Hãy hỏi tôi nếu có cột hoặc ý nghĩa chưa rõ.” từng bị classifier trạng thái nhận vì có từ “chưa”. Job `e428f855-b313-4b52-8f39-0fcbd4987c47` đã trả trạng thái thay vì chuẩn bị đề xuất. `91646b4` loại các lệnh thực hiện/đề xuất khỏi shortcut trạng thái; thêm7ca phân biệt lệnh có mệnh đề điều kiện với câu hỏi chỉ đọc. Gửi yêu cầu mới sau sửa đi đúng PREPARE_NORMALIZATION, nhưng provider lỗi ở nguồn B; không sửa hoặc xóa lượt sai trước đó.
+
+Khi trở về Chat từ màn hình nguồn B, sidebar giữ đúng dataset scope. Trước sửa, câu hỏi “Hai bộ dữ liệu đã được chuẩn hóa chưa?” chỉ trả một nguồn rồi COMPLETED. `f2de497` kiểm số nguồn được yêu cầu, trả clarification khi phạm vi không đủ; thêm hai ca PostgreSQL. Dialog ngữ cảnh hiển thị tên tệp và nút **Dùng dữ liệu của dự án**, giữ draft/hội thoại riêng, không gọi AI hoặc ghi nghiệp vụ. Browser regression kiểm tên, scope, giữ draft, reload và zero write; initializer MOCK chỉ chạy một lần để không tự khôi phục scope cũ khi reload.
+
+Dự án thực hành mới **TEST Học đối soát đơn hàng — nghiệm thu hướng dẫn**, ID `a623bee0-ffdb-4407-a34d-be77d43df21f`, tải hai tệp qua composer; chuẩn hóa thủ công có kiểm tra/phê duyệt từng nguồn. Sau sửa phạm vi, câu hỏi trạng thái trả đúng hai READY, model_calls0. Phê duyệt quy tắc và chạy từ nút thật tạo run **`71801df7-fb6d-4b5c-8f97-7e9b648e84be`**, PARTIAL_VERIFIED đúng fixture chứa thiếu/mơ hồ/NULL:19EQUAL/2AMOUNT_MISMATCH/2UNMATCHED, full match19/24=79,17%, signed−249,900/absolute264,600VND. Không đổi engine/oracle để ép VERIFIED toàn phần.
+
+Hướng dẫn đã sửa đúng chuỗi **Lưu đề xuất thủ công → Xác nhận quy tắc và dấu số tiền → Chạy đối soát đã duyệt**, giữ hai quyết định riêng. Lượt chạy công cụ hướng dẫn đầu gọi sai tên nút đã lưu một đề xuất chưa duyệt; giữ lịch sử, lần thực hành tiếp lưu đề xuất được kiểm tra và phê duyệt, không tạo thêm canonical hoặc chạy đối soát trùng. CSV và XLSX tải qua Chromium, Snapshot JSON của cả hai bằng đúng snapshot API; giữ mã000001/000010, không ô công thức. Đọc Sources xác nhận amount của000010 làNULL,000011 là0,000009 là−42,125 và phía đối ứng000010 là357,25, không chỉ so tổng. Bằng chứng dòng000004 mở đúng run/mã, hai nguồn113,25/105,90. Reload/report/draft/History đạt, không lỗi JavaScript. Receipts `guide-walkthrough.json`, `guide-export-readback.json`, `guide-evidence.json`; không xem những bước thủ công là AI LIVE.
+
+### H. AI LIVE, chi phí và giới hạn nghiệm thu
+
+Vòng prompt `agent-intent-32` có canary D27 PASS LIVE. Full gold dừng tại D21 vì HTTP429:20ca đo được trong lượt chính,19/20intent,19/20source,12/12semantic,19/20tool. Gộp canary là21gold khác nhau đã đo, một D07 sai intent count;59gold chưa nghiệm thu (gồm D21 bị quota),24variants chưa chạy. Launcher không chạy variants sau429. D07 được sửa LOCAL bằng preview xác định, không đổi kết quả LIVE sai thành PASS và không gọi benchmark của prompt31 là kết quả prompt32.
+
+Ngày05/11, sau khi người dùng tiếp tục và quota có phản hồi lại, câu hỏi kiểm tra hai tệp của hướng dẫn có HTTP200/SUCCEEDED/COMPLETED thật. Yêu cầu chuẩn hóa sau sửa classifier đi đúng intent; đề xuất A được lưu, nguồn B nhận **HTTP503 GEMINI_UNAVAILABLE**, receipt `delivery_unknown:false`, một attempt. Workflow BLOCKED, không tự duyệt đề xuất A hay gửi lại B. Đây là phản hồi dịch vụ503, không có bằng chứng unknown delivery. Trạng thái provider gần nhất không còn chỉ là429 của vòng trước; full quality gate vẫn chưa đạt vì coverage thiếu và một lỗi model đã đo.
+
+Từ backup đầu nhiệm vụ313 đến339 reservations: **26 HTTP attempts mới,24HTTP200/1HTTP429/1HTTP503**. HTTP200 chỉ xác nhận dịch vụ trả, không chứng minh hiểu đúng ý. Prompt tokens356.402/output4.938/total361.340, cached0; latency26samples p50=2.883,5ms/p95=4.688ms. Chi phí hóa đơn **NOT VERIFIED**; không bịa đơn giá hoặc tiền đã trả. Ledger/tokens/failures không reset; không đổi key/account/provider/model hoặc parser allowance. Active public jobs0 tại lần chốt usage. Receipt `reliability-final-usage.json`.
+
+### I. Dữ liệu, Docker và mức sẵn sàng
+
+Đối chiếu tất cả PK/nội dung24bảng và4.851tệp từ backup đầu nhiệm vụ: không thiếu/thay đổi bản ghi cũ, SHA đầy đủ đạt. Backup trước đó3.712tệp cũng đạt; chỉ có amendment policy210→null đã được ủy quyền từ nhiệm vụ trước, không thay business rows. Snapshot/verify qua recreate đạt; hai volumes Studio, backups, uploads và artifacts được giữ. Full browser tạo thêm dữ liệu TEST; đó là dữ liệu nghiệm thu mới, không phải mất/thay dữ liệu cũ.
+
+Inventory cuối:31containers/51images/36volumes toàn host; Studio đúng4containershealthy, hai image hiện hành và cặp rollback `dac8dd1`. **0 image cũ thuộc Studio đủ điều kiện xóa thêm**, không tạo con số dung lượng đã giải phóng giả.27container dự án khác giữ nguyên IDs/image/volume refs;36volume names giữ nguyên. Shared build cache38,62GB không có bằng chứng sở hữu riêng nên giữ; không global prune/volume delete. Một ảnh hướng dẫn thừa do nhiệm vụ tạo đã xóa, runtime receipts/backup giữ phục vụ kiểm toán. Inventory/ownership review hiện hành: `reliability-release-cleanup-plan.json`; không có container Studio dư hoặc dừng, không OOM/restart ở bốn services hiện hành.
+
+Langfuse đang thuộc Compose `langfuse`,6services được Docker khởi động sau reboot; không sửa dữ liệu hoặc config dự án đó. Kiểm tra chỉ đọc: web200/health200/ready200, đọc một observation cũ200, không lỗi JavaScript. Không tuyên bố kiểm tra cả mọi dự án sử dụng Langfuse.
+
+Có thể sử dụng local tại `http://127.0.0.1:18180` cho các luồng đã kiểm chứng, gồm manual fallback và câu hỏi trạng thái nguồn. **Chưa chứng nhận READY_FOR_FINAL_USER_TEST cho toàn bộ AI tự động**: full current-prompt80gold/24variants còn thiếu, provider429/503 và lỗi model cần replay lại khi dịch vụ khả dụng. Các ví dụ chat mở trong hướng dẫn không phải tất cả đã được LIVE xác nhận trên dự án mới. Không merge main hoặc tuyên bố không còn mọi lỗi khi gate này chưa đạt. Source sửa đã push official feature branch; commit tài liệu được báo tại bàn giao Git.
+
+### J. Bàn giao source và tài liệu
+
+Các lỗi tái hiện thuộc phạm vi đã được sửa, full regression và các checks liên quan đạt như mục E; không còn lỗi tái hiện LOCAL nghiêm trọng đã biết trong các luồng đã đo. Điều này không phải cam kết không có mọi lỗi hoặc AI luôn hiểu đúng. README liên kết hướng dẫn mới; `USER_TEST_GUIDE.md` có8ảnh thực chụp từ Docker hiện hành, từng bước và đường manual đã thực hành trên dự án mới. Markdown12tài liệu0issue; Ruff/mypy43files, ESLint/TypeScript/build, repository paths/known-secrets/history và diff whitespace đạt. Không thêm dependencies, migrations, services hoặc worktree.
+
+Code hiện hành đã push nhánh `codex/product-polish`, official origin được kiểm trước push. Main vẫn `a4f70b289b935b11928e6d1c2b2e0748160fbfa1`, chưa merge vì mục H chưa đủ full LIVE gate. Commit tài liệu bàn giao tiếp theo chỉ đổi README/hướng dẫn/ảnh/báo cáo; source ứng dụng trong Docker vẫn trùng với source đã kiểm tra. Commit hash bàn giao được nêu trong trả lời và xác minh bằng remote/status, không tự ghi hash chưa tồn tại vào báo cáo.
+
+## AF. Chuẩn hóa ngày và kiểm chứng Smart Mapping với ba nguồn tháng 10/2026
+
+### A. Nguyên nhân và bản sửa
+
+Nguồn `01_don_hang_du_kien_2400.csv` có 2.418 dòng. Job gốc `5adf1d0e-2089-4cde-a2ef-5970d249cefe` hoàn tất với chất lượng PARTIAL, nhưng cả 2.418 dòng bị đánh dấu không hợp lệ. Bản ánh xạ đã duyệt `bef7cbec-77b7-47d7-958b-9a8bac9f37ab` lưu định dạng `YYYY-MM-DD`, múi giờ UTC. Cùng artifact Parsed và image Worker cũ tái hiện lỗi: bộ chuyển đổi truyền chuỗi hiển thị nguyên văn cho [Python datetime.strptime](https://docs.python.org/3.12/library/datetime.html#strftime-and-strptime-format-codes); chuỗi `2026-10-10` gây `ValueError: time data '2026-10-10' does not match format 'YYYY-MM-DD'`, rồi bị ghi là `INVALID_DATE`. Đây là exception từ lần tái hiện; artifact lỗi gốc không lưu traceback.
+
+`date_parsing.py` chuyển ba mẫu hiển thị sang định dạng Python, kiểm tra cú pháp và múi giờ IANA trước khi đọc dòng, tách lỗi cấu hình/môi trường khỏi lỗi dữ liệu. Kiểm tra offset và giờ nhập nhằng hoặc không tồn tại khi đổi giờ mùa hè. Backend và Worker dùng cùng image, có dữ liệu múi giờ Debian `2026b-0+deb12u1`; UTC, Asia/Ho_Chi_Minh và America/New_York được kiểm. Hành vi dùng dữ liệu hệ thống phù hợp [Python zoneinfo](https://docs.python.org/3.12/library/zoneinfo.html#data-sources). Không đổi dependency Python hay migration.
+
+### B. Kết quả trên nguồn gốc và dự án kiểm thử
+
+Giữ bản chuẩn hóa `cf3f21ef-2a8c-4795-8419-0545f64aec46`. Job mới `a3e58d64-1829-4589-9b16-90aa70d065f8` dùng cùng ánh xạ đã duyệt, tạo `7e492f46-b668-42df-9be6-ef84139df85f` (`normalization-2`): **2.408 hợp lệ, 10 không hợp lệ**. Số lỗi ngày từ 2.418 còn đúng 2; số bản ghi lỗi từ 2.432 còn 16. Mười bốn lỗi khác vẫn còn. SHA-256 của file gốc và metadata bản chuẩn hóa cũ không đổi.
+
+Tải ba tệp gốc vào dự án TEST mới `7967303e-0bdc-461b-ad07-cd8ce9d4f31f`; kiểm chứng và duyệt thủ công từng nguồn trên trình duyệt sau khi AI bị chặn. Đọc lại artifact Worker và so từng ngày, giá trị Decimal đã chuyển được, mã có số 0 đầu và dấu vết dòng vật lý với dữ liệu nguồn.
+
+| Nguồn | Tổng dòng | Hợp lệ | Không hợp lệ | Lỗi ngày thật | Lỗi ngoài ngày |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 01 · Đơn dự kiến CSV | 2.418 | 2.408 | 10 | 2 | `amount`: 4 trống, 5 sai định dạng, 3 khác tiền tệ; `reference`: 2 trống |
+| 02 · Sự kiện thanh toán XLSX | 2.685 | 2.674 | 11 | 5 | `amount`: 3 trống, 5 sai định dạng, 3 khác tiền tệ; `batch_id`, `currency`, `reference`: 2, 3, 3 trống |
+| 03 · Sao kê theo lô CSV | 384 | 380 | 4 | 0 | `batch_id`: 2 trống; `gross_amount`: 2 sai định dạng; gross, net và fee: mỗi cột 2 khác tiền tệ |
+
+Tổng 5.487 dòng, 5.462 hợp lệ, 25 cần kiểm tra. Mọi dòng `MAIN_VND` hợp lệ; lỗi chỉ ở `EDGE_CASE`. Một dòng có thể có nhiều lỗi. Giữ nguyên giá trị gốc, không bù NULL bằng 0, không đổi USD thành VND hoặc tự đổi trạng thái dự kiến thành đã thanh toán.
+
+![Bản chuẩn hóa cũ và bản mới của nguồn 01 hiển thị cùng nhau trên Docker](images/user-guide/date-normalization-comparison.png)
+
+### C. Kiểm chứng đề xuất trước khi duyệt
+
+Profiling bổ sung thống kê định dạng ngày, cách viết số, giá trị rỗng, số 0 đầu, tiền tệ và tính duy nhất. Chỉ điền sẵn dữ kiện đủ bằng chứng. So mẫu đã duyệt theo workspace, nghiệp vụ và chữ ký cấu trúc tương thích; quyền duyệt cũ không chuyển sang bản mới. Không suy múi giờ từ ngày trần, tự đoán gross/net hoặc dùng mã khách hàng làm khóa khi dòng là đơn/sự kiện/lô và thiếu bằng chứng quan hệ.
+
+Preflight kiểm thử toàn bảng với đúng bộ chuyển đổi của Worker, không xuất bản dữ liệu. Kiểm checksum và báo số dòng dự kiến lỗi, chặn cấu hình làm tất cả giá trị không rỗng của một trường cùng lỗi. Kiểm phép biến đổi không tổng hợp theo lô 2.000 dòng để hạn chế RAM; phép tổng hợp giữ đầy đủ thành viên. API kiểm quyền và kiểm lại bản nháp tại thời điểm duyệt; thay đổi bản nháp làm kết quả cũ mất hiệu lực. Hợp đồng đối soát, công thức tiền, trạng thái và cơ chế quyền giữ nguyên.
+
+### D. Giao diện
+
+Khung duyệt trong chat gom thành **Đã xác định bằng bằng chứng**, **Cần bạn xác nhận** và **Dữ liệu bất thường**. Chọn múi giờ chung một lần cho nguồn khi thích hợp; mở **Xem và chỉnh các lựa chọn** để sửa từng cột. Nút duyệt chờ kết quả kiểm tra của đúng bản nháp và mỗi nguồn vẫn cần quyết định riêng. [Ảnh khung duyệt](images/user-guide/mapping-review.png) chụp từ Chromium với phản hồi mô phỏng (MOCK). Ảnh trước, ảnh kiểm tra thủ công và biên bản dữ liệu tổng hợp giữ tại `runtime/mapping-audit/` trên máy kiểm thử.
+
+### E. Đối soát, bằng chứng và xuất tệp
+
+Cả hai run `PARTIAL_VERIFIED`, đúng với bộ thử có nhóm chưa đủ điều kiện và dòng bị loại. Hai hợp đồng riêng theo `MAIN_VND`, UTC, kỳ tháng 10/2026 và sai số 0 VND. Oracle độc lập đọc CSV/XLSX, nhóm khóa ghép và cộng có dấu bằng Decimal; không dùng Matcher hoặc Verifier.
+
+| Run | Quan hệ và khóa | Khớp | Lệch tiền | Thiếu đối ứng (trái/phải) | Lệch có dấu / tuyệt đối |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `a40bbb98-c05f-499a-ac03-f13be55d23c7` | 01 ↔ 02, 1:N theo `scope + reference` | 2.040 | 200 | 215 (160/55) | 7.867 / 60.883 VND |
+| `d94ed637-0e80-4b0a-bac4-1256d4eabd1e` | 02 ↔ 03, N:1 theo `scope + batch_id`, dùng gross | 323 | 40 | 31 (18/13) | −8.306 / 11.812 VND |
+
+Đã mở đúng hai báo cáo, biểu đồ, truy vấn ba nhóm lệch lớn nhất và bằng chứng của nhóm thứ hai; kiểm khóa và nguồn, mở đúng dòng từ bảng, tải lại vẫn giữ kết quả. CSV và XLSX của từng run giữ đúng snapshot API; cả 240 nhóm lệch khớp khóa và tiền từng phía với oracle. Hai bản xuất có 5.103/3.069 dòng bằng chứng và 51.297/33.375 ô nguồn; không có ô công thức, giữ số âm và số 0 đầu.
+
+Excel cặp đầu từng treo hơn 4 phút vì mỗi lần thêm dòng lại duyệt toàn worksheet để tra dòng cuối. Bản sửa dùng tọa độ trực tiếp và giới hạn số dòng dùng để ước lượng độ rộng. Job `7043c3ac-e7da-413f-91c6-bc414f75d4a4` được phục hồi qua lease và hoàn tất lần xử lý sau trong 14,490 giây, với cùng một export. Khi tải phiên chậm, mở liên kết run B trước khi tải xong run A từng bị trả về A. Frontend hiện ghi nhận đích mới trong lúc tải phiên; đổi dự án hủy lần đọc cũ. Đã tái hiện trên bản cũ và xác nhận URL, báo cáo đúng run B trên bản triển khai.
+
+### F. Kiểm thử và AI LIVE
+
+Backend/PostgreSQL **435/435** (một cảnh báo deprecation từ Starlette TestClient); Playwright toàn bộ **137/137** trên bản Docker trước bản sửa điều hướng và **39/39** ca thuộc Assistant, Mapping Review, bố cục và cuộn chat trên bản Docker sau sửa. Có ca bảo mật, responsive 390–1920 px, đường thủ công và kiểm thử hợp đồng AI mô phỏng. Bộ kiểm ngày gồm CSV/XLSX, NULL/invalid, lỗi cấu hình/múi giờ, DST, offset và truy vết dòng. Có ca từ chối khóa khách hàng không phù hợp, xử lý currency/locale mơ hồ và sửa bản nháp sau preflight.
+
+Vòng đầu và vòng sau đổi khóa đều dùng dữ liệu tổng hợp, cùng model `gemini-3.5-flash-lite`. Đã kiểm Backend/Worker dùng cấu hình mới mà không in khóa. Vòng sau: job `69765cf3-7984-4ab3-a9e8-90be22d47efb` nhận HTTP 200 sau 4.735 ms, xác định đúng lệnh chuẩn hóa và cả ba nguồn. Job đề xuất `eab07043-5e88-4b2c-a898-70adf644e05e` (`agent-normalization-5`) nhận HTTP 503 sau 1.853 ms, một attempt, `delivery_unknown: false`. Luồng BLOCKED, không có đề xuất để duyệt, không gửi lại sau 503. Không có bằng chứng khóa mới bị từ chối hoặc cơ sở kết luận nguyên nhân nội bộ của Gemini.
+
+Hai vòng cộng **4 HTTP attempts mới** (2 × 200, 2 × 503), ledger 342 → 346; hai phản hồi có số đo ghi nhận 21.583 tokens (21.271 đầu vào, 312 đầu ra). Chi phí hóa đơn chưa xác minh. Chưa có bộ đề xuất LIVE để đo mức tăng độ chính xác, độ bao phủ hoặc số lần người dùng phải sửa. Kết quả thủ công, kiểm chứng local và MOCK không thay phép đo LIVE.
+
+### G. Dữ liệu, Docker và Git
+
+Backup `backup_39aa77c2aa464f11ac3655deee279ce5` trên volume artifact: sao lưu 80,138 giây, restore thử vào schema tách biệt 36,228 giây. Đối chiếu sau kiểm thử: đủ bản ghi cũ trong 24 bảng, không đổi giá trị; SHA-256 của 5.347 tệp đều khớp. Giữ backup, hai volumes Studio, raw, ánh xạ đã duyệt và artifact cũ. Sau recreate Frontend, snapshot/verify đạt. Cả bốn dịch vụ healthy; cổng chỉ bind loopback. Đã đối chiếu 45 file Python giữa host và hai container, 7 file Frontend giữa bản dựng, image và HTTP.
+
+Studio có 4 container đang chạy, 2 image hiện hành (Frontend 24,7 MiB, Backend/Worker 149,1 MiB) và 4 image giữ để rollback. Không có job chờ hoặc đang chạy tại lần kiểm cuối. Không có container Studio dư hoặc image cũ của Studio đủ điều kiện xóa. So với đầu nhiệm vụ, 27 container ngoài Studio giữ nguyên danh tính, image và volume; 36 volume toàn host giữ nguyên. Compose `langfuse` vẫn độc lập và 6 dịch vụ đều healthy. Giữ cache dùng chung và tài nguyên của các dự án khác.
+
+Backend/Worker ở `09290a46ea82a8905386b0d7a314d1f537a05a6d`, Frontend ở `ef9cf0c2e32a81549d0df545b740b047c25199ca`. Các nhóm thay đổi: `b1478d3` sửa ngày và preflight; `cd6ae91` kiểm dữ kiện theo phạm vi và giới hạn bộ nhớ kiểm tra; `09290a4` sửa hiệu năng xuất Excel; `ef9cf0c` sửa liên kết báo cáo. Mã đã push nhánh `codex/product-polish` trên origin chính thức. Main giữ `a4f70b289b935b11928e6d1c2b2e0748160fbfa1` vì cổng AI LIVE chưa đạt.
+
+### H. Mức sẵn sàng và cách bắt đầu
+
+Có thể dùng [Studio local](http://127.0.0.1:18180) để chuẩn hóa có kiểm chứng và duyệt thủ công, đối soát, đọc báo cáo/bằng chứng và xuất tệp trong phạm vi đã thử. Bắt đầu theo [hướng dẫn](USER_TEST_GUIDE.md), mục 5 và 13. Luồng tự tạo đề xuất Smart Mapping ba nguồn vẫn **BLOCKED ở Gemini HTTP 503**. Cần một lượt LIVE thành công để nghiệm thu độ chính xác đề xuất và đo mức giảm thao tác; chưa có cơ sở phát hành toàn bộ luồng AI tự động.
+
+## AG. Gemini và Qwen trong AI Assistant
+
+### Chẩn đoán Gemini
+
+Trạng thái **GEMINI_INTERMITTENT**. Kiểm tra có dùng khóa hiện hành của Worker. Yêu cầu kết nối nhỏ trả HTTP 200; đối tượng JSON nhỏ đạt schema. Ca intent tiếng Việt thiếu nguồn trả đúng `CLARIFY` qua validator. Bảng tổng hợp hai cột trả hai trường hợp lệ. Trong luồng trình duyệt với ba tệp, intent đạt và bước ánh xạ đầu tiên trả 503. Bản sửa loại schema lặp khỏi prompt ánh xạ. Trên cùng profile nguồn 01, kích thước request đo được giảm 10.747 → 8.455 byte, schema 2.107 byte, output limit 6.000 tokens, timeout 45 giây. Bản sau sửa vẫn trả HTTP 503 `UNAVAILABLE` trong 4,007 giây. HTTP response đã nhận, không có request ID được gửi qua hai header được hỗ trợ. Phép đo này chưa tách được nguyên nhân bên trong nhà cung cấp. HTTP 429 trong lịch sử là tín hiệu giới hạn từ nhà cung cấp, mức quota hoặc billing cụ thể chưa được xác minh. [Tài liệu xử lý lỗi Gemini](https://ai.google.dev/gemini-api/docs/troubleshooting).
+
+Gateway ghi metadata của request và receipt đã lọc, giữ giới hạn một attempt của các job Agent. Tuyến cũ có thể thử lại lỗi kết nối trước khi gửi hoặc lỗi HTTP tạm thời đã nhận trong giới hạn đã cấp. Lỗi kiểm chứng nội dung và delivery chưa rõ không được thử lại tự động. Schema Pydantic, validation nghiệp vụ và quyền phê duyệt tiếp tục áp dụng.
+
+Đợt chẩn đoán có 7 attempts Gemini qua ledger, 5 HTTP 200 và 2 HTTP 503. Tổng receipt 19.524 tokens, gồm 19.011 đầu vào và 513 đầu ra. Request kết nối HTTP 200 trả nội dung khác giá trị mong đợi, nên chỉ dùng làm bằng chứng kết nối. Chi phí hóa đơn chưa xác minh.
+
+### Nghiệm thu lại Qwen 8B
+
+Windows Ollama 0.40.9, AMD Ryzen 5 7535HS (6 nhân, 12 luồng), RAM vật lý khoảng 15,3 GiB, NVIDIA RTX 3050 6 GiB (driver 617.42), Windows Docker Desktop WSL2. Tại các lần lấy mẫu, RAM khả dụng khoảng 0,4–1,0 GiB và VRAM khả dụng khoảng 5,9 GiB. Ollama nghe loopback 11434, cache model hiện có trong thư mục người dùng Windows. Backend và Worker truy cập được endpoint qua `host.docker.internal`. Tag `qwen3:8b` có digest `500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41`, Q4_K_M, 5,23 GB.
+
+| Phép đo LIVE | Kết quả |
+| --- | --- |
+| Hai lần nạp đầu | Timeout tại 65 và 100 giây |
+| Nghiệm thu lại 4.096 context | 3/3 câu intent đơn giản đúng và hợp lệ JSON. Cold 28,188 giây (nạp 15,047 giây, token đầu 15,579 giây). Warm 1,344 và 1,437 giây (token đầu 0,391 và 0,515 giây) |
+| Tốc độ và bộ nhớ khi nạp thành công | Warm khoảng 9,8–10,6 token/giây. Ollama báo 5,99 GB model resident, 4,21 GB VRAM tại 4.096 context. Ở 8.192, `ollama ps` báo 6,6 GB và offload 37% CPU/63% GPU. Đây là số đo khi model đang nạp, chưa đo peak toàn máy |
+| Intent Agent ba nguồn | Hợp đồng ban đầu trả `UNSUPPORTED` sai sau 27,675 giây. Bản giảm schema lặp trả JSON nhưng bị validator từ chối `AI_INVALID_INTENT` sau 56,090 giây |
+| Ánh xạ ba nguồn | 0/3 hoàn tất ở mỗi vòng, trước và sau thay đổi envelope cho Ollama. Các lượt riêng từng nguồn chạm khoảng 95 giây. Không có ánh xạ đạt để đo độ chính xác hoặc đưa vào phê duyệt |
+| Chat thật trên Docker sau triển khai | Job `d4f275d9-863f-4f34-a06d-c4a2257c5cb5` chọn đúng `PREPARE_NORMALIZATION` và cả ba nguồn sau 45,740 giây. Job đề xuất `2c8c1a83-0f5e-4c53-b87e-7ec951cb57c0` hết thời gian sau 90,187 giây. Luồng BLOCKED, 0 thẻ duyệt. Cả hai trace là OLLAMA với 0 lượt cloud, ledger Gemini giữ 356 |
+| Qwen 27B | Tag chính thức tồn tại và có bản tải khoảng 18 GB. Chưa cài trên máy này. Tải và nạp để benchmark được hoãn do thiếu RAM khả dụng và yêu cầu bảo toàn dịch vụ đang chạy. [Tag Qwen 27B](https://ollama.com/library/qwen3.8:27b) |
+
+Qwen 8B chỉ dùng để thử nghiệm. Các số đo JSON nhỏ không đại diện cho Planner, Q&A hay độ chính xác ánh xạ. Chưa có quy trình AI local hoàn chỉnh đủ điều kiện để đo lại hai cặp đối soát. Các ca local sử dụng cấu hình `LOCAL_ONLY` ở hợp đồng thử, với adapter Ollama báo `cloud_requests=0`.
+
+### Tích hợp và kiểm thử
+
+Thêm lựa chọn model ngay cạnh nút gửi. API theo phiên đọc các tag đã cài và trace mà không thực hiện inference. Khi gửi, job giữ model được chọn và các bước con dùng cùng lựa chọn. Thay model giữ hội thoại, bản nháp, phạm vi dữ liệu và yêu cầu đã xếp hàng. Khi không rõ một lần gửi đã được nhận, UI giữ mã và payload cũ cho đúng yêu cầu đó. Ollama dùng cùng validator với Gemini. Lịch sử và các cổng phê duyệt không thay đổi.
+
+Bản dựng thử qua Playwright tại 390 px đã kiểm chuyển model khi job đang chạy, bản nháp, reload, đúng payload và số lần gửi. Adapter được kiểm riêng với mock transport cho JSON, timeout, phản hồi thiếu và tag cloud bị từ chối. Test PostgreSQL mô phỏng routing xác nhận chọn Qwen không tạo reservation Gemini, cùng idempotency key không đổi được provider, và policy chặn Gemini khi cloud bị tắt.
+
+Backend/PostgreSQL trên image triển khai **440/440**. Có một cảnh báo deprecation Starlette TestClient. Ruff, mypy, TypeScript, ESLint, build và kiểm tra link Markdown đạt. Sau deploy, mở lại đúng hai lần chạy ở mục AF và kiểm lại snapshot, bảng, biểu đồ, bằng chứng. Các file xuất của hai lần chạy đã được đối chiếu độc lập ở mục AF. Phép đọc lại dùng kết quả nghiệp vụ đã có, tách khỏi kiểm thử LIVE tạo đề xuất của Qwen.
+
+Playwright đầy đủ trên Frontend `fb225fe` có **138/139** ca đạt. Ca còn lại phát hiện placeholder xuống dòng làm ô Chat rỗng cao 82 px ở màn hình 390 px. `729821e` giữ ô rỗng cao 58 px và tiếp tục giãn khi nhập nhiều dòng. Chạy lại **12/12** ca liên quan trên Docker hiện hành, gồm ca từng lỗi, bố cục 390–1920 px, nhập bằng IME, đổi model khi có job và tải lại. Bộ đầy đủ không chạy lại sau thay đổi chiều cao này.
+
+Backup `backup_3d91f44503674f01946a3824bd5f5fc8` giữ trên volume. Đã khôi phục thử trong schema riêng và đối chiếu 24 bảng cùng SHA-256 của 5.552 tệp sau triển khai. Không thiếu hoặc thay đổi dữ liệu đã sao lưu. Các lần cập nhật Docker đều đạt snapshot/verify. Backend và Worker chạy `5373cf7`, image `sha256:ec4e1da3ea379d35cef0480fc6205230865176cc88d0b295e7b6f78291d1b9da`. Frontend chạy `729821e`, image `sha256:8bf23dc215d58ae534c27285e0c9fcc4e058a067bb58087d1140b128b9dc4346`. Đã đối chiếu 45 tệp Python và 7 tệp Frontend phục vụ qua HTTP với source đã dựng. Bốn dịch vụ Studio healthy, giao diện và Ollama bind loopback. Sáu dịch vụ Langfuse healthy, 27 container ngoài Studio và danh sách volumes giữ nguyên. [Ảnh bộ chọn](images/user-guide/composer-model.png).
+
+### Bắt đầu thử
+
+Mở [Studio local](http://127.0.0.1:18180) và dùng mục 14 của [hướng dẫn sử dụng](USER_TEST_GUIDE.md). Dùng Qwen 8B để thử các câu tổng hợp đơn giản khi thấy lựa chọn. Nếu cần chuẩn hóa ba tệp để đối soát, dùng luồng thủ công đã được kiểm tại mục AF và mục 13 của hướng dẫn. Trạng thái AI tự động vẫn chưa đạt gate để hợp nhất `main`.
+
+## AH. Khôi phục Smart Mapping với Qwen local — 05/11/2026
+
+### A. Kết luận và phạm vi nghiệm thu
+
+Đã có một đường LIVE từ câu tiếng Việt kèm ba tệp → ba đề xuất Qwen → kiểm tra Backend → chỉnh/xác nhận trên UI → chuẩn hóa → hai hợp đồng đối soát duyệt thủ công → kết quả verified → biểu đồ/bằng chứng/CSV/XLSX → mở lại sau recreate. Gemini vẫn **INTERMITTENT**, dừng chẩn đoán cloud. Qwen là mặc định của phiên local chưa có lựa chọn cá nhân, tiếp tục hiện **Chưa kiểm chứng** cho AI tổng thể. Grain/khóa vẫn cần sửa; không công bố mapping chính xác hoàn toàn hoặc Agent tổng quát đã đạt. Mục này cập nhật hiện trạng sau AG, không thay lịch sử bằng chứng ở các mục trước.
+
+Intent của lệnh chuẩn hóa explicit kèm tệp được resolver hữu hạn trên Backend xác định, có kiểm toàn câu, phủ định và exact scope. Qwen LIVE thực hiện phần đề xuất ngữ nghĩa từng bảng. Hai hợp đồng đối soát của lượt này do người kiểm thử lập và duyệt trên UI; chưa nghiệm thu Qwen Planner bằng lượt này. Không gọi model để tính tiền hoặc tự duyệt.
+
+### B. Gemini với khóa cấu hình mới
+
+Ban đầu container chưa khớp khóa trong cấu hình. Sau cập nhật theo quy trình snapshot/start/verify, Backend và Worker đều có khóa và khớp cấu hình; không công bố giá trị hoặc hash khóa. HTTP 200 xác nhận khóa được chấp nhận ở những lượt thành công. Model giữ `gemini-3.5-flash-lite`, REST GenerateContent v1beta qua httpx 0.28.1, không thêm Google SDK hoặc retry ngầm. Các nguồn chính thức và ranh giới API tại [AI Integration](AI_INTEGRATION.md).
+
+| Phép thử mới | HTTP / thời gian | Kết luận đúng phạm vi |
+| --- | --- | --- |
+| Kết nối ngắn | 200 / 0,882 giây | Nội dung khác giá trị diagnostic mong đợi; chỉ PASS kết nối |
+| JSON Schema nhỏ, 118 byte schema | 503 UNAVAILABLE / 10,653 giây | Không có output để kiểm JSON |
+| Đề xuất riêng nguồn 01 | 200 / 9,837 giây | Đủ 9 cột, typed validation đạt; chưa xuất bản proposal trên UI |
+| Intent qua Chat thật, ba tệp | 200 / 3,453 giây | Đúng PREPARE_NORMALIZATION và ba nguồn |
+| Bước mapping đầu của Chat thật | 503 UNAVAILABLE / 1,325 giây | Workflow BLOCKED, 0 thẻ duyệt; không resend |
+
+Tổng **5 HTTP attempts mới: 3 × 200, 2 × 503, 0 × 401/403/429**. Ledger giữ toàn bộ history, tăng **356 → 361**, không reset. Ba receipt có token: **14.353 tổng**, **12.889 đầu vào**, **1.464 đầu ra**; hai lỗi không có token receipt. Billed cost, quota và billing Google project **chưa xác minh**. Mỗi Agent job giữ một attempt. Lượt thất bại cuối có `delivery_unknown=false`, đã nhận phản hồi HTTP, không có request ID qua các header được hỗ trợ.
+
+Request riêng nguồn 01 là 8.455 byte, schema 2.107 byte; request mapping trong workflow là 15.455 byte do ngữ cảnh có phạm vi. JSON nhỏ 424 byte vẫn nhận 503, trong khi đề xuất 8.455 byte nhận 200. Vì vậy kích thước hoặc độ phức tạp schema đơn thuần không giải thích được kết quả. Tài liệu Google mô tả 503 là dịch vụ quá tải/không khả dụng, 429 là giới hạn; không có bằng chứng để quy lỗi vòng này cho khóa sai, hết quota hoặc schema bị từ chối. Không thể xác định nguyên nhân nội bộ Google chỉ từ receipt này. Dừng Gemini sau lỗi workflow theo chỉ thị chủ dự án.
+
+### C. Cách sửa và số đo Qwen
+
+Giữ Ollama 0.40.9, tag `qwen3:8b`, digest `500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41`, Q4_K_M 5,23 GB trên Windows. Giữ context 8.192 và timeout ứng dụng 90 giây. Không tải 27B, thêm Gateway/service/dependency hoặc đổi Matcher, Verifier, compiler và công thức tiền.
+
+Backend tạo đầy đủ các trường từ profile, giữ mã định danh dạng chuỗi và gợi ý kiểu ngày/tiền bằng dữ kiện toàn cột. Model chỉ trả entity, grain, mã cột khóa và nghĩa gross/net/fee. Dynamic JSON Schema chỉ cho tham chiếu cột có trong bảng; Backend tiếp tục kiểm cột sai/trùng. Unknown grain không được giữ khóa đoán. Amount chung vẫn chờ nghĩa tiền; timezone không suy từ date-only; currency hỗn hợp tiếp tục cảnh báo. Tên tệp/sheet là ngữ cảnh giới hạn và không đáng tin. Không hardcode ba tên tệp vào code ứng dụng.
+
+Lượt trước tối ưu trong cùng nhiệm vụ có full router trả AI_INVALID_INTENT sau 80,473 giây. Sau khi gắn scope đính kèm và resolver explicit, một mapping còn bị chặn INVALID_SOURCE_FIELD. Sau bổ sung enum cột, phép gọi riêng ba nguồn đạt typed validation trong 7,151 / 13,031 / 19,185 giây (diagnostic timeout 95 giây; tách khỏi cấu hình ứng dụng 90 giây). Các receipt lỗi được giữ, không tính là PASS.
+
+Trên **Docker/UI thật ở source `a268abe`**, ba mapping đều VALIDATED, không timeout:
+
+| Nguồn | Tổng thời gian | Load / prefill / decode | Prompt / output tokens |
+| --- | ---: | --- | ---: |
+| 03 · Sao kê, gọi đầu sau nạp lại | 31,337 giây | 12,072 / 1,609 / 17,529 giây | 543 / 122 |
+| 01 · Đơn dự kiến | 9,350 giây | 0,008 / 0,600 / 8,606 giây | 516 / 63 |
+| 02 · Thanh toán | 13,187 giây | 0,006 / 0,759 / 12,296 giây | 577 / 92 |
+
+Ba lần gọi tổng 53,874 giây, request khoảng 3,3–3,5 KB, tổng 1.636 prompt và 277 output tokens, **0 cloud requests**; intent explicit không cần inference. Decode khoảng 7,0–7,5 token/giây. Không đo trực tiếp thời gian token đầu vì API không streaming. Mẫu phần cứng 60 lần từ 16:15:53 đến 16:18:18 UTC+7, bao quanh lượt này: VRAM dùng cao nhất quan sát 4.111 MiB, RAM khả dụng thấp nhất 250 MiB. Đây là cửa sổ lấy mẫu, không phải peak toàn phiên hoặc benchmark tải đồng thời. Máy RTX 3050 6 GiB/RAM khoảng 15,3 GiB còn áp lực RAM; tốc độ có thể khác khi mở thêm ứng dụng.
+
+### D. Chất lượng đề xuất và quyết định người dùng
+
+Project TEST `510a220a-2e94-46be-9537-0940a115fa8b`, workflow `b1b20284-2bcf-55ad-b9db-aea28f206d60`. Ba nguồn có đủ 9/11/10 trường, đúng kiểu trong bộ thử; phần tạo kiểu là Backend profiling, không phải chỉ số độ chính xác Qwen. Cả ba output đúng schema và tham chiếu, nhưng còn khác nghiệp vụ:
+
+- Nguồn 01 trả grain unknown và chưa có khóa; người kiểm thử xác nhận order, scope + reference.
+- Nguồn 02 nhận diện sự kiện thanh toán, gợi ý payment_id + scope; người kiểm thử giữ payment_id làm khóa chuẩn hóa.
+- Nguồn 03 mô tả giao dịch trong lô và chọn settlement_id + scope; cần sửa grain settlement_batch và khóa scope + batch_id.
+- Hai cột amount chung không có nghĩa tiền; phải xác nhận reported_gross_amount/gross theo bộ thử. Nguồn 03 gợi ý gross/net theo header, fee vẫn cần basis; thống nhất metric gross để so hai nguồn. Cả ba nguồn xác nhận VND, đơn vị VND, en-US và UTC; không đổi currency trong raw hoặc biến EXPECTED thành PAID.
+
+Đã sửa và bấm **Duyệt cách ghép cột và chuẩn hóa** riêng từng nguồn qua UI. Có đúng ba quyết định, model không tự duyệt. Backend kiểm toàn bảng trước và tại lúc duyệt. Trường required của Chat không bị hạ để khớp số liệu tham chiếu.
+
+| Nguồn | Dòng | Hợp lệ / cần kiểm tra, bản Chat | Bản thủ công tham chiếu | Giải thích chênh lệch |
+| --- | ---: | ---: | ---: | --- |
+| 01 | 2.418 | 2.406 / 12 | 2.408 / 10 | Khóa reference required: thêm 2 dòng thiếu mã |
+| 02 | 2.685 | 2.674 / 11 | 2.674 / 11 | Khóa payment_id không thiếu |
+| 03 | 384 | 378 / 6 | 380 / 4 | Khóa batch_id required: thêm 2 dòng thiếu mã |
+| Tổng | 5.487 | 5.458 / 29 | 5.462 / 25 | Cấu hình required khác nhau, không thay oracle cũ |
+
+Oracle độc lập đọc raw CSV/openpyxl, datetime và Decimal trước khi duyệt xác nhận đúng 4 dòng thêm do khóa bắt buộc; không đổi expected tùy tiện. Đối chiếu canonical sau chạy: đủ từng dòng và provenance, giữ ID/số 0 đầu, tiền Decimal, ngày hợp lệ và NULL/invalid. Lỗi ngày thật vẫn 2/5/0. Cả 29 dòng cần kiểm tra thuộc EDGE_CASE; MAIN_VND không có dòng lỗi. Workflow kết thúc **PARTIAL** đúng với nguồn chứa lỗi, không giả COMPLETED sạch.
+
+![Đề xuất Qwen LIVE trên giao diện trước khi duyệt](images/user-guide/qwen-mapping-live.png)
+
+![Mở lại luồng Qwen sau khi duyệt ba nguồn và cập nhật cấu hình](images/user-guide/qwen-mapping-completed.png)
+
+### E. Đối soát, analytics và tệp xuất mới
+
+Hai run mới dùng canonical vừa tạo, hợp đồng riêng MAIN_VND, VND, UTC, `[2026-10-01, 2026-11-01)`, SUM_SIGNED, sai số 0; người kiểm thử xác nhận scope/coverage và quy tắc trên UI. Cả hai **PARTIAL_VERIFIED** vì bộ thử còn nhóm không đủ điều kiện; không gọi là VERIFIED toàn bộ.
+
+| Run mới | Quan hệ / khóa | Khớp | Lệch | Thiếu trái / phải | Tổng lệch có dấu / tuyệt đối |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `9c0e90cd-0285-4778-94c2-419072d858df` | 01 ↔ 02, 1:N, scope + reference | 2.040 | 200 | 160 / 55 | 7.867 / 60.883 VND |
+| `376d4447-2d6a-4e61-9654-3516b17fac36` | 02 ↔ 03, N:1, scope + batch_id, gross | 323 | 40 | 18 / 13 | −8.306 / 11.812 VND |
+
+Oracle nghiệp vụ độc lập giữ nguyên từ raw, không dùng Matcher/Verifier hoặc sửa đáp án. Đã kiểm từng khóa, tiền trái/phải và delta của cả **240 nhóm lệch**. Màn hình/bảng/biểu đồ và typed query cùng run; mở đúng nhóm thứ hai, đầy đủ nguồn, reload không đổi snapshot. CSV và XLSX mới đã tải và đọc lại, mọi ô nghiệp vụ giữa hai định dạng khớp (thời điểm tạo mỗi file khác nhau hợp lệ). KPI và monetary snapshot khớp API; 0 ô công thức; giữ số âm và số 0 đầu. Hai báo cáo có 5.103/3.069 dòng bằng chứng và 51.297/33.375 ô nguồn.
+
+### F. So sánh và mức sử dụng
+
+| Tiêu chí LIVE của vòng này | Gemini | Qwen 8B |
+| --- | --- | --- |
+| Kết nối | Có 200 nhưng xen 503 | Ollama local hoạt động |
+| Intent ba nguồn | Đúng qua model | Resolver explicit exact-scope; full router trước sửa từng bị chặn |
+| JSON/schema | Một bảng đạt, JSON nhỏ gặp 503 | 3/3 output cuối đạt cấu trúc/tham chiếu |
+| Một nguồn | 01 đạt typed diagnostic, chưa duyệt UI | Cả ba nguồn có lượt riêng đạt |
+| Ba nguồn trên UI | BLOCKED, 0 proposal | 3 thẻ, 3 quyết định, chuẩn hóa hoàn tất ở PARTIAL |
+| Chất lượng ngữ nghĩa | Chưa đủ workflow để đo | Cần chỉnh grain/khóa, xác nhận tiền và múi giờ |
+| Thời gian | Single 9,837 giây; workflow mapping lỗi 1,325 giây | Mapping UI 9,350–31,337 giây, tổng 53,874 giây |
+| Lỗi provider | 2/5 attempts 503 trong vòng giới hạn | 0 timeout trong ba mapping UI cuối; lỗi router/tham chiếu của các candidate được giữ |
+| Khuyến nghị | Giữ lựa chọn, chưa coi ổn định; không gọi tiếp vòng này | Có thể tiếp tục TEST local với review; chưa đủ live gold để công bố AI tổng quát |
+
+Không có tỷ lệ mapping precision/recall đã hiệu chỉnh từ bộ ba tệp. Dùng lại chính ba tệp để tối ưu không thay được tập đánh giá độc lập. Không extrapolate ba JSON thành Planner/NLP chính xác hoặc tốc độ mọi workload. Chưa đạt cổng AI tổng thể để merge main.
+
+### G. Kiểm thử, bảo toàn và đồng bộ
+
+Backend/PostgreSQL toàn bộ trên image triển khai: **449/449**, 194,44 giây; một cảnh báo deprecation Starlette TestClient, không thêm dependency để che cảnh báo. Ruff, mypy (50 source files), TypeScript, ESLint và production build đạt. Có regression cho scope tệp gắn tin nhắn, phủ định/multitask, cột sai/trùng, unknown grain, bảo toàn thẻ nguồn trước khi nguồn sau lỗi, idempotency và model-bound pending request. Các ca provider/security trong bộ tự động dùng mock; lượt Qwen/Gemini LIVE được báo riêng ở trên.
+
+Playwright **139/139** trên bản Docker cuối, **13,0 phút**, một worker, không retry hoặc bỏ case. Gồm composer/IME/scroll, chọn model và giữ payload, mapping/preflight, History/Settings, responsive 390–1920 px, auth/isolation, upload sai/quá lớn, manual fallback và oracle/export qua nhiều bộ khác ngành. LIVE local và MOCK AI được ghi ngay tên ca; bộ tự động không thay phép đánh giá AI LIVE. Ledger Gemini sau toàn bộ test vẫn 361, không có inference cloud mới. Không sửa application source sau lượt full regression này.
+
+Backup `backup_68c1884e375d4fe98477cf9482578ad8` trên volume: sao lưu 46,007 giây, restore thử trong schema riêng 42,558 giây. Kiểm bảo toàn sau triển khai: đủ bản ghi cũ trong **24 bảng**, giá trị không đổi, **5.711 tệp** khớp checksum. Bản ghi TEST mới là phần thêm; giữ raw, approvals, các canonical/runs cũ và ledger. Mỗi lần cập nhật key/code/default local đều snapshot/start/verify; sau recreate, đọc lại hai run mới, biểu đồ/bằng chứng và snapshot đạt. Không migration hoặc sửa database schema nghiệp vụ.
+
+Backend, Worker và Frontend cùng revision **`a268abecd21c9eed76c06bc1816c8767f406e3f7`**. Backend/Worker image `sha256:0462a566d40227172850e1a52f40414e6615a93636161f527477c13e4095b0bd`; Frontend `sha256:5226dd8c8bd193f9cbb9e4607a4cd78fbb59bc8a496c5279208acb85495fec0c`. Đối chiếu đủ 45 file Python với host và hai container, 7 file Frontend giữa bản dựng/image/HTTP. Bốn dịch vụ healthy, 0 OOM/restart, cổng ứng dụng chỉ loopback; lần kiểm cuối 0 job QUEUED/RUNNING. Phiên mới đã kiểm chọn Qwen 8B; lựa chọn cá nhân được bảo toàn theo regression và job cũ giữ model ban đầu.
+
+Kiểm kê có đúng 4 container Studio, 2 image hiện hành (Frontend khoảng 24,7 MiB, Backend khoảng 149,1 MiB), 8 image giữ các cặp rollback có nhãn. Không có container Studio dư hoặc image không còn tham chiếu đủ điều kiện xóa; không xóa bản khôi phục chỉ vì hiện không chạy. 27 container ngoài Studio giữ nguyên ID/image/mounts; danh sách 36 volume toàn host không đổi. Sáu dịch vụ Langfuse healthy, project `langfuse` độc lập. Giữ hai volume Studio, backups và cache dùng chung; không global prune.
+
+Các commit ứng dụng đã push origin chính thức trên `codex/product-polish`: `759500c` (profile + semantic draft và recovery), `89320d9` (scope tệp và resolver explicit), `a268abe` (enum tham chiếu và mặc định model). Các thay đổi sau đó chỉ cập nhật tài liệu/ảnh, không thay application bytes đã kiểm thử. Main giữ **`a4f70b289b935b11928e6d1c2b2e0748160fbfa1`**; chưa merge vì full live gold NLP/Planner và độ chính xác mapping tổng thể chưa đạt. Sẵn sàng tiếp tục kiểm thử local có người duyệt trong phạm vi đã đo; chưa đủ cơ sở phát hành toàn bộ AI Agent hoặc cam kết không còn lỗi.
+
+### H. Bắt đầu thử tiếp
+
+Mở [Studio local](http://127.0.0.1:18180), theo [hướng dẫn mục 14–15](USER_TEST_GUIDE.md#14-chọn-model-trong-ô-chat). Phiên chưa lưu lựa chọn chọn Qwen 8B; lựa chọn cá nhân cũ được giữ. Model của job đã gửi không đổi khi chuyển bộ chọn. Tải ba tệp vào dự án TEST, dùng câu chuẩn hóa explicit kèm tệp, kiểm đủ ba thẻ và duyệt từng nguồn sau khi đọc cảnh báo. Không bấm gửi lại khi delivery chưa rõ; nếu provider lỗi, đọc thông báo và dùng đường thủ công. Không có fallback sang Gemini tự động.

@@ -53,6 +53,25 @@ const state = async () =>
     await readFile("../runtime/reconciliation-acceptance.json", "utf8"),
   ) as State;
 
+test("latest report link wins while the local session is still loading", async ({page}) => {
+  const s=await state();
+  const first=s.runs.delivery.run_id;
+  const next=Object.values(s.runs).find(r=>r.run_id!==first)!.run_id;
+  let release!:()=>void, markSettings!:()=>void;
+  const gate=new Promise<void>(resolve=>release=resolve);
+  const settingsRequested=new Promise<void>(resolve=>markSettings=resolve);
+  await page.route('**/api/settings',async route=>{
+    markSettings();await gate;await route.continue();
+  });
+  const report=(id:string)=>`/#page=reports&project=${s.project_id}&run_id=${id}`;
+  await page.goto(report(first));
+  await settingsRequested;
+  await page.goto(report(next));
+  release();
+  await expect(page.getByLabel('Lần đối soát',{exact:true})).toHaveValue(next);
+  await expect(page).toHaveURL(new RegExp(`run_id=${next}`));
+});
+
 test("explicit report run outside the bounded history page is never replaced by latest", async ({
   page,
 }) => {

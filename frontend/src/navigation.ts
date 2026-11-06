@@ -13,6 +13,7 @@ export type Location = {
   projectId: string;
   context: AssistantContext | null;
   origin: Exclude<Page, "assistant">;
+  conversationId?: string;
 };
 const pages: Page[] = [
   "home",
@@ -43,6 +44,7 @@ export function readLocation(): Location {
     projectId,
     context: projectId ? context : null,
     origin: origin as Location["origin"],
+    ...(page === "assistant" && id("conversation") ? { conversationId: id("conversation") } : {}),
   };
 }
 
@@ -50,6 +52,8 @@ export function writeLocation(location: Location, replace = false) {
   const query = new URLSearchParams({ page: location.page });
   if (location.projectId) query.set("project", location.projectId);
   if (location.page === "assistant") query.set("from", location.origin);
+  if (location.page === "assistant" && location.conversationId)
+    query.set("conversation", location.conversationId);
   for (const key of ["run_id", "dataset_id", "group_id", "case_id"] as const)
     if (location.context?.[key]) query.set(key, location.context[key]!);
   window.history[replace ? "replaceState" : "pushState"](null, "", `#${query}`);

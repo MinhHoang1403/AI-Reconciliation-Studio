@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
 from studio.access import Actor
-from studio.config import Settings
+from studio.config import Settings, request_limit_reached
 from studio.contracts import (
     ArtifactRef,
     DatasetProfile,
@@ -180,7 +180,7 @@ def gemini_request_counts(db: Session, workspace_id: str) -> tuple[int, int]:
 def reserve_gemini_request(db: Session, workspace_id: str, job_id: str, config: Settings) -> bool:
     """Reserve one HTTP attempt under a global PG lock; caller commits BEFORE sending.
 
-    Global/workspace budgets are lifetime ceilings on reservations, not reset on restart.
+    Finite ceilings remain supported; None explicitly removes a local internal request cap.
     Retries each consume a slot. Missing credentials, policy OFF or exhausted budget deny.
     """
     if not config.allow_external_ai or not config.gemini_api_key.get_secret_value():
@@ -196,10 +196,9 @@ def reserve_gemini_request(db: Session, workspace_id: str, job_id: str, config: 
     if policy.mode != "CLOUD_ALLOWED" or not policy.allow_external_ai:
         return False
     global_used, workspace_used = gemini_request_counts(db, workspace_id)
-    if (
-        global_used >= config.external_ai_request_budget
-        or workspace_used >= policy.external_request_budget
-    ):
+    if request_limit_reached(
+        global_used, config.external_ai_request_budget
+    ) or request_limit_reached(workspace_used, policy.external_request_budget):
         return False
     db.add(
         AuditRow(

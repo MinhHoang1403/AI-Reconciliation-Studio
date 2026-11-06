@@ -1,18 +1,34 @@
-param([ValidatePattern('^[a-f0-9]{7,40}$')][string]$ReleaseRevision = 'dac8dd1')
+param([ValidatePattern('^([a-f0-9]{7,40})?$')][string]$ReleaseRevision = '')
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $taskImages = @{}
+$taskRevisions = @{}
 foreach ($taskService in @('backend', 'frontend')) {
-    $taskTag = "ai-reconciliation-studio-${taskService}:accepted-main-$ReleaseRevision"
+    $taskTag = if ($ReleaseRevision) { "ai-reconciliation-studio-${taskService}:accepted-main-$ReleaseRevision" } else { "ai-reconciliation-studio-${taskService}:rollback" }
     $taskImage = docker image inspect $taskTag --format '{{json .}}' | ConvertFrom-Json
-    if ($LASTEXITCODE -ne 0 -or $taskImage.Config.Labels.'org.opencontainers.image.source' -ne 'https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git' -or -not $taskImage.Config.Labels.'org.opencontainers.image.revision'.StartsWith($ReleaseRevision)) { throw 'Accepted source/image identity mismatch.' }
+    if ($LASTEXITCODE -ne 0 -or $taskImage.Config.Labels.'org.opencontainers.image.source' -ne 'https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git' -or $taskImage.Config.Labels.'org.opencontainers.image.revision' -notmatch '^[a-f0-9]{40}$' -or ($ReleaseRevision -and -not $taskImage.Config.Labels.'org.opencontainers.image.revision'.StartsWith($ReleaseRevision))) { throw 'Rollback source/image identity mismatch.' }
     $taskImages[$taskService] = $taskTag
+    $taskRevisions[$taskService] = $taskImage.Config.Labels.'org.opencontainers.image.revision'
 }
+if ($taskRevisions.backend -ne $taskRevisions.frontend) { throw 'Rollback images must have the same source revision.' }
+# Source của image đã xác minh cho biết có đọc được nullable request policy hay không.
+$taskBackendRevision = $taskRevisions.backend
+$taskConfigSource = git show "${taskBackendRevision}:backend/studio/config.py"
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify rollback configuration compatibility from repository history.' }
+$taskSupportsNullable = ($taskConfigSource -join "`n") -match 'external_ai_request_budget:\s+int\s*\|\s*None'
 # Chỉ các migrations additive đã review; không downgrade DB hoặc suy compatibility tổng quát.
 $taskGuard = @'
+import sys
 from sqlalchemy import text
+from studio.config import settings
 from studio.database import SessionFactory
 with SessionFactory() as db:
+    if sys.argv[1] != 'True':
+        assert all(value is not None for value in (
+            settings.external_ai_request_budget, settings.agent_request_budget,
+            settings.planner_request_budget, settings.assistant_request_budget,
+        )), 'Restore the audited finite environment before using a pre-nullable rollback image; retain all request history'
+        assert db.scalar(text("SELECT count(*) FROM workspaces WHERE policy->'external_request_budget' = 'null'::jsonb")) == 0, 'Restore compatible finite workspace policy from the audited backup; never reset the request ledger'
     revision=db.scalar(text('SELECT version_num FROM alembic_version'))
     assert revision in {'create_reconciliation','create_conversations','create_agent_workflows'}, 'Unknown schema: compatibility review required'
     assert db.scalar(text("SELECT count(*) FROM jobs WHERE status IN ('QUEUED','RUNNING','RETRYABLE_FAILURE')")) == 0, 'Wait for active jobs'
@@ -23,7 +39,7 @@ with SessionFactory() as db:
     assert db.scalar(text("SELECT count(*) FROM workspaces WHERE id='demo'")) == 1
     print('PASS compatible additive schema and no active jobs', revision)
 '@
-$taskGuard | docker compose exec -T backend python -
+$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable"
 if ($LASTEXITCODE -ne 0) { throw 'Rollback compatibility gate failed.' }
 # Giữ schema hiện hành đã qua compatibility gate; không chạy upgrade/downgrade.
 # Khởi tạo proof riêng rồi chạy API của image đã chọn trong cùng Compose hiện có.
@@ -39,4 +55,4 @@ docker compose -f compose.yaml -f $taskPath up -d --no-build --wait
 if ($LASTEXITCODE -ne 0) { throw 'Rollback deployment failed; keep volumes and inspect health.' }
 & (Join-Path $PSScriptRoot 'verify-local.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Rollback local verification failed.' }
-Write-Output 'Rollback running accepted main images on unchanged schema/volumes. Use the same override for operations; plain compose up returns to local candidate images.'
+Write-Output 'Rollback running verified Studio images on unchanged schema/volumes. Use the same override for operations; plain compose up returns to local candidate images.'

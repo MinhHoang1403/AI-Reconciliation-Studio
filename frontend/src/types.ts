@@ -168,7 +168,7 @@ export interface Preview {
   view: string;
 }
 export interface WorkspaceSettings {
-  ai_task_allowances?: Record<"agent" | "planner" | "assistant", {workspace_used:number; configured_ceiling:number; remaining:number}>;
+  ai_task_allowances?: Record<"agent" | "planner" | "assistant", {workspace_used:number; configured_ceiling:number | null; remaining:number | null}>;
   agent_cloud_enabled?: boolean;
   assistant_cloud_enabled?: boolean;
   workspace_name: string;
@@ -178,7 +178,7 @@ export interface WorkspaceSettings {
   gemini_model: string;
   gemini_configured: boolean;
   gemini_requests_used: number;
-  gemini_requests_remaining: number;
+  gemini_requests_remaining: number | null;
   max_upload_bytes: number;
   max_upload_files: number;
   agent_max_upload_files?: number;
@@ -189,7 +189,7 @@ export interface WorkspaceSettings {
     mode: string;
     allow_external_ai: boolean;
     allow_cloud_parsing: boolean;
-    external_request_budget: number;
+    external_request_budget: number | null;
     parser_request_budget: number;
   };
 }
@@ -225,16 +225,28 @@ export const statusText: Record<string, string> = {
   DRAFT: "Chờ chạy",
 };
 export const jobKind: Record<string, string> = {
-  document_parse: "Đọc tài liệu có allowance",
+  document_parse: "Đọc tài liệu được cấp phép",
   parse: "Đọc và phân tích",
-  mapping: "AI đề xuất ánh xạ",
+  mapping: "AI đề xuất cách ghép cột",
   normalize: "Chuẩn hóa dữ liệu",
   reconciliation_plan: "AI đề xuất quy tắc đối soát",
   reconcile: "Đối soát và kiểm chứng",
   export: "Xuất báo cáo",
   assistant: "AI Assistant có bằng chứng",
+  agent: "Xử lý yêu cầu hội thoại",
+  agent_prepare: "Chuẩn bị cách ghép cột",
+  agent_review: "Đọc thông tin bổ sung",
+  agent_resume: "Tiếp tục xử lý dữ liệu",
 };
 export const errorText: Record<string, string> = {
+  INSUFFICIENT_EVIDENCE: "Chưa đủ bằng chứng cho yêu cầu này. Hãy kiểm tra nguồn đã chọn; kết quả đối soát cần được xác minh trước khi dùng.",
+  AI_INVALID_SOURCE: "AI chưa chọn đúng nguồn. Hãy kiểm tra dữ liệu trong ngữ cảnh trước khi tiếp tục.",
+  AUTH_REQUIRED: "Phiên truy cập chưa hợp lệ. Hãy kết nối lại để tiếp tục.",
+  FORBIDDEN: "Bạn không có quyền thực hiện thao tác này. Hãy liên hệ chủ không gian làm việc.",
+  LOCAL_DEMO_NOT_VERIFIED: "Kết nối local cần được kiểm tra lại sau khi dịch vụ khởi động. Hãy chạy quy trình khởi động ứng dụng.",
+  AI_DELIVERY_UNKNOWN: "Chưa xác định dịch vụ AI đã nhận yêu cầu hay chưa. Không tự gửi lại để tránh xử lý trùng; hãy cập nhật hội thoại.",
+  WORKER_INTERNAL_ERROR: "Xử lý nền gặp lỗi. Kết quả đã lưu được giữ; hãy cập nhật hội thoại và liên hệ hỗ trợ nếu lỗi tiếp tục.",
+  JOB_RETRY_EXHAUSTED: "Công việc đã dừng sau các lần phục hồi không thành công. Hãy kiểm tra kết quả đã lưu trước khi tạo yêu cầu mới.",
   QUERY_FIELD_INVALID: "Trường được yêu cầu không có trong nguồn đang chọn. Hãy kiểm tra nguồn và chỉ tiêu cần xem.",
   QUERY_METRIC_AMBIGUOUS: "Có nhiều chỉ tiêu tiền phù hợp. Hãy chọn chỉ tiêu bạn muốn xem.",
   QUERY_METRIC_UNAVAILABLE: "Nguồn này chưa có chỉ tiêu tiền được duyệt để tính kết quả.",
@@ -244,25 +256,30 @@ export const errorText: Record<string, string> = {
   AI_INVALID_INTENT_COUNT: "AI chưa phân chia yêu cầu đúng cách; hệ thống đã dừng trước khi thực hiện.",
   INVALID_SOURCE_FIELD: "Đề xuất AI chưa khớp các cột nguồn; hệ thống đã dừng trước khi chuẩn hóa.",
   PARSER_BUDGET_EXHAUSTED:
-    "Hết allowance LlamaParse. Không tạo thêm job tính phí.",
+    "Đã hết lượt đọc tài liệu được cấp phép. Kết quả đã lưu vẫn được giữ.",
   PARSER_CREDITS_NOT_VERIFIED:
-    "Chưa xác minh được credits LlamaParse. Tệp gốc được giữ nguyên.",
+    "Chưa kiểm tra được quyền sử dụng dịch vụ đọc tài liệu. Tệp gốc được giữ nguyên.",
   CLOUD_PARSING_DISABLED:
-    "Chưa có quyền tạo job LlamaParse. Kết quả đã lưu vẫn đọc được.",
+    "Chưa được phép đọc tài liệu mới qua dịch vụ bên ngoài. Bạn vẫn có thể xem kết quả đã lưu.",
   LLAMAPARSE_POLL_TIMEOUT:
-    "Tài liệu chưa hoàn tất trong thời gian chờ. Không gửi lại job tính phí.",
-  GEMINI_KEY_MISSING: "Chưa cấu hình khóa Gemini. Có thể dùng ánh xạ thủ công.",
+    "Tài liệu vẫn chưa có kết quả trong thời gian chờ. Yêu cầu đã gửi được giữ lại để tránh xử lý trùng.",
+  GEMINI_RATE_LIMITED: "Dịch vụ AI đang giới hạn yêu cầu. Hãy thử lại sau; dữ liệu và kết quả đã lưu vẫn được giữ.",
+  QWEN_RATE_LIMITED: "Dịch vụ AI đang giới hạn yêu cầu. Hãy thử lại sau.",
+  GEMINI_KEY_MISSING: "Hỗ trợ AI hiện chưa được thiết lập. Bạn vẫn có thể kiểm tra và ghép cột thủ công.",
   GEMINI_HTTP_ERROR:
-    "Gemini từ chối yêu cầu. Cần kiểm tra khóa, model hoặc quyền truy cập.",
-  GEMINI_UNAVAILABLE: "Gemini chưa phản hồi. Có thể dùng ánh xạ thủ công.",
-  CLOUD_AI_DISABLED: "Workspace chưa được cấp quyền AI cloud.",
+    "Dịch vụ AI chưa chấp nhận yêu cầu. Bạn có thể tiếp tục xem dữ liệu và kiểm tra quyền sử dụng.",
+  GEMINI_UNAVAILABLE: "Gemini hiện chưa thể xử lý yêu cầu. Nội dung và dữ liệu của bạn vẫn được giữ nguyên.",
+  OLLAMA_UNAVAILABLE: "Qwen hiện chưa thể xử lý yêu cầu. Nội dung và dữ liệu của bạn vẫn được giữ.",
+  OLLAMA_MODEL_MISSING: "Model Qwen được chọn chưa có trên máy.",
+  OLLAMA_NOT_CONFIGURED: "Model Qwen được chọn chưa được cấu hình.",
+  CLOUD_AI_DISABLED: "Không gian làm việc chưa cho phép sử dụng dịch vụ AI bên ngoài.",
   CLOUD_BUDGET_EXHAUSTED:
-    "Đã hết ngân sách request Gemini. Có thể duyệt ánh xạ thủ công.",
+    "Tác vụ AI hiện chưa được phép tiếp tục. Bạn vẫn có thể xem dữ liệu và dùng quy tắc đã duyệt.",
   QWEN_ACCESS_DENIED:
-    "Qwen từ chối IP truy cập. Bạn vẫn có thể xác nhận ánh xạ thủ công.",
-  QWEN_UNAVAILABLE: "Qwen chưa phản hồi. Bạn vẫn có thể chỉnh ánh xạ thủ công.",
-  QWEN_NOT_CONFIGURED: "Chưa cấu hình Qwen. Có thể dùng ánh xạ thủ công.",
-  AI_INVALID_JSON: "Phản hồi AI sai định dạng. Cần kiểm tra ánh xạ thủ công.",
+    "Dịch vụ AI chưa cho phép kết nối từ ứng dụng. Bạn vẫn có thể ghép cột thủ công.",
+  QWEN_UNAVAILABLE: "Dịch vụ AI chưa phản hồi. Bạn vẫn có thể ghép cột thủ công.",
+  QWEN_NOT_CONFIGURED: "Dịch vụ AI hiện chưa được thiết lập. Bạn vẫn có thể ghép cột thủ công.",
+  AI_INVALID_JSON: "Đề xuất AI chưa đủ rõ để sử dụng an toàn. Hãy kiểm tra dữ liệu hoặc bổ sung yêu cầu.",
   INVALID_EVIDENCE:
     "AI trả bằng chứng không hợp lệ. Đề xuất chưa được sử dụng.",
 };
@@ -274,6 +291,13 @@ export const qualityText: Record<string, string> = {
   REQUIRED_NULL: "Thiếu giá trị bắt buộc",
   INVALID: "Không hợp lệ",
   INVALID_DATE: "Ngày cần kiểm tra",
+  DATE_FORMAT_INVALID: "Cấu hình định dạng ngày không hợp lệ",
+  TIMEZONE_INVALID: "Múi giờ không tồn tại",
+  TIMEZONE_DATABASE_UNAVAILABLE: "Môi trường thiếu dữ liệu múi giờ",
+  AMBIGUOUS_LOCAL_TIME: "Thời điểm mơ hồ do đổi giờ",
+  NONEXISTENT_LOCAL_TIME: "Thời điểm không tồn tại do đổi giờ",
+  DATE_OFFSET_MISMATCH: "Offset khác múi giờ đã duyệt",
+  MAPPING_PREFLIGHT_REQUIRED: "Cần hoàn tất kiểm tra trước chuẩn hóa",
   UNKNOWN_ENUM: "Danh mục chưa xác định",
   ARITHMETIC_NULL: "Phép tính thiếu đầu vào",
 };

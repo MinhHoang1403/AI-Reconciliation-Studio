@@ -32,7 +32,7 @@ for(const scenario of manifest.datasets){
     await page.locator('.assistant-composer input[type=file]').setInputFiles(scenario.files.map(f=>`${data}/${f.name}`));
     const received=page.waitForResponse(r=>r.url().endsWith('/agent/attachments')&&r.request().method()==='POST');
     await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();const attachments=await(await received).json();
-    await expect(page.getByRole('region',{name:'Công việc của AI Assistant',exact:true}).last()).toContainText('Đã hoàn thành');
+    await expect(page.getByRole('region',{name:'Công việc của AI Assistant',exact:true}).last()).toContainText('Đã đọc dữ liệu; chưa chuẩn hóa');
     const uploadMs=Date.now()-start;
     for(let i=0;i<2;i++){
       const f=scenario.files[i],dataset=attachments.items[i];
@@ -103,7 +103,16 @@ for(const scenario of manifest.datasets){
       await writeFile(`../runtime/demo-acceptance/results/${scenario.name}.json`,JSON.stringify({projectId,name,status:'PASS_SAFE_BLOCK',reason:'mixed currencies without FX'}));return;
     }
     await expect(page.getByText('Đã kiểm tra schema, scope, grain, metric, thời gian và khóa. Trùng khóa được giữ để review.',{exact:true})).toBeVisible();
-    await page.getByRole('button',{name:'Lưu đề xuất thủ công',exact:true}).click();await page.getByRole('button',{name:'Xác nhận quy tắc và dấu số tiền',exact:true}).click();
+    await page.getByRole('button',{name:'Lưu đề xuất thủ công',exact:true}).click();
+    const approve=page.getByRole('button',{name:'Xác nhận quy tắc và dấu số tiền',exact:true});
+    const hasPartial=catalogue.items.some((c:{canonical:{quality_status:string}})=>c.canonical.quality_status==='PARTIAL');
+    const acknowledge=page.getByRole('checkbox',{name:'Tôi đã kiểm tra dòng lỗi và xác nhận đối soát phần dữ liệu hợp lệ.',exact:true});
+    if(scenario.name.startsWith('C Vận đơn composite'))expect(hasPartial).toBe(true);
+    if(hasPartial){
+      await expect(approve).toBeDisabled();
+      await acknowledge.check();
+    }else await expect(acknowledge).toHaveCount(0);
+    await approve.click();
     const accepted=page.waitForResponse(r=>r.url().endsWith('/reconciliation-runs')&&r.request().method()==='POST');
     await page.getByRole('button',{name:'Chạy đối soát đã duyệt',exact:true}).click();const runId=(await(await accepted).json()).run_id;
     await expect.poll(async()=>(await(await page.request.get(`/api/runs/${runId}`)).json()).status).toMatch(/^(VERIFIED|PARTIAL_VERIFIED)$/);

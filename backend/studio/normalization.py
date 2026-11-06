@@ -2,11 +2,9 @@
 
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation, localcontext
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import polars as pl
 
@@ -20,10 +18,11 @@ from studio.contracts import (
     SchemaDefinition,
     Transform,
 )
+from studio.date_parsing import parse_date
 from studio.errors import DomainError
 from studio.schema_mapping import TransformPlan
 
-NORMALIZATION_REVISION = "normalization-1"
+NORMALIZATION_REVISION = "normalization-2"
 
 
 def parse_decimal(raw: str | None, locale: str) -> Decimal | None:
@@ -78,26 +77,7 @@ def _transform(
     if isinstance(transform, (DecimalTransform, AggregateTransform)):
         return parse_decimal(raw, transform.locale)
     if isinstance(transform, DateTransform):
-        if raw in (None, ""):
-            return None
-        try:
-            parsed = datetime.strptime(str(raw), transform.format)
-            if parsed.tzinfo is not None:
-                raise ValueError("timezone must come from approved transform")
-            zone = ZoneInfo(transform.timezone)
-            # Ambiguous and nonexistent local wall times must be reviewed, never guessed.
-            earlier = parsed.replace(tzinfo=zone, fold=0)
-            later = parsed.replace(tzinfo=zone, fold=1)
-            if (
-                earlier.utcoffset() != later.utcoffset()
-                or earlier.astimezone(UTC).astimezone(zone).replace(tzinfo=None) != parsed
-            ):
-                raise ValueError("ambiguous/nonexistent local time")
-            return earlier.astimezone(UTC)
-        except (ValueError, ZoneInfoNotFoundError) as exc:
-            raise DomainError(
-                "INVALID_DATE", "Ngày hoặc múi giờ không hợp lệ/cần xác nhận."
-            ) from exc
+        return parse_date(raw, transform.format, transform.timezone)
     rules = {r.id: r for r in plan.mapping.rules}
     if isinstance(transform, EnumTransform):
         if raw is None:
@@ -148,6 +128,9 @@ def apply_transform_plan(
     replaces rows with complete source-member lists. Errors preserve raw values.
     No monetary value passes through a binary float or implicit quantization.
     """
+    from studio.schema_mapping import validate_transform_runtime
+
+    validate_transform_runtime(plan)
     records: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
     targets = {f.id: f for f in plan.schema.fields}

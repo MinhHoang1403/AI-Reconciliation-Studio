@@ -6,12 +6,14 @@ from studio.contracts import (
     ArithmeticTransform,
     CoalesceTransform,
     DatasetProfile,
+    DateTransform,
     EnumTransform,
     MappingRevision,
     MappingStatus,
     SchemaDefinition,
     SchemaProposal,
 )
+from studio.date_parsing import date_format, date_zone
 from studio.errors import DomainError
 from studio.profiling import normalized_name
 
@@ -187,4 +189,15 @@ def compile_transform_plan(
                     "AGGREGATE_SEMANTICS_REQUIRED",
                     "Nhóm cần khóa, grain, metric và tiền tệ đã duyệt.",
                 )
-    return TransformPlan(mapping, schema)
+    plan = TransformPlan(mapping, schema)
+    validate_transform_runtime(plan)
+    return plan
+
+
+def validate_transform_runtime(plan: TransformPlan) -> None:
+    """Từ chối lỗi cấu hình dùng chung trước khi lặp dòng hoặc công bố artifact."""
+    for decision in plan.mapping.decisions:
+        transform = decision.transformation_candidate
+        if isinstance(transform, DateTransform):
+            date_format(transform.format)
+            date_zone(transform.timezone)

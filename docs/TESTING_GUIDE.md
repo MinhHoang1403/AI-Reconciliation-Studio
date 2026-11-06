@@ -2,6 +2,32 @@
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
+## Quy trình kiểm thử và khôi phục hiện hành
+
+Số liệu nghiệm thu mới nhất nằm ở đầu [IMPLEMENTATION_STATUS](IMPLEMENTATION_STATUS.md). Các mục có ngày phía dưới giữ bằng chứng lịch sử, không phải kết quả của lần chạy hiện tại.
+
+1. Chạy Ruff, mypy, TypeScript, ESLint và production build; kiểm bí mật và liên kết bằng `python tools/check_repository.py` trong môi trường Python của dự án.
+2. Chạy `./tools/test-postgres.ps1 -All -Source` trước triển khai, hoặc `-All` để kiểm image đang chạy. Các ca PostgreSQL dùng schema cô lập trên server hiện có; không chạy trên dữ liệu nghiệp vụ.
+3. Chạy `npm --prefix frontend run test:e2e` tuần tự, một runner, retries 0. Chờ tác vụ AI kết thúc trước khi chạy. Kiểm candidate dùng `STUDIO_FRONTEND_DIST=1`; nghiệm thu Docker bỏ biến này.
+4. Trước đổi image, chờ queue hết tác vụ và tạo backup/restore bằng lệnh dưới. Không ghi dữ liệu qua UI trong lúc chụp backup. Công cụ tự từ chối nếu metadata thay đổi; giữ cả receipt thất bại.
+
+```powershell
+docker compose cp tools/check-backup-restore.py worker:/tmp/studio-backup-check.py
+docker compose exec -T worker python /tmp/studio-backup-check.py
+```
+
+Công cụ giữ backup trong `/var/lib/studio/backups/<backup_id>` trên volume, xác minh checksum và thử restore vào schema UUID của PostgreSQL hiện có. Chỉ schema thử và bản sao thử do chính lượt chạy tạo được dọn; dữ liệu public và backup giữ nguyên. Sau khi nhận `restore_status=PASS`, copy đúng thư mục backup được trả về sang `runtime/backups/<backup_id>` bằng `docker compose cp worker:/var/lib/studio/backups/<backup_id> runtime/backups/`. Kiểm checksum theo manifest trên host; thư mục runtime không vào Git. Bản sao trên cùng máy chưa bảo vệ trước mất toàn bộ máy.
+
+Trước restart/rollback, copy `tools/check-persistence.py` vào `/tmp/studio-persistence-check.py` trong Worker, chạy với đối số `snapshot`; sau mỗi lần đổi image chạy `verify`. Snapshot dùng vị trí cố định: copy receipt cũ ra runtime trước khi tạo snapshot mới. `./tools/rollback.ps1` kiểm nguồn/cùng revision và compatibility trước khi chuyển sang cặp tag `rollback`; `./tools/start.ps1 -SkipBuild` trở lại cặp `local` và xác minh phiên loopback. Không downgrade schema, xóa volume hoặc reset lịch sử request AI.
+
+## Trạng thái nguồn, lỗi kết thúc và cuộn Chat — 05/11/2026
+
+`tests/test_agent_reliability.py` dùng cùng PostgreSQL/schema UUID hiện có để kiểm trạng thái upload/parse/mapping/READY/PARTIAL/FAILED/stale, nguồn khác project/workspace, revision hiện hành, phản hồi lỗi bền vững, unknown delivery, lease exhausted và preview hai nguồn không gọi model. Provider errors trong các ca này là MOCK, metadata/queue/transaction là PostgreSQL thật. Không dùng số tests này làm độ chính xác AI LIVE.
+
+`frontend/e2e/assistant-scroll.spec.ts` dùng đo scrollTop/scrollHeight và phần tử trong viewport: gửi từ phía trên, phản hồi chậm/bảng lớn, chủ động đọc cũ, prepend lịch sử giữ anchor, reload, clarification/approval, terminal error và double-click. Có390/1440/1920px; ca job chậm dùng clock điều khiển để vượt60poll ban đầu, xác nhận GET tiếp tục và chỉ một POST. `assistant-layout.spec.ts` cuộn câu hỏi cũ vào khung nhìn trước khi đo metadata, tránh coi thao tác auto-scroll của Playwright click là reflow của sản phẩm; vẫn giữ phép so bounding box chính xác.
+
+Kiểm source bằng `./tools/test-postgres.ps1 -All -Source`; sau deploy chạy `-All` và full Playwright tuần tự, không hai runner cùng lúc. Không build dist khi runner candidate đang đọc dist. Trước recreate snapshot metadata/checksums, sau recreate kiểm giữ nguyên và chạy `./tools/start.ps1 -SkipBuild` để xác minh loopback/session theo identity mới. Hướng dẫn người mới ở [USER_TEST_GUIDE](USER_TEST_GUIDE.md); phải kiểm nút thật, chọn explicit phiên bản chuẩn hóa trong drawer, đối chiếu oracle và phân biệt đường thủ công với câu Chat còn bị provider chặn.
+
 ## Giao diện tối giản và đồng bộ runtime — 04/11/2026
 
 Trước sửa, đối chiếu build từ Git với asset trong Nginx, HTTP và Chromium profile mới/disabled cache; kiểm service worker registrations, computed styles khi pointer và Tab. Baseline composer có border 1px + outline 2px cả khi click vì textarea vẫn `:focus-visible`; đây là lỗi CSS khi hashes đã khớp. Sau sửa phải xác minh lại trên asset production, không chỉ fixture dist.
@@ -280,7 +306,7 @@ Nguồn candidate đã replay toàn bộ: **176 backend (138 offline/38 PostgreS
 
 Luồng ba file dùng upload thật trên UI, approval/normalization qua API có auth cho fixtures tổng hợp mới, rồi UI đề xuất hai cặp → xác nhận → kiểm tra/lưu/duyệt rule → chạy verified → hỏi chênh lệch → export. Bộ foundation riêng tiếp tục kiểm Smart Setup/mapping/normalization trên UI; Planner dùng MOCK, không dùng quota live. Không thay oracle để ép TikTok có mismatch; không bỏ validation READY cho fixtures chứa lỗi.
 
-Benchmark: `uv run python tools/benchmark-foundation.py`, `uv run python tools/benchmark-reconciliation.py`; `benchmark-assistant.py` copy/chạy trong Backend hiện có để đo Parquet evidence và read-only SQL. Không tạo service/container mới. Kết quả là samples tổng hợp; không suy ra precision/recall đại diện hoặc SLA. `check-worker-recovery.py` kiểm SIGKILL normalization thật; PG tests kiểm stale claim/fencing/không duplicate Assistant response và unknown delivery. `check-persistence.ps1` kiểm cả ConversationRow/MessageRow sau restart/recreate và frontend-only recreate. Backup/restore commands tại [README](../README.md); backup codec có regression chống JSON giả type tags.
+Benchmark: `uv run python tools/benchmark-foundation.py`, `uv run python tools/benchmark-reconciliation.py`; `benchmark-assistant.py` copy/chạy trong Backend hiện có để đo Parquet evidence và read-only SQL. Không tạo service/container mới. Kết quả là samples tổng hợp; không suy ra precision/recall đại diện hoặc SLA. `check-worker-recovery.py` kiểm SIGKILL normalization thật; PG tests kiểm stale claim/fencing/không duplicate Assistant response và unknown delivery. `check-persistence.ps1` kiểm cả ConversationRow/MessageRow sau restart/recreate và frontend-only recreate. Backup/restore commands tại [quy trình hiện hành](#quy-trình-kiểm-thử-và-khôi-phục-hiện-hành); backup codec có regression chống JSON giả type tags.
 
 ## Agent-first — kết quả và cách kiểm chứng mốc S ngày 02/11/2026
 
@@ -355,3 +381,29 @@ Main release f1ad9f1 có application diff rỗng so với dc8fcc5 đã full regr
 Bốn ca bootstrap trong `interface-quality.spec.ts` dùng mock GET: lỗi proof/mạng/timeout/settings, header và quyền không còn chờ vô hạn, retry giữ draft/tải project/history, không navigation reload hoặc mutation; reload sau phục hồi vẫn kết nối. Ca timeout rút thời gian bằng shim chỉ trong browser test, không tăng timeout ứng dụng.
 
 Chạy `./tools/test-postgres.ps1 -All`, frontend check/lint/build và toàn bộ Playwright khi đổi bootstrap/startup. Candidate dùng `STUDIO_FRONTEND_DIST=1` để kiểm dist qua origin hiện có; nghiệm thu sau deploy bỏ biến này để tải assets Nginx thật. Sau thao tác Docker cuối phải chạy `./tools/start.ps1 -SkipBuild`, xác minh session/settings200 và browser usable. Kiểm thử recreate chỉ khi queue không còn jobs; giữ hai volumes và cookie, chứng minh403 trước re-verification và200 sau đó, so metadata/checksums. Không gọi model hoặc tăng/reset quota để kiểm kết nối.
+
+## Product polish và AI local không giới hạn — 04/11/2026
+
+Regression mới kiểm nullable ceilings/local-only config, quyền cloud/key/finite workspace, reservations vượt mốc cũ vẫn giữ lịch sử, Agent/Planner/Assistant và không resend khi recovery/unknown delivery.429 là giới hạn provider, không tăng quota hoặc đổi key để vượt. Transport receipts giữ từng attempt/status/tokens/latency; lỗi chứa safe receipt cho trace, không công khai raw response hoặc credentials.
+
+Routing27 kiểm giữ source coverage/snapshot/date/effective facts đã nêu, từ chối canonical ID lệch hoặc facts không được xác nhận, reuse không bỏ qua facts mới mâu thuẫn. Missing vẫn null, Planner/approval validators không nới. Live retest dùng cách diễn đạt mới và dữ liệu tổng hợp có đáp án độc lập, không gọi cùng câu để làm tăng số PASS.
+
+Năm browser cases mới kiểm composer/tin nhắn nền trắng, menu không làm hẹp chữ, xuống dòng chủ động, preview10so với25/trang và75tổng, NULL khác0, mã có0đầu, mở chi tiết không phát request mới, phân trang rồi evidence đúng dòng nguồn. Giữ nguyên bộ cases cũ, chỉ cập nhật assertion trạng thái upload thành “Đã đọc dữ liệu; chưa chuẩn hóa” theo hợp đồng hiển thị mới. Full browser sau lần Docker mutation cuối dùng assets thật, rồi smoke sau cleanup.
+
+Với image rollback cũ trước nullable budgets, phải khôi phục cấu hình/policy hữu hạn đã lưu trước thay đổi và giữ mọi reservations mới. Không dùng trực tiếp `rollback.ps1` cũ với env `unlimited` hoặc policy null. Kiểm tra tương thích và backup trước mọi rollback; không downgrade DB hoặc reset quota/history.
+
+Routing31 kiểm truy vấn count kèm tổng chênh lệch toàn run lấy snapshot; các bộ lọc hoặc group vẫn dùng typed query. Chạy lại cả80gold/24variants trên revision mới, giữ failures/replies cũ và báo strict intent riêng với safe abstention. Không coi benchmark router là đã thực thi toàn bộ workflow.
+
+Lệnh `tools/start.ps1` bật nhãn Git của Buildx trong chính bước build và khôi phục giá trị môi trường ban đầu sau đó. `-SkipBuild` giữ image có sẵn; cả hai đều chạy HTTP/session verifier sau khi dịch vụ healthy. Không cần người dùng đặt biến nhãn trong README.
+
+Benchmark có `--batch-size 1` để đo đúng một mục tiêu của Chat; batch lớn hơn là phép đo khác, không trộn accuracy/latency. Khi provider/validation làm suite dừng, CLI trả exit2 sau khi lưu receipts; launcher phải kiểm exitcode ngay hoặc lưu trước bước copy file, không cho copy thành công che lỗi rồi chạy suite khác. Evaluator chỉ chấm responses HTTP200/STOP đã nhận; thiếu/thừa số reply làm FAIL các ca không gán được, không trim/đoán vị trí hoặc loại khỏi mẫu số.
+
+Đợt04/11 đã gặp Gemini HTTP429 thật; dừng inference mới, không đổi key/model để vượt. Phần AI còn63ca cần xác minh sau khi điều kiện provider được khôi phục; xem IMPLEMENTATION_STATUS mụcAC. Không coi337tests Python hoặc126browser tests là đã hoàn tất Gemini LIVE.
+
+Không chạy hai Playwright runners dùng chung output directory: runner có thể dọn traces của runner còn lại, gây ENOENT ở context teardown dù assertions đã đạt. Chạy tuần tự trong cùng workspace. `--output` riêng chỉ tách traces: collection của `user-acceptance.spec.ts` còn sinh lại bộ CSV/XLSX dùng chung, nên hai runners dù khác output vẫn có thể làm SHA256 tệp không khớp manifest đã nạp. Không chạy collection chồng nhau; đường dẫn `--output` riêng có thể dùng để giữ evidence của từng lượt tuần tự. Giữ log lỗi harness và chạy lại đủ các ca bị ảnh hưởng, không đổi expected hoặc tăng timeout để che lỗi.
+
+Với bộ hồi quy toàn trình duyệt, đợi các lượt suy luận LIVE hoàn tất trước khi bắt đầu. Trên Compose local, cùng một Worker phục vụ AI và xử lý tệp. Một phép thử Qwen chạm 90 giây từng làm ca tải tệp hết thời gian chờ dù hai tác vụ parse và Agent sau đó hoàn tất. Dùng timestamp của job và lần nhận tác vụ để phân biệt đợi hàng với lỗi UI.
+
+Khi cần kiểm tra cặp image dự phòng đã lưu, `tools/rollback.ps1` đọc tag `rollback` của Backend và Frontend, kiểm nguồn Git và cùng revision trước khi đổi image. Chờ hết job đang chạy và sao lưu trước phép thử. `tools/start.ps1 -SkipBuild` đưa cùng Compose project về cặp image `local`. Đối chiếu snapshot và checksum sau mỗi lần đổi.
+
+Phê duyệt quy tắc mới có nguồn `PARTIAL` phải gửi `invalid_rows_reviewed: true` trong quyết định Chat hoặc body của `POST /api/reconciliation-contracts/{plan_id}/approve`. Thiếu xác nhận hoặc gửi `false` trả `INVALID_ROWS_REVIEW_REQUIRED` và giữ đề xuất chưa duyệt. Kiểm sự kiện `RECONCILIATION_INVALID_ROWS_REVIEWED` chỉ có một bản. Quy tắc đã duyệt tiếp tục trả cùng hợp đồng khi gửi lại.

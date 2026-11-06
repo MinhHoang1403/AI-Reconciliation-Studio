@@ -13,7 +13,7 @@ from studio.ai_gateway import route_ai_task
 from studio.assistant import PROMPT_REVISION, answer_question, plain_question, workflow_proposal
 from studio.assistant_api import own_conversation
 from studio.assistant_tools import build_fact_set, read_tool
-from studio.config import settings
+from studio.config import ModelChoice, request_limit_reached, settings
 from studio.contracts import WorkspacePolicy
 from studio.contracts.assistant import AssistantAnswer, AssistantContext, ToolRequest
 from studio.database import AuditRow, JobRow, MembershipRow, MessageRow, TraceRow, WorkspaceRow
@@ -49,9 +49,12 @@ def execute_assistant(
         workspace = db.get(WorkspaceRow, actor.workspace_id)
         assert workspace is not None
         policy = WorkspacePolicy.model_validate(workspace.policy)
+        choice: ModelChoice = job.payload.get("model_choice", "GEMINI")
+        cloud = choice == "GEMINI"
+        reservation = "ASSISTANT_REQUEST_RESERVED" if cloud else "ASSISTANT_LOCAL_RESERVED"
         prior_attempt = db.scalar(
             select(AuditRow.id).where(
-                AuditRow.action == "ASSISTANT_REQUEST_RESERVED", AuditRow.resource_id == job.id
+                AuditRow.action == reservation, AuditRow.resource_id == job.id
             )
         )
         if prior_attempt:
@@ -98,11 +101,24 @@ def execute_assistant(
         db.rollback()
 
     def reserve() -> bool:
-        if not settings.assistant_cloud_enabled or settings.assistant_request_budget == 0:
+        if cloud and (
+            not settings.assistant_cloud_enabled or settings.assistant_request_budget == 0
+        ):
             return False
         with factory() as db:
             fence(db, job_id, token)
             own_conversation(db, actor, conversation_id)
+            if not cloud:
+                db.add(
+                    AuditRow(
+                        workspace_id=actor.workspace_id,
+                        actor_id=actor.id,
+                        action=reservation,
+                        resource_id=job_id,
+                    )
+                )
+                db.commit()
+                return True
             # Shared global lock is acquired inside the existing durable reservation.
             # Hold it until task count/idempotency checks and commit finish together.
             allowed = reserve_gemini_request(db, actor.workspace_id, job_id, settings)
@@ -122,7 +138,7 @@ def execute_assistant(
                     AuditRow.action == "ASSISTANT_REQUEST_RESERVED", AuditRow.resource_id == job_id
                 )
             )
-            if count >= settings.assistant_request_budget or previous:
+            if request_limit_reached(count, settings.assistant_request_budget) or previous:
                 db.rollback()
                 return False
             db.add(
@@ -140,7 +156,7 @@ def execute_assistant(
         answer = cached or (
             workflow_proposal(facts, workflow, question)
             if workflow
-            else answer_question(question, facts, policy, settings, reserve)
+            else answer_question(question, facts, policy, settings, reserve, model_choice=choice)
         )
     except DomainError as exc:
         with factory() as db:
@@ -148,7 +164,7 @@ def execute_assistant(
             reserved = bool(
                 db.scalar(
                     select(AuditRow.id).where(
-                        AuditRow.action == "ASSISTANT_REQUEST_RESERVED",
+                        AuditRow.action == reservation,
                         AuditRow.resource_id == job_id,
                     )
                 )
@@ -157,10 +173,11 @@ def execute_assistant(
                 TraceRow(
                     workspace_id=actor.workspace_id,
                     job_id=job_id,
-                    provider="GEMINI" if reserved else "NONE",
+                    provider=("GEMINI" if cloud else "OLLAMA") if reserved else "NONE",
                     task_id="answer_verified_question",
                     prompt_revision=PROMPT_REVISION,
-                    usage=dict(reserved_attempts=int(reserved), tokens=None, cost_estimate=None),
+                    usage=dict(reserved_attempts=int(reserved), tokens=None, cost_estimate=None)
+                    | (exc.provider_usage or {}),
                     latency_ms=int((time.monotonic() - started) * 1000),
                     outcome=exc.code,
                 )
@@ -209,7 +226,7 @@ def execute_assistant(
                     usage=answer.usage.model_dump()
                     | dict(
                         cloud_requests=answer.request_count,
-                        ai_calls=answer.request_count,
+                        ai_calls=1 if answer.mode == "OLLAMA" else answer.request_count,
                         model=answer.model,
                     ),
                     latency_ms=int((time.monotonic() - started) * 1000),

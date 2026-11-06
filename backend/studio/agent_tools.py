@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from studio.access import Actor, require_editor
 from studio.assistant_tools import group_for_key, read_tool, scoped_context
+from studio.config import ModelChoice
 from studio.contracts import Contract, DatasetProfile
 from studio.contracts.assistant import (
     AssistantContext,
@@ -114,6 +115,8 @@ def execute_tool(
     actor: Actor,
     action: AgentAction,
     idempotency_key: str,
+    *,
+    model_choice: ModelChoice | None = None,
 ) -> ToolResult | QueryResult | DatasetProfile | JobReference | GroupReference:
     """Kiểm quyền mỗi call; không commit để workflow/review/action công bố nguyên tử.
 
@@ -194,7 +197,8 @@ def execute_tool(
             dict(
                 request=action.request.model_dump(mode="json", exclude_unset=True),
                 actor_id=actor.id,
-            ),
+            )
+            | ({"model_choice": model_choice} if model_choice else {}),
         )
         return JobReference(job_id=job.id, status=job.status)
     if isinstance(action, RunAction):

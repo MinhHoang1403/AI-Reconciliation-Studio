@@ -93,6 +93,7 @@ export function App() {
     context: AssistantContext | null = null,
     selectedProject = projectId,
     replace = false,
+    conversationId?: string,
   ) {
     navigationSequence.current++;
     setRestoringLocation(false);
@@ -101,6 +102,7 @@ export function App() {
       projectId: selectedProject,
       context,
       origin: page === "assistant" ? location.origin : page,
+      conversationId,
     };
     locationRef.current = nextLocation;
     writeLocation(nextLocation, replace);
@@ -156,6 +158,7 @@ export function App() {
     items: DocumentArtifact[];
   }>({ datasetId: "", items: [] });
   const [tableId, setTableId] = useState("");
+  const restoredDataView = useRef<{datasetId: string; tableId: string} | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [detailScope,setDetailScope]=useState("");
   const [mappings, setMappings] = useState<Mapping[]>([]);
@@ -348,7 +351,7 @@ export function App() {
           ...initial,
           projectId: restored?.id || "",
           context:
-            restored && initial.page === "assistant"
+            restored
               ? { ...(initial.context || {}), project_id: restored.id }
               : null,
         };
@@ -453,6 +456,31 @@ export function App() {
     setDatasetOffset(0);
   }, [projectId, ready]);
   useEffect(() => {
+    const requested = location.context?.dataset_id;
+    if (!ready || page !== "data" || !projectId || !requested || requested === scopeRef.current.datasetId) return;
+    const controller = new AbortController();
+    setSelectedSource(null); setDatasetId(""); setTables([]); setTableId("");
+    setProfile(null); setMappings([]); setCanonicals([]); setPreview(null);
+    void api<Dataset>(`/datasets/${encodeURIComponent(requested)}`, {signal: controller.signal})
+      .then(dataset => {
+        if (controller.signal.aborted || scopeRef.current.projectId !== projectId ||
+            locationRef.current.context?.dataset_id !== requested) return;
+        if (dataset.project_id !== projectId) throw new Error("Nguồn không thuộc dự án đang mở.");
+        let saved: {tableId?: string; tab?: string} | null = null;
+        try { saved=JSON.parse(sessionStorage.getItem(`studio.data-view.${draftOwner}.${projectId}.${requested}`)||"null"); } catch { /* optional tab context */ }
+        restoredDataView.current={datasetId:requested,tableId:typeof saved?.tableId==="string"?saved.tableId:""};
+        setPendingTarget(null); setSelectedSource(dataset); setDatasetId(dataset.id);
+        setTab(saved?.tab==="mapping"||saved?.tab==="normalize"?saved.tab:"explore");
+      })
+      .catch(err=>{if(!controller.signal.aborted)setError(err instanceof Error?err.message:"Không khôi phục được nguồn dữ liệu.");});
+    return()=>controller.abort();
+  }, [ready, page, projectId, location.context?.dataset_id, draftOwner]);
+  useEffect(() => {
+    if (!ready || page!=="data" || !datasetId || !tableId || !tables.some(t=>t.id===tableId)) return;
+    try {sessionStorage.setItem(`studio.data-view.${draftOwner}.${projectId}.${datasetId}`,JSON.stringify({tableId,tab}));}
+    catch { /* API authorization and the source identifier in the URL remain available. */ }
+  }, [ready,page,draftOwner,projectId,datasetId,tableId,tab,tables]);
+  useEffect(() => {
     if (!ready) return;
     void refreshProject();
     return () => {
@@ -519,14 +547,18 @@ export function App() {
     );
     if (scopeRef.current.datasetId !== datasetId) return;
     setTables(result.items);
+    const restored = restoredDataView.current;
     setTableId((old) =>
       pendingTarget?.table_id &&
       result.items.some((t) => t.id === pendingTarget.table_id)
         ? pendingTarget.table_id
+        : restored?.datasetId === datasetId && result.items.some(t=>t.id===restored.tableId)
+          ? restored.tableId
         : result.items.some((t) => t.id === old)
           ? old
           : result.items[0]?.id || "",
     );
+    if(restored?.datasetId===datasetId)restoredDataView.current=null;
   }, [datasetId, pendingTarget]);
   useEffect(() => {
     void loadTables().catch((err) => setError(err.message));
@@ -647,7 +679,7 @@ export function App() {
       setPreview(null);
     }
     setDatasetId(d.id);
-    setPage("data");
+    navigate("data", {project_id: projectId, dataset_id: d.id});
     setTab("explore");
     setSidebar(false);
   }
@@ -697,7 +729,6 @@ export function App() {
       );
   }
   useEffect(() => {
-    if (!ready) return;
     const controller = new AbortController();
     const restore = async () => {
       const current = ++navigationSequence.current;
@@ -745,6 +776,16 @@ export function App() {
       }
     };
     const listener = () => {
+      if (!ready) {
+        // Liên kết vừa mở là đích cần khôi phục, kể cả lúc đang tải phiên.
+        // Cùng dự án chỉ đổi ngữ cảnh; đổi dự án phải hủy lần đọc cũ.
+        const next = readLocation();
+        const changedProject = next.projectId !== locationRef.current.projectId;
+        locationRef.current = next;
+        setLocation(next);
+        if (changedProject) setBootstrapAttempt((attempt) => attempt + 1);
+        return;
+      }
       void restore();
     };
     window.addEventListener("popstate", listener);
@@ -833,8 +874,8 @@ export function App() {
     setMappings([]);
     setCanonicals([]);
     setPreview(null);
-    setDatasetId(result.items[0]?.id || "");
-    setPage("data");
+    if(result.items[0])chooseDataset(result.items[0]);
+    else setPage("data");
     setTab("explore");
     setSuccess(
       result.items.every((x) => x.reused)
@@ -1159,8 +1200,8 @@ export function App() {
           )}
           {success && <Notice tone="success">{success}</Notice>}
           {!ready && !bootstrapError && <Spinner />}
-          {ready && page !== "settings" && (
-            <div className={`project-bar ${page==="assistant"?"assistant-project-bar":""}`}>
+          {ready && !["settings","assistant"].includes(page) && (
+            <div className="project-bar">
               <ProjectSelector
                 project={project}
                 onSelect={chooseProject}
@@ -1298,17 +1339,27 @@ export function App() {
                 </button>}
                 <Suspense fallback={<Spinner />}>
                   <AssistantStudio
-                    key={JSON.stringify(assistantContext)}
+                    key={JSON.stringify([assistantContext, location.conversationId])}
+                    projectSelector={<ProjectSelector
+                      showLabel
+                      project={project}
+                      onSelect={chooseProject}
+                      disabled={busy}
+                      canClassify={actorRole === "owner"}
+                      onCreate={canEdit ? openNewProject : undefined}
+                      onClassificationChange={(value) => setProject((current) => current?.id === value.id ? value : current)}
+                    />}
                     initialContext={assistantContext || {project_id:projectId}}
                     projectName={project?.name || "Chưa chọn dự án · tải file để bắt đầu"}
                     draftOwner={draftOwner}
+                    initialConversationId={location.conversationId}
                     onContextChange={(context) => {
                       const current = readLocation();
                       if (
                         current.page === "assistant" &&
                         current.projectId === context.project_id
                       )
-                        writeLocation({ ...current, context }, true);
+                        writeLocation({ ...current, context, conversationId: undefined }, true);
                     }}
                     cloudEnabled={!!workspace?.assistant_cloud_enabled}
                     agentEnabled={!!workspace?.agent_cloud_enabled}
@@ -1516,6 +1567,7 @@ export function App() {
                                   setMappings([]);
                                   setCanonicals([]);
                                   setPreview(null);
+                                  setPendingTarget(null);
                                   setTableId(e.target.value);
                                 }}
                               >
@@ -1559,6 +1611,7 @@ export function App() {
                             {tab === "mapping" && table && profile && detailScope===`${datasetId}:${tableId}` && (
                               <MappingStudio
                                 key={table.id}
+                                draftOwner={draftOwner}
                                 readOnly={!canEdit}
                                 table={table}
                                 profile={profile}
@@ -1570,6 +1623,7 @@ export function App() {
                                   setSuccess("Đã cập nhật ánh xạ.");
                                 }}
                                 onEvidence={showEvidence}
+                                onOpenConversation={(id) => navigate("assistant", {project_id: projectId}, projectId, false, id)}
                               />
                             )}
                             {tab === "normalize" && (

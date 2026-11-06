@@ -1,6 +1,7 @@
 """Same-origin REST API for data foundation. Monetary values serialize as exact strings."""
 
 import hashlib
+import json
 import shutil
 import tempfile
 from collections.abc import Generator
@@ -42,6 +43,7 @@ from studio.contracts.api import (
     JobView,
     MappingList,
     MappingView,
+    NormalizationPreflight,
     PreviewResponse,
     ProjectList,
     ProjectSummary,
@@ -392,6 +394,19 @@ def workspace_settings(db: DB, actor: CurrentActor) -> dict[str, Any]:
     assert workspace is not None
     global_used, workspace_used = gemini_request_counts(db, workspace.id)
     policy = WorkspacePolicy.model_validate(workspace.policy)
+    from studio.config import remaining_requests
+
+    permitted = (
+        settings.allow_external_ai and policy.mode == "CLOUD_ALLOWED" and policy.allow_external_ai
+    )
+    global_remaining = (
+        remaining_requests(
+            (settings.external_ai_request_budget, global_used),
+            (policy.external_request_budget, workspace_used),
+        )
+        if permitted
+        else 0
+    )
     task_allowances = {}
     for task, action, ceiling in (
         ("agent", "AGENT_REQUEST_RESERVED", settings.agent_request_budget),
@@ -413,17 +428,12 @@ def workspace_settings(db: DB, actor: CurrentActor) -> dict[str, Any]:
         task_allowances[task] = {
             "workspace_used": scoped,
             "configured_ceiling": ceiling,
-            "remaining": max(
-                0,
-                min(
-                    ceiling - total,
-                    settings.external_ai_request_budget - global_used,
-                    policy.external_request_budget - workspace_used,
-                ),
+            "remaining": remaining_requests(
+                (ceiling, total),
+                (settings.external_ai_request_budget, global_used),
+                (policy.external_request_budget, workspace_used),
             )
-            if settings.allow_external_ai
-            and policy.mode == "CLOUD_ALLOWED"
-            and policy.allow_external_ai
+            if permitted
             else 0,
         }
     return {
@@ -436,54 +446,18 @@ def workspace_settings(db: DB, actor: CurrentActor) -> dict[str, Any]:
         "mapping_ai_provider": settings.mapping_ai_provider,
         "agent_cloud_enabled": bool(
             settings.agent_cloud_enabled
-            and settings.agent_request_budget > 0
-            and settings.allow_external_ai
-            and policy.mode == "CLOUD_ALLOWED"
-            and policy.allow_external_ai
-            and global_used < settings.external_ai_request_budget
-            and workspace_used < policy.external_request_budget
-            and (
-                db.scalar(
-                    select(func.count())
-                    .select_from(AuditRow)
-                    .where(AuditRow.action == "AGENT_REQUEST_RESERVED")
-                )
-                or 0
-            )
-            < settings.agent_request_budget
+            and permitted
+            and task_allowances["agent"]["remaining"] != 0
         ),
         "assistant_cloud_enabled": bool(
             settings.assistant_cloud_enabled
-            and settings.assistant_request_budget > 0
-            and settings.allow_external_ai
-            and policy.mode == "CLOUD_ALLOWED"
-            and policy.allow_external_ai
-            and global_used < settings.external_ai_request_budget
-            and workspace_used < policy.external_request_budget
-            and (
-                db.scalar(
-                    select(func.count())
-                    .select_from(AuditRow)
-                    .where(AuditRow.action == "ASSISTANT_REQUEST_RESERVED")
-                )
-                or 0
-            )
-            < settings.assistant_request_budget
+            and permitted
+            and task_allowances["assistant"]["remaining"] != 0
         ),
         "gemini_model": settings.gemini_model,
         "gemini_configured": bool(settings.gemini_api_key.get_secret_value()),
         "gemini_requests_used": workspace_used,
-        "gemini_requests_remaining": max(
-            0,
-            min(
-                settings.external_ai_request_budget - global_used,
-                policy.external_request_budget - workspace_used,
-            ),
-        )
-        if settings.allow_external_ai
-        and policy.allow_external_ai
-        and policy.mode == "CLOUD_ALLOWED"
-        else 0,
+        "gemini_requests_remaining": global_remaining,
         "max_upload_bytes": settings.max_upload_bytes,
         "max_upload_files": settings.max_upload_files,
         "agent_max_upload_files": settings.agent_max_upload_files,
@@ -889,11 +863,56 @@ def propose(
     return {"job_id": job.id, "status": job.status}
 
 
+@app.post("/api/tables/{table_id}/mapping-preflight", response_model=NormalizationPreflight)
+def preview_mapping(
+    table_id: str, body: ApprovalInput, db: DB, actor: CurrentActor
+) -> NormalizationPreflight:
+    from studio.mapping_verification import preflight_approval
+
+    return preflight_approval(db, actor, table_id, body)
+
+
 @app.post("/api/mappings/{mapping_id}/approve", response_model=MappingRevision)
 def approve_mapping(
-    mapping_id: str, body: ApprovalInput, db: DB, actor: CurrentActor
+    mapping_id: str,
+    body: ApprovalInput,
+    db: DB,
+    actor: CurrentActor,
+    idempotency_key: Annotated[str | None, Header(min_length=1, max_length=160)] = None,
 ) -> MappingRevision:
+    """Replay the immutable approval receipt on a retried request, under one DB lock."""
+    require_editor(actor, db, mapping_id)
+    receipt_id = None
+    request_hash = None
+    if idempotency_key is not None:
+        receipt_id = hashlib.sha256(
+            json.dumps(["approve-mapping", actor.workspace_id, actor.id, idempotency_key]).encode()
+        ).hexdigest()
+        request_hash = hashlib.sha256(
+            json.dumps([mapping_id, body.model_dump(mode="json")], sort_keys=True).encode()
+        ).hexdigest()
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"),
+            {"key": int.from_bytes(bytes.fromhex(receipt_id)[:8], "big", signed=True)},
+        )
+        receipt = db.get(AuditRow, receipt_id)
+        if receipt:
+            if receipt.action != "APPROVE_RECEIPT:" + request_hash:
+                raise DomainError(
+                    "IDEMPOTENCY_CONFLICT", "Mã duyệt đã dùng cho nội dung khác.", 409
+                )
+            return mapping_contract(get_scoped(db, MappingRow, receipt.resource_id, actor))
     result = apply_mapping_approval(mapping_id, body, db, actor)
+    if receipt_id is not None:
+        db.add(
+            AuditRow(
+                id=receipt_id,
+                workspace_id=actor.workspace_id,
+                actor_id=actor.id,
+                action="APPROVE_RECEIPT:" + str(request_hash),
+                resource_id=result.id,
+            )
+        )
     db.commit()
     return result
 
@@ -902,6 +921,9 @@ def approve_mapping(
 def reject_mapping(mapping_id: str, db: DB, actor: CurrentActor) -> dict[str, str]:
     require_editor(actor, db, mapping_id)
     mapping = get_scoped(db, MappingRow, mapping_id, actor)
+    table = get_scoped(db, TableRow, mapping.source_table_id, actor)
+    db.refresh(table, with_for_update=True)
+    db.refresh(mapping)
     if mapping.status in {"APPROVED", "SUPERSEDED"}:
         raise DomainError(
             "IMMUTABLE_APPROVAL", "Cần tạo revision mới thay vì sửa lịch sử đã duyệt.", 409
@@ -1067,6 +1089,7 @@ def apply_mapping_approval(
     original = get_scoped(db, MappingRow, mapping_id, actor)
     table = get_scoped(db, TableRow, original.source_table_id, actor)
     db.refresh(table, with_for_update=True)
+    db.refresh(original)
     if original.status in {"REJECTED", "SUPERSEDED"}:
         raise DomainError("MAPPING_SUPERSEDED", "Ánh xạ đã bị thay thế hoặc từ chối.", 409)
     if table.parsed_contract["warnings"] and not body.extraction_reviewed:
@@ -1086,6 +1109,9 @@ def apply_mapping_approval(
     )
     profile = DatasetProfile.model_validate(table.profile)
     validate_mapping(proposal, profile, schema, for_approval=True)
+    from studio.mapping_verification import preflight_approval
+
+    preflight_approval(db, actor, table.id, body)
     # Every edit is a new schema/mapping row, including editing an approved revision.
     mapping = create_mapping(db, table, proposal.model_dump(mode="json"), schema)
     persisted_schema = db.get(SchemaRow, mapping.schema_id)
