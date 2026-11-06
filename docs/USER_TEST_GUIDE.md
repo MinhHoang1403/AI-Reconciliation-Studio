@@ -367,11 +367,13 @@ Hai cặp thực hành thủ công đã đạt các số liệu trên. Trước 
 
 ## 14. Chọn model trong ô Chat
 
-Mở **AI Assistant**. Bộ chọn nằm ngay cạnh nút gửi. Local hiện hành chọn **Qwen 8B** cho phiên chưa lưu model cá nhân; lựa chọn cũ của bạn được giữ. Bạn vẫn có thể chọn **Gemini**. **Chưa kiểm chứng** nghĩa là model có thể được thử nhưng chưa đạt toàn bộ các ca AI bắt buộc. Qwen đã chạy được bộ ba nguồn ở mục 15 với người dùng chỉnh và duyệt, chưa được coi là tự ánh xạ đúng hoàn toàn. **Không khả dụng** cho biết lần gọi gần nhất bị lỗi hoặc không kết nối được.
+Mở **AI Assistant**. Bộ chọn ngay cạnh nút gửi có hai mục **Gemini 3.5 Flash Lite** và **Qwen 3:8B**. Phiên chưa lưu lựa chọn cá nhân dùng Gemini theo cấu hình hiện hành. Chọn Qwen nếu muốn dùng model trên máy. Mục không chọn được phản ánh quyền sử dụng hoặc tình trạng kết nối. Hội thoại giữ model đã dùng cho từng yêu cầu.
+
+Khi chỉnh thẻ xác nhận, bấm **Lưu bản nháp** để tiếp tục ở màn hình khác. Trong phần **Dữ liệu**, tab **AI Smart Setup** hiển thị cùng thẻ nếu bảng đang chờ xác nhận. Nút **Mở trong hội thoại** dẫn tới đúng hội thoại của thẻ. Nếu hết hạn, bấm **Mở lại thẻ xác nhận** khi nguồn vẫn còn nguyên. Bấm **Duyệt cách ghép cột và chuẩn hóa** sau khi kiểm tra các lựa chọn và dự báo dòng lỗi.
 
 ![Bộ chọn Gemini cạnh nút gửi trong ô Chat](images/user-guide/composer-model.png)
 
-[Giao diện trên điện thoại khi chọn Qwen 8B](images/user-guide/composer-model-mobile.png).
+[Ảnh lịch sử của bộ chọn model trên điện thoại](images/user-guide/composer-model-mobile.png).
 
 Bạn có thể đổi model khi đang xem lịch sử, đang soạn bản nháp hoặc sau khi job đã được nhận. Tin nhắn kế tiếp dùng lựa chọn mới. Việc đổi model giữ nguyên hội thoại, bản nháp và thẻ xác nhận đang mở. Một lần gửi chưa rõ đã được tiếp nhận sẽ giữ mã yêu cầu và model của lần gửi đó để bảo vệ khỏi xử lý trùng.
 
@@ -386,7 +388,7 @@ Nếu Gemini báo giới hạn hoặc lỗi, bạn có thể chọn Qwen và g�
 
 Lượt LIVE mới nhất tại [báo cáo mục AH](IMPLEMENTATION_STATUS.md#ah-khôi-phục-smart-mapping-với-qwen-local--05112026). Có thể mở dự án **TEST Qwen 8B — kiểm chứng ánh xạ** để đọc kết quả đã giữ trên máy. Các dự án thử cùng tên có thể thuộc những lượt thất bại trước; project của lượt đã duyệt là `510a220a-2e94-46be-9537-0940a115fa8b`. Để thử lại, tạo dự án TEST riêng và tải đúng ba tệp trong mục 13; không xóa các bản cũ.
 
-1. Chọn **Qwen 8B**, đính kèm cả ba tệp trong cùng tin nhắn. Gửi: “Tôi muốn kiểm tra và chuẩn hóa các bộ dữ liệu vừa tải lên. Hãy tự phân tích, đề xuất cách xử lý phù hợp và chỉ hỏi tôi khi cần xác nhận thông tin quan trọng.” Lệnh rõ ràng này được Backend chọn phạm vi từ đúng các tệp đính kèm; Qwen đề xuất ngữ nghĩa từng nguồn.
+1. Chọn **Qwen 3:8B**, đính kèm cả ba tệp trong cùng tin nhắn. Gửi “Tôi vừa tải dữ liệu lên. Hãy kiểm tra và đề xuất cách chuẩn hóa để tôi có thể đối soát.” Qwen đọc yêu cầu, chọn tác vụ và đề xuất ngữ nghĩa từng nguồn.
 2. Chờ đủ ba thẻ **Quyết định cần xác nhận**, đúng tên nguồn, tổng 5.487 dòng. Lượt nghiệm thu mất khoảng 54 giây cho ba lần suy luận, chưa gồm thao tác người dùng. Máy thiếu RAM hoặc nạp model lại có thể lâu hơn. Không bấm gửi thêm vì đang chờ.
 3. Đọc **Cần bạn xác nhận**, **Dữ liệu bất thường** và **Quan hệ tiềm năng**. Mở **Xem và chỉnh các lựa chọn** khi đề xuất chưa đúng. Với bộ tổng hợp này, cùng loại `order_financial_record`, grain lần lượt là `order`, `payment_event`, `settlement_batch`; khóa chuẩn hóa lần lượt `scope + reference`, `payment_id`, `scope + batch_id`. Không dùng customer_code làm khóa giao dịch; không dùng settlement_id thay batch_id của quan hệ đối soát theo lô.
 4. Xác nhận `%Y-%m-%d`, UTC theo quy ước bộ thử. Các cột tiền dùng en-US, VND và đơn vị VND; amount/gross_amount là metric `reported_gross_amount`, basis gross; net_amount có metric/basis net riêng, fee_amount có metric/basis fee riêng. Đây là thông tin của bộ tổng hợp, không áp dụng mặc định cho tệp nghiệp vụ khác. Dòng USD vẫn giữ nguyên và báo khác tiền tệ.

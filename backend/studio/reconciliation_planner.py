@@ -149,7 +149,7 @@ def preview_plan(
     No approval or inference. The caller still validates source scope and every
     business invariant against the current catalogue before publishing this preview.
     """
-    if missing_confirmations(request) or suggestions is None:
+    if missing_confirmations(request) or (suggestions is None and previous is None):
         return None
     data: dict[str, Any] = (
         previous.model_dump(mode="json")
@@ -166,13 +166,14 @@ def preview_plan(
             if k in ReconciliationPlan.model_fields
         }
     )
-    data.update(
-        {
-            k: v
-            for k, v in suggestions.model_dump(mode="json").items()
-            if k in ReconciliationPlan.model_fields
-        }
-    )
+    if suggestions is not None:
+        data.update(
+            {
+                k: v
+                for k, v in suggestions.model_dump(mode="json").items()
+                if k in ReconciliationPlan.model_fields
+            }
+        )
     # Null partial flags are unknown, not a replacement for the domain default.
     if data.get("allow_partial") is None:
         data.pop("allow_partial", None)

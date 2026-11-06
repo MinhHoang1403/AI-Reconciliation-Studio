@@ -17,7 +17,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-33"
+INTENT_REVISION = "agent-intent-34"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -680,7 +680,10 @@ def compile_routing(
                 raise DomainError(
                     "AI_INVALID_SOURCE", "Chọn hai nguồn chuẩn hóa khác nhau trong context."
                 )
-            if any(canonicals[i].canonical_status != "READY" for i in (left, right)):
+            statuses = {canonicals[i].canonical_status for i in (left, right)}
+            if not statuses <= {"READY", "PARTIAL"} or (
+                selection.confirmed_run_id and "PARTIAL" in statuses
+            ):
                 raise DomainError(
                     "INPUT_AMBIGUOUS", "Nguồn chưa READY; cần kiểm tra trước khi đối soát."
                 )

@@ -355,6 +355,7 @@ class MappingReviewDecision(Contract):
 class PlanReviewDecision(Contract):
     type: Literal["RECONCILIATION"]
     plan: ReconciliationPlan
+    invalid_rows_reviewed: bool = False
 
 
 class ClarificationDecision(Contract):

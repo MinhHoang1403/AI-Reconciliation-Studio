@@ -824,7 +824,12 @@ def test_agent_attachment_invalid_input_rolls_back_bootstrap(pg):  # noqa: F811
         assert db.scalar(select(func.count()).select_from(ProjectRow)) == 0
 
 
-def test_agent_mock_new_rule_requires_review_before_real_verified_run(pg, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("partial_source", [False, True])
+def test_agent_mock_new_rule_requires_review_before_real_verified_run(
+    pg,  # noqa: F811
+    monkeypatch,
+    partial_source,
+):
     from datetime import date
 
     import studio.agent_jobs as agents
@@ -835,6 +840,11 @@ def test_agent_mock_new_rule_requires_review_before_real_verified_run(pg, monkey
     client, factory, worker = pg
     pid, plan, _, first = create_approved_run(pg)
     drain(factory, worker)
+    if partial_source:
+        with factory() as db:
+            source = db.get(CanonicalRow, plan.left.canonical_id)
+            source.contract = dict(source.contract, quality_status="PARTIAL")
+            db.commit()
     revised = plan.model_copy(update={"period_end": date(2026, 10, 15)})
     request = PlanningRequest.from_plan(revised)
     monkeypatch.setattr(
@@ -862,6 +872,11 @@ def test_agent_mock_new_rule_requires_review_before_real_verified_run(pg, monkey
         decision=dict(type="RECONCILIATION", plan=review["plan"]),
     )
     path = f"/api/agent/workflows/{wf['id']}/decisions"
+    if partial_source:
+        blocked = client.post(path, json=decision, headers={"Idempotency-Key": "missing-review"})
+        assert blocked.status_code == 422
+        assert blocked.json()["code"] == "INVALID_ROWS_REVIEW_REQUIRED"
+        decision["decision"]["invalid_rows_reviewed"] = True
     accepted = client.post(path, json=decision, headers={"Idempotency-Key": "approve-period"})
     assert accepted.status_code == 200, accepted.text
     drain(factory, worker)

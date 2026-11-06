@@ -76,7 +76,11 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         or body.decision.type != review.kind
     ):
         raise DomainError("STALE_CONTEXT", "Xác nhận không còn phù hợp; hãy mở lại thẻ.", 409)
-    decision_hash = digest(body.decision.model_dump(mode="json"))
+    decision_payload = body.decision.model_dump(mode="json")
+    if isinstance(body.decision, PlanReviewDecision) and not body.decision.invalid_rows_reviewed:
+        # Preserve the digest of decisions saved before this additive acknowledgement.
+        decision_payload.pop("invalid_rows_reviewed")
+    decision_hash = digest(decision_payload)
     if review.state == "DECIDED":
         if decision_hash != review.decision_sha256:
             raise DomainError("IDEMPOTENCY_CONFLICT", "Quyết định này đã có nội dung khác.", 409)
@@ -138,6 +142,14 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         cats = selected_catalogue(
             db, actor, row.project_id, [plan.left.canonical_id, plan.right.canonical_id]
         )
+        if any(cat.canonical.quality_status == "PARTIAL" for cat in cats) and not (
+            body.decision.invalid_rows_reviewed
+        ):
+            raise DomainError(
+                "INVALID_ROWS_REVIEW_REQUIRED",
+                "Cần xác nhận các dòng lỗi chuẩn hóa đã được tách riêng trước khi đối soát.",
+                422,
+            )
         validate_reconciliation_contract(plan, cats, actor.workspace_id, row.project_id)
         # Giữ nguyên proposal AI; quyết định sửa rule là một bản có nguồn HUMAN_REVIEW.
         proposal = PlanRow(

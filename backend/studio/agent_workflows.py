@@ -159,24 +159,24 @@ def lock_review_sources(db: Session, actor: Actor, review: ReviewRequest) -> Non
         db.refresh(table, with_for_update=True)
     elif review.kind == "RECONCILIATION":
         ids = sorted(set(review.evidence_refs))
-        canonicals = list(
-            db.scalars(
-                select(CanonicalRow)
-                .where(
-                    CanonicalRow.workspace_id == actor.workspace_id,
-                    CanonicalRow.id.in_(ids),
-                )
-                .order_by(CanonicalRow.id)
-                .with_for_update()
-                .execution_options(populate_existing=True)
-            )
+        scoped = select(CanonicalRow).where(
+            CanonicalRow.workspace_id == actor.workspace_id, CanonicalRow.id.in_(ids)
         )
-        tables = sorted({c.source_table_id for c in canonicals})
+        tables = set(db.scalars(scoped.with_only_columns(CanonicalRow.source_table_id)))
+        # Mapping approval holds table locks before marking canonical rows stale.
+        # Take the same order, then refresh canonical state for the fingerprint.
         list(
             db.scalars(
                 select(TableRow)
                 .where(TableRow.id.in_(tables), TableRow.workspace_id == actor.workspace_id)
                 .order_by(TableRow.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        )
+        list(
+            db.scalars(
+                scoped.order_by(CanonicalRow.id)
                 .with_for_update()
                 .execution_options(populate_existing=True)
             )
@@ -636,11 +636,17 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
             confirmed = p.model_dump(mode="json", exclude_unset=True)
             from studio.reconciliation_planner import missing_confirmations
 
+            partial_source = any(
+                table.canonical_id in {p.left.canonical_id, p.right.canonical_id}
+                and table.canonical_status == "PARTIAL"
+                for dataset in catalogue.datasets
+                for table in dataset.tables
+            )
             matches = []
             for candidate in approved:
                 old = ReconciliationContract.model_validate(candidate.definition)
                 data = old.plan.model_dump(mode="json")
-                if missing_confirmations(p):
+                if partial_source or missing_confirmations(p):
                     continue
                 match = all(
                     all(data[k][f] == v for f, v in value.items())

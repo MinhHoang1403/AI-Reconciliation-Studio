@@ -1234,6 +1234,14 @@ def test_routing_refuses_partial_reconciliation_and_duplicate_normalization_sour
             ["Đối soát kỳ hiện tại"],
             cat,
         )
+    selection.pop("confirmed_run_id")
+    candidate = compile_routing(
+        json.dumps(dict(intents=[dict(intent="RECONCILE_DATASETS", reconciliation=selection)])),
+        ["Đề xuất quy tắc đối soát hai nguồn chuẩn hóa"],
+        cat,
+    )[0]
+    assert candidate.planning_request.left.canonical_id == selection["left_canonical_id"]
+    assert candidate.planning_request.allow_partial is None  # coverage is a separate fact
     cat.datasets[1].name = cat.datasets[0].name
     intent = dict(intent="PREPARE_NORMALIZATION", dataset_ids=[cat.datasets[0].id])
     with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):

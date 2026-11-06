@@ -42,10 +42,10 @@ function MappingReview({ draft, onChange, disabled }: {
       <label><input type="checkbox" checked={f.business_key} disabled={disabled} onChange={e => field(i, { business_key: e.target.checked })}/>Trường khóa nghiệp vụ</label>
       {f.data_type === "decimal" && <>
         <label>Ý nghĩa số tiền<input value={f.semantic_metric || ""} disabled={disabled} placeholder="Ví dụ: delivery_charge" onChange={e => field(i, { semantic_metric: e.target.value || null })}/></label>
-        <label>Cơ sở số tiền<select value={f.amount_basis || ""} disabled={disabled} onChange={e => field(i, { amount_basis: e.target.value || null })}><option value="">Chưa xác định</option>{Array.from(new Set(["gross", "net", "paid", "due", ...(f.amount_basis ? [f.amount_basis] : [])])).map(v => <option key={v} value={v}>{v}</option>)}</select></label>
+        <label>Cơ sở số tiền<select value={f.amount_basis || ""} disabled={disabled} onChange={e => field(i, { amount_basis: e.target.value || null })}><option value="">Chưa xác định</option>{Array.from(new Set(["gross", "net", "paid", "due", "fee", "expected", ...(f.amount_basis ? [f.amount_basis] : [])])).map(v => <option key={v} value={v}>{v}</option>)}</select></label>
         <label>Tiền tệ<input value={f.currency || ""} disabled={disabled} placeholder="VND / USD" maxLength={3} onChange={e => field(i, { currency: e.target.value.toUpperCase() || null })}/></label>
         <label>Đơn vị<input value={f.unit || ""} disabled={disabled} placeholder="VND" onChange={e => field(i, { unit: e.target.value || null })}/></label>
-        <label>Định dạng số<select value={f.locale || ""} disabled={disabled} onChange={e => field(i, { locale: e.target.value as DraftField["locale"] })}><option value="">Cần xác nhận</option><option value="en-US">1,234.56</option><option value="vi-VN">1.234,56</option></select></label>
+        <label>Định dạng số<select value={f.locale || ""} disabled={disabled} onChange={e => field(i, { locale: (e.target.value || null) as DraftField["locale"] })}><option value="">Cần xác nhận</option><option value="en-US">1,234.56</option><option value="vi-VN">1.234,56</option></select></label>
       </>}
       {f.data_type === "date" && <><label>Định dạng ngày<select value={f.date_format || ""} disabled={disabled} onChange={e => field(i, { date_format: e.target.value || null })}><option value="">Cần xác nhận</option>{Array.from(new Set(["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", ...(f.date_format ? [f.date_format] : [])])).map(v => <option value={v} key={v}>{({ "%Y-%m-%d": "2026-10-31", "%d/%m/%Y": "31/10/2026", "%m/%d/%Y": "10/31/2026" } as Record<string, string>)[v] || v}</option>)}</select></label>
         <label>Múi giờ<input value={f.timezone || ""} disabled={disabled} placeholder="Asia/Ho_Chi_Minh / UTC" onChange={e => field(i, { timezone: e.target.value || null })}/></label></>}
@@ -114,6 +114,7 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     const [catalogue,setCatalogue]=useState<Catalogue[]>([]);
     const submitting = useRef(false);
     const [extraction, setExtraction] = useState(cached?.extraction || false);
+    const [invalidRowsReviewed, setInvalidRowsReviewed] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const [expired, setExpired] = useState(Date.now() >= Date.parse(review.expires_at));
@@ -222,6 +223,9 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
         finally { setBusy(false); }
     }
     const sourceName=(id:string)=>catalogue.find(c=>c.canonical.id===id)?.name||"Nguồn đã chọn";
+    const planSources = plan ? [plan.left.canonical_id, plan.right.canonical_id]
+        .map(id => catalogue.find(item => item.canonical.id === id)) : [];
+    const partialSources = planSources.filter(item => item?.canonical.quality_status === "PARTIAL");
     const fieldName=(id:string,field:string)=>catalogue.find(c=>c.canonical.id===id)?.schema_definition.fields.find(f=>f.id===field)?.name||field;
     async function action(intent = review.reply_intent) {
         if (submitting.current || disabled) return;
@@ -230,7 +234,7 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
         setError("");
         try {
             const decision = review.kind === "MAPPING" ? { type: "MAPPING", draft, extraction_reviewed: extraction } :
-                review.kind === "RECONCILIATION" ? { type: "RECONCILIATION", plan } : { type: "CLARIFICATION", intent };
+                review.kind === "RECONCILIATION" ? { type: "RECONCILIATION", plan, invalid_rows_reviewed: invalidRowsReviewed } : { type: "CLARIFICATION", intent };
             const body = JSON.stringify({ review_id: review.id, nonce: review.nonce,
                 fingerprint: review.fingerprint, decision });
             if (pending.current?.body !== body)
@@ -253,7 +257,7 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
         }
     }
     const ready = review.kind === "MAPPING" ? !!assessment?.preflight_ready && assessmentSignature===draftSignature && !checking && (review.extraction_review_required!==true||extraction) && !!draft?.fields.every(f => f.data_type === "string" || (f.data_type === "decimal" ? f.locale && f.semantic_metric && f.amount_basis && f.currency && f.unit : f.date_format && f.timezone)) :
-        review.kind === "RECONCILIATION" ? !!plan?.period_start && !!plan.period_end && !!plan.timezone && !!plan.effective_from && [plan.left, plan.right].every(s => s.date_field && s.time_basis && s.coverage_start && s.coverage_end && s.snapshot_at && s.completeness) : !!review.reply_intent;
+        review.kind === "RECONCILIATION" ? !!plan?.period_start && !!plan.period_end && !!plan.timezone && !!plan.effective_from && planSources.every(Boolean) && [plan.left, plan.right].every(s => s.date_field && s.time_basis && s.coverage_start && s.coverage_end && s.snapshot_at && s.completeness) : !!review.reply_intent;
     if (review.kind === "CLARIFICATION") return <section className="agent-clarification" aria-label="Câu hỏi bổ sung">
       <p>{review.question}</p>
       {error && <Notice tone="error">{error}</Notice>}
@@ -297,6 +301,10 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     {draft && review.extraction_review_required!==false && <label><input type="checkbox" checked={extraction} disabled={disabled} onChange={e => setExtraction(e.target.checked)}/>Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.</label>}
     {!ready && <p className="muted">Mở phần chỉnh sửa hoặc bổ sung bằng tiếng Việt để hoàn tất các điều kiện còn thiếu.</p>}
     <p className="muted">{review.kind === "MAPPING" ? "Khi duyệt, hệ thống sẽ lưu cách ghép cột và chuẩn hóa theo các lựa chọn này." : "Khi duyệt, hệ thống sẽ lưu quy tắc và bắt đầu đối soát trong phạm vi trên."}</p>
-    <button className="button primary" disabled={disabled || !ready} onClick={() => void action()}>{review.kind === "MAPPING" ? "Duyệt cách ghép cột và chuẩn hóa" : "Duyệt quy tắc và đối soát"}</button>
+    {partialSources.length > 0 && <Notice>
+      <p>Dòng lỗi chuẩn hóa đã được tách riêng trong {partialSources.map(source => `${source?.name} (${source?.canonical.invalid_count} dòng)`).join(", ")}.</p>
+      <label><input type="checkbox" checked={invalidRowsReviewed} disabled={disabled} onChange={event => setInvalidRowsReviewed(event.target.checked)}/>Tôi đã kiểm tra dòng lỗi và xác nhận đối soát phần dữ liệu hợp lệ.</label>
+    </Notice>}
+    <button className="button primary" disabled={disabled || !ready || (partialSources.length > 0 && !invalidRowsReviewed)} onClick={() => void action()}>{review.kind === "MAPPING" ? "Duyệt cách ghép cột và chuẩn hóa" : "Duyệt quy tắc và đối soát"}</button>
   </section>;
 }
