@@ -73,6 +73,7 @@ test("[MOCK CONTRACT] switching model preserves draft, queued request and histor
   await expect(model.locator("optgroup")).toHaveCount(0);
   await expect(model).not.toHaveAttribute("title", /.+/);
   await expect(composer).toBeInViewport({ratio:1});
+  expect((await composer.boundingBox())?.width).toBeGreaterThan(220);
   await composer.fill("Kiểm tra đúng nguồn của hội thoại này");
   await model.selectOption("QWEN_8B");
   await expect(composer).toHaveValue("Kiểm tra đúng nguồn của hội thoại này");
