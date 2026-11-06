@@ -93,6 +93,8 @@ Hợp đồng local tiếp theo bỏ UUID nguồn bị lặp trong hai đối t�
 
 Hồi quy source adapter local đạt **503/503 Backend/PostgreSQL**,133,82 giây, gồm ca hỏi lại khi thiếu nguồn, gắn đúng ID khi có đủ facts và từ chối ID lồng ngoài hợp đồng. Không đổi timeout90giây hoặc ngân sách provider.
 
+Trên `a039dd7`, Qwen LIVE trả đúng hai đối tượng nguồn gồm vai trò, ngày, currency, bộ lọc, coverage và snapshot trong74,671giây. Dùng2.984prompt token,420output token; thời gian load10,916giây, prefill4,147giây và decode59,505giây. Model bỏ kỳ báo cáo và timezone ở cấp ngoài; workflow `76129564-4e8d-5fc6-bbca-3a5ec82b324b` giữ WAITING_REVIEW, không tạo run. Lượt kế tiếp yêu cầu đầy đủ khóa nullable ở cấp lựa chọn, gồm kỳ và timezone, đồng thời nêu rõ ngày cuối kỳ không phải ngày hết hiệu lực rule. Regression106ca Assistant đạt trước triển khai.
+
 ### Bảo toàn và công cụ backup
 
 Lượt `backup_23e21b4d901442dc8ab9c43e93cd5897` có metadata 64.907.007 byte, bị OOM tại bước đọc toàn bộ metadata để restore. Exit137 được giữ, không có receipt PASS. Công cụ backup lập chỉ mục byte của từng bản ghi lúc ghi file, rồi đọc và insert từng batch200 từ chính file backup. Định dạng codec cũ giữ nguyên byte, được regression kiểm Unicode, ngày, Decimal và nhãn JSON không đáng tin.

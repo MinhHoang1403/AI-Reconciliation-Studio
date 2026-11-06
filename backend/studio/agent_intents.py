@@ -17,7 +17,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-38"
+INTENT_REVISION = "agent-intent-39"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -1224,8 +1224,10 @@ def interpret_requests(
         # validator. Avoid spending its context on repeated nulls and examples.
         schema["properties"]["intents"].update(minItems=len(goals), maxItems=len(goals))
         selection_schema = schema["$defs"]["ReconciliationSelection"]
-        selection_schema["required"] = list(
-            dict.fromkeys(selection_schema["required"] + ["left_source", "right_source"])
+        selection_schema["required"] = list(selection_schema["properties"])
+        selection_schema["properties"]["effective_to"]["description"] = (
+            "Explicit rule expiry only. Null when absent. "
+            "Period end and snapshot are not rule expiry."
         )
         source_schema = schema["$defs"]["PlanningSource"]
         # Outer source IDs already bind each side. Repeating UUIDs in both
@@ -1268,7 +1270,9 @@ def interpret_requests(
             "required for a new rule. Copy supplied facts, use null for facts not stated. "
             "Do not repeat canonical_id inside source objects; the server binds each source "
             "to its selected outer canonical ID. Omit an unstated settlement_due_at. "
-            "Do not use the snapshot date as effective_to. "
+            "Copy the requested reporting period to period_start/period_end and timezone at "
+            "the top level of reconciliation. Do not use period end or snapshot as effective_to; "
+            "effective_to is null unless the user explicitly states a rule expiry. "
             "For queries use the exact source ref, field IDs and status enums. Explicit "
             "counts use count. Top differences: filter AMOUNT_MISMATCH, sort "
             "absolute_variance descending, set the requested limit, no group_by. Use "

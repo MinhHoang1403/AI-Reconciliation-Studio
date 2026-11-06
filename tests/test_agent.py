@@ -1650,6 +1650,8 @@ def test_local_reconciliation_router_keeps_explicit_source_fact_slots(response_k
         period_end=str(plan.period_end),
         timezone=plan.timezone,
         effective_from=str(plan.effective_from),
+        effective_to=None,
+        confirmed_run_id=None,
     )
     goal = "Đề xuất đối soát hai nguồn đầy đủ. " + json.dumps(selection)
 
@@ -1662,6 +1664,9 @@ def test_local_reconciliation_router_keeps_explicit_source_fact_slots(response_k
         definitions = payload["format"]["$defs"]
         assert {"left_source", "right_source"} <= set(
             definitions["ReconciliationSelection"]["required"]
+        )
+        assert set(definitions["ReconciliationSelection"]["required"]) == set(
+            definitions["ReconciliationSelection"]["properties"]
         )
         source_schema = definitions["PlanningSource"]
         assert "canonical_id" not in source_schema["properties"]
