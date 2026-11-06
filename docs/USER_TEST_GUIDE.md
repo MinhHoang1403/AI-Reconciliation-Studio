@@ -4,13 +4,16 @@ Tài liệu dành cho người mới, dùng ứng dụng local tại <http://127
 
 ## 1. Hiểu giao diện trước khi bắt đầu
 
-Ảnh giao diện thật với dự án dữ liệu tổng hợp:
+Ảnh minh họa vùng hội thoại từ một dự án dữ liệu tổng hợp.
 
 ![Thanh bên, chọn dự án, công cụ hội thoại và ô nhập](images/user-guide/giao-dien.png)
 
 | Khu vực hoặc nút | Ở đâu | Dùng làm gì, khi nào dùng |
 | --- | --- | --- |
 | AI Assistant | Thanh bên trái | Trở về hội thoại để tải tệp, giao việc, xem câu trả lời và xác nhận |
+| Dữ liệu | Thanh bên trái | Tải CSV/XLSX, chọn tệp và sheet, xem giá trị gốc, bản tự chuẩn bị hoặc dòng cần kiểm tra |
+| Đối soát | Thanh bên trái | Chọn nguồn chuẩn hóa, kiểm phạm vi và duyệt quy tắc |
+| Báo cáo | Thanh bên trái | Xem kết quả đã xác minh, biểu đồ, bằng chứng và tải CSV/XLSX |
 | Lịch sử | Thanh bên trái | Tìm và mở lại hội thoại đã lưu; trên điện thoại mở nút điều hướng trước |
 | Cài đặt | Thanh bên trái | Xem tài khoản, quyền sử dụng, chia sẻ dữ liệu và giới hạn tệp |
 | Dự án | Đầu vùng Chat, cạnh biểu tượng thư mục | Chọn nhóm dữ liệu đang làm việc. Tên như “Dữ liệu mới” là tên dự án, không phải tên tệp |
@@ -30,6 +33,14 @@ Tài liệu dành cho người mới, dùng ứng dụng local tại <http://127
 | Xuất CSV / Xuất XLSX | Trang báo cáo | Tạo báo cáo từ kết quả đã lưu; sau đó bấm “Tải báo cáo” |
 
 Khi gửi câu mới, Chat đưa bạn xuống nội dung mới nhất. Khi AI thêm bảng hoặc tiến độ và bạn đang ở cuối, Chat tiếp tục theo dõi. Nếu bạn cuộn lên đọc tin cũ, Chat giữ vị trí; bấm **Tin nhắn mới · Xuống cuối** khi muốn quay về. **Xem tin nhắn cũ hơn** bổ sung lịch sử mà không kéo bạn xuống cuối.
+
+### Xem bản tự chuẩn bị ngay sau khi tải
+
+1. Chọn dự án rồi mở **Dữ liệu → Tải dữ liệu**. Chọn tệp và bấm nút tải.
+2. Chọn tệp hoặc sheet vừa tải. Sau khi đọc xong, chuyển giữa **Giá trị gốc**, **Tự chuẩn bị** và **Cảnh báo / lỗi**. Dùng **Xem nguồn** để truy về dòng gốc.
+3. Khi cần xác nhận nghĩa của cột, mở **AI Smart Setup**. Sau khi duyệt và chuẩn hóa, chọn **Xem bản chuẩn hóa đã duyệt** để xem bản dùng tiếp cho đối soát.
+
+Chủ không gian có thể mở **Tự áp dụng cho lần tải tương thích** tại mapping đã duyệt và có bản chuẩn hóa không lỗi. Quyền này áp dụng cho tệp cùng tên, cùng cấu trúc và phạm vi trong dự án. Hệ thống kiểm toàn bảng khi tải lại. Nếu phát hiện thay đổi cần xác nhận, bạn vẫn có bản tự chuẩn bị và bản nháp để kiểm tra.
 
 ## 2. Những từ cần hiểu
 

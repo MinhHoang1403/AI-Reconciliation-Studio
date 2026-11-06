@@ -46,7 +46,48 @@ Benchmark kiểm khóa duy nhất và currency dùng 15 mẫu thời gian mỗi 
 
 Valentine 1.1.0 có matcher cấu trúc và phân bố. Dry-run dependency cho thấy thêm nhiều gói, gồm NumPy, SciPy, pandas và bộ giải tối ưu. Benchmark thực thi Valentine được bỏ qua trong vòng này để giữ phạm vi tài nguyên của máy chạy Ollama. Chưa có bằng chứng so chất lượng Valentine với matcher hiện tại. [Valentine](https://delftdata.github.io/valentine/).
 
-Kiểm thử bộ dữ liệu mới qua trình duyệt, nghiệm thu provider LIVE và phát hành còn chờ.
+### Nghiệm thu bộ ba nguồn trên candidate `92dd889`
+
+Qua trình duyệt, dự án TEST nhận CSV đơn dự kiến, XLSX sự kiện thanh toán và CSV sao kê. Ba job parse công bố raw và prepared lần lượt sau 1,218 / 2,131 / 2,193 giây kể từ lúc xếp hàng, với 2.418 / 2.685 / 384 dòng. Tổng 5.487 dòng. Người kiểm thử duyệt ba ánh xạ trong giao diện, có 5.458 dòng hợp lệ và 29 dòng cần kiểm tra. Lượt đo này chỉ gồm ba nguồn, chưa phải p95 của upload-to-prepared.
+
+| Cặp nguồn | Quan hệ đã duyệt | Khớp / lệch / thiếu đối ứng | Lệch có dấu / tuyệt đối |
+| --- | --- | --- | --- |
+| Đơn dự kiến ↔ thanh toán | 1:N, scope và reference | 2.040 / 200 / 215 | 7.867 / 60.883 VND |
+| Thanh toán ↔ sao kê | N:1, scope và batch_id | 323 / 40 / 31 | −8.306 / 11.812 VND |
+
+Cả hai run mới là `PARTIAL_VERIFIED`. Số nhóm và tiền khớp oracle Decimal độc lập. Hai XLSX tải từ UI có cùng snapshot với API và giữ kết quả sau reload. Hành trình CSV/XLSX riêng kiểm cả quyền tái sử dụng mapping và lần tải tương thích tự chuẩn hóa, không thêm lượt gọi model. Chat top 3 và giải thích nhóm thứ hai trên hai run đã xác minh có 0 lượt gọi model và giữ đúng tham chiếu khi tải lại. Receipts nằm ngoài Git ở `runtime/automation-three-source/` và `runtime/automation-native-top-results.json`.
+
+Gemini LIVE trên candidate cũ trả HTTP 200 cho định tuyến (3,328 giây, 17.967 token) và Planner (3,024 giây, 14.101 token). Bộ định tuyến thiếu hai vai trò nguồn và bộ lọc đã nêu. Review có gợi ý nhưng thiếu kế hoạch để duyệt. Lượt LIVE được ghi **FAIL cho hành trình đối soát trọn vẹn**. Người kiểm thử dùng hai quy tắc duyệt thủ công cho bảng oracle. Ledger tăng 378 → 380, ứng dụng không đổi ngân sách hoặc chính sách.
+
+### Sửa Planner sau lượt LIVE
+
+Prompt định tuyến nêu rõ vai trò và bộ lọc của từng nguồn. Backend từ chối giá trị lọc không có trong yêu cầu hoặc phạm vi đã duyệt của đúng nguồn. Planner xét khóa ghép đã duyệt ở phía neo ngay cả khi phía chi tiết có khóa chính khác. Trường scope chỉ được thêm theo bộ lọc cố định giống nhau ở hai nguồn hoặc khi cả hai schema xác nhận đó là định danh. Đọc lại canonical của hai run mới, backend tìm đúng cả khóa ghép lẫn quan hệ 1:N và N:1, dựa trên overlap trong kỳ.
+
+Job Planner mới từ Chat chỉ xuất bản đề xuất Backend đã kiểm tra hoặc trả về thẻ chỉnh sửa khi chưa đủ bằng chứng. API yêu cầu gợi ý AI trước đây vẫn giữ khả năng cung cấp gợi ý có kiểu khi không có phương án Backend. Gợi ý và đề xuất mới đều cần người dùng duyệt. Tất cả bước tính và kiểm chứng tiền dùng engine hiện có.
+
+Hồi quy trên source Planner mới đạt **498/498 Backend/PostgreSQL**, trong 236,56 giây, có một cảnh báo deprecation của TestClient. Hai chiều khóa ghép, lọc scope sai, lỗi `AI_PLAN_MISSING` của tuyến cũ và thẻ review Chat khi thiếu phạm vi đều có test. Bốn bộ holdout tổng hợp (hóa đơn, hoàn tiền, công nợ, tồn kho) kiểm đúng Decimal và giữ đủ dòng bằng chứng.
+
+Sidebar sáu mục theo kế hoạch tự động hóa §6.1 là yêu cầu mới thay bố cục ba mục ghi tại Rules §9.1. Vòng Playwright đầu trên `92dd889` đạt 134/139, năm ca visual còn kỳ vọng ba nút. Đã sửa kỳ vọng để kiểm đủ sáu mục và giữ kiểm tra focus.
+
+### Trạng thái các cổng phát hành
+
+| Cổng | Trạng thái và bằng chứng |
+| --- | --- |
+| AP-01 | PASS, Product Journey chạy upload CSV/XLSX không cần prompt |
+| AP-02 | PASS local/mock, raw/preview đọc được trong browser và PostgreSQL mô phỏng inference bận |
+| AP-03 | PASS, PostgreSQL và ba nguồn fresh kiểm prepared riêng với trạng thái cần duyệt |
+| AP-04 | PASS, 5.487 dòng được giữ, preflight kiểm toàn bảng, 29 dòng cần kiểm tra |
+| AP-05 | PASS trong phạm vi tái dùng exact, cấp/thu hồi quyền, loại drift và preflight |
+| AP-06 | NOT_RUN, chưa có tập holdout gán nhãn độc lập để đo precision/recall mapping hoặc số liệu Valentine |
+| AP-07 | PASS cho lần tải tương thích đã được cấp quyền. NOT_RUN cho nghiệm thu đầy đủ đề xuất AI mới không cần điền kỹ thuật lặp lại |
+| AP-08 | PASS cho ứng viên Backend trên canonical của hai run. FAIL với lượt Gemini trước sửa. Chờ nghiệm thu LIVE sau sửa |
+| AP-09 | PASS local, duyệt quy tắc riêng qua API và hồi quy scope/quyền/idempotency |
+| AP-10 | PASS cho API raw/prepared và Chat top-N/giải thích theo vị trí. NOT_RUN cho câu hỏi tự nhiên tổng quát trên prepared |
+| AP-11 | PASS cho Product Journey CSV/XLSX, đối chiếu hai XLSX mới và snapshot sau reload |
+| AP-12 | PASS ở năm chiều rộng trong hồi quy sidebar sáu mục và focus |
+| AP-13 | PASS PostgreSQL với provider giả lập bị giữ. NOT_RUN cho đo tải đồng thời Qwen LIVE và 75.000 dòng |
+| AP-14 | PASS baseline rollback/restore và bảo toàn lúc triển khai candidate. Chưa có receipt restore của candidate mới |
+| AP-15 | NOT_RUN cho phát hành main. Giữ nhánh triển khai riêng cho đến khi các cổng bắt buộc đạt |
 
 ---
 

@@ -206,6 +206,7 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
         assert workspace is not None
         policy = WorkspacePolicy.model_validate(workspace.policy)
         choice: ModelChoice = job.payload.get("model_choice", "GEMINI")
+        candidates_only = job.payload.get("verified_candidates_only", False)
         workspace_id, project_id = job.workspace_id, job.project_id
         validate_planning_request(draft, cats, workspace_id, project_id)
         db.rollback()
@@ -232,10 +233,8 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
             finish(db, job, result)
             db.commit()
 
-    if (
-        not missing_confirmations(draft)
-        and sum(cat.canonical.row_count for cat in cats) <= PLANNING_PROBE_ROW_LIMIT
-    ):
+    missing = missing_confirmations(draft)
+    if not missing and sum(cat.canonical.row_count for cat in cats) <= PLANNING_PROBE_ROW_LIMIT:
         with factory() as db:
             left_rows, right_rows = [
                 load_canonical_records(db, actor, cat.canonical) for cat in cats
@@ -245,6 +244,22 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
         if candidate is not None:
             publish(candidate, "DETERMINISTIC")
             return
+    if candidates_only:
+        publish(
+            PlanProposal(
+                status="NEEDS_REVIEW",
+                missing_requirements=missing
+                or ["Xác nhận khóa liên kết, quan hệ và chỉ tiêu cần so sánh."],
+                reasoning=(
+                    "Cần xác nhận các mục còn trống về kỳ và phạm vi của hai nguồn."
+                    if missing
+                    else "Chưa tìm được một phương án duy nhất có đủ bằng chứng. "
+                    "Hãy chọn khóa, quan hệ và chỉ tiêu trong phần chỉnh sửa."
+                ),
+            ),
+            "DETERMINISTIC",
+        )
+        return
     cloud = choice == "GEMINI"
     provider_name = "GEMINI" if cloud else "OLLAMA"
     reservation = "RECONCILIATION_PLANNER_ATTEMPT" if cloud else "LOCAL_PLANNER_ATTEMPT"

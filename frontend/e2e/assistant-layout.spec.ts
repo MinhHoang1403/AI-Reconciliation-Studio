@@ -76,7 +76,7 @@ for(const width of [390,768,1366,1440,1920]){
       }
       if(name==="sidebar"){
         const menu=page.getByRole("button",{name:"Mở điều hướng",exact:true});if(await menu.isVisible())await menu.click();
-        await expect(page.locator('.sidebar').getByRole('button')).toHaveText(['AI Assistant','Lịch sử','Cài đặt']);
+        await expect(page.locator('.sidebar').getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử','Cài đặt']);
         await page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true}).focus();
         await expect(page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true})).toBeFocused();
       }

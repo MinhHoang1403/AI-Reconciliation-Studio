@@ -17,7 +17,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-35"
+INTENT_REVISION = "agent-intent-36"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -155,6 +155,19 @@ def validate_intents(
                     and "day du" not in plain_question(goal)
                 ):
                     raise DomainError("INPUT_AMBIGUOUS", "Cần xác nhận dữ liệu nguồn đầy đủ.")
+                for field, value in (source.filters or {}).items():
+                    if (
+                        not user_confirmed
+                        and not (
+                            old
+                            and old.canonical_id == source.canonical_id
+                            and old.filters.get(field) == value
+                        )
+                        and not re.search(r"(?<!\w)" + re.escape(value) + r"(?!\w)", goal)
+                    ):
+                        raise DomainError(
+                            "INPUT_AMBIGUOUS", "Cần xác nhận giá trị lọc phạm vi nguồn."
+                        )
             for value in (p.period_start, p.period_end):
                 if value and str(value.year) not in goal and not confirmed and not user_confirmed:
                     raise DomainError("INPUT_AMBIGUOUS", "Cần xác nhận năm của kỳ đối soát.")
@@ -1112,8 +1125,12 @@ def interpret_requests(
                 "Yêu cầu dùng đúng contract/quy tắc của kết quả hiện tại cũng là reuse phạm vi "
                 "đã duyệt: confirmed_run_id phải là run_id trong confirmed_scope. "
                 "Kỳ/nguồn mới: confirmed_run_id null. Chuyển đầy đủ dữ kiện người dùng đã nêu "
-                "vào left_source/right_source (canonical_id đúng nguồn, date_field, time_basis, "
-                "currency_field, coverage_start/end, completeness, snapshot_at), "
+                "vào left_source/right_source (canonical_id đúng nguồn, role, date_field, "
+                "time_basis, currency_field, filters, coverage_start/end, completeness, "
+                "snapshot_at), "
+                "Nguồn tham chiếu và nguồn đối ứng đã nêu là role tương ứng reference và "
+                "counterpart. Giữ mọi bộ lọc đã nêu như scope=MAIN_VND trong filters của "
+                "từng nguồn được chỉ định, giữ nguyên field ID và giá trị. "
                 "period_start/end, timezone và effective_from/to. time_basis là ý nghĩa "
                 "ngày phát sinh/ngày hạch toán, dùng date_field tương ứng khi người dùng nêu rõ; "
                 "không dùng UTC hoặc giá trị timezone làm time_basis. "

@@ -1595,6 +1595,14 @@ def test_new_reconciliation_scope_keeps_explicit_source_and_effective_facts():
     ) == expected.model_dump(exclude={"intent", "allow_partial"})
     assert cat.model_dump_json() == before
     assert routed.planning_request.allow_partial is None
+    changed = json.loads(json.dumps(selection))
+    changed["left_source"]["filters"] = {"scope": "OTHER"}
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        compile_routing(
+            json.dumps({"intents": [{"intent": "RECONCILE_DATASETS", "reconciliation": changed}]}),
+            [goal + " OTHER_SCOPE"],
+            cat,
+        )
     for side in ("left", "right"):
         changed = json.loads(json.dumps(selection))
         changed[side + "_source"]["canonical_id"] = "foreign-source"

@@ -560,6 +560,75 @@ def test_planner_accepts_sources_without_keys_but_cannot_execute(pg):  # noqa: F
     assert denied.status_code == 422 and denied.json()["code"] == "PLAN_NEEDS_REVIEW"
 
 
+@pytest.mark.parametrize("entry", ["scoped", "legacy", "chat"])
+def test_planner_scoped_candidate_or_missing_plan_review(pg, monkeypatch, entry):  # noqa: F811
+    from studio import reconciliation_jobs
+    from studio.access import Actor
+    from studio.agent_tools import PlanAction, execute_tool
+    from studio.contracts.assistant import AssistantContext
+    from studio.contracts.reconciliation import PlanningRequest
+    from studio.errors import DomainError
+
+    client, factory, worker = pg
+    pid, rule = prepare_pair(pg)
+    calls = []
+
+    def missing_plan(*_args):
+        calls.append(True)
+        raise DomainError("AI_PLAN_MISSING", "Synthetic provider did not propose a plan.")
+
+    monkeypatch.setattr(reconciliation_jobs, "propose_plan", missing_plan)
+    request = (
+        PlanningRequest.from_plan(rule).model_dump(mode="json")
+        if entry == "scoped"
+        else {
+            "left": {"canonical_id": rule.left.canonical_id},
+            "right": {"canonical_id": rule.right.canonical_id},
+        }
+    )
+    if entry == "chat":
+        with factory() as db:
+            ref = execute_tool(
+                db,
+                Actor("test-owner", "demo", "owner"),
+                PlanAction(
+                    name="prepare_reconciliation_plan",
+                    context=AssistantContext(project_id=pid),
+                    request=PlanningRequest.model_validate(request),
+                ),
+                "deterministic-plan-or-review",
+            )
+            db.commit()
+            job_id = ref.job_id
+    else:
+        queued = client.post(
+            "/api/reconciliation-plans/ai",
+            json={"project_id": pid, "request": request},
+            headers={"Idempotency-Key": "deterministic-plan-or-review"},
+        )
+        assert queued.status_code == 202, queued.text
+        job_id = queued.json()["job_id"]
+    drain(factory, worker)
+    job = client.get(f"/api/jobs/{job_id}").json()
+    assert job["status"] == "SUCCEEDED" and job["result"]["source"] == "DETERMINISTIC"
+    plan_id = job["result"]["plan_id"]
+    draft = client.get(f"/api/reconciliation-plans/{plan_id}").json()["proposal"]
+    if entry == "scoped":
+        assert not calls
+        assert draft["status"] == "PROPOSED"
+        assert {key["left"] for key in draft["plan"]["join_keys"]} == {"carrier", "tracking_id"}
+    else:
+        assert calls == ([True] if entry == "legacy" else [])
+        assert draft["status"] == "NEEDS_REVIEW" and draft["plan"] is None
+        assert job["result"].get("provider_error_code") == (
+            "AI_PLAN_MISSING" if entry == "legacy" else None
+        )
+        assert "period_start" in draft["missing_requirements"]
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(ReconciliationContractRow)) == 0
+        assert db.scalar(select(func.count()).select_from(RunRow)) == 0
+
+
 @pytest.mark.parametrize("format", ["csv", "xlsx"])
 def test_export_first_generation_is_immutable_after_review(pg, format):  # noqa: F811
     import csv

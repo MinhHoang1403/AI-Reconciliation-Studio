@@ -18,7 +18,7 @@ Các tệp có cấu trúc khác nhau không cần bị ép thành cùng một b
 
 ## Cách hoạt động
 
-**Tải tệp → AI đề xuất → Bạn xác nhận → Chuẩn hóa → Đối soát → Kiểm chứng → Phân tích → Xuất báo cáo.**
+**Tải tệp → Xem bản tự chuẩn bị → Xác nhận nghiệp vụ → Chuẩn hóa → Đối soát → Kiểm chứng → Xuất báo cáo.**
 
 AI giúp hiểu yêu cầu và đề xuất cách làm. Hệ thống tính toán tiền bằng Decimal và kiểm chứng riêng việc phân nhóm, sử dụng dòng nguồn và bảo toàn số tiền. AI không tự phê duyệt quy tắc tài chính hoặc sửa dữ liệu gốc để làm kết quả khớp.
 
@@ -30,9 +30,9 @@ Xem [hướng dẫn từng bước và bộ dữ liệu tự kiểm thử](docs/
 
 Trong ô Chat, bộ chọn có hai mục **Gemini 3.5 Flash Lite** và **Qwen 3:8B**. Gemini là lựa chọn mặc định ở môi trường local hiện hành. Qwen chạy qua Ollama trên máy. Quyền của không gian làm việc và khả dụng của từng model vẫn quyết định mục nào chọn được. Xem số liệu kiểm thử trong [báo cáo triển khai](docs/IMPLEMENTATION_STATUS.md).
 
-1. Mở **AI Assistant**, đính kèm CSV/XLSX và nêu công việc bằng tiếng Việt.
-2. Xem dữ liệu và trả lời các điểm chưa rõ. Kiểm tra, duyệt cách ghép cột hoặc quy tắc mới khi được yêu cầu.
-3. Đọc kết quả, mở **Xem dòng gốc** để kiểm tra bằng chứng hoặc xuất báo cáo.
+1. Mở **Dữ liệu** và tải CSV/XLSX. Chọn tệp hoặc sheet để xem **Giá trị gốc**, **Tự chuẩn bị** và **Cảnh báo / lỗi**.
+2. Dùng **AI Assistant** để nêu mục tiêu và bổ sung dữ kiện. Duyệt cách ghép cột hoặc quy tắc mới khi cần.
+3. Mở **Đối soát** để chạy quy tắc đã duyệt. Vào **Báo cáo** để xem kết quả, bằng chứng và tải Excel.
 4. Dùng **Lịch sử** để tiếp tục công việc. **Cài đặt** chỉ hiển thị tài khoản, quyền riêng tư và giới hạn tệp dành cho người sử dụng.
 
 Ví dụ yêu cầu:
@@ -40,7 +40,7 @@ Ví dụ yêu cầu:
 - “Kiểm tra hai tệp vừa tải và cho tôi xem cấu trúc dữ liệu.”
 - “Đề xuất cách chuẩn hóa các cột; hỏi lại những điểm chưa rõ.”
 - “Cho tôi xem ba nhóm giao dịch lệch tiền lớn nhất của kết quả đang xem.”
-- “Giải thích giao dịch thứ hai dựa trên dữ liệu nguồn.”
+- “Giải thích nhóm thứ hai.”
 - “Xuất kết quả đối soát đang xem ra Excel.”
 
 Câu trả lời phụ thuộc vào nguồn đã chọn, dữ liệu đã xác nhận và quyền sử dụng. Nếu chưa đủ thông tin, ứng dụng cần bạn bổ sung thay vì tự đoán.

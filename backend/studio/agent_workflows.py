@@ -237,10 +237,13 @@ def make_review(
         evidence_refs=[resource_id] + source_ids,
     )
     if kind == "RECONCILIATION":
-        proposal = PlanProposal.model_validate(get_scoped(db, PlanRow, resource_id, actor).proposal)
+        plan_row = get_scoped(db, PlanRow, resource_id, actor)
+        proposal = PlanProposal.model_validate(plan_row.proposal)
         review.plan = proposal.plan
         review.suggestions = proposal.suggestions
         review.planning_request = state.intent.planning_request if state.intent else None
+        if plan_row.origin == "DETERMINISTIC" and proposal.plan is None and proposal.reasoning:
+            review.reason = proposal.reasoning
     state.reviews.append(review)
     row.state = "WAITING_REVIEW"
 

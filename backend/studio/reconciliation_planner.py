@@ -261,18 +261,40 @@ def scoped_key_candidate(
         for b in identifier_fields[1]
         if fields[0][a].data_type == fields[1][b].data_type
     ]
-    composite = sorted(set(left.schema_definition.business_key_fields))
-    if (
-        1 < len(composite) <= 6
-        and composite == sorted(set(right.schema_definition.business_key_fields))
-        and all([FieldPair(left=key, right=key)] in key_sets for key in composite)
-    ):
-        key_sets = [[FieldPair(left=key, right=key) for key in composite]]
+    # A detail table can have its own primary key and still carry an approved
+    # reference to the anchor's composite key. A fixed scope column is also
+    # eligible when both source filters bind it to the same exact value.
+    common_identifiers = set(identifier_fields[0]) & set(identifier_fields[1])
+    left_filters, right_filters = request.left.filters or {}, request.right.filters or {}
+    shared_scope = {
+        field for field, value in left_filters.items() if value == right_filters.get(field)
+    }
+    composite_anchors: dict[tuple[str, ...], set[str]] = {}
+    for side, cat in (("left", left), ("right", right)):
+        composite = tuple(sorted(cat.schema_definition.business_key_fields))
+        if (
+            1 < len(composite) <= 6
+            and set(composite) <= common_identifiers | shared_scope
+            and all(
+                key in fields[0]
+                and key in fields[1]
+                and fields[0][key].data_type == fields[1][key].data_type
+                and fields[0][key].data_type in {"string", "enum"}
+                for key in composite
+            )
+        ):
+            composite_anchors.setdefault(composite, set()).add(side)
+    if composite_anchors:
+        key_sets = [
+            [FieldPair(left=key, right=key) for key in composite] for composite in composite_anchors
+        ]
     if not known(left.canonical.grain) or not known(right.canonical.grain):
         return None
-    entity = left.canonical.entity_kind
-    if {left.canonical.entity_kind, right.canonical.entity_kind} == {"order", "order_line"}:
-        entity = "order"
+    entity = (
+        "order"
+        if {left.canonical.entity_kind, right.canonical.entity_kind} == {"order", "order_line"}
+        else left.canonical.entity_kind
+    )
     candidates = []
     for pairs in key_sets:
         suggestion = PlanningSuggestions(
@@ -304,6 +326,9 @@ def scoped_key_candidate(
             if not (left_unique and right_unique):
                 continue
         elif left_unique != right_unique:
+            anchors = composite_anchors.get(tuple(pair.left for pair in pairs))
+            if anchors and ("left" if left_unique else "right") not in anchors:
+                continue
             suggestion.cardinality = "ONE_TO_MANY" if left_unique else "MANY_TO_ONE"
             suggestion.aggregation = "SUM_SIGNED"
             suggestion.comparison_grain = (

@@ -1,17 +1,89 @@
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from reconciliation_cases import FIXTURES, plan, records
-from studio.contracts.reconciliation import FieldPair
+from studio.contracts.reconciliation import CanonicalRecord, FieldPair
 from studio.reconciliation_engine import match_records
 from studio.verification import verify_result
 
 
 def by_key(result, key, side="left"):
     return [g for g in result.groups if g.key[-1] == key and any(m.side == side for m in g.members)]
+
+
+@pytest.mark.parametrize(
+    "entity,left_key,right_key,cardinality,left_values,right_values,delta",
+    [
+        ("invoice", "invoice_no", "document_no", "ONE_TO_ONE", ["125.10"], ["124.80"], "0.30"),
+        ("refund", "refund_ref", "original_ref", "ONE_TO_ONE", ["-50.25"], ["-49.25"], "-1.00"),
+        ("receivable", "invoice_ref", "payment_ref", "ONE_TO_MANY", ["75"], ["52", "24"], "-1"),
+        (
+            "stock_value",
+            "item_code",
+            "warehouse_sku",
+            "MANY_TO_ONE",
+            ["8.75", "12.50"],
+            ["20.00"],
+            "1.25",
+        ),
+    ],
+)
+def test_unseen_business_cases_keep_signed_money_and_lineage(
+    entity, left_key, right_key, cardinality, left_values, right_values, delta
+):
+    def source(side, field, values):
+        return [
+            CanonicalRecord.model_validate(
+                {
+                    "id": f"{side}-{i}",
+                    "payload": {
+                        field: "00042",
+                        "event_date": datetime(2026, 10, 15, tzinfo=UTC),
+                        "currency": "VND",
+                        "amount": Decimal(value),
+                    },
+                    "invalid": False,
+                    "quality_flags": [],
+                    "provenance": [
+                        dict(
+                            file_id=side,
+                            source_table_id=side,
+                            source_row_id=f"{side}-{i}",
+                            sheet="Report",
+                            row=i + 2,
+                        )
+                    ],
+                }
+            )
+            for i, value in enumerate(values)
+        ]
+
+    left = source("left", left_key, left_values)
+    right = source("right", right_key, right_values)
+    p = plan(
+        left="left",
+        right="right",
+        platform="",
+        entity=entity,
+        cardinality=cardinality,
+        keys=[left_key],
+        amount="amount",
+        metric=entity + "_amount",
+    )
+    p.join_keys = [FieldPair(left=left_key, right=right_key)]
+    result = match_records(p, left, right)
+    [group] = result.groups
+    assert group.key == ["00042"]
+    assert group.linkage_state == "LINKED" and group.comparison_state == "AMOUNT_MISMATCH"
+    [amounts] = group.comparisons
+    assert amounts.delta == Decimal(delta)
+    assert amounts.absolute_variance == abs(Decimal(delta))
+    assert {m.record_id for m in group.members} == {r.id for r in [*left, *right]}
+    assert all(c.passed for c in verify_result(p, left, right, result))
 
 
 def test_T21_T22_T23_T24_ecommerce_independent_oracle():

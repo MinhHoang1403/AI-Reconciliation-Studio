@@ -197,6 +197,7 @@ def execute_tool(
             dict(
                 request=action.request.model_dump(mode="json", exclude_unset=True),
                 actor_id=actor.id,
+                verified_candidates_only=True,
             )
             | ({"model_choice": model_choice} if model_choice else {}),
         )

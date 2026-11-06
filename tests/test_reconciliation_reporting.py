@@ -178,6 +178,43 @@ def test_scoped_candidate_ignores_outside_duplicates_but_abstains_on_inside_conf
     assert scoped_key_candidate(draft, cats, left_rows, right_rows) is None
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+def test_scoped_planner_matches_composite_anchor_to_detail_with_different_key(reverse):
+    from studio.contracts.reconciliation import PlanningRequest
+    from studio.reconciliation_planner import scoped_key_candidate
+
+    orders = records("internal-sales.csv")
+    lines = records("tiktok-order-lines.csv")
+    anchor = catalogue("anchor", orders)
+    detail = catalogue("detail", lines, grain="order_line")
+    anchor.schema_definition.business_key_fields = ["shop_id", "order_id"]
+    detail.schema_definition.business_key_fields = []
+    detail.identifier_fields = ["order_id"]
+    ids = [anchor, detail]
+    rows = [orders, lines]
+    if reverse:
+        ids.reverse()
+        rows.reverse()
+    draft = PlanningRequest.from_plan(
+        plan(
+            left=ids[0].canonical.id,
+            right=ids[1].canonical.id,
+            platform="",
+        )
+    )
+    draft.left.filters = {"shop_id": "SHOP-B"}
+    draft.right.filters = {"shop_id": "SHOP-B"}
+    proposal = scoped_key_candidate(draft, ids, *rows)
+    assert proposal is not None and proposal.plan is not None
+    assert proposal.plan.cardinality == ("MANY_TO_ONE" if reverse else "ONE_TO_MANY")
+    assert proposal.plan.comparison_grain == "order"
+    assert proposal.plan.aggregation == "SUM_SIGNED"
+    assert [(key.left, key.right) for key in proposal.plan.join_keys] == [
+        ("order_id", "order_id"),
+        ("shop_id", "shop_id"),
+    ]
+
+
 @pytest.mark.parametrize(
     "kind",
     [
