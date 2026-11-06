@@ -17,7 +17,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-37"
+INTENT_REVISION = "agent-intent-38"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -1228,7 +1228,12 @@ def interpret_requests(
             dict.fromkeys(selection_schema["required"] + ["left_source", "right_source"])
         )
         source_schema = schema["$defs"]["PlanningSource"]
-        source_schema["required"] = list(source_schema["properties"])
+        # Outer source IDs already bind each side. Repeating UUIDs in both
+        # nested slots spends local decode time without adding evidence.
+        source_schema["properties"].pop("canonical_id")
+        source_schema["required"] = [
+            field for field in source_schema["properties"] if field != "settlement_due_at"
+        ]
         payload = json.loads(prompt[1]["content"])
         payload["sources"] = [
             {
@@ -1261,6 +1266,8 @@ def interpret_requests(
             "a stated counterpart source has role=counterpart. A filter such as scope=MAIN_VND "
             "belongs in filters for each explicitly named source. The source objects are "
             "required for a new rule. Copy supplied facts, use null for facts not stated. "
+            "Do not repeat canonical_id inside source objects; the server binds each source "
+            "to its selected outer canonical ID. Omit an unstated settlement_due_at. "
             "Do not use the snapshot date as effective_to. "
             "For queries use the exact source ref, field IDs and status enums. Explicit "
             "counts use count. Top differences: filter AMOUNT_MISMATCH, sort "
@@ -1271,6 +1278,25 @@ def interpret_requests(
         )
 
     def validate(content: str) -> list[AgentIntent]:
+        if provider.local:
+            try:
+                received = json.loads(content)
+                for item in received.get("intents", []):
+                    selection = item.get("reconciliation")
+                    if not isinstance(selection, dict):
+                        continue
+                    for side in ("left", "right"):
+                        source = selection.get(side + "_source")
+                        if not isinstance(source, dict):
+                            continue
+                        if "canonical_id" in source:
+                            raise DomainError(
+                                "AI_INVALID_SOURCE", "Nguồn local phải dùng ID ở lựa chọn ngoài."
+                            )
+                        source["canonical_id"] = selection.get(side + "_canonical_id")
+                content = json.dumps(received)
+            except (ValueError, AttributeError, TypeError) as exc:
+                raise DomainError("AI_INVALID_JSON", "Yêu cầu local sai hợp đồng.") from exc
         if capture_routing is not None:
             try:
                 capture_routing(RoutingBatch.model_validate_json(content))

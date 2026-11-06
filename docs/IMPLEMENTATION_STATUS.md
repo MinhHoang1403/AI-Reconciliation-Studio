@@ -34,6 +34,8 @@ Hai nhánh cũ trên origin được giữ để truy vết. Toàn bộ commit h
 
 ## Tự động hóa sau upload — nhánh triển khai
 
+Checkpoint ứng dụng hiện tại là `75e1c5f`, đã push trên `codex/intelligent-automation-experience`. Source đạt501/501Backend/PostgreSQL. Gemini đã hoàn tất một luồng Planner mới có duyệt và đúng oracle. Qwen vẫn có lượt timeout90giây. Các cổng còn thiếu được ghi ở bảng cuối mục này.
+
 CSV/XLSX mới có Parquet tự chuẩn bị và dòng cần kiểm tra, đọc từ màn hình Dữ liệu và API truy vấn có kiểu. Mapping tương thích được điền vào bản nháp cùng evidence mới. Worker có một luồng xử lý job chờ provider và nhận parse trong khi luồng đó bận. Planner kiểm khóa trong kỳ và chọn bản nháp xác định khi đủ bằng chứng. Top-N và câu hỏi theo vị trí dùng bảng đã lưu của đúng run.
 
 Full Backend/PostgreSQL trên nguồn triển khai đạt **488/488** trong 147,39 giây, có một cảnh báo deprecation của TestClient. Có các ca mới kiểm prepared khi tắt AI, giữ dòng nguồn, template khác cấu trúc, parse khi inference bị giữ, Planner trong kỳ và truy vấn theo vị trí. Browser tập trung đạt **8/8** trên frontend build mới với backend baseline. Lượt này kiểm sidebar ở năm chiều rộng và phân trang dữ liệu gần đây. Full browser trên cả ứng dụng mới và nghiệm thu ba nguồn đang chờ.
@@ -83,6 +85,14 @@ Chat bổ sung hai câu đọc xác định trên bản tự chuẩn bị của 
 
 Full Backend/PostgreSQL trên source bổ sung này đạt **501/501**,128,43 giây. Trong ca PostgreSQL, hai câu hỏi trả đúng hai dòng và mã có số0đầu khi provider bị cấm gọi, không có trace AI hoặc canonical được tạo. Ruff, mypy51files, TypeScript, ESLint, build và Markdown đạt.
 
+Trên Docker `75e1c5f`, hai câu hỏi qua UI đọc và đếm đúng **75.000 dòng** của tệp đã tạo trong phép thử đồng thời. Giữ mã `00000001`, đủ source refs, hiển thị đúng bản tự chuẩn bị và đọc lại được sau reload. Không có lượt gọi model, ledger381→381. Receipt ở `runtime/automation-prepared-chat.json`. Backend/Worker `f18ff55eab501f803b3d1a163d32a0d1d2b2a259cbbd87aab9a8611473d75038`, Frontend `2de9252824f81139ddd9dd452526272d1362508e1430625585fe12303ce670e2`. Đối chiếu46filePython và7assets với source/dist/HTTP đạt, cả bốn dịch vụ healthy. Trước và sau recreate, toàn bộ metadata và checksum khớp.
+
+Full Playwright trên `75e1c5f` đạt **139/139**,11,5 phút, không retry hoặc bỏ ca. Mở lại hội thoại đếm75.000dòng qua URL của chính hội thoại đã hoàn tất có kết quả hiển thị đúng trên UI. Ảnh hoàn tất ở `runtime/automation-prepared-chat-completed.png`.
+
+Hợp đồng local tiếp theo bỏ UUID nguồn bị lặp trong hai đối tượng nguồn. Backend gắn mỗi đối tượng vào ID trái/phải đã được model chọn bên ngoài rồi chạy cùng validator. Nếu model gửi thêm ID lồng nhau, validator từ chối. Các trường vai trò, ngày, currency, bộ lọc và coverage vẫn có kiểu và cần trả null khi chưa biết. Định dạng API/hợp đồng lưu trữ giữ nguyên, adapter chỉ áp dụng cho phản hồi local.
+
+Hồi quy source adapter local đạt **503/503 Backend/PostgreSQL**,133,82 giây, gồm ca hỏi lại khi thiếu nguồn, gắn đúng ID khi có đủ facts và từ chối ID lồng ngoài hợp đồng. Không đổi timeout90giây hoặc ngân sách provider.
+
 ### Bảo toàn và công cụ backup
 
 Lượt `backup_23e21b4d901442dc8ab9c43e93cd5897` có metadata 64.907.007 byte, bị OOM tại bước đọc toàn bộ metadata để restore. Exit137 được giữ, không có receipt PASS. Công cụ backup lập chỉ mục byte của từng bản ghi lúc ghi file, rồi đọc và insert từng batch200 từ chính file backup. Định dạng codec cũ giữ nguyên byte, được regression kiểm Unicode, ngày, Decimal và nhãn JSON không đáng tin.
@@ -102,11 +112,11 @@ Backup mới `backup_675dc832f0084e79858fe51dfed4a107` khôi phục thử thành
 | AP-07 | PASS cho lần tải tương thích đã được cấp quyền. NOT_RUN cho nghiệm thu đầy đủ đề xuất AI mới không cần điền kỹ thuật lặp lại |
 | AP-08 | PASS Gemini LIVE sau sửa với Backend proposal, duyệt UI và oracle. FAIL Qwen LIVE vì bỏ dữ kiện nguồn |
 | AP-09 | PASS local, duyệt quy tắc riêng qua API và hồi quy scope/quyền/idempotency |
-| AP-10 | PASS cho API raw/prepared và Chat top-N/giải thích theo vị trí. NOT_RUN cho câu hỏi tự nhiên tổng quát trên prepared |
+| AP-10 | PASS cho API raw/prepared, Chat đọc/đếm prepared75.000dòng, top-N/giải thích theo vị trí. NOT_RUN cho câu hỏi tự nhiên tổng quát trên prepared |
 | AP-11 | PASS cho Product Journey CSV/XLSX, đối chiếu hai XLSX mới và snapshot sau reload |
 | AP-12 | PASS ở năm chiều rộng trong hồi quy sidebar sáu mục và focus |
 | AP-13 | PASS PostgreSQL với provider giả lập bị giữ và một lượt Qwen LIVE đồng thời với 75.000 dòng. NOT_RUN p50/p95 tải đồng thời |
-| AP-14 | PASS baseline rollback/restore, candidate restore24bảng/7.634tệp và bảo toàn lúc recreate |
+| AP-14 | PASS baseline rollback/restore, candidate restore24bảng/7.634tệp và bảo toàn lúc recreate. NOT_RUN rollback của checkpoint75e1c5f |
 | AP-15 | NOT_RUN cho phát hành main. Giữ nhánh triển khai riêng cho đến khi các cổng bắt buộc đạt |
 
 ---

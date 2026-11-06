@@ -1635,8 +1635,23 @@ def test_new_reconciliation_scope_keeps_explicit_source_and_effective_facts():
     assert result.planning_request.effective_from is None
 
 
-def test_local_reconciliation_router_keeps_explicit_source_fact_slots():
+@pytest.mark.parametrize("response_kind", ["clarify", "facts", "foreign-slot"])
+def test_local_reconciliation_router_keeps_explicit_source_fact_slots(response_kind):
     from studio.ai_gateway import OllamaProvider
+
+    cat = routing_catalogue()
+    plan = cat.confirmed_plan
+    selection = dict(
+        left_canonical_id=plan.left.canonical_id,
+        right_canonical_id=plan.right.canonical_id,
+        left_source=plan.left.model_dump(mode="json", exclude={"canonical_id"}),
+        right_source=plan.right.model_dump(mode="json", exclude={"canonical_id"}),
+        period_start=str(plan.period_start),
+        period_end=str(plan.period_end),
+        timezone=plan.timezone,
+        effective_from=str(plan.effective_from),
+    )
+    goal = "Đề xuất đối soát hai nguồn đầy đủ. " + json.dumps(selection)
 
     def handler(request):
         if request.url.path == "/api/tags":
@@ -1648,22 +1663,25 @@ def test_local_reconciliation_router_keeps_explicit_source_fact_slots():
         assert {"left_source", "right_source"} <= set(
             definitions["ReconciliationSelection"]["required"]
         )
-        assert set(definitions["PlanningSource"]["properties"]) == set(
-            definitions["PlanningSource"]["required"]
+        source_schema = definitions["PlanningSource"]
+        assert "canonical_id" not in source_schema["properties"]
+        assert set(source_schema["properties"]) - {"settlement_due_at"} == set(
+            source_schema["required"]
         )
         instructions = payload["messages"][0]["content"]
         assert "role=reference" in instructions and "role=counterpart" in instructions
         assert "belongs in filters" in instructions
+        intent = {"intent": "RECONCILE_DATASETS", "reconciliation": selection}
+        if response_kind == "clarify":
+            intent = {"intent": "CLARIFY", "questions": ["Chọn hai nguồn?"]}
+        elif response_kind == "foreign-slot":
+            selection["left_source"]["canonical_id"] = "foreign"
         return httpx.Response(
             200,
             json={
                 "done": True,
                 "done_reason": "stop",
-                "message": {
-                    "content": json.dumps(
-                        {"intents": [{"intent": "CLARIFY", "questions": ["Chọn hai nguồn?"]}]}
-                    )
-                },
+                "message": {"content": json.dumps({"intents": [intent]})},
             },
         )
 
@@ -1673,10 +1691,17 @@ def test_local_reconciliation_router_keeps_explicit_source_fact_slots():
         httpx.Client(transport=httpx.MockTransport(handler)),
     )
     try:
-        result = interpret_requests(
-            provider, ["Đề xuất đối soát"], routing_catalogue(), WorkspacePolicy(), lambda: True
-        )
-        assert result[0].intent == "CLARIFY"
+        if response_kind == "foreign-slot":
+            with pytest.raises(DomainError, match="AI_INVALID_SOURCE"):
+                interpret_requests(provider, [goal], cat, WorkspacePolicy(), lambda: True)
+        else:
+            result = interpret_requests(provider, [goal], cat, WorkspacePolicy(), lambda: True)
+            assert result[0].intent == (
+                "CLARIFY" if response_kind == "clarify" else "RECONCILE_DATASETS"
+            )
+            if response_kind == "facts":
+                assert result[0].planning_request.left.canonical_id == plan.left.canonical_id
+                assert result[0].planning_request.right.canonical_id == plan.right.canonical_id
         assert provider.usage["ai_calls"] == 1 and provider.usage["cloud_requests"] == 0
     finally:
         provider.close()
