@@ -1,4 +1,4 @@
-import type { AssistantAnswer, AssistantContext } from "./assistantTypes";
+import type { AssistantAnswer, AssistantContext, ModelChoice } from "./assistantTypes";
 import type { Group, Plan, Run, Slot, Snapshot, Suggestions } from "./reconciliationTypes";
 export type DraftField = {
     source_field: string;
@@ -170,6 +170,7 @@ export type Workflow = {
         reviews: Review[];
         blocks: AgentBlock[];
         model_calls: number;
+    model_choice?: ModelChoice | null;
         error_code: string | null;
         query_selection?: { query: Query; group_ids: string[] } | null;
     };

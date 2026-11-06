@@ -1577,6 +1577,7 @@ export function App() {
                             {tab === "mapping" && table && profile && detailScope===`${datasetId}:${tableId}` && (
                               <MappingStudio
                                 key={table.id}
+                                draftOwner={draftOwner}
                                 readOnly={!canEdit}
                                 table={table}
                                 profile={profile}

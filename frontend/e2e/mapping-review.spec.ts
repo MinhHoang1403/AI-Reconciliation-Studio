@@ -5,11 +5,12 @@ test('[MOCK CONTRACT] mapping review confirms timezone once and cannot approve a
   await page.setViewportSize({width:1440,height:1200});
   const context={project_id:'mapping-review-project'};
   const conversation={id:'mapping-review-conversation',context,title:'TEST kiểm chứng mapping',created_at:'2026-11-05T00:00:00Z',archived:false};
-  const field={data_type:'date',business_key:false,semantic_metric:null,amount_basis:null,currency:null,unit:null,locale:null,date_format:'%Y-%m-%d',timezone:null,question:''};
+  const field={data_type:'date',business_key:false,semantic_metric:null,amount_basis:null,currency:null,unit:null,locale:null,date_format:'%Y-%m-%d',timezone:null as string|null,question:''};
   const draft={table_id:'table',entity_kind:'order',grain:'Một đơn hàng mỗi dòng',fields:[{...field,source_field:'c1',target_id:'event_date',name:'Ngày phát sinh'},{...field,source_field:'c2',target_id:'posted_date',name:'Ngày ghi nhận'}]};
   const review={id:'review',kind:'MAPPING',resource_id:'table',resource_label:'Dữ liệu tổng hợp.csv',question:'Kiểm tra đề xuất',reason:'Chưa suy đoán múi giờ.',state:'OPEN',nonce:'a'.repeat(32),fingerprint:'b'.repeat(64),expires_at:'2099-01-01T00:00:00Z',normalization_draft:draft,extraction_review_required:false,reply_questions:[],expected_effects:[],pending_reply_job_id:null};
   const decisions:Record<string,unknown>[]=[];
-  let approved=false,preflights=0,release:()=>void=()=>{},gate:Promise<void>|null=null;
+  let approved=false,preflights=0,saves=0,renewals=0,revision=0,release:()=>void=()=>{},gate:Promise<void>|null=null;
+  const workflow=()=>({id:'workflow',context,state:approved?'COMPLETED':'WAITING_REVIEW',updated_at:new Date(Date.parse(conversation.created_at)+revision*1000).toISOString(),detail:{reviews:approved?[]:[review],blocks:[],steps:[],model_calls:0}});
   await page.addInitScript(()=>{localStorage.setItem('studio.project','mapping-review-project');localStorage.setItem('studio.conversation.mapping-review-project','mapping-review-conversation');});
   await page.route('**/api/**',async route=>{
     const path=new URL(route.request().url()).pathname;
@@ -18,7 +19,14 @@ test('[MOCK CONTRACT] mapping review confirms timezone once and cannot approve a
     if(path==='/api/projects/mapping-review-project')return route.fulfill({json:{id:context.project_id,name:'TEST mapping',classification:'TEST',business_scope:'Synthetic'}});
     if(path==='/api/conversations')return route.fulfill({json:{items:[conversation],has_more:false}});
     if(path==='/api/conversations/mapping-review-conversation')return route.fulfill({json:{conversation,items:[{id:'reply',job_id:'job',role:'assistant',text:'',context,workflow_id:'workflow',created_at:conversation.created_at}],has_more:false}});
-    if(path==='/api/agent/workflows/workflow')return route.fulfill({json:{id:'workflow',context,state:approved?'COMPLETED':'WAITING_REVIEW',updated_at:approved?'2026-11-05T00:01:00Z':conversation.created_at,detail:{reviews:approved?[]:[review],blocks:[],steps:[],model_calls:0}}});
+    if(path==='/api/agent/workflows/workflow')return route.fulfill({json:workflow()});
+    if(path==='/api/agent/workflows/workflow/draft'){
+      const body=route.request().postDataJSON();expect(body.nonce).toBe(review.nonce);expect(body.fingerprint).toBe(review.fingerprint);
+      review.normalization_draft=body.draft;saves++;revision++;review.nonce=String(revision).padStart(32,'c');return route.fulfill({json:workflow()});
+    }
+    if(path==='/api/agent/workflows/workflow/renew-review'){
+      expect(route.request().postDataJSON().nonce).toBe(review.nonce);renewals++;revision++;review.nonce=String(revision).padStart(32,'d');review.expires_at='2099-01-01T00:00:00Z';return route.fulfill({json:workflow()});
+    }
     if(path==='/api/agent/mapping-preflight'){
       preflights++;if(gate)await gate;
       const candidate=route.request().postDataJSON();const ready=candidate.fields.every((f:{timezone:string|null;date_format:string|null})=>!!f.timezone&&f.date_format==='%Y-%m-%d');
@@ -37,6 +45,10 @@ test('[MOCK CONTRACT] mapping review confirms timezone once and cannot approve a
   await expect(approve).toBeDisabled();expect(decisions).toEqual([]);
   await expect.poll(()=>preflights).toBeGreaterThanOrEqual(2);release();gate=null;
   await expect(page.getByText('dự kiến 2 dòng không hợp lệ.',{exact:false})).toBeVisible();await expect(approve).toBeEnabled();
+  await page.reload();await expect(approve).toBeEnabled(); // unsaved changes survive reload
+  await page.getByRole('button',{name:'Lưu bản nháp',exact:true}).click();await expect.poll(()=>saves).toBe(1);
+  await page.reload();await expect(approve).toBeEnabled(); // server saved preview, still no approval
+  expect(decisions).toEqual([]);
   await page.getByText('Xem và chỉnh các lựa chọn',{exact:true}).click();
   const format=page.getByRole('combobox',{name:'Định dạng ngày',exact:true}).first();
   gate=new Promise<void>(resolve=>release=resolve);
@@ -44,6 +56,8 @@ test('[MOCK CONTRACT] mapping review confirms timezone once and cannot approve a
   await expect.poll(()=>preflights).toBeGreaterThanOrEqual(3);release();gate=null;
   await expect(approve).toBeDisabled();expect(decisions).toEqual([]);
   await format.selectOption('%Y-%m-%d');await expect(approve).toBeEnabled();
+  review.expires_at='2020-01-01T00:00:00Z';revision++;await page.reload();await expect(approve).toBeDisabled();
+  await page.getByRole('button',{name:'Mở lại thẻ xác nhận',exact:true}).click();await expect.poll(()=>renewals).toBe(1);await expect(approve).toBeEnabled();
   await approve.dblclick();await expect.poll(()=>decisions.length).toBe(1);
   const decision=decisions[0] as {nonce:string;fingerprint:string;decision:{draft:typeof draft}};
   expect(decision.nonce).toBe(review.nonce);expect(decision.fingerprint).toBe(review.fingerprint);

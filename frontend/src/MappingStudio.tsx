@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Eye, Plus, Sparkles } from "lucide-react";
-import { api } from "./api";
+import { api, ApiError } from "./api";
+import { ReviewCard } from "./ReviewCard";
+import type { Workflow } from "./agentTypes";
 import { Badge, Notice, Spinner } from "./components";
 import type {
   DataType,
@@ -63,7 +65,7 @@ function makeDraft(mapping: Mapping, profile: Profile): Draft[] {
   });
 }
 
-export function MappingStudio({
+function ManualMappingStudio({
   table,
   profile,
   mappings,
@@ -72,6 +74,7 @@ export function MappingStudio({
   run,
   onApproved,
   onEvidence,
+  draftOwner,
 }: {
   table: Table;
   profile: Profile;
@@ -81,6 +84,7 @@ export function MappingStudio({
   run: (task: () => Promise<void>) => Promise<void>;
   onApproved: () => Promise<void>;
   onEvidence: (id: string) => void;
+  draftOwner: string;
 }) {
   const [selected, setSelected] = useState("");
   const mapping = mappings.find((m) => m.id === selected) || mappings[0];
@@ -89,23 +93,41 @@ export function MappingStudio({
   const [grain, setGrain] = useState("");
   const [reviewed, setReviewed] = useState(false);
   const initialized = useRef("");
+  const pendingApproval = useRef<{body: string; key: string} | null>(null);
+  const approving = useRef(false);
+  const [loadedKey, setLoadedKey] = useState("");
+  const storageKey = `studio.manual-mapping.${draftOwner}.${table.id}.${mapping?.id || "none"}`;
   useEffect(() => {
     if (mapping) {
       // Mapping revisions and parsed tables are immutable. A refreshed DTO for the
       // same revision must not erase edits or source-review acknowledgement.
-      const identity = `${table.id}:${mapping.id}`;
+      const identity = storageKey;
       if (initialized.current === identity) return;
       initialized.current = identity;
-      setDrafts(makeDraft(mapping, profile));
+      pendingApproval.current = null;
+      let saved: {drafts: Draft[]; entity: string; grain: string; reviewed: boolean} | null = null;
+      try {
+        const value = JSON.parse(sessionStorage.getItem(storageKey) || "null");
+        if (value && Array.isArray(value.drafts) && value.drafts.length === profile.columns.length &&
+            value.drafts.every((d: Draft, i: number) => d?.source === profile.columns[i].column_id) &&
+            typeof value.entity === "string" && typeof value.grain === "string") saved = value;
+      } catch { /* Use the immutable proposal if the tab cache is unavailable. */ }
+      setDrafts(saved?.drafts || makeDraft(mapping, profile));
       setEntity(
-        mapping.schema.entity_kind === "unknown"
+        saved ? saved.entity : mapping.schema.entity_kind === "unknown"
           ? ""
           : mapping.schema.entity_kind,
       );
-      setGrain(mapping.schema.grain === "unknown" ? "" : mapping.schema.grain);
-      setReviewed(false);
+      setGrain(saved ? saved.grain : mapping.schema.grain === "unknown" ? "" : mapping.schema.grain);
+      setReviewed(saved?.reviewed || false);
+      setLoadedKey(storageKey);
     }
-  }, [mapping?.id, profile, table.id]);
+  }, [mapping?.id, profile, table.id, storageKey]);
+  useEffect(() => {
+    if (loadedKey !== storageKey) return;
+    try { sessionStorage.setItem(storageKey, JSON.stringify({drafts, entity, grain, reviewed})); }
+    catch { /* Manual edits remain in memory if browser storage is unavailable. */ }
+  }, [loadedKey, storageKey, drafts, entity, grain, reviewed]);
 
   function change(source: string, patch: Partial<Draft>) {
     setDrafts((rows) =>
@@ -154,11 +176,31 @@ export function MappingStudio({
     return {schema_definition:schema,decisions,extraction_reviewed:reviewed};
   }
   async function approve() {
-    if(!mapping||!preflight||preflightSignature!==bodySignature)return;
-    await api(`/mappings/${mapping.id}/approve`, {method:'POST',body:JSON.stringify(approvalBody())});
-    await onApproved();
+    if(approving.current||!mapping||!preflight||preflightSignature!==bodySignature)return;
+    const receiptKey = `${storageKey}.approval`;
+    const body = JSON.stringify(approvalBody());
+    let request = pendingApproval.current;
+    if (!request) try { request = JSON.parse(sessionStorage.getItem(receiptKey) || "null"); } catch { /* optional */ }
+    if (request && request.body !== body) throw new Error("Lần duyệt trước chưa rõ kết quả. Hãy cập nhật dữ liệu và kiểm tra bản đã duyệt trước khi đổi nội dung.");
+    request ||= {body, key: crypto.randomUUID()};
+    pendingApproval.current = request;
+    approving.current = true;
+    try { sessionStorage.setItem(receiptKey, JSON.stringify(request)); } catch { /* same mounted form below still has its key */ }
+    try {
+      await api(`/mappings/${mapping.id}/approve`, {method:'POST',body,headers:{"Idempotency-Key":request.key}});
+      pendingApproval.current = null;
+      try { sessionStorage.removeItem(receiptKey);sessionStorage.removeItem(storageKey); } catch { /* server receipt remains durable */ }
+      await onApproved();
+    } catch (err) {
+      if (err instanceof ApiError && !["NETWORK_ERROR", "API_TIMEOUT"].includes(err.code)) {
+        pendingApproval.current = null;
+        try { sessionStorage.removeItem(receiptKey); } catch { /* optional cache */ }
+      }
+      throw err;
+    } finally { approving.current = false; }
   }
   const invalid =
+    loadedKey !== storageKey ||
     !entity.trim() ||
     !grain.trim() ||
     !drafts.some((d) => d.target) ||
@@ -543,4 +585,42 @@ export function MappingStudio({
       </div>
     </div>
   );
+}
+
+export function MappingStudio(props: Parameters<typeof ManualMappingStudio>[0]) {
+  const [workflows, setWorkflows] = useState<Workflow[] | null>(null);
+  const [error, setError] = useState("");
+  const [chosen, setChosen] = useState("");
+  const alive = useRef(true);
+  const requestSequence = useRef(0);
+  async function refresh() {
+    const sequence = ++requestSequence.current;
+    const rows = await api<Workflow[]>(`/agent/tables/${props.table.id}/mapping-reviews`);
+    if (alive.current && sequence === requestSequence.current) {
+      setWorkflows(rows); setError("");
+    }
+    return rows;
+  }
+  useEffect(() => {
+    alive.current = true;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try { await refresh(); } catch (err) {
+        if (alive.current) setError(err instanceof Error ? err.message : "Không tải được thẻ xác nhận.");
+      }
+      if (alive.current) timer = setTimeout(() => void poll(), 4000);
+    }
+    void poll();
+    return () => { alive.current = false; requestSequence.current++; clearTimeout(timer); };
+  }, [props.table.id]);
+  if (error) return <Notice tone="error">{error}<button onClick={()=>void refresh().catch(err=>setError(String(err)))}>Cập nhật thẻ xác nhận</button></Notice>;
+  if (workflows === null) return <Spinner />;
+  if (!workflows.length) return <ManualMappingStudio {...props}/>;
+  const workflow = workflows.find(row => row.id === chosen) || workflows[0];
+  return <div className="mapping-studio"><h2>Đề xuất đang chờ xác nhận</h2>
+    <p>Đây là cùng bản nháp trong hội thoại. Lưu bản nháp để tiếp tục ở màn hình khác; dữ liệu chỉ được chuẩn hóa sau khi bạn duyệt.</p>
+    {workflows.length > 1 && <label>Chọn bản nháp đang chờ<select value={workflow.id} onChange={e=>setChosen(e.target.value)}>{workflows.map((row,index)=><option key={row.id} value={row.id}>Bản nháp {index+1} · {new Date(row.updated_at).toLocaleString("vi-VN")}</option>)}</select></label>}
+    {workflow.detail.reviews.filter(r=>r.kind==="MAPPING"&&r.resource_id===props.table.id&&r.state==="OPEN").map(review=><ReviewCard key={`${review.id}:${review.nonce}`} review={review} workflow={workflow} canEdit={!props.readOnly&&!props.busy} draftOwner={props.draftOwner} refresh={async()=>{const rows=await refresh();if(!rows.length)await props.onApproved();}}/>)}
+    <details><summary>Tạo cách ghép cột thủ công riêng</summary><Notice>Đây là proposal độc lập. Nếu duyệt cách ghép thủ công, thẻ trong hội thoại phải được kiểm tra lại vì nguồn ánh xạ đã thay đổi.</Notice><ManualMappingStudio {...props}/></details>
+  </div>;
 }
