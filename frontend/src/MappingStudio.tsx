@@ -34,7 +34,8 @@ interface Draft {
 
 function makeDraft(mapping: Mapping, profile: Profile): Draft[] {
   const decisions = mapping.decision?.decisions || mapping.proposal.decisions;
-  const approved = ["APPROVED", "SUPERSEDED"].includes(mapping.status);
+  const configured = ["APPROVED", "SUPERSEDED"].includes(mapping.status) ||
+    Boolean(mapping.template_mapping_id);
   return profile.columns.map((col) => {
     const d = decisions.find((d) => d.source_field === col.column_id);
     const field = mapping.schema.fields.find(
@@ -46,18 +47,18 @@ function makeDraft(mapping: Mapping, profile: Profile): Draft[] {
       label: field?.name || col.name,
       type: field?.data_type || "string",
       required: field?.required || false,
-      locale: approved ? String(d?.transformation_candidate.locale || "") : "",
+      locale: configured ? String(d?.transformation_candidate.locale || "") : "",
       metric: field?.semantic_metric || "",
       basis: field?.amount_basis || "",
       currency: field?.currency || "",
       unit: field?.unit || "",
-      dateFormat: approved
+      dateFormat: configured
         ? String(d?.transformation_candidate.format || "")
         : "",
-      timezone: approved
+      timezone: configured
         ? String(d?.transformation_candidate.timezone || "")
         : "",
-      trim: approved && d?.transformation_candidate.op === "trim_if_approved",
+      trim: configured && d?.transformation_candidate.op === "trim_if_approved",
       key: mapping.schema.business_key_fields.includes(
         d?.candidate_target || "",
       ),
@@ -272,6 +273,9 @@ function ManualMappingStudio({
         </label>
         <Badge status={mapping.status} />
       </div>
+      {mapping.template_mapping_id && (
+        <Notice>Đã điền thông tin từ một mẫu từng được duyệt. Hãy kiểm tra trước khi dùng cho tệp này.</Notice>
+      )}
       <div className="form-grid">
         <label>
           Loại dữ liệu

@@ -58,12 +58,33 @@ class UploadResponse(Contract):
     items: list[UploadItem]
 
 
+class PreparationColumn(Contract):
+    column_id: str
+    data_type: Literal["string", "date"]
+    null_count: int
+    empty_count: int
+    duplicate_count: int
+    invalid_date_count: int = 0
+
+
+class PreparedTable(Contract):
+    prepared_artifact_id: str
+    source_artifact_id: str
+    source_revision: int
+    preparation_revision: str
+    row_count: int
+    review_required: Literal[True] = True
+    eligible_scope: Literal["EXPLORATION"] = "EXPLORATION"
+    quality_summary: list[PreparationColumn]
+
+
 class TableView(Contract):
     id: str
     sheet: str
     row_count: int
     active_mapping_id: str | None
     parsed: ParsedTableArtifact
+    prepared: PreparedTable | None = None
 
 
 class TableList(Contract):
@@ -77,6 +98,7 @@ class MappingView(Contract):
     proposal: SchemaProposal
     decision: MappingRevision | None
     schema_definition: SchemaDefinition = Field(alias="schema")
+    template_mapping_id: str | None = None
 
 
 class MappingList(Contract):

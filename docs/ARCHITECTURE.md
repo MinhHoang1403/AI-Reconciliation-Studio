@@ -1,5 +1,7 @@
 # Kiến trúc ứng dụng
 
+Upload CSV/XLSX công bố thêm bản tự chuẩn bị, gồm Parquet và thống kê theo cột, cùng giao dịch công bố bảng đã đọc. Tham chiếu prepared gắn với đúng artifact nguồn và có checksum riêng. Chuẩn bị [D] duyệt toàn bộ cột có dạng ngày ISO, kiểm tra chuyển ngược từng giá trị và giữ nguyên vị trí dòng. Chi phí tối đa O(dòng × cột). Dữ liệu có warning trích xuất hoặc ngày sai giữ kiểu chuỗi. Các trạng thái nghiệp vụ tiếp tục đi qua mapping và chuẩn hóa đã duyệt. Xem [hợp đồng dữ liệu](DATA_CONTRACTS.md).
+
 **Bổ sung06/11/2026 — hardening đang nghiệm thu:** sửa parser có revision riêng; review từng phần được kiểm kiểu trước hợp nhất rồi tái kiểm source ở bước công bố. Draft-save/renew và đọc review theo bảng dùng `AgentWorkflowRow` hiện có, cùng owner/source locks/nonce/fingerprint; không thêm bảng, service hoặc bộ compiler. Receipt duyệt thủ công dùng audit và advisory transaction lock hiện có. Preview plan được lắp từ PlanningRequest và PlanningSuggestions tại một hàm dùng chung, sau đó vẫn qua validator nghiệp vụ. Các phép tính tài chính, Matcher và Verifier giữ nguyên. Trạng thái kiểm chứng hiện hành ở báo cáo triển khai; không đồng nhất bổ sung code với nghiệm thu sản phẩm toàn bộ.
 
 | Ranh giới audit | Module và bằng chứng kiểm tra |
@@ -80,7 +82,7 @@ Upload đọc theo block, kiểm tra hash và ghi raw bằng exclusive create. J
 
 Các tệp chưa được tham chiếu sau crash/rollback có thể tồn tại; không có tác vụ xóa tự động. Chúng không xuất hiện qua API. Không sửa artifact cũ. Unique constraints và advisory lock ngăn enqueue/upload trùng; `FOR UPDATE SKIP LOCKED` tránh claim trùng. Lease mặc định 300 giây, tối đa ba job attempts; mỗi lời gọi Qwen/Gemini tối đa hai HTTP attempts bên trong một job. Provider lỗi giữ job `BLOCKED`, không tự chuyển cloud hoặc tự lặp provider liên tục. Gemini chỉ chạy khi được chọn explicit và có quyền/key/budget; mỗi attempt có audit reservation commit trước HTTP dưới global advisory lock. Trần global/workspace không reset qua restart. Không cần migration mới vì dùng bảng audit hiện có.
 
-Worker chạy một job tại một thời điểm, Polars giới hạn hai threads, memory limits: backend 384 MiB, worker 512 MiB, PostgreSQL 256 MiB, Nginx 128 MiB. Đây là cấu hình hạn chế tài nguyên được kiểm tra trên máy 16 GB RAM; không phải benchmark sức tải. Vượt giới hạn trả lỗi/cần review, không cắt mất dòng.
+Worker giữ một executor có một luồng cho job có thể chờ provider. Trong lúc executor bận, vòng chính chỉ nhận job parse CSV/XLSX từ cùng hàng đợi PostgreSQL. Hai luồng dùng session riêng, cùng cơ chế lease và công bố có khóa. Các tác vụ chuẩn hóa, đối soát và xuất báo cáo tiếp tục chạy tuần tự ngoài khoảng chờ này. Giới hạn bộ nhớ giữ ở Backend 384 MiB, Worker 512 MiB, PostgreSQL 256 MiB và Nginx 128 MiB.
 
 ## Truy cập local
 

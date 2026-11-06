@@ -186,6 +186,8 @@ def validate_intents(
                 )
             if q.project_id != catalogue.context.project_id:
                 raise DomainError("AI_INVALID_SOURCE", "Query sai project.")
+            if q.source_kind == "PREPARED":
+                raise DomainError("AI_INVALID_SOURCE", "Nguồn tự chuẩn bị cần được chọn trực tiếp.")
             source = (
                 canonical.get(q.source_id)
                 if q.source_kind == "CANONICAL"
@@ -434,6 +436,75 @@ def routing_sources(catalogue: IntentCatalogue) -> list[dict[str, Any]]:
                 "Đã chuẩn hóa · " if source["source_kind"] == "CANONICAL" else "Dữ liệu gốc · "
             ) + source["name"]
     return result
+
+
+def resolve_ranked_results(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
+    """Resolve explicit top-N and ordinal follow-up on the current verified run."""
+    normalized = " ".join(plain_question(goal).split()).rstrip("?.!")
+    numbers = {"mot": 1, "hai": 2, "ba": 3, "bon": 4, "nam": 5}
+    number = r"([1-9][0-9]?|mot|hai|ba|bon|nam)"
+    run_id = catalogue.context.run_id
+    ranked = re.fullmatch(
+        r"(?:(?:hay |cho toi |cho )?(?:xem|liet ke) |top )"
+        + number
+        + r" (?:nhom(?: giao dich)?|giao dich|khoan) (?:lech tien|chenh lech) lon nhat"
+        r"(?: (?:cua|trong) (?:ket qua|lan doi soat) (?:nay|dang xem))?",
+        normalized,
+    )
+    if ranked:
+        if not run_id or run_id not in catalogue.run_ids or not catalogue.verified_run_fields:
+            return AgentIntent(intent="CLARIFY", questions=["Bạn muốn xem lần đối soát nào?"])
+        requested = ranked[1]
+        limit = (
+            int(requested) if requested.isascii() and requested.isdigit() else numbers[requested]
+        )
+        if limit > 50:
+            return AgentIntent(intent="CLARIFY", questions=["Chọn tối đa 50 nhóm lệch tiền."])
+        return AgentIntent(
+            intent="QUERY_DATA",
+            query=DataQuery.model_validate(
+                dict(
+                    project_id=catalogue.context.project_id,
+                    source_kind="VERIFIED_RUN",
+                    source_id=run_id,
+                    select_fields=[
+                        "comparison_state",
+                        "left_amount",
+                        "right_amount",
+                        "delta",
+                        "absolute_variance",
+                        "currency",
+                    ],
+                    filters=[dict(field_id="comparison_state", op="eq", value="AMOUNT_MISMATCH")],
+                    sort=[dict(field_id="absolute_variance", descending=True)],
+                    limit=limit,
+                )
+            ),
+        )
+    ordinal = re.fullmatch(
+        r"(?:hay )?giai thich (?:nhom(?: giao dich)?|giao dich|dong) thu "
+        + number
+        + r"(?: (?:trong|cua) bang (?:tren|vua (?:hien thi|dua|gui)))?",
+        normalized,
+    )
+    if not ordinal:
+        return None
+    previous = catalogue.previous_query
+    requested = ordinal[1]
+    position = int(requested) if requested.isascii() and requested.isdigit() else numbers[requested]
+    if (
+        run_id
+        and run_id in catalogue.run_ids
+        and previous
+        and previous.source_kind == "VERIFIED_RUN"
+        and previous.source_id == run_id
+        and position <= len(catalogue.previous_groups)
+    ):
+        return AgentIntent(intent="EXPLAIN_RESULT", run_id=run_id, result_position=position)
+    return AgentIntent(
+        intent="CLARIFY",
+        questions=["Hãy mở bảng kết quả hoặc cung cấp mã của nhóm cần giải thích."],
+    )
 
 
 def resolve_plain_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:

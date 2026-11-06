@@ -1,8 +1,9 @@
-"""Single-concurrency durable PostgreSQL queue with leases, fencing and atomic publication."""
+"""Durable PostgreSQL queue with leases, fencing and atomic publication."""
 
 import logging
 import time
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ from studio.contracts import (
     SchemaProposal,
     WorkspacePolicy,
 )
+from studio.contracts.api import PreparedTable
 from studio.database import (
     ArtifactRow,
     AttemptRow,
@@ -51,7 +53,13 @@ from studio.document_parser import (
 from studio.errors import DomainError
 from studio.normalization import NORMALIZATION_REVISION, apply_transform_plan
 from studio.parsing import FileInspection, ParseConfig, parse_to_artifacts, verify_parse
-from studio.profiling import default_schema, profile_table, source_signature
+from studio.profiling import (
+    PREPARATION_REVISION,
+    default_schema,
+    prepare_table,
+    profile_table,
+    source_signature,
+)
 from studio.repository import (
     artifact_ref,
     create_mapping,
@@ -65,21 +73,31 @@ from studio.schema_mapping import compile_transform_plan, validate_mapping
 from studio.storage import checksum, storage_path, write_parquet
 
 logger = logging.getLogger("studio.worker")
+INFERENCE_JOBS = frozenset(
+    {
+        "mapping",
+        "reconciliation_plan",
+        "assistant",
+        "agent",
+        "agent_prepare",
+        "agent_review",
+        "document_parse",
+    }
+)
 
 
-def claim_job(db: Session) -> tuple[str, str] | None:
+def claim_job(db: Session, *, parse_only: bool = False) -> tuple[str, str] | None:
     """Claim atomically via SKIP LOCKED; exhausted expired leases are failed, never loop forever."""
     current = now()
     eligible = or_(
         and_(JobRow.status.in_(["QUEUED", "RETRYABLE_FAILURE"]), JobRow.available_at <= current),
         and_(JobRow.status == "RUNNING", JobRow.lease_until < current),
     )
+    query = select(JobRow).where(eligible)
+    if parse_only:
+        query = query.where(JobRow.kind == "parse")
     job = db.scalar(
-        select(JobRow)
-        .where(eligible)
-        .order_by(JobRow.created_at)
-        .with_for_update(skip_locked=True)
-        .limit(1)
+        query.order_by(JobRow.created_at, JobRow.id).with_for_update(skip_locked=True).limit(1)
     )
     if job is None:
         db.rollback()
@@ -173,6 +191,61 @@ def _finish(db: Session, job: JobRow, result: dict[str, Any]) -> None:
     notify_job_finished(db, job)
 
 
+def _approved_mapping_draft(
+    db: Session, table: TableRow, profile: DatasetProfile
+) -> tuple[str, SchemaDefinition, SchemaProposal] | None:
+    """Reuse a compatible approved revision as a draft with current source evidence."""
+    current = db.get(VersionRow, table.dataset_version_id)
+    assert current is not None
+    if table.parsed_contract["warnings"]:
+        return None
+    template = db.scalar(
+        select(MappingRow)
+        .join(TableRow, TableRow.active_mapping_id == MappingRow.id)
+        .join(VersionRow, VersionRow.id == TableRow.dataset_version_id)
+        .where(
+            MappingRow.workspace_id == table.workspace_id,
+            MappingRow.signature == source_signature(profile),
+            MappingRow.business_scope == project_for_table(db, table).business_scope,
+            MappingRow.status == "APPROVED",
+            MappingRow.source_table_id != table.id,
+            VersionRow.parser_revision == current.parser_revision,
+            VersionRow.parse_config == current.parse_config,
+        )
+        .order_by(MappingRow.created_at.desc(), MappingRow.id)
+        .limit(1)
+    )
+    if template is None or template.decision is None:
+        return None
+    old = mapping_contract(template)
+    if old.rules:
+        return None
+    template_schema = db.get(SchemaRow, template.schema_id)
+    assert template_schema is not None
+    schema = SchemaDefinition.model_validate(template_schema.definition)
+    proposal = SchemaProposal(
+        entity_kind=schema.entity_kind,
+        grain=schema.grain,
+        status="PROPOSED",
+        decisions=[
+            decision.model_copy(
+                update={
+                    "decision": MappingStatus.PROPOSED,
+                    "evidence_ids": [f"{table.id}:{decision.source_field}"],
+                }
+            )
+            for decision in old.decisions
+        ],
+        unresolved_questions=["Xác nhận mẫu đã duyệt vẫn đúng với nguồn mới."],
+    )
+    try:
+        return template.id, schema, validate_mapping(proposal, profile, schema)
+    except DomainError:
+        # A historical template can become incompatible with newer validation.
+        # The freshly parsed source remains readable and gets an ordinary draft.
+        return None
+
+
 def _parse(job_id: str, token: str) -> None:
     with SessionFactory() as db:
         job = db.get(JobRow, job_id)
@@ -182,41 +255,77 @@ def _parse(job_id: str, token: str) -> None:
         raw = db.get(ArtifactRow, job.payload["file_id"])
         assert dataset is not None and version is not None and raw is not None
         inspection = FileInspection.model_validate(raw.metadata_json)
+        workspace_id = job.workspace_id
+        version_id, raw_id = version.id, raw.id
+        parser_revision, source_revision = version.parser_revision, version.revision
+        raw_path = storage_path(settings.storage_root, raw.storage_key)
+        raw_sha = raw.sha256
+        config = ParseConfig.model_validate(version.parse_config)
+        db.rollback()
+        if checksum(raw_path) != raw_sha:
+            raise DomainError("RAW_CHECKSUM_MISMATCH", "Tệp nguồn không khớp checksum.")
         frames = parse_to_artifacts(
-            storage_path(settings.storage_root, raw.storage_key),
+            raw_path,
             inspection,
-            ParseConfig.model_validate(version.parse_config),
+            config,
             settings,
         )
         pending = []
         for parsed in frames:
             quality = verify_parse(parsed, settings)
-            table_id = str(uuid5(NAMESPACE_URL, f"{version.id}:{parsed.sheet}"))
+            table_id = str(uuid5(NAMESPACE_URL, f"{version_id}:{parsed.sheet}"))
             ids = [
-                str(uuid5(NAMESPACE_URL, f"{raw.id}:{parsed.sheet}:{r}"))
+                str(uuid5(NAMESPACE_URL, f"{raw_id}:{parsed.sheet}:{r}"))
                 for r in parsed.frame["_source_row"].to_list()
             ]
             frame = parsed.frame.with_columns(pl.Series("_source_row_id", ids, dtype=pl.String))
             artifact_id = identifier()
-            key = f"{job.workspace_id}/{version.id}/parsed/{artifact_id}.parquet"
+            key = f"{workspace_id}/{version_id}/parsed/{artifact_id}.parquet"
             sha256 = write_parquet(settings.storage_root, key, frame)
             artifact = ArtifactRow(
                 id=artifact_id,
-                workspace_id=job.workspace_id,
-                dataset_version_id=version.id,
+                workspace_id=workspace_id,
+                dataset_version_id=version_id,
                 kind="parsed",
                 sha256=sha256,
-                revision=version.parser_revision,
+                revision=parser_revision,
                 quality=quality,
                 storage_key=key,
                 metadata_json={"cell_metadata": parsed.cell_metadata, "preamble": parsed.preamble},
             )
-            profile = profile_table(frame, parsed.columns, table_id, job.workspace_id, artifact_id)
+            profile = profile_table(frame, parsed.columns, table_id, workspace_id, artifact_id)
+            prepared_frame, summary = prepare_table(
+                frame, profile, extraction_warnings=bool(parsed.warnings)
+            )
+            prepared_id = identifier()
+            prepared_key = f"{workspace_id}/{version_id}/prepared/{prepared_id}.parquet"
+            prepared_ref = PreparedTable(
+                prepared_artifact_id=prepared_id,
+                source_artifact_id=artifact_id,
+                source_revision=source_revision,
+                preparation_revision=PREPARATION_REVISION,
+                row_count=frame.height,
+                quality_summary=summary,
+            )
+            # Use the existing tabular storage kind so older releases can list
+            # these artifacts. Only the explicit prepared ref selects this view.
+            prepared = ArtifactRow(
+                id=prepared_id,
+                workspace_id=workspace_id,
+                dataset_version_id=version_id,
+                kind="parsed",
+                sha256=write_parquet(settings.storage_root, prepared_key, prepared_frame),
+                revision=PREPARATION_REVISION,
+                quality="REVIEW_REQUIRED",
+                storage_key=prepared_key,
+                metadata_json={"view": "prepared", "source_table_id": table_id},
+            )
+            artifact.metadata_json["prepared"] = prepared_ref.model_dump(mode="json")
             evidence = [
                 EvidenceRef(
                     id=f"{table_id}:{c.id}",
-                    workspace_id=job.workspace_id,
-                    file_id=raw.id,
+                    workspace_id=workspace_id,
+                    file_id=raw_id,
                     source_table_id=table_id,
                     sheet=parsed.sheet,
                     row=parsed.header_row,
@@ -233,26 +342,32 @@ def _parse(job_id: str, token: str) -> None:
                 header_row=parsed.header_row,
                 provenance=evidence,
                 warnings=parsed.warnings,
-                parser_revision=version.parser_revision,
+                parser_revision=parser_revision,
             )
             table = TableRow(
                 id=table_id,
-                workspace_id=job.workspace_id,
-                dataset_version_id=version.id,
+                workspace_id=workspace_id,
+                dataset_version_id=version_id,
                 artifact_id=artifact_id,
                 sheet=parsed.sheet,
                 row_count=frame.height,
                 parsed_contract=contract.model_dump(mode="json"),
                 profile=profile.model_dump(mode="json"),
             )
-            pending.append((artifact, table, profile))
-        db.rollback()
+            pending.append((artifact, prepared, table, profile))
         job = _fence(db, job_id, token)
-        for artifact, table, profile in pending:
-            db.add(artifact)
+        reused_templates = {}
+        for artifact, prepared, table, profile in pending:
+            db.add_all([artifact, prepared])
             db.flush()
             db.add(table)
             db.flush()
+            template = _approved_mapping_draft(db, table, profile)
+            if template is not None:
+                template_id, schema, proposal = template
+                mapping = create_mapping(db, table, proposal.model_dump(mode="json"), schema)
+                reused_templates[mapping.id] = template_id
+                continue
             schema = default_schema(job.workspace_id, identifier())
             fallback = manual_proposal(profile, schema)
             create_mapping(db, table, fallback.model_dump(mode="json"), schema)
@@ -268,7 +383,11 @@ def _parse(job_id: str, token: str) -> None:
         dataset = db.get(DatasetRow, job.payload["dataset_id"])
         assert dataset is not None
         dataset.status = "NEEDS_MAPPING_REVIEW"
-        _finish(db, job, {"table_ids": [t.id for _, t, _ in pending]})
+        _finish(
+            db,
+            job,
+            {"table_ids": [t.id for _, _, t, _ in pending], "reused_templates": reused_templates},
+        )
         db.commit()
 
 
@@ -290,37 +409,16 @@ def _mapping(job_id: str, token: str) -> None:
             policy = WorkspacePolicy.model_validate(workspace.policy)
             workspace_id = job.workspace_id
             schema = default_schema(job.workspace_id, identifier())
-            # Strict source signature + workspace + business scope; reuse still requires review.
-            template = db.scalar(
-                select(MappingRow)
-                .where(
-                    MappingRow.workspace_id == job.workspace_id,
-                    MappingRow.signature == source_signature(profile),
-                    MappingRow.business_scope == project_for_table(db, table).business_scope,
-                    MappingRow.status == "APPROVED",
-                )
-                .order_by(MappingRow.created_at.desc())
-                .limit(1)
-            )
-            if template and template.decision:
-                template_schema = db.get(SchemaRow, template.schema_id)
-                assert template_schema is not None
-                schema = SchemaDefinition.model_validate(template_schema.definition)
-                old = mapping_contract(template)
-                decisions = [d.model_copy(deep=True) for d in old.decisions]
-                for decision in decisions:
-                    decision.decision = MappingStatus.PROPOSED
-                    decision.evidence_ids = [f"{table.id}:{decision.source_field}"]
-                proposal = SchemaProposal(
-                    entity_kind=schema.entity_kind,
-                    grain=schema.grain,
-                    status="PROPOSED",
-                    decisions=decisions,
-                    unresolved_questions=["Xác nhận mẫu đã duyệt vẫn đúng với nguồn mới."],
-                )
-                proposal = validate_mapping(proposal, profile, schema)
+            template = _approved_mapping_draft(db, table, profile)
+            template_id = None
+            if template is not None:
+                template_id, schema, proposal = template
                 cached = True
             else:
+                if job.attempts > 1:
+                    raise DomainError(
+                        "AI_DELIVERY_UNKNOWN", "Không tự gửi lại đề xuất AI sau khôi phục."
+                    )
                 db.rollback()  # do not hold a PostgreSQL transaction while waiting for AI
                 if isinstance(provider, GeminiProvider):
 
@@ -349,6 +447,7 @@ def _mapping(job_id: str, token: str) -> None:
                     "mapping_id": mapping.id,
                     "cache_hit": cached,
                     "source": "APPROVED_TEMPLATE" if cached else provider_name,
+                    "template_mapping_id": template_id,
                 },
             )
             db.add(
@@ -759,14 +858,23 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     heartbeat = Path("/tmp/studio-worker-heartbeat")
-    while True:
-        heartbeat.touch()
-        with SessionFactory() as db:
-            claimed = claim_job(db)
-        if claimed:
-            process_job(*claimed)
-        else:
-            time.sleep(settings.worker_poll_seconds)
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="studio-inference") as executor:
+        inference: Future[None] | None = None
+        while True:
+            heartbeat.touch()
+            if inference is not None and inference.done():
+                inference.result()
+                inference = None
+            with SessionFactory() as db:
+                claimed = claim_job(db, parse_only=inference is not None)
+                job = db.get(JobRow, claimed[0]) if claimed else None
+                kind = job.kind if job else None
+            if not claimed:
+                time.sleep(settings.worker_poll_seconds)
+            elif kind in INFERENCE_JOBS:
+                inference = executor.submit(process_job, *claimed)
+            else:
+                process_job(*claimed)
 
 
 if __name__ == "__main__":

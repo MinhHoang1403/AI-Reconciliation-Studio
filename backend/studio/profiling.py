@@ -8,6 +8,63 @@ import unicodedata
 import polars as pl
 
 from studio.contracts import ColumnProfile, DatasetProfile, SchemaDefinition, SourceColumn
+from studio.contracts.api import PreparationColumn
+
+PREPARATION_REVISION = "tabular-preparation-1"
+
+
+def prepare_table(
+    frame: pl.DataFrame, profile: DatasetProfile, *, extraction_warnings: bool
+) -> tuple[pl.DataFrame, list[PreparationColumn]]:
+    """Prepare a lexical snapshot with lossless ISO calendar dates where proven.
+
+    Input is the complete parsed table and its profile. Physical row locators,
+    identifiers, empty strings and unknown semantics remain unchanged. Mixed or
+    invalid date columns stay lexical and retain their original values.
+    """
+    casts = []
+    findings = []
+    summary = []
+    for column in profile.columns:
+        data_type = "string"
+        invalid_dates = 0
+        if "date_candidate" in column.type_candidates and not column.identifier_candidate:
+            values = frame[column.column_id]
+            iso_mask = values.str.contains(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+            nonempty = len(values) - column.null_count - column.empty_count
+            if iso_mask.sum() == nonempty:
+                source = pl.col(column.column_id)
+                parsed_date = pl.when(~source.str.starts_with("0000")).then(
+                    source.str.strptime(pl.Date, "%Y-%m-%d", strict=False)
+                )
+                converted = frame.select(parsed_date.alias(column.column_id)).to_series()
+                round_trip = (converted.dt.strftime("%Y-%m-%d") == values).sum()
+                invalid_dates = nonempty - int(round_trip)
+                if invalid_dates:
+                    findings.append(
+                        pl.when(
+                            source.is_not_null()
+                            & (source != "")
+                            & (parsed_date.dt.strftime("%Y-%m-%d") != source).fill_null(True)
+                        ).then(pl.lit(f"INVALID_DATE:{column.column_id}"))
+                    )
+                if not (invalid_dates or column.empty_count or extraction_warnings):
+                    casts.append(converted)
+                    data_type = "date"
+        summary.append(
+            PreparationColumn(
+                column_id=column.column_id,
+                data_type=data_type,
+                null_count=column.null_count,
+                empty_count=column.empty_count,
+                duplicate_count=column.duplicate_count,
+                invalid_date_count=invalid_dates,
+            )
+        )
+    flags = (
+        pl.concat_list(findings).list.drop_nulls() if findings else pl.lit([], pl.List(pl.String))
+    )
+    return frame.with_columns(casts).with_columns(flags.alias("_preparation_flags")), summary
 
 
 def normalized_name(value: str) -> str:

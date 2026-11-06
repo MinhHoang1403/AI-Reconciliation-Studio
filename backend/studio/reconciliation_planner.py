@@ -1,6 +1,7 @@
 """Registered planner task on the existing Gemini gateway, never an execution agent."""
 
 import json
+from collections import Counter
 from collections.abc import Callable
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -10,6 +11,9 @@ from pydantic import Field, ValidationError
 from studio.ai_gateway import TypedProvider, build_evidence_context
 from studio.contracts import Contract, WorkspacePolicy
 from studio.contracts.reconciliation import (
+    CanonicalRecord,
+    ComparisonMetric,
+    FieldPair,
     PlanningRequest,
     PlanningSuggestions,
     PlanProposal,
@@ -18,11 +22,14 @@ from studio.contracts.reconciliation import (
 )
 from studio.errors import DomainError
 from studio.reconciliation_contracts import (
+    known,
     validate_planning_suggestions,
     validate_reconciliation_contract,
 )
+from studio.reconciliation_engine import record_partition
 
 PLANNER_REVISION = "reconciliation-planning-5"
+PLANNING_PROBE_ROW_LIMIT = 20000
 
 
 class PlannerReply(Contract):
@@ -184,6 +191,146 @@ def preview_plan(
         return ReconciliationPlan.model_validate(data)
     except ValidationError:
         return None
+
+
+def scoped_key_candidate(
+    request: PlanningRequest,
+    catalogue: list[SourceCatalogue],
+    left_rows: list[CanonicalRecord],
+    right_rows: list[CanonicalRecord],
+) -> PlanProposal | None:
+    """Find an unambiguous exact-key candidate in the explicitly selected period.
+
+    Candidate pairs come from approved identifier fields. Only in-scope, valid
+    records count toward overlap and multiplicity. This is evidence for review,
+    never approval of business linkage or of signed aggregation.
+    """
+    if (
+        missing_confirmations(request)
+        or len(left_rows) + len(right_rows) > PLANNING_PROBE_ROW_LIMIT
+    ):
+        return None
+    left, right = catalogue
+    fields = [{field.id: field for field in cat.schema_definition.fields} for cat in catalogue]
+    left_role, right_role = request.left.role, request.right.role
+    assert left_role is not None and right_role is not None
+    metrics = []
+    for a in fields[0].values():
+        for b in fields[1].values():
+            if (
+                a.data_type == b.data_type == "decimal"
+                and known(a.semantic_metric)
+                and a.semantic_metric == b.semantic_metric
+                and known(a.amount_basis)
+                and a.amount_basis == b.amount_basis
+                and known(a.unit)
+                and a.unit == b.unit
+                and a.currency
+                and a.currency == b.currency
+                and len(a.currency) == 3
+                and a.currency.isascii()
+                and a.currency.isupper()
+                and a.currency.isalpha()
+            ):
+                metrics.append(
+                    ComparisonMetric(
+                        left=a.id,
+                        right=b.id,
+                        metric_id=a.semantic_metric,
+                        currency=a.currency,
+                        unit=a.unit,
+                        amount_basis=a.amount_basis,
+                        sign_convention="SOURCE_SIGNED",
+                    )
+                )
+    if not 1 <= len(metrics) <= 5 or len({m.metric_id for m in metrics}) != len(metrics):
+        return None
+    identifier_fields = [
+        sorted(
+            key
+            for key in set(cat.identifier_fields)
+            if key in defs and defs[key].data_type in {"string", "enum"}
+        )
+        for cat, defs in zip(catalogue, fields, strict=True)
+    ]
+    if any(len(keys) > 6 for keys in identifier_fields):
+        return None
+    key_sets = [
+        [FieldPair(left=a, right=b)]
+        for a in identifier_fields[0]
+        for b in identifier_fields[1]
+        if fields[0][a].data_type == fields[1][b].data_type
+    ]
+    composite = sorted(set(left.schema_definition.business_key_fields))
+    if (
+        1 < len(composite) <= 6
+        and composite == sorted(set(right.schema_definition.business_key_fields))
+        and all([FieldPair(left=key, right=key)] in key_sets for key in composite)
+    ):
+        key_sets = [[FieldPair(left=key, right=key) for key in composite]]
+    if not known(left.canonical.grain) or not known(right.canonical.grain):
+        return None
+    entity = left.canonical.entity_kind
+    if {left.canonical.entity_kind, right.canonical.entity_kind} == {"order", "order_line"}:
+        entity = "order"
+    candidates = []
+    for pairs in key_sets:
+        suggestion = PlanningSuggestions(
+            left_role=left_role,
+            right_role=right_role,
+            join_keys=pairs,
+            comparison_metrics=metrics,
+            comparison_grain=left.canonical.grain,
+            cardinality="ONE_TO_ONE",
+            aggregation="NONE",
+            evidence_ids=[left.canonical.id, right.canonical.id],
+        )
+        probe = preview_plan(request, suggestion, entity)
+        if probe is None:
+            continue
+        counts = [
+            Counter(
+                tuple(record.payload[getattr(pair, side)] for pair in pairs)
+                for record in records
+                if record_partition(record, probe, side) == "IN_SCOPE"
+            )
+            for side, records in (("left", left_rows), ("right", right_rows))
+        ]
+        overlap = len(counts[0].keys() & counts[1].keys())
+        if not overlap:
+            continue
+        left_unique, right_unique = (max(count.values()) == 1 for count in counts)
+        if left.canonical.grain == right.canonical.grain:
+            if not (left_unique and right_unique):
+                continue
+        elif left_unique != right_unique:
+            suggestion.cardinality = "ONE_TO_MANY" if left_unique else "MANY_TO_ONE"
+            suggestion.aggregation = "SUM_SIGNED"
+            suggestion.comparison_grain = (
+                left.canonical.grain if left_unique else right.canonical.grain
+            )
+        else:
+            continue
+        proposed = preview_plan(request, suggestion, entity)
+        if proposed is None:
+            continue
+        try:
+            validate_reconciliation_contract(
+                proposed, catalogue, left.canonical.workspace_id, left.project_id
+            )
+        except DomainError:
+            continue
+        candidates.append((overlap, suggestion, proposed))
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    if not candidates or (len(candidates) > 1 and candidates[0][0] == candidates[1][0]):
+        return None
+    overlap, suggestion, proposed = candidates[0]
+    return PlanProposal(
+        status="PROPOSED",
+        plan=proposed,
+        suggestions=suggestion,
+        reasoning=f"Đo được {overlap} giá trị khóa trùng giữa hai nguồn trong kỳ đã chọn.",
+    )
 
 
 def propose_plan(

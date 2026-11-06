@@ -5,7 +5,7 @@ import json
 import shutil
 import tempfile
 from collections.abc import Generator
-from datetime import datetime
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any
 from uuid import uuid4
@@ -81,6 +81,7 @@ from studio.repository import (
     preparation_overview,
     project_classification_expression,
     project_for_table,
+    read_prepared_artifact,
 )
 from studio.schema_mapping import compile_transform_plan, validate_mapping
 from studio.storage import checksum, storage_path
@@ -697,10 +698,11 @@ def dataset(dataset_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
 @app.get("/api/datasets/{dataset_id}/tables", response_model=TableList)
 def tables(dataset_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
     row = get_scoped(db, DatasetRow, dataset_id, actor)
-    items = db.scalars(
-        select(TableRow)
+    items = db.execute(
+        select(TableRow, ArtifactRow.metadata_json["prepared"])
         .join(VersionRow, TableRow.dataset_version_id == VersionRow.id)
-        .where(VersionRow.dataset_id == row.id)
+        .join(ArtifactRow, TableRow.artifact_id == ArtifactRow.id)
+        .where(VersionRow.dataset_id == row.id, ArtifactRow.workspace_id == actor.workspace_id)
         .order_by(TableRow.sheet)
     )
     return {
@@ -711,8 +713,9 @@ def tables(dataset_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
                 "row_count": t.row_count,
                 "active_mapping_id": t.active_mapping_id,
                 "parsed": t.parsed_contract,
+                "prepared": prepared,
             }
-            for t in items
+            for t, prepared in items
         ]
     }
 
@@ -725,7 +728,7 @@ def profile(table_id: str, db: DB, actor: CurrentActor) -> DatasetProfile:
 def _json_value(value: Any) -> Any:
     if isinstance(value, Decimal):
         return str(value)
-    if isinstance(value, datetime):
+    if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, dict):
         return {k: _json_value(v) for k, v in value.items()}
@@ -739,7 +742,9 @@ def preview(
     table_id: str,
     db: DB,
     actor: CurrentActor,
-    kind: str = Query("parsed", pattern="^(parsed|canonical|errors|raw)$"),
+    kind: str = Query(
+        "parsed", pattern="^(parsed|canonical|errors|raw|prepared|prepared_findings)$"
+    ),
     canonical_id: str | None = None,
     offset: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
@@ -756,12 +761,21 @@ def preview(
         contract = CanonicalDataset.model_validate(canonical.contract)
         artifact_id = contract.artifact.id if kind == "canonical" else contract.error_artifact.id
     artifact = get_scoped(db, ArtifactRow, artifact_id, actor)
-    query = pl.scan_parquet(storage_path(settings.storage_root, artifact.storage_key))
+    if kind in {"prepared", "prepared_findings"}:
+        artifact = read_prepared_artifact(db, actor, table, artifact)
+    path = storage_path(settings.storage_root, artifact.storage_key)
+    if checksum(path) != artifact.sha256:
+        raise DomainError("ARTIFACT_CHECKSUM_FAILED", "Artifact không khớp checksum.", 409)
+    query = pl.scan_parquet(path)
+    if kind == "prepared_findings":
+        query = query.filter(pl.col("_preparation_flags").list.len() > 0)
+    elif kind == "prepared":
+        query = query.drop("_preparation_flags")
     if search:
         expressions = [
             pl.col(name).cast(pl.String).str.contains(search, literal=True).fill_null(False)
             for name, dtype in query.collect_schema().items()
-            if dtype == pl.String
+            if dtype in {pl.String, pl.Date}
         ]
         payload_type = query.collect_schema().get("record_payload")
         if isinstance(payload_type, pl.Struct):
@@ -795,6 +809,17 @@ def mappings(table_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
         .where(MappingRow.source_table_id == table.id)
         .order_by(MappingRow.revision.desc())
     )
+    parse_result = db.scalar(
+        select(JobRow.result)
+        .where(
+            JobRow.workspace_id == actor.workspace_id,
+            JobRow.kind == "parse",
+            JobRow.status == "SUCCEEDED",
+            JobRow.payload["version_id"].astext == table.dataset_version_id,
+        )
+        .limit(1)
+    )
+    template_ids = (parse_result or {}).get("reused_templates", {})
 
     def schema_definition(schema_id: str) -> dict[str, Any]:
         schema = db.get(SchemaRow, schema_id)
@@ -810,6 +835,7 @@ def mappings(table_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
                 "proposal": r.proposal,
                 "decision": r.decision,
                 "schema": schema_definition(r.schema_id),
+                "template_mapping_id": template_ids.get(r.id),
             }
             for r in rows
         ]

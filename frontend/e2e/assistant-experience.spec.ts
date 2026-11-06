@@ -282,15 +282,15 @@ test('[MOCK CONTRACT] identifiers resembling status enums remain exact source st
 });
 
 for(const width of [390,768,1366,1440,1920]){
-  test(`Assistant-only navigation and history focus at ${width}px`,async({page})=>{
+  test(`Workspace navigation and history focus at ${width}px`,async({page})=>{
     const writes:string[]=[];page.on("request",r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});
     await page.setViewportSize({width,height:900});
     await page.goto('/');
     await expect(page.getByRole('heading',{name:'Bạn muốn xử lý dữ liệu gì?'})).toBeVisible();
     if(width<900)await page.getByRole('button',{name:'Mở điều hướng',exact:true}).click();
     const nav=page.locator('.sidebar');
-    await expect(nav.getByRole('button')).toHaveText(['AI Assistant','Lịch sử','Cài đặt']);
-    for(const name of ['Dữ liệu','Tổng quan','Đối soát','Ngoại lệ','Báo cáo','Kết quả'])await expect(nav.getByRole('button',{name,exact:true})).toHaveCount(0);
+    await expect(nav.getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử','Cài đặt']);
+    for(const name of ['Tổng quan','Ngoại lệ','Kết quả'])await expect(nav.getByRole('button',{name,exact:true})).toHaveCount(0);
     await mkdir('../runtime/assistant-experience',{recursive:true});
     await page.screenshot({path:`../runtime/assistant-experience/after-${width}.png`,fullPage:true});
     await nav.getByRole('button',{name:'Lịch sử',exact:true}).click();

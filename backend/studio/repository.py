@@ -17,7 +17,7 @@ from studio.contracts import (
     SchemaDefinition,
     WorkspacePolicy,
 )
-from studio.contracts.api import PreparationAction
+from studio.contracts.api import PreparationAction, PreparedTable
 from studio.database import (
     ArtifactRow,
     AuditRow,
@@ -280,6 +280,27 @@ def get_scoped[T: Base](db: Session, model: type[T], resource_id: str, actor: Ac
 
 def artifact_ref(row: ArtifactRow) -> ArtifactRef:
     return ArtifactRef.model_validate({k: getattr(row, k) for k in ArtifactRef.model_fields})
+
+
+def read_prepared_artifact(
+    db: Session, actor: Actor, table: TableRow, parsed: ArtifactRow
+) -> ArtifactRow:
+    """Resolve the server-published prepared ref for this exact parsed table."""
+    metadata = parsed.metadata_json.get("prepared")
+    if metadata is None:
+        raise DomainError("PREPARED_NOT_AVAILABLE", "Bảng này chưa có bản tự chuẩn bị.", 404)
+    ref = PreparedTable.model_validate(metadata)
+    prepared = get_scoped(db, ArtifactRow, ref.prepared_artifact_id, actor)
+    if (
+        ref.source_artifact_id != table.artifact_id
+        or parsed.id != table.artifact_id
+        or prepared.dataset_version_id != table.dataset_version_id
+        or prepared.metadata_json.get("view") != "prepared"
+        or prepared.metadata_json.get("source_table_id") != table.id
+        or prepared.revision != ref.preparation_revision
+    ):
+        raise DomainError("ARTIFACT_SCOPE_MISMATCH", "Artifact không thuộc bảng này.", 409)
+    return prepared
 
 
 def enqueue_job(

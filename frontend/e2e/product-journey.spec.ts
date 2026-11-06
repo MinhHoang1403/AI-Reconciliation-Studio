@@ -73,6 +73,12 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     await expect(
       page.getByRole("cell", { name: "000702", exact: true }),
     ).toBeVisible();
+    const dataViews = page.getByRole("group", { name: "Lớp dữ liệu" });
+    await dataViews.getByRole("button", { name: "Giá trị gốc", exact: true }).click();
+    await expect(page.getByRole("cell", { name: "000702", exact: true })).toBeVisible();
+    await dataViews.getByRole("button", { name: "Tự chuẩn bị", exact: true }).click();
+    await expect(page.getByText("Đã tự chuẩn bị để xem và tìm kiếm.", { exact: false })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "000702", exact: true })).toBeVisible();
     await page.getByText("Thống kê dữ liệu nguồn", { exact: true }).click();
     await expect(page.locator(".profile-grid")).toContainText("tracking_id");
     await page

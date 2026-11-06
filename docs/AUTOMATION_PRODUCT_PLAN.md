@@ -39,7 +39,7 @@ Không chia thành nhiều đợt phát hành cần chủ dự án phải tự k
 ### 0.4. Baseline đối chiếu (không phải kết quả của kế hoạch mới)
 
 | Thành phần | Baseline Codex báo cáo ngày 06/11/2026 |
-|---|---|
+| --- | --- |
 | Backend/PostgreSQL | 479/479 PASS |
 | Browser E2E | 139/139 PASS |
 | Docker | 4/4 Studio healthy, backend/worker/frontend cùng revision `58cbc3c` |
@@ -149,7 +149,7 @@ Update project/dataset status + Chat notification + Data workspace
 Đề nghị DTO hiển thị **cả giai đoạn xử lý và mức độ được phép sử dụng**; không tạo một enum đơn lẻ trộn lẫn `PARTIAL` với `APPROVED`.
 
 | Chiều | Trạng thái logic | Ý nghĩa |
-|---|---|---|
+| --- | --- | --- |
 | Processing | `RECEIVED`, `PARSING`, `PROFILING`, `PREPARING`, `PREPARED`, `FAILED` | Tiến độ công việc kỹ thuật |
 | Readiness | `RAW_QUERYABLE`, `PREPARED_QUERYABLE`, `BUSINESS_REVIEW_REQUIRED`, `RECONCILIATION_ELIGIBLE`, `STALE` | Quyền dùng đầu ra |
 | Quality | `CLEAN`, `WITH_EXCEPTIONS`, `FAILED` | Phát hiện bất thường; không đánh đồng với readiness |
@@ -181,7 +181,7 @@ Phải phân biệt: `source_rows`, `eligible_rows`, `invalid_rows`, `warning_ro
 ### 3.1. Phân công trách nhiệm
 
 | Thành phần | Đầu ra | Có thể tự quyết? |
-|---|---|---|
+| --- | --- | --- |
 | Deterministic profiler/Polars | Kiểu giá trị, phân bố, parse score, null, định dạng, cardinality, overlap | Có nếu kiểm chứng không mơ hồ |
 | Approved Mapping Memory | Mapping/rule đã duyệt và dấu vân tay tương thích | Tái dùng đúng scope/policy với audit |
 | RapidFuzz | Ứng viên tên cột tương đồng | Chỉ gợi ý |
@@ -214,7 +214,7 @@ Tất cả auto-reuse có `rule_id`, `approved_by`, `approved_at`, `source_scope
 ### 3.4. Thử nghiệm thư viện mới theo bằng chứng
 
 | Thư viện | Quyết định | Benchmark bắt buộc | Quy tắc khi không đạt |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Polars, fastexcel, openpyxl | Giữ/tận dụng | Exactness, RAM, performance, source fidelity | Không thay nếu regress |
 | RapidFuzz | Mở rộng candidate mapping | Precision@k, recall@k, latency | Giữ chỉ với giá trị tăng thêm |
 | Valentine | Thử schema matcher không embeddings trước | So với RapidFuzz+profile trên dữ liệu unseen; CPU/RAM | Không tích hợp production nếu không cải thiện |
@@ -263,7 +263,7 @@ Nếu thiếu coverage/effective period/FX semantics, hỏi người dùng chín
 ### 5.1. Intent routing ưu tiên xác định
 
 | Nhóm câu hỏi | Xử lý |
-|---|---|
+| --- | --- |
 | File list, upload state, processing progress | DB metadata / job status, không cần LLM |
 | Preview raw/prepared, số dòng, lỗi, thống kê | Typed Query DSL đã giới hạn nguồn và quyền |
 | Query theo canonical đã duyệt | Typed Query DSL, revision explicit |
@@ -397,7 +397,7 @@ Chat, Dữ liệu, Đối soát, Báo cáo phải đọc từ **cùng canonical 
 ### 9.1. Các lớp test
 
 | Lớp | Phạm vi |
-|---|---|
+| --- | --- |
 | Unit & property | parsing, decimal/date, type inference, schema compatibility, mapping candidates, financial calculations, query sort/limit, review-state transition |
 | PostgreSQL integration | upload→jobs→artifacts→prepared→review→canonical; idempotency; schema migration; isolation |
 | Contract/provider MOCK | structured output invalid/partial, missing fields, stale reviews, wrong source, 429/503, Ollama timeout, unknown delivery |
@@ -505,7 +505,7 @@ Các gói là **workstreams nội bộ trong một đợt triển khai**, không
 ## 11. Bảng truy vết yêu cầu → hợp đồng → kiểm thử
 
 | ID | Yêu cầu phải có | Vùng code dự kiến cần khảo sát | Bằng chứng nghiệm thu |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | AP-01 | Upload tự khởi chạy pipeline | upload/agent API, jobs, repository | E2E upload không cần prompt |
 | AP-02 | Raw có thể xem khi LLM unavailable | parser/artifact, data query | MOCK provider down + raw browser |
 | AP-03 | Prepared artifact không giả approved | normalization, contracts, revisions | DB integration + access safety |

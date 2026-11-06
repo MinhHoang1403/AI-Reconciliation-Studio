@@ -648,11 +648,12 @@ def test_postgres_migration_T02_T13_pipeline_and_idempotency(pg):
     )
     assert stale.status_code == 409
     # Same bytes in another project must not reuse the first project's Dataset/FileArtifact.
-    assert upload(client, project(client, "Second project"))["id"] != first["id"]
+    other_upload = upload(client, project(client, "Second project"))
+    assert other_upload["id"] != first["id"]
     drain(factory, worker)
     with factory() as db:
-        jobs = list(db.scalars(select(JobRow).where(JobRow.kind == "mapping")))
-        assert any(j.result and j.result.get("cache_hit") is True for j in jobs)
+        other_parse = db.get(JobRow, other_upload["job_id"])
+        assert set(other_parse.result["reused_templates"].values()) == {second["id"]}
 
 
 def test_T12_viewer_and_cross_workspace_csrf(pg):
@@ -771,6 +772,8 @@ def test_normalize_crash_before_publish_is_atomic_and_retry_safe(pg, monkeypatch
     assert response.status_code == 202
     job_id = response.json()["job_id"]
     original_finish = worker._finish
+    with factory() as db:
+        published_before = set(db.execute(select(ArtifactRow.id, ArtifactRow.sha256)))
 
     def crash(db, job, result):
         raise RuntimeError("synthetic crash before transaction publication")
@@ -780,7 +783,7 @@ def test_normalize_crash_before_publish_is_atomic_and_retry_safe(pg, monkeypatch
     with factory() as db:
         assert db.get(JobRow, job_id).status == "RETRYABLE_FAILURE"
         assert not list(db.scalars(select(CanonicalRow)))
-        assert len(list(db.scalars(select(ArtifactRow)))) == 2  # raw + parsed only
+        assert set(db.execute(select(ArtifactRow.id, ArtifactRow.sha256))) == published_before
         job = db.get(JobRow, job_id)
         job.available_at = now()
         db.commit()
@@ -1253,6 +1256,132 @@ def test_explicit_manual_upload_never_enqueues_ai_or_spends_quota(pg, monkeypatc
     dataset_id = response.json()["items"][0]["id"]
     table = client.get(f"/api/datasets/{dataset_id}/tables").json()["items"][0]
     assert len(client.get(f"/api/tables/{table['id']}/mappings").json()["items"]) == 1
+
+
+def test_prepared_upload_is_queryable_without_mapping_or_provider(pg):
+    client, factory, worker = pg
+    pid = project(client)
+    response = client.post(
+        "/api/datasets/uploads",
+        data={"project_id": pid, "request_ai_mapping": "false"},
+        files={
+            "files": (
+                "prepared.csv",
+                b"ID,Date,Other date,Total\n000123,2026-10-01,2026-02-29,-12.50\n"
+                b"000124,2026-10-02,2026-02-28,0\n",
+                "text/csv",
+            ),
+        },
+    )
+    assert response.status_code == 202
+    drain(factory, worker)
+    dataset_id = response.json()["items"][0]["id"]
+    table = client.get(f"/api/datasets/{dataset_id}/tables").json()["items"][0]
+    prepared = table["prepared"]
+    assert prepared["prepared_artifact_id"] != table["parsed"]["artifact"]["id"]
+    assert prepared["source_artifact_id"] == table["parsed"]["artifact"]["id"]
+    assert prepared["review_required"] is True
+    assert prepared["eligible_scope"] == "EXPLORATION"
+    assert table["active_mapping_id"] is None
+    summary = {item["column_id"]: item for item in prepared["quality_summary"]}
+    assert summary["c2"]["data_type"] == "date"
+    assert summary["c3"]["data_type"] == "string"
+    assert summary["c3"]["invalid_date_count"] == 1
+    url = f"/api/tables/{table['id']}/preview"
+    raw = client.get(url, params={"kind": "raw"}).json()
+    preview = client.get(url, params={"kind": "prepared"}).json()
+    assert raw["items"] == preview["items"]
+    assert raw["total"] == preview["total"] == 2
+    assert preview["items"][0]["c1"] == "000123"
+    assert preview["items"][0]["c4"] == "-12.50"
+    findings = client.get(url, params={"kind": "prepared_findings"}).json()
+    assert findings["total"] == 1
+    assert findings["items"][0]["_source_row"] == 2
+    assert findings["items"][0]["_preparation_flags"] == ["INVALID_DATE:c3"]
+    query = {
+        "project_id": pid,
+        "source_kind": "PREPARED",
+        "source_id": table["id"],
+        "filters": [{"field_id": "c2", "op": "gt", "value": "2026-10-01"}],
+    }
+    result = client.post("/api/agent/queries", json=query)
+    assert result.status_code == 200
+    assert result.json()["verification_status"] == "RAW_UNVERIFIED"
+    assert result.json()["rows"][0]["c1"] == "000124"
+    assert result.json()["rows"][0]["source_provenance"][0]["row"] == 3
+    foreign_query = {**query, "project_id": project(client)}
+    assert client.post("/api/agent/queries", json=foreign_query).status_code == 404
+    with factory() as db:
+        assert [j.kind for j in db.scalars(select(JobRow))] == ["parse"]
+
+
+def test_parse_can_publish_while_mapping_inference_is_waiting(pg, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    client, factory, worker = pg
+    pid = project(client)
+    upload(client, pid)
+    with factory() as db:
+        parsed = worker.claim_job(db)
+    worker.process_job(*parsed)
+    with factory() as db:
+        mapping = worker.claim_job(db)
+        assert db.get(JobRow, mapping[0]).kind == "mapping"
+
+    started = Event()
+    release = Event()
+
+    def stalled_mapping(*_args):
+        started.set()
+        assert release.wait(20)
+
+    monkeypatch.setattr(worker, "_mapping", stalled_mapping)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        waiting = executor.submit(worker.process_job, *mapping)
+        try:
+            assert started.wait(5)
+            incoming = upload(client, pid, b"ID,Date\n001,2026-10-01\n")
+            with factory() as db:
+                parse_claim = worker.claim_job(db, parse_only=True)
+            assert parse_claim[0] == incoming["job_id"]
+            worker.process_job(*parse_claim)
+            table = client.get(f"/api/datasets/{incoming['id']}/tables").json()["items"][0]
+            assert table["prepared"]["row_count"] == 1
+            assert not waiting.done()
+            with factory() as db:
+                assert worker.claim_job(db, parse_only=True) is None
+        finally:
+            release.set()
+        waiting.result()
+
+
+def test_upload_mapping_memory_reuses_only_compatible_draft(pg):
+    client, factory, worker = pg
+    pid = project(client)
+    original = upload(client, pid, b"Order ID,Gross amount\n001,12.50\n002,0\n")
+    drain(factory, worker)
+    table = client.get(f"/api/datasets/{original['id']}/tables").json()["items"][0]
+    approved, _ = approve(client, table["id"])
+
+    second = upload(client, pid, b"Order ID,Gross amount\n003,15.50\n004,-2\n")
+    drain(factory, worker)
+    second_table = client.get(f"/api/datasets/{second['id']}/tables").json()["items"][0]
+    assert second_table["active_mapping_id"] is None
+    job = client.get(f"/api/jobs/{second['job_id']}").json()
+    assert list(job["result"]["reused_templates"].values()) == [approved["id"]]
+    mappings = client.get(f"/api/tables/{second_table['id']}/mappings").json()["items"]
+    assert len(mappings) == 1
+    assert mappings[0]["status"] == "PROPOSED" and mappings[0]["decision"] is None
+    assert all(
+        evidence.startswith(f"{second_table['id']}:")
+        for decision in mappings[0]["proposal"]["decisions"]
+        for evidence in decision["evidence_ids"]
+    )
+
+    drift = upload(client, pid, b"Order ID,Gross amount,New field\n005,3,unknown\n")
+    drain(factory, worker)
+    assert client.get(f"/api/jobs/{drift['job_id']}").json()["result"]["reused_templates"] == {}
 
 
 @pytest.mark.parametrize("blocked", [None, "workspace", "global", "key", "finite-workspace"])

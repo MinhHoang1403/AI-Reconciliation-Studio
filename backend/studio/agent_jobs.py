@@ -18,6 +18,7 @@ from studio.agent_intents import (
     interpret_requests,
     resolve_attached_normalization,
     resolve_plain_listing,
+    resolve_ranked_results,
 )
 from studio.agent_preparation import (
     LOCAL_PREPARATION_REVISION,
@@ -304,8 +305,17 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
         parent = get_scoped(db, JobRow, row.parent_job_id, actor)
         command = parent.payload.get("command")
         goal = row.goal
-        plain_listing = resolve_plain_listing(goal, catalogue)
+        plain_listing = resolve_ranked_results(goal, catalogue) or resolve_plain_listing(
+            goal, catalogue
+        )
         if plain_listing is not None:
+            if plain_listing.result_position is not None:
+                # Pin the displayed group before committing the intent. The user
+                # may sort or page the previous table before advance runs.
+                context.group_id = catalogue.previous_groups[plain_listing.result_position - 1]
+                context.case_id = None
+                row.context = context.model_dump(mode="json")
+                plain_listing = plain_listing.model_copy(update={"result_position": None})
             state.intent = plain_listing
             save(row, state)
             db.commit()
@@ -399,7 +409,7 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             row = db.get(AgentWorkflowRow, row_id)
             if row is None:
                 effective_context = AssistantContext.model_validate(message.context)
-                if effective_context.dataset_id is None:
+                if effective_context.dataset_id is None and effective_context.run_id is None:
                     previous = db.scalar(
                         select(AgentWorkflowRow)
                         .where(

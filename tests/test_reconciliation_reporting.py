@@ -140,6 +140,44 @@ def test_planner_typed_contract_bounded_attempts_and_policy(config, kind):
     provider.close()
 
 
+def test_scoped_candidate_ignores_outside_duplicates_but_abstains_on_inside_conflicts():
+    from datetime import UTC, datetime
+
+    from studio.contracts.reconciliation import PlanningRequest
+    from studio.reconciliation_planner import scoped_key_candidate
+
+    left_rows = records("shipments.csv")
+    right_rows = records("delivery-confirmations.csv")
+    cats = [
+        catalogue(
+            source, rows, grain="shipment", metric="delivery_charge", amount="delivery_charge"
+        )
+        for source, rows in (("left", left_rows), ("right", right_rows))
+    ]
+    draft = PlanningRequest.from_plan(
+        plan(
+            left="left",
+            right="right",
+            entity="delivery",
+            platform="",
+            amount="delivery_charge",
+            metric="delivery_charge",
+            keys=["tracking_id"],
+        )
+    )
+    prior = left_rows[0].model_copy(deep=True)
+    prior.payload["event_date"] = datetime(2026, 9, 30, tzinfo=UTC)
+    candidate = scoped_key_candidate(draft, cats, [*left_rows, prior], right_rows)
+    assert candidate is not None and candidate.status == "PROPOSED"
+    assert candidate.plan.cardinality == "ONE_TO_ONE"
+    assert [(key.left, key.right) for key in candidate.plan.join_keys] == [
+        ("tracking_id", "tracking_id")
+    ]
+    assert scoped_key_candidate(draft, cats, [*left_rows, left_rows[0]], right_rows) is None
+    draft.period_start = None
+    assert scoped_key_candidate(draft, cats, left_rows, right_rows) is None
+
+
 @pytest.mark.parametrize(
     "kind",
     [

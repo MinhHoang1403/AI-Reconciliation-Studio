@@ -15,6 +15,7 @@ from studio.config import ModelChoice, request_limit_reached, settings
 from studio.contracts import WorkspacePolicy
 from studio.contracts.reconciliation import (
     ExceptionCase,
+    PlanProposal,
     ReconciliationContract,
     ReconciliationPlan,
 )
@@ -34,7 +35,14 @@ from studio.database import (
 from studio.errors import DomainError
 from studio.reconciliation_contracts import validate_reconciliation_contract
 from studio.reconciliation_engine import match_records
-from studio.reconciliation_planner import PLANNER_REVISION, propose_plan
+from studio.reconciliation_planner import (
+    PLANNER_REVISION,
+    PLANNING_PROBE_ROW_LIMIT,
+    missing_confirmations,
+    propose_plan,
+    scoped_key_candidate,
+    validate_planning_request,
+)
 from studio.reconciliation_repository import (
     load_canonical_records,
     selected_catalogue,
@@ -199,7 +207,44 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
         policy = WorkspacePolicy.model_validate(workspace.policy)
         choice: ModelChoice = job.payload.get("model_choice", "GEMINI")
         workspace_id, project_id = job.workspace_id, job.project_id
+        validate_planning_request(draft, cats, workspace_id, project_id)
         db.rollback()
+
+    def publish(proposal: PlanProposal, source: str, failure: str | None = None) -> None:
+        with factory() as db:
+            job = fence(db, job_id, token)
+            current = selected_catalogue(
+                db, actor, project_id, [draft.left.canonical_id, draft.right.canonical_id]
+            )
+            validate_planning_request(draft, current, workspace_id, project_id)
+            row = PlanRow(
+                workspace_id=workspace_id,
+                project_id=project_id,
+                origin=source,
+                created_by=job.payload["actor_id"],
+                proposal=proposal.model_dump(mode="json"),
+            )
+            db.add(row)
+            db.flush()
+            result = {"plan_id": row.id, "source": source, "proposal_status": proposal.status}
+            if failure is not None:
+                result["provider_error_code"] = failure
+            finish(db, job, result)
+            db.commit()
+
+    if (
+        not missing_confirmations(draft)
+        and sum(cat.canonical.row_count for cat in cats) <= PLANNING_PROBE_ROW_LIMIT
+    ):
+        with factory() as db:
+            left_rows, right_rows = [
+                load_canonical_records(db, actor, cat.canonical) for cat in cats
+            ]
+        candidate = scoped_key_candidate(draft, cats, left_rows, right_rows)
+        del left_rows, right_rows
+        if candidate is not None:
+            publish(candidate, "DETERMINISTIC")
+            return
     cloud = choice == "GEMINI"
     provider_name = "GEMINI" if cloud else "OLLAMA"
     reservation = "RECONCILIATION_PLANNER_ATTEMPT" if cloud else "LOCAL_PLANNER_ATTEMPT"
@@ -264,26 +309,21 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
                     "AI_DELIVERY_UNKNOWN", "Job AI đã gửi; không tự gửi lại sau recovery."
                 )
         proposal = propose_plan(provider, cats, draft, policy, reserve, workspace_id, project_id)
-        with factory() as db:
-            job = fence(db, job_id, token)
-            row = PlanRow(
-                workspace_id=workspace_id,
-                project_id=project_id,
-                origin=provider_name,
-                created_by=job.payload["actor_id"],
-                proposal=proposal.model_dump(mode="json"),
-            )
-            db.add(row)
-            db.flush()
-            finish(
-                db,
-                job,
-                {"plan_id": row.id, "source": provider_name, "proposal_status": proposal.status},
-            )
-            db.commit()
+        publish(proposal, provider_name)
     except DomainError as exc:
         outcome = exc.code
-        raise
+        if exc.code != "AI_PLAN_MISSING":
+            raise
+        publish(
+            PlanProposal(
+                status="NEEDS_REVIEW",
+                missing_requirements=missing_confirmations(draft)
+                + ["Xác nhận khóa liên kết và chỉ tiêu cần đối soát."],
+                reasoning="Chưa có phương án từ AI. Có thể tiếp tục bằng cách xác nhận quy tắc.",
+            ),
+            "DETERMINISTIC",
+            exc.code,
+        )
     finally:
         provider.close()
         with factory() as db:

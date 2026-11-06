@@ -37,7 +37,7 @@ from studio.database import (
 )
 from studio.errors import DomainError
 from studio.reconciliation_repository import result_path
-from studio.repository import get_scoped, project_for_table
+from studio.repository import get_scoped, project_for_table, read_prepared_artifact
 from studio.storage import checksum, storage_path
 
 
@@ -233,7 +233,7 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
         raise DomainError("RESOURCE_NOT_FOUND", "Quyền truy cập không còn hợp lệ.", 404)
     if query.metric_id and query.source_kind != "VERIFIED_RUN":
         raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ chọn metric cho kết quả đã xác minh.")
-    if query.source_kind in {"RAW_PREVIEW", "CANONICAL"}:
+    if query.source_kind in {"RAW_PREVIEW", "PREPARED", "CANONICAL"}:
         canonical = None
         if query.source_kind == "CANONICAL":
             row = get_scoped(db, CanonicalRow, query.source_id, actor)
@@ -247,6 +247,8 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
             artifact = get_scoped(db, ArtifactRow, table.artifact_id, actor)
         if project_for_table(db, table).id != query.project_id:
             raise DomainError("RESOURCE_NOT_FOUND", "Nguồn không thuộc dự án.", 404)
+        if query.source_kind == "PREPARED":
+            artifact = read_prepared_artifact(db, actor, table, artifact)
         path = storage_path(settings.storage_root, artifact.storage_key)
         if checksum(path) != artifact.sha256:
             raise DomainError("ARTIFACT_CHECKSUM_FAILED", "Dữ liệu không khớp checksum.")
@@ -324,7 +326,7 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
     return QuerySource(frame, fields, [run.id, run.metric_snapshot["id"]], run.status, {})
 
 
-def _value(value: str, dtype: pl.DataType) -> str | Decimal | datetime | int | bool:
+def _value(value: str, dtype: pl.DataType) -> str | Decimal | date | int | bool:
     if len(value) > 200:
         raise DomainError("QUERY_VALUE_LIMIT", "Giá trị lọc quá dài.")
     try:
@@ -339,6 +341,8 @@ def _value(value: str, dtype: pl.DataType) -> str | Decimal | datetime | int | b
             if value not in {"true", "false"}:
                 raise ValueError("boolean")
             return value == "true"
+        if dtype == pl.Date:
+            return date.fromisoformat(value)
         if isinstance(dtype, pl.Datetime):
             result_date = datetime.fromisoformat(value.replace("Z", "+00:00"))
             if result_date.utcoffset() is None:
@@ -534,11 +538,13 @@ def _execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
     if query.sort:
         if any(s.field_id not in frame.collect_schema() for s in query.sort):
             raise DomainError("QUERY_SORT_INVALID", "Trường sort không có trong kết quả.")
-        frame = frame.sort(
-            [s.field_id for s in query.sort],
-            descending=[s.descending for s in query.sort],
-            nulls_last=True,
-        )
+        sort_fields = [s.field_id for s in query.sort]
+        descending = [s.descending for s in query.sort]
+        if query.source_kind == "VERIFIED_RUN" and "group_id" not in sort_fields:
+            if "group_id" in frame.collect_schema():
+                sort_fields.append("group_id")
+                descending.append(False)
+        frame = frame.sort(sort_fields, descending=descending, nulls_last=True)
     elif query.group_by:
         frame = frame.sort(query.group_by, nulls_last=True)
     evidence_fields = [
@@ -584,11 +590,7 @@ def _execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
         quality_status=source.quality_status,
         evidence_complete=evidence_complete,
         warnings=["Tổng/đếm áp dụng toàn bộ dữ liệu khớp điều kiện, không chỉ trang hiện tại."]
-        + (
-            ["Dữ liệu raw chưa được xác nhận ngữ nghĩa."]
-            if source.status == "RAW_UNVERIFIED"
-            else []
-        )
+        + (["Dữ liệu chưa được xác nhận ngữ nghĩa."] if source.status == "RAW_UNVERIFIED" else [])
         + (
             ["Nguồn canonical còn lỗi/thiếu dữ liệu; đây chưa phải KPI đối soát đã xác minh."]
             if source.quality_status and source.quality_status != "READY"

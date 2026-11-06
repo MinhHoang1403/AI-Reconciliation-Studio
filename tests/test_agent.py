@@ -958,6 +958,27 @@ def test_mismatch_listing_requires_filter_even_when_variance_sort_is_correct(goa
     assert validate_intents(json.dumps(dict(intents=[payload])), [goal], cat)[0].query.filters
 
 
+def test_native_top_mismatches_and_followup_stay_bound_to_verified_selection():
+    from studio.agent_intents import resolve_ranked_results
+
+    cat = routing_catalogue()
+    cat.verified_run_fields = ["comparison_state", "absolute_variance"]
+    ranked = resolve_ranked_results("Cho tôi xem ba nhóm lệch tiền lớn nhất", cat)
+    assert ranked is not None and ranked.intent == "QUERY_DATA"
+    assert ranked.query.source_id == cat.context.run_id
+    assert ranked.query.limit == 3
+    assert ranked.query.filters[0].value == "AMOUNT_MISMATCH"
+    assert ranked.query.sort[0].field_id == "absolute_variance"
+    assert ranked.query.sort[0].descending
+    assert resolve_ranked_results("Giải thích nhóm thứ hai", cat).intent == "CLARIFY"
+    cat.previous_query = ranked.query
+    cat.previous_groups = ["first", "second", "third"]
+    assert resolve_ranked_results("Giải thích nhóm thứ hai", cat).result_position == 2
+    cat.previous_query = ranked.query.model_copy(update={"source_id": "old-run"})
+    assert resolve_ranked_results("Giải thích nhóm thứ hai", cat).intent == "CLARIFY"
+    assert resolve_ranked_results("Không xem ba nhóm lệch tiền lớn nhất", cat) is None
+
+
 def test_agent_transaction_key_is_not_an_invented_technical_group_id():
     payload = dict(
         intent="QUERY_DATA",

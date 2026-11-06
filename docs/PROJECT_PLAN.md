@@ -8,6 +8,8 @@
 
 > **Tuyên ngôn sản phẩm:** Giao diện đơn giản như một ứng dụng quản lý, tự động hóa bằng AI ở nơi cần hiểu dữ liệu; các kết luận đối soát do engine tính toán xác định, kiểm chứng và truy ngược được bằng chứng. **AI đề xuất — hệ thống kiểm tra — người dùng chỉ duyệt trường hợp cần thiết.**
 
+Chỉ dẫn triển khai tự động hóa ngày 06/11/2026 áp dụng [kế hoạch tự động hóa](AUTOMATION_PRODUCT_PLAN.md) trên nhánh từ main đã hợp nhất. AI Assistant tiếp tục là trang mở đầu. Sidebar bổ sung Dữ liệu, Đối soát và Báo cáo bên cạnh Lịch sử và Cài đặt, thay yêu cầu Assistant-only của các mốc lịch sử. Tải CSV/XLSX bắt đầu chuẩn bị dữ liệu theo quy tắc kỹ thuật. Bản tự chuẩn bị phục vụ khám phá, còn chuẩn hóa nghiệp vụ dùng mapping đã duyệt.
+
 ---
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT

@@ -59,6 +59,18 @@ export interface Table {
   row_count: number;
   active_mapping_id: string | null;
   parsed: { columns: SourceColumn[]; warnings: string[]; header_row: number };
+  prepared?: {
+    prepared_artifact_id: string;
+    review_required: true;
+    quality_summary: {
+      column_id: string;
+      data_type: "string" | "date";
+      null_count: number;
+      empty_count: number;
+      duplicate_count: number;
+      invalid_date_count: number;
+    }[];
+  } | null;
 }
 export interface ColumnProfile {
   column_id: string;
@@ -134,6 +146,7 @@ export interface Proposal {
   unresolved_questions: string[];
 }
 export interface Mapping {
+  template_mapping_id?: string | null;
   id: string;
   revision: number;
   status: string;

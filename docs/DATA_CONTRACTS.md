@@ -6,6 +6,18 @@
 
 `tabular-2` giữ header có nhãn trùng ở đúng vị trí, cảnh báo EMPTY_OR_DUPLICATE_HEADER và giữ từng cột c1/c2 riêng. Không chuyển dòng dữ liệu đầu thành header chỉ vì tên cột lặp. Với CSV, ParseConfig.header_row là dòng vật lý bắt đầu một bản ghi, cùng đơn vị với provenance; dòng nằm giữa một ô quoted nhiều dòng không phải header hợp lệ. Parser dừng ngay trong lúc đọc khi vượt số bản ghi/cột đã giới hạn; không tích lũy hết file trước khi từ chối. Raw/checksum, parser cũ và các artifact/revision lịch sử không bị viết lại. Parse signature mới tách kết quả mới khỏi cache của tabular-1.
 
+## Bản tự chuẩn bị
+
+Tải CSV/XLSX mới tạo bản tự chuẩn bị cùng lần công bố bảng đã đọc, kể cả khi tắt yêu cầu AI mapping. `TableView.prepared` trả ID của Parquet riêng, ID và revision nguồn, revision xử lý, số dòng và thống kê theo cột. Dữ liệu lịch sử có thể trả null. Tham chiếu lưu trong metadata của artifact đã đọc. Parquet prepared dùng chung loại lưu trữ tabular `parsed` để API liệt kê artifact của bản cũ tiếp tục đọc được.
+
+`kind=prepared` trên preview và `DataQuery.source_kind=PREPARED` dùng ID bảng. Backend kiểm nguồn, quyền và SHA-256 trước khi đọc. Cột ngày ISO được chuyển sang kiểu ngày khi toàn cột khớp ngược chính xác, không có chuỗi rỗng hay cảnh báo trích xuất. Cột có giá trị ngày không hợp lệ giữ chuỗi và trả số lỗi. Preview `kind=prepared_findings` lọc dòng có mã lỗi kèm cột và vị trí nguồn. Giá trị gốc, chuỗi rỗng, null và định danh có số 0 đầu được bảo toàn. Kết quả có phạm vi `EXPLORATION`, `review_required=true`. Phép cộng tiền vẫn cần nghĩa nghiệp vụ đã duyệt.
+
+Job parse có thể điền sẵn bản nháp từ một mapping active cùng workspace, phạm vi nghiệp vụ, chữ ký cột và cấu hình parser. Mẫu có quy tắc mở rộng hoặc nguồn đích có cảnh báo trích xuất sẽ đi theo quy trình review thường. Receipt `reused_templates` liên kết ID bản nháp với ID mẫu. Bản nháp giữ evidence của nguồn đích và tiếp tục qua preflight, review và approval hiện có.
+
+Các lệnh tường minh như “Cho tôi xem ba nhóm lệch tiền lớn nhất” dùng query xác định trên run hiện hành. Backend chỉ lấy nhóm `AMOUNT_MISMATCH`, sắp xếp theo chênh lệch tuyệt đối giảm dần và dùng `group_id` tăng dần để phân giải giá trị bằng nhau. Chỉ tiêu lấy từ hợp đồng đã duyệt. Lệnh “Giải thích nhóm thứ hai” gắn với nhóm ở vị trí đó trong trang đã lưu của cùng run, hoặc hỏi lại nếu thiếu trang.
+
+Planner kiểm ứng viên khóa chính xác trên canonical đúng kỳ, với tối đa 20.000 dòng tổng và sáu trường định danh mỗi phía. Số khóa trùng và số lần xuất hiện mỗi khóa chỉ dùng để chọn bản nháp. Trường tiền phải trùng chỉ tiêu, cơ sở tiền, đơn vị và currency đã duyệt. Trường hợp chỉ một ứng viên tốt nhất và vượt validator, bản nháp có nguồn `DETERMINISTIC`. `AI_PLAN_MISSING` được giữ trong trace và receipt, đồng thời trả bản nháp cần xác nhận với các dữ kiện còn thiếu. Hợp đồng duyệt và chạy đối soát giữ nguyên.
+
 ## Review dùng chung và khôi phục bản nháp — 06/11/2026
 
 Nguồn sự thật của thẻ review là `AgentWorkflowRow.detail.reviews`, tách khỏi proposal ánh xạ thủ công và approval bất biến. `GET /api/agent/tables/{table_id}/mapping-reviews` trả tối đa10 workflow có thẻ MAPPING OPEN đúng bảng, project, workspace và actor, loại hội thoại đã xóa. Chat và Dữ liệu phải đọc cùng thẻ này; không lấy proposal thủ công làm bản thay thế ngầm.

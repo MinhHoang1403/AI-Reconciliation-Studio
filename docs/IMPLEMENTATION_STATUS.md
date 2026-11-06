@@ -28,7 +28,19 @@ Baseline Backend/PostgreSQL **479/479 PASS**, 134,90giây; năm ca backup sau s�
 
 Backend/Worker image `sha256:ee459eecd9c99b44b14944bb9a1046d9d0302a451caac4007aaa17fdf87b8619`, Frontend `sha256:231f80c3b30b2ae08bae350d61579275a8f851627414b6840d7881f39457e043`, cùng revision858dfb3; source45files và HTTP7assets khớp. Rollback58cbc3c đã chạy thật rồi trở lại main; cả hai lượt persistence PASS. Giữ image rollback Backend `ec809221ac40`, Frontend `b747bf3b7aef`. Đã xóa đúng hai image cũ `0462a566d402`/`5226dd8c8bd1` sau kiểm ownership, references và smoke. Bốn dịch vụ healthy;27container ngoài Studio cùng IDs/images/mounts (so theo destination, không theo thứ tự mảng);36volumes không đổi. Ledger Gemini378→378, không gọi AI mới.
 
-Giữ hai nhánh cũ trên origin để truy vết trong khi chương trình tổng thể chưa hoàn tất; toàn bộ commit đã nằm trong main. Kế hoạch mới được lưu nguyên văn tại1aee939, chưa triển khai. Bản gốc có Markdown hard breaks hợp lệ, kiểm diff riêng không coi hai dấu cách cuối dòng là lỗi nội dung;40lỗi khoảng trắng bảng còn được ghi nhận. **Công đoạn1 còn BLOCKED ở cleanup cache do automatic review; công đoạn2 NOT_RUN. Chưa READY_FOR_SEAMLESS_LOCAL_UAT.** Không coi hồi quy local là nghiệm thu các lỗi Planner/Query LIVE còn tồn tại.
+Hai nhánh cũ trên origin được giữ để truy vết. Toàn bộ commit hợp nhất đã nằm trong main. Kế hoạch được lưu nguyên văn tại `1aee939`. Công đoạn hợp nhất kỹ thuật đã hoàn tất. Cleanup cache có trạng thái **SKIPPED_BY_POLICY — NON_BLOCKING** theo chỉ dẫn tiếp theo của chủ dự án. Triển khai tự động hóa tiếp tục trên `codex/intelligent-automation-experience` từ main `3deac3f`. Mốc hợp nhất chưa phải nghiệm thu hành trình tự động hóa.
+
+---
+
+## Tự động hóa sau upload — nhánh triển khai
+
+CSV/XLSX mới có Parquet tự chuẩn bị và dòng cần kiểm tra, đọc từ màn hình Dữ liệu và API truy vấn có kiểu. Mapping tương thích được điền vào bản nháp cùng evidence mới. Worker có một luồng xử lý job chờ provider và nhận parse trong khi luồng đó bận. Planner kiểm khóa trong kỳ và chọn bản nháp xác định khi đủ bằng chứng. Top-N và câu hỏi theo vị trí dùng bảng đã lưu của đúng run.
+
+Full Backend/PostgreSQL trên nguồn triển khai đạt **488/488** trong 147,39 giây, có một cảnh báo deprecation của TestClient. Có các ca mới kiểm prepared khi tắt AI, giữ dòng nguồn, template khác cấu trúc, parse khi inference bị giữ, Planner trong kỳ và truy vấn theo vị trí. Browser tập trung đạt **8/8** trên frontend build mới với backend baseline. Lượt này kiểm sidebar ở năm chiều rộng và phân trang dữ liệu gần đây. Full browser trên cả ứng dụng mới và nghiệm thu ba nguồn đang chờ.
+
+Benchmark CSV tổng hợp trên Windows với hai luồng Polars, năm lượt mỗi mức, không AI. Bước tạo và ghi Parquet prepared đạt p50/p95 quan sát lần lượt 2,65/68,69 ms ở 10 dòng, 2,73/3,82 ms ở 1.000 dòng, 4,49/5,99 ms ở 10.000 dòng và 15,40/16,15 ms ở 75.000 dòng. Đây là phép đo riêng bước prepared sau parse và profile. Receipt ở `runtime/automation-preparation-benchmark.json`, ngoài Git.
+
+Mapping Memory hiện điền lại bản nháp để người dùng kiểm tra. Tự áp dụng qua policy owner, kiểm thử bộ dữ liệu mới, nghiệm thu provider LIVE và phát hành vẫn là phần đang triển khai.
 
 ---
 

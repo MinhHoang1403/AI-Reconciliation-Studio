@@ -317,6 +317,11 @@ def test_status_reads_current_metadata_without_verified_run_or_model(pg, monkeyp
                 mapping = db.get(MappingRow, table.active_mapping_id)
                 mapping.status = "PROPOSED" if variant == "MAPPING_REVIEW" else "REJECTED"
                 table.active_mapping_id = None
+                if variant == "PARSED":
+                    for draft in db.scalars(
+                        select(MappingRow).where(MappingRow.source_table_id == table.id)
+                    ):
+                        draft.status = "REJECTED"
         db.commit()
 
     def forbidden(*args):

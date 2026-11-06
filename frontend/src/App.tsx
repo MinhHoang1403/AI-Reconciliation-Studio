@@ -77,7 +77,7 @@ import {
 } from "./types";
 
 type Tab = "explore" | "mapping" | "normalize";
-type View = "parsed" | "raw" | "canonical" | "errors";
+type View = "raw" | "prepared" | "prepared_findings" | "canonical" | "errors";
 
 export function App() {
   const [location, setLocation] = useState(readLocation);
@@ -164,7 +164,7 @@ export function App() {
   const [mappings, setMappings] = useState<Mapping[]>([]);
   const [canonicals, setCanonicals] = useState<Canonical[]>([]);
   const [canonicalId, setCanonicalId] = useState("");
-  const [view, setView] = useState<View>("parsed");
+  const [view, setView] = useState<View>("raw");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewQuery, setPreviewQuery] = useState("");
   const [offset, setOffset] = useState(0);
@@ -614,7 +614,7 @@ export function App() {
   useEffect(() => {
     setOffset(0);
     setSearch("");
-    setView(pendingTarget?.canonical_id ? "errors" : "parsed");
+    setView(pendingTarget?.canonical_id ? "errors" : "raw");
     setPreview(null);
     void loadDetails().catch((err) => setError(err.message));
   }, [loadDetails]);
@@ -824,7 +824,7 @@ export function App() {
           ? "normalize"
           : "explore",
     );
-    setView(action.canonical_id ? "errors" : "parsed");
+    setView(action.canonical_id ? "errors" : "raw");
   }
   function showEvidence(id: string, row?: number) {
     setEvidenceRow(row);
@@ -939,6 +939,7 @@ export function App() {
             raw_value: "Giá trị gốc",
             value_state: "Loại giá trị",
             code: "Mã cảnh báo",
+            _preparation_flags: "Cần kiểm tra",
           } as Record<string, string>
         )[key] ||
         key,
@@ -1048,6 +1049,25 @@ export function App() {
             <Sparkles size={19} />
             <span>AI Assistant</span>
           </button>
+          {([
+            ["data", "Dữ liệu", Database],
+            ["reconcile", "Đối soát", Layers3],
+            ["reports", "Báo cáo", FileSpreadsheet],
+          ] as const).map(([target, label, Icon]) => (
+            <button
+              key={target}
+              className={page === target ? "active" : ""}
+              aria-current={page === target ? "page" : undefined}
+              disabled={!ready}
+              onClick={() => {
+                setPage(target);
+                setSidebar(false);
+              }}
+            >
+              <Icon size={19} />
+              <span>{label}</span>
+            </button>
+          ))}
           <button disabled={!ready} aria-expanded={assistantHistoryOpen} onClick={event => {
             assistantHistoryTrigger.current = window.matchMedia("(max-width: 900px)").matches
               ? document.querySelector<HTMLElement>(".menu-button") : event.currentTarget;
@@ -1718,22 +1738,20 @@ export function App() {
                                   >
                                     {(
                                       [
-                                        ["parsed", "Đã đọc"],
                                         ["raw", "Giá trị gốc"],
-                                        ["canonical", "Chuẩn hóa"],
+                                        [table?.prepared ? "prepared" : "canonical", table?.prepared ? "Tự chuẩn bị" : "Chuẩn hóa"],
                                         ["errors", "Cảnh báo / lỗi"],
                                       ] as const
                                     ).map(([key, label]) => (
                                       <button
                                         key={key}
-                                        disabled={
-                                          ["canonical", "errors"].includes(
-                                            key,
-                                          ) && !canonicalId
-                                        }
-                                        className={view === key ? "chosen" : ""}
+                                        disabled={key === "canonical" && !canonicalId ||
+                                          key === "errors" && !canonicalId && !table?.prepared}
+                                        className={view === key ||
+                                          (key === "prepared" && view === "canonical") ||
+                                          (key === "errors" && view === "prepared_findings") ? "chosen" : ""}
                                         onClick={() => {
-                                          setView(key);
+                                          setView(key === "errors" && !canonicalId ? "prepared_findings" : key);
                                           setOffset(0);
                                         }}
                                       >
@@ -1754,6 +1772,14 @@ export function App() {
                                     />
                                   </label>
                                 </div>
+                                {table?.prepared && canonicalId && ["prepared", "canonical"].includes(view) && (
+                                  <button className="button secondary compact" onClick={() => {
+                                    setView(view === "prepared" ? "canonical" : "prepared");
+                                    setOffset(0);
+                                  }}>
+                                    {view === "prepared" ? "Xem bản chuẩn hóa đã duyệt" : "Xem bản tự chuẩn bị"}
+                                  </button>
+                                )}
                                 {["canonical", "errors"].includes(view) && (
                                   <label className="canonical-select">
                                     Phiên bản kết quả
@@ -1792,6 +1818,33 @@ export function App() {
                                     gốc được giữ bất biến. Không chạy công thức
                                     Excel.
                                   </Notice>
+                                )}
+                                {["prepared", "prepared_findings"].includes(view) && table?.prepared && (
+                                  <>
+                                    <Notice>
+                                      Đã tự chuẩn bị để xem và tìm kiếm. Cần xác nhận ý nghĩa
+                                      nghiệp vụ trước khi dùng để đối soát.
+                                    </Notice>
+                                    {table.prepared.quality_summary
+                                      .filter((column) => column.invalid_date_count > 0)
+                                      .map((column) => (
+                                        <Notice tone="warning" key={column.column_id}>
+                                          {table.parsed.columns.find((source) => source.id === column.column_id)?.name}
+                                          {" · "}{column.invalid_date_count} giá trị ngày cần kiểm tra
+                                        </Notice>
+                                      ))}
+                                    {table.prepared.quality_summary.some((column) => column.invalid_date_count > 0) && (
+                                      <button
+                                        className="button secondary compact"
+                                        onClick={() => {
+                                          setView(view === "prepared" ? "prepared_findings" : "prepared");
+                                          setOffset(0);
+                                        }}
+                                      >
+                                        {view === "prepared" ? "Xem dòng cần kiểm tra" : "Xem toàn bộ dòng"}
+                                      </button>
+                                    )}
+                                  </>
                                 )}
                                 {table?.parsed.warnings.map((w) => (
                                   <Notice tone="warning" key={w}>
