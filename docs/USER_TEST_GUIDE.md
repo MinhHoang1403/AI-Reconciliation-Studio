@@ -42,6 +42,8 @@ Khi gửi câu mới, Chat đưa bạn xuống nội dung mới nhất. Khi AI t
 
 Chủ không gian có thể mở **Tự áp dụng cho lần tải tương thích** tại mapping đã duyệt và có bản chuẩn hóa không lỗi. Quyền này áp dụng cho tệp cùng tên, cùng cấu trúc và phạm vi trong dự án. Hệ thống kiểm toàn bảng khi tải lại. Nếu phát hiện thay đổi cần xác nhận, bạn vẫn có bản tự chuẩn bị và bản nháp để kiểm tra.
 
+Trong Chat, chọn một tệp có một bảng làm ngữ cảnh rồi gửi **“Xem bản tự chuẩn bị”** hoặc **“Đếm số dòng dữ liệu tự chuẩn bị”**. Hai yêu cầu này dùng dữ liệu đã lưu và không cần gọi model. Nếu chưa có bản tự chuẩn bị hoặc đang chọn nhiều nguồn, hệ thống hướng dẫn chọn lại. Ý nghĩa tiền và điều kiện đối soát vẫn cần được xác nhận ở bước nghiệp vụ.
+
 ## 2. Những từ cần hiểu
 
 | Từ trong tài liệu | Hiểu đơn giản |

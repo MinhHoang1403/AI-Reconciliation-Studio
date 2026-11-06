@@ -78,7 +78,14 @@ def agent_catalogue(
         WorkflowState,
     )
     from studio.data_query import STATUS_VALUES
-    from studio.database import AgentWorkflowRow, CanonicalRow, SchemaRow, TableRow, VersionRow
+    from studio.database import (
+        AgentWorkflowRow,
+        ArtifactRow,
+        CanonicalRow,
+        SchemaRow,
+        TableRow,
+        VersionRow,
+    )
 
     scoped_context(db, actor, context)
     if not dataset_ids and context.dataset_id:
@@ -140,11 +147,14 @@ def agent_catalogue(
             if canonical:
                 schema = get_scoped(db, SchemaRow, canonical.contract["schema_id"], actor)
                 definition = SchemaDefinition.model_validate(schema.definition)
+            parsed = get_scoped(db, ArtifactRow, table.artifact_id, actor)
+            prepared = parsed.metadata_json.get("prepared") or {}
             items.append(
                 TableContext(
                     table_id=table.id,
                     sheet=table.sheet,
                     row_count=table.row_count,
+                    prepared_artifact_id=prepared.get("prepared_artifact_id"),
                     columns=[
                         SourceColumn(
                             id=c["column_id"],

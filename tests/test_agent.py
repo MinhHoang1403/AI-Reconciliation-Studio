@@ -1682,6 +1682,39 @@ def test_local_reconciliation_router_keeps_explicit_source_fact_slots():
         provider.close()
 
 
+def test_prepared_preview_is_explicit_and_scoped_without_business_approval():
+    from studio.agent_intents import resolve_prepared_listing
+    from studio.contracts.agent import IntentBatch
+
+    cat = catalogue()
+    table = cat.datasets[0].tables[0]
+    assert resolve_prepared_listing("Xem dữ liệu tự chuẩn bị", cat).intent == "CLARIFY"
+    table.prepared_artifact_id = "prepared-artifact"
+    for goal in ("Xem dữ liệu tự chuẩn bị", "Đếm số dòng dữ liệu tự chuẩn bị"):
+        intent = resolve_prepared_listing(goal, cat)
+        assert intent.query.source_kind == "PREPARED"
+        assert intent.query.source_id == table.table_id
+        assert (
+            validate_intents(IntentBatch(intents=[intent]).model_dump_json(), [goal], cat)[0]
+            == intent
+        )
+    for goal in (
+        "Xem dữ liệu gốc",
+        "Tổng tiền của bản tự chuẩn bị",
+        "Xem dữ liệu tự chuẩn bị của nguồn khác",
+        "Không xem dữ liệu tự chuẩn bị",
+    ):
+        assert resolve_prepared_listing(goal, cat) is None
+    foreign = resolve_prepared_listing("Xem dữ liệu tự chuẩn bị", cat)
+    foreign.query.source_id = "foreign-table"
+    with pytest.raises(DomainError, match="AI_INVALID_SOURCE"):
+        validate_intents(
+            IntentBatch(intents=[foreign]).model_dump_json(), ["Xem dữ liệu tự chuẩn bị"], cat
+        )
+    cat.datasets.append(cat.datasets[0].model_copy(update={"id": "another-dataset"}, deep=True))
+    assert resolve_prepared_listing("Xem dữ liệu tự chuẩn bị", cat).intent == "CLARIFY"
+
+
 def test_reuse_scope_rejects_new_source_facts_instead_of_silently_discarding_them():
     from studio.agent_intents import compile_routing
 

@@ -16,6 +16,52 @@ from test_reconciliation_postgres import prepare_pair
 pytestmark = pytest.mark.integration
 
 
+def test_prepared_chat_preview_and_count_need_no_provider_or_mapping(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+    from studio.database import TraceRow
+
+    def unavailable(*args):
+        pytest.fail("An explicit prepared preview must not call a provider.")
+
+    monkeypatch.setattr(agents, "interpret_requests", unavailable)
+    client, factory, worker = pg
+    pid = project(client)
+    response = client.post(
+        "/api/datasets/uploads",
+        data={"project_id": pid, "request_ai_mapping": "false"},
+        files={
+            "files": (
+                "prepared.csv",
+                b"ID,Date\n000123,2026-10-01\n000124,2026-10-02\n",
+                "text/csv",
+            )
+        },
+    )
+    assert response.status_code == 202
+    drain(factory, worker)
+    context = dict(project_id=pid, dataset_id=response.json()["items"][0]["id"])
+    cid = conversation(client, context)
+    for index, question in enumerate(
+        ("Xem dữ liệu tự chuẩn bị", "Đếm số dòng dữ liệu tự chuẩn bị")
+    ):
+        queued = ask_agent(client, context, cid, text=question, key=f"prepared-{index}")
+        drain(factory, worker)
+        flow = workflow_for(client, factory, queued["job_id"])
+        assert flow["state"] == "COMPLETED" and flow["detail"]["model_calls"] == 0
+        data = next(b["result"] for b in flow["detail"]["blocks"] if b["type"] == "table")
+        assert data["source_kind"] == "PREPARED"
+        assert data["verification_status"] == "RAW_UNVERIFIED"
+        if index:
+            assert data["rows"][0]["count_rows_0"] == 2
+        else:
+            assert data["total_count"] == 2
+            assert data["rows"][0]["c1"] == "000123"
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(TraceRow)) == 0
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 0
+        assert not db.scalar(select(MappingRow.id).where(MappingRow.status == "APPROVED").limit(1))
+
+
 def test_review_failure_then_valid_partial_reply_clears_current_error_keeps_history(
     pg, monkeypatch  # noqa: F811
 ):

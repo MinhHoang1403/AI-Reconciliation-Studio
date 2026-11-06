@@ -12,7 +12,7 @@ from studio.ai_gateway import TypedProvider
 from studio.assistant import plain_question
 from studio.contracts import WorkspacePolicy
 from studio.contracts.agent import AgentIntent, IntentBatch, IntentCatalogue, RoutingBatch
-from studio.contracts.data_query import DataQuery
+from studio.contracts.data_query import DataQuery, QueryAggregation
 from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
@@ -200,15 +200,19 @@ def validate_intents(
             if q.project_id != catalogue.context.project_id:
                 raise DomainError("AI_INVALID_SOURCE", "Query sai project.")
             if q.source_kind == "PREPARED":
-                raise DomainError("AI_INVALID_SOURCE", "Nguồn tự chuẩn bị cần được chọn trực tiếp.")
+                selected = resolve_prepared_listing(goal, catalogue)
+                if selected is None or selected.query != q:
+                    raise DomainError(
+                        "AI_INVALID_SOURCE", "Nguồn tự chuẩn bị cần được chọn trực tiếp."
+                    )
             source = (
                 canonical.get(q.source_id)
                 if q.source_kind == "CANONICAL"
                 else tables.get(q.source_id)
-                if q.source_kind == "RAW_PREVIEW"
+                if q.source_kind in {"RAW_PREVIEW", "PREPARED"}
                 else None
             )
-            if (q.source_kind in {"CANONICAL", "RAW_PREVIEW"} and source is None) or (
+            if (q.source_kind in {"CANONICAL", "RAW_PREVIEW", "PREPARED"} and source is None) or (
                 q.source_kind in {"VERIFIED_RUN", "EXCEPTIONS"}
                 and q.source_id not in catalogue.run_ids
             ):
@@ -520,12 +524,53 @@ def resolve_ranked_results(goal: str, catalogue: IntentCatalogue) -> AgentIntent
     )
 
 
+def resolve_prepared_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
+    """Read or count the explicitly requested prepared layer of one scoped table."""
+    normalized = " ".join(plain_question(goal).split()).rstrip("?.!")
+    matched = re.fullmatch(
+        r"(?:(?:cho toi |cho |hay )?xem(?: truoc)? (?:du lieu|ban) tu chuan bi"
+        r"|dem (?:so )?dong (?:du lieu|ban) tu chuan bi)"
+        r"(?: cua (?:nguon|tep|file) dang (?:mo|chon))?",
+        normalized,
+    )
+    if not matched:
+        return None
+    datasets = [
+        dataset
+        for dataset in catalogue.datasets
+        if catalogue.context.dataset_id in {None, dataset.id}
+    ]
+    if len(datasets) != 1 or len(datasets[0].tables) != 1:
+        return AgentIntent(
+            intent="CLARIFY",
+            questions=["Hãy chọn một nguồn có một bảng để xem bản tự chuẩn bị."],
+        )
+    table = datasets[0].tables[0]
+    if table.prepared_artifact_id is None:
+        return AgentIntent(
+            intent="CLARIFY",
+            questions=["Nguồn này chưa có bản tự chuẩn bị. Bạn có thể xem dữ liệu gốc."],
+        )
+    return AgentIntent(
+        intent="QUERY_DATA",
+        query=DataQuery(
+            project_id=catalogue.context.project_id,
+            source_kind="PREPARED",
+            source_id=table.table_id,
+            aggregations=[QueryAggregation(op="count")] if normalized.startswith("dem ") else [],
+        ),
+    )
+
+
 def resolve_plain_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
     """Finite read shortcut for source previews or rows of one named source.
 
     A plural preview uses only current scoped sources; a row list needs a unique
     evidence-backed alias. Filters, periods, money and comparisons stay with the router.
     """
+    prepared = resolve_prepared_listing(goal, catalogue)
+    if prepared is not None:
+        return prepared
     normalized = plain_question(goal)
     # One read request can inspect several sources; never ask a model to split
     # an unfiltered preview into separate logical requests. Financial/filter

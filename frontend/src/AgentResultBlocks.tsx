@@ -101,6 +101,7 @@ function QueryTable({ initial, workflowId, selection }: {
     {!countOnly && <p><strong>{data.total_count.toLocaleString("vi-VN")} {grouped ? "nhóm kết quả" : "dòng dữ liệu"}</strong>{data.total_count === 0 ? ". Chưa tìm thấy dữ liệu phù hợp với điều kiện bạn chọn." : ". Bạn có thể xem dữ liệu và mở từng dòng gốc bên dưới."}</p>}
     <p className="muted">Đang xem {previewRows.length} dòng trong trang {Math.floor(data.offset / data.limit) + 1}{data.rows.length > 10 ? `; trang này có ${data.rows.length} dòng.` : "."}</p>
     {data.query.source_kind === "RAW_PREVIEW" && <p>Đây là dữ liệu gốc đã đọc từ tệp. Ý nghĩa các cột chưa được xác nhận; dữ liệu chưa được chuẩn hóa.</p>}
+    {data.query.source_kind === "PREPARED" && <p>Đây là bản tự chuẩn bị để xem và tìm kiếm. Cần xác nhận ý nghĩa nghiệp vụ trước khi dùng để đối soát.</p>}
     {data.verification_status === "PARTIAL_VERIFIED" && <Notice tone="warning">Kết quả chỉ được kiểm chứng một phần. Hãy kiểm tra các dữ liệu chưa đủ điều kiện trước khi kết luận.</Notice>}
     {data.warnings.map(w => <p className="muted" key={w}>{w}</p>)}
     {!data.evidence_complete && <Notice tone="warning">Chỉ hiển thị một phần bằng chứng; thông tin nguồn đầy đủ vẫn được lưu.</Notice>}

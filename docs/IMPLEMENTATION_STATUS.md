@@ -77,6 +77,12 @@ Qwen LIVE chọn đúng hai nguồn và kỳ nhưng bỏ dữ kiện vai trò, n
 
 Phát hiện prompt rút gọn riêng của Qwen thay toàn bộ prompt chung. Source mới thêm hướng dẫn vai trò/bộ lọc vào đúng prompt local, yêu cầu hai đối tượng nguồn và đủ các trường nullable trong JSON Schema. Dữ kiện chưa được nêu tiếp tục là null. Regression đi qua Ollama transport giả lập, kiểm hợp đồng local thực sự gửi và bảo toàn việc hỏi khi chưa đủ nguồn. Nhãn quan hệ và phép cộng nhóm trên thẻ duyệt được hiển thị bằng tiếng Việt.
 
+Source `d1c34b9` đạt **499/499 Backend/PostgreSQL**, 133,05 giây, cùng Ruff, mypy, TypeScript, ESLint và build. Đã triển khai, đối chiếu source46files/HTTP7assets và bảo toàn metadata/tệp khi recreate. Lượt Qwen tiếp theo vượt timeout90giây, job `17a8553c-0640-484e-8201-b94b38204673` kết thúc FAILED với `OLLAMA_UNAVAILABLE`. Chưa tạo workflow, ledger381không đổi. Giữ receipt này ở `runtime/automation-live-planner-QWEN_8B.json`, lượt thiếu dữ kiện trước đó ở tệp `*-before-schema.json`. Cổng Qwen LIVE vẫn FAIL.
+
+Chat bổ sung hai câu đọc xác định trên bản tự chuẩn bị của một tệp được chọn. Xem trước và đếm dòng dùng cùng Query DSL, kiểm quyền và checksum, không gọi model, không tạo mapping/canonical hoặc quyền đối soát. Không chọn rõ một bảng thì hỏi lại. Validator từ chối việc tự đổi sang prepared bằng yêu cầu khác hoặc tham chiếu bảng ngoài ngữ cảnh. UI ghi rõ đây là bản tự chuẩn bị cần xác nhận nghiệp vụ.
+
+Full Backend/PostgreSQL trên source bổ sung này đạt **501/501**,128,43 giây. Trong ca PostgreSQL, hai câu hỏi trả đúng hai dòng và mã có số0đầu khi provider bị cấm gọi, không có trace AI hoặc canonical được tạo. Ruff, mypy51files, TypeScript, ESLint, build và Markdown đạt.
+
 ### Bảo toàn và công cụ backup
 
 Lượt `backup_23e21b4d901442dc8ab9c43e93cd5897` có metadata 64.907.007 byte, bị OOM tại bước đọc toàn bộ metadata để restore. Exit137 được giữ, không có receipt PASS. Công cụ backup lập chỉ mục byte của từng bản ghi lúc ghi file, rồi đọc và insert từng batch200 từ chính file backup. Định dạng codec cũ giữ nguyên byte, được regression kiểm Unicode, ngày, Decimal và nhãn JSON không đáng tin.

@@ -119,6 +119,7 @@ class TableContext(Contract):
     table_id: str
     sheet: str
     row_count: int
+    prepared_artifact_id: str | None = None
     columns: list[SourceColumn] = Field(max_length=40)
     canonical_id: str | None = None
     canonical_status: Literal["READY", "PARTIAL", "FAILED"] | None = None
