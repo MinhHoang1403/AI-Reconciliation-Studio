@@ -44,7 +44,7 @@ def test_additive_migration_preserves_existing_approved_canonical(pg):  # noqa: 
     assert any(row["record_payload"].get("reference_id") == "000123" for row in preview["items"])
 
 
-def prepare_pair(pg, *, workbooks=False, grouped=False, partial=False):  # noqa: F811
+def prepare_pair(pg, *, workbooks=False, grouped=False, partial=False, report_period=None):  # noqa: F811
     from reconciliation_cases import FIXTURES
 
     client, factory, worker = pg
@@ -91,6 +91,8 @@ def prepare_pair(pg, *, workbooks=False, grouped=False, partial=False):  # noqa:
             raw = buffer.getvalue()
             filename += ".xlsx"
             media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        if report_period:
+            filename = filename.replace(".csv", f"_{report_period}.csv", 1)
         response = client.post(
             "/api/datasets/uploads",
             data={"project_id": pid, "request_ai_mapping": "false"},
@@ -259,6 +261,71 @@ def test_owner_mapping_reuse_checks_full_table_and_records_original_approval(pg)
     }
     revoked = repeat(raw.replace(b"Parcel A", b"Parcel A after revocation"))
     assert not client.get(f"/api/datasets/{revoked}/artifacts").json()["canonical_datasets"]
+
+
+@pytest.mark.parametrize("change", ["period", "reorder", "description", "combined"])
+def test_mapping_reuse_rebinds_period_and_column_positions_without_new_approval(pg, change):  # noqa: F811
+    import csv
+    import io
+
+    from reconciliation_cases import FIXTURES
+    from studio.database import MappingRow
+
+    client, factory, worker = pg
+    pid, plan = prepare_pair(pg, report_period="2026_10")
+    with factory() as db:
+        original = db.get(CanonicalRow, plan.left.canonical_id)
+        mapping_id = original.mapping_id
+        approval = db.get(MappingRow, mapping_id).decision
+    assert (
+        client.patch(
+            f"/api/mappings/{mapping_id}/reuse-policy",
+            json={"enabled": True, "expected_enabled": False},
+        ).status_code
+        == 200
+    )
+    records = list(csv.DictReader(io.StringIO((FIXTURES / "shipments.csv").read_text())))
+    fields = list(records[0])
+    if change in {"reorder", "combined"}:
+        fields = list(reversed(fields))
+    if change in {"description", "combined"}:
+        fields.insert(0, "Ghi chú")
+        for row in records:
+            row["Ghi chú"] = "Kỳ mới, dữ liệu tổng hợp"
+    for row in records:
+        row["description"] += " next period"
+        row["event_date"] = row["event_date"].replace("2026-10", "2026-11")
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fields, lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(records)
+    period = "2026_11" if change in {"period", "combined"} else "2026_10"
+    uploaded = client.post(
+        "/api/datasets/uploads",
+        data={"project_id": pid, "request_ai_mapping": "false"},
+        files={"files": (f"shipments_{period}.csv", output.getvalue().encode(), "text/csv")},
+    )
+    assert uploaded.status_code == 202, uploaded.text
+    dataset_id = uploaded.json()["items"][0]["id"]
+    drain(factory, worker)
+    artifacts = client.get(f"/api/datasets/{dataset_id}/artifacts").json()
+    assert len(artifacts["canonical_datasets"]) == 1, artifacts
+    canonical = artifacts["canonical_datasets"][0]
+    assert canonical["quality_status"] == "READY"
+    with factory() as db:
+        applied = db.get(MappingRow, canonical["mapping_revision_id"]).decision
+        assert applied["approved_by"] == approval["approved_by"]
+        assert applied["approved_at"] == approval["approved_at"]
+        assert applied["source_signature"] != approval["source_signature"] or change == "period"
+        assert db.get(MappingRow, mapping_id).decision == approval
+    preview = client.get(
+        f"/api/tables/{canonical['source_table_id']}/preview",
+        params={"kind": "canonical", "canonical_id": canonical["id"]},
+    ).json()
+    first = preview["items"][0]["record_payload"]
+    assert first["tracking_id"] == "000701"
+    assert first["delivery_charge"] == "25.00"
+    assert first["currency"] == "VND"
 
 
 def test_manual_approval_requires_explicit_confirmation_for_invalid_rows(pg):  # noqa: F811

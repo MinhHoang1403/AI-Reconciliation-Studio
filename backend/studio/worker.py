@@ -54,6 +54,7 @@ from studio.document_parser import (
 from studio.errors import DomainError
 from studio.mapping_reuse import (
     approved_reference,
+    compatible_column_bindings,
     current_reuse_grant,
     exact_reuse_source,
     passes_reuse_preflight,
@@ -213,7 +214,6 @@ def _approved_mapping_draft(
             .join(VersionRow, VersionRow.id == TableRow.dataset_version_id)
             .where(
                 MappingRow.workspace_id == table.workspace_id,
-                MappingRow.signature == source_signature(profile),
                 MappingRow.business_scope == project_for_table(db, table).business_scope,
                 MappingRow.status == "APPROVED",
                 MappingRow.source_table_id != table.id,
@@ -224,12 +224,20 @@ def _approved_mapping_draft(
             .limit(11)
         )
     )
+    bounded = len(candidates) <= 10
+    candidates = [
+        candidate
+        for candidate in candidates
+        if (source := db.get(TableRow, candidate.source_table_id)) is not None
+        and compatible_column_bindings(DatasetProfile.model_validate(source.profile), profile)
+        is not None
+    ]
     if not candidates:
         return None
     template = candidates[0]
     grant_id = None
     eligible = []
-    if len(candidates) <= 10:
+    if bounded:
         for candidate in candidates:
             grant = current_reuse_grant(db, candidate)
             if grant is None:
@@ -247,6 +255,10 @@ def _approved_mapping_draft(
     template_schema = db.get(SchemaRow, template.schema_id)
     assert template_schema is not None
     schema = SchemaDefinition.model_validate(template_schema.definition)
+    source = db.get(TableRow, template.source_table_id)
+    assert source is not None
+    bindings = compatible_column_bindings(DatasetProfile.model_validate(source.profile), profile)
+    assert bindings is not None
     proposal = SchemaProposal(
         entity_kind=schema.entity_kind,
         grain=schema.grain,
@@ -255,7 +267,8 @@ def _approved_mapping_draft(
             decision.model_copy(
                 update={
                     "decision": MappingStatus.PROPOSED,
-                    "evidence_ids": [f"{table.id}:{decision.source_field}"],
+                    "source_field": bindings[decision.source_field],
+                    "evidence_ids": [f"{table.id}:{bindings[decision.source_field]}"],
                 }
             )
             for decision in old.decisions
@@ -451,6 +464,11 @@ def _reuse_mapping(job_id: str, token: str) -> None:
 
         def eligible() -> bool:
             grant = current_reuse_grant(db, template)
+            current_profile = DatasetProfile.model_validate(target.profile)
+            bindings = compatible_column_bindings(
+                DatasetProfile.model_validate(source.profile), current_profile
+            )
+            expected = _approved_mapping_draft(db, target, current_profile)
             return (
                 grant is not None
                 and grant.id == payload["grant_id"]
@@ -461,7 +479,12 @@ def _reuse_mapping(job_id: str, token: str) -> None:
                 and draft.source_table_id == target.id
                 and draft.status == "PROPOSED"
                 and target.active_mapping_id is None
-                and template.signature == draft.signature
+                and draft.signature == source_signature(current_profile)
+                and bindings is not None
+                and expected is not None
+                and expected[0] == template.id
+                and expected[3] == grant.id
+                and expected[2].model_dump(mode="json") == draft.proposal
                 and project_for_table(db, target).id == job.project_id
                 and exact_reuse_source(db, source, target, template)
                 and approved_reference(db, template, source)
@@ -487,6 +510,8 @@ def _reuse_mapping(job_id: str, token: str) -> None:
         schema = SchemaDefinition.model_validate(schema_row.definition)
         source_profile = DatasetProfile.model_validate(source.profile)
         target_profile = DatasetProfile.model_validate(target.profile)
+        bindings = compatible_column_bindings(source_profile, target_profile)
+        assert bindings is not None
         target_id, source_id = target.id, source.id
         dataset_id = version.dataset_id
         path = storage_path(settings.storage_root, parsed.storage_key)
@@ -494,9 +519,13 @@ def _reuse_mapping(job_id: str, token: str) -> None:
         rebound = original.model_copy(
             update={
                 "source_table_id": target_id,
+                "source_signature": source_signature(target_profile),
                 "decisions": [
                     decision.model_copy(
-                        update={"evidence_ids": [f"{target_id}:{decision.source_field}"]}
+                        update={
+                            "source_field": bindings[decision.source_field],
+                            "evidence_ids": [f"{target_id}:{bindings[decision.source_field]}"],
+                        }
                     )
                     for decision in original.decisions
                 ],
@@ -509,7 +538,7 @@ def _reuse_mapping(job_id: str, token: str) -> None:
         try:
             plan = compile_transform_plan(rebound, schema, target_profile)
             passed, errors = passes_reuse_preflight(
-                pl.read_parquet(path), source_profile, target_profile, plan
+                pl.read_parquet(path), source_profile, target_profile, plan, original
             )
         except DomainError as exc:
             review_required(exc.code)
@@ -573,6 +602,7 @@ def _reuse_mapping(job_id: str, token: str) -> None:
                 "mapping_id": applied.id,
                 "normalize_job_id": normalize.id,
                 "template_mapping_id": payload["template_id"],
+                "column_bindings": bindings,
                 "grant_id": payload["grant_id"],
             },
         )

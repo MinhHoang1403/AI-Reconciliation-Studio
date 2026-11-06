@@ -1,5 +1,6 @@
 """Owner-authorized reuse of a specific human-approved mapping revision."""
 
+import re
 from collections import Counter
 
 import polars as pl
@@ -19,11 +20,64 @@ from studio.database import (
 )
 from studio.mapping_verification import preflight_rows
 from studio.normalization import NORMALIZATION_REVISION
+from studio.profiling import normalized_name
 from studio.repository import project_for_table
 from studio.schema_mapping import TransformPlan
 
 REUSE_ENABLED = "ENABLE_MAPPING_REUSE"
 REUSE_DISABLED = "DISABLE_MAPPING_REUSE"
+
+
+def report_name_identity(filename: str) -> str:
+    """[D] Ignore one valid, delimited reporting month, never arbitrary digits/words."""
+    periods = list(
+        re.finditer(r"(?<![0-9])(?:19|20)[0-9]{2}[_-](?:0[1-9]|1[0-2])(?![0-9])", filename)
+    )
+    if len(periods) != 1:
+        return filename
+    period = periods[0]
+    return filename[: period.start()] + "{report_month}" + filename[period.end() :]
+
+
+def compatible_column_bindings(
+    source: DatasetProfile, target: DatasetProfile
+) -> dict[str, str] | None:
+    """Bind complete approved columns by unique lexical header identity, never fuzzy.
+
+    Order and technical column IDs are physical, not semantic. Unknown new fields,
+    collisions, dropped fields and observed type/identifier drift require review.
+    Only extra lexical notes can be ignored by the approved transform; raw retains all.
+    """
+
+    def name(value: str) -> str:
+        return re.sub(r"[\s_-]+", " ", normalized_name(value)).strip()
+
+    left = {name(c.name): c for c in source.columns}
+    right = {name(c.name): c for c in target.columns}
+    if len(left) != len(source.columns) or len(right) != len(target.columns):
+        return None
+    if not left.keys() <= right.keys():
+        return None
+    bindings = {}
+    for header, original in left.items():
+        incoming = right[header]
+        if (
+            set(original.type_candidates) != set(incoming.type_candidates)
+            or original.identifier_candidate != incoming.identifier_candidate
+        ):
+            return None
+        bindings[original.column_id] = incoming.column_id
+    for header in right.keys() - left.keys():
+        column = right[header]
+        if (
+            header
+            not in {"description", "mo ta", "note", "notes", "ghi chu", "comment", "comments"}
+            or column.identifier_candidate
+            or set(column.type_candidates) != {"string"}
+            or column.observations.get("currency_counts")
+        ):
+            return None
+    return bindings
 
 
 def current_reuse_grant(db: Session, mapping: MappingRow) -> AuditRow | None:
@@ -92,7 +146,7 @@ def approved_reference(db: Session, mapping: MappingRow, table: TableRow) -> boo
 def exact_reuse_source(
     db: Session, source: TableRow, target: TableRow, mapping: MappingRow
 ) -> bool:
-    """Strict source identity gate. Headers alone cannot authorize financial reuse."""
+    """Same authorized report family; column rebinding and full preflight are separate."""
     if (
         source.workspace_id != target.workspace_id
         or source.sheet != target.sheet
@@ -127,7 +181,9 @@ def exact_reuse_source(
         and bool(first.metadata_json.get("extension"))
         and first.metadata_json.get("extension") == second.metadata_json.get("extension")
         and bool(first.metadata_json.get("filename"))
-        and first.metadata_json.get("filename") == second.metadata_json.get("filename")
+        and isinstance(second.metadata_json.get("filename"), str)
+        and report_name_identity(first.metadata_json["filename"])
+        == report_name_identity(second.metadata_json["filename"])
     )
 
 
@@ -143,22 +199,26 @@ def _format_facts(profile: DatasetProfile, mapping: MappingRevision) -> dict[str
         if operation in {"parse_decimal", "parse_date"}:
             field = "numeric_locales" if operation == "parse_decimal" else "date_formats"
             formats = observations.get(field)
-            facts[column.column_id] = (
+            facts[str(decision.candidate_target)] = (
                 sorted(key for key, count in formats.items() if count == nonempty)
                 if isinstance(formats, dict) and nonempty
                 else []
             )
         currencies = observations.get("currency_counts")
         if isinstance(currencies, dict) and currencies:
-            facts[f"currency:{column.column_id}"] = sorted(currencies)
+            facts[f"currency:{decision.candidate_target}"] = sorted(currencies)
     return facts
 
 
 def passes_reuse_preflight(
-    frame: pl.DataFrame, source: DatasetProfile, target: DatasetProfile, plan: TransformPlan
+    frame: pl.DataFrame,
+    source: DatasetProfile,
+    target: DatasetProfile,
+    plan: TransformPlan,
+    source_mapping: MappingRevision | None = None,
 ) -> tuple[bool, Counter[str]]:
     """Check every row, exact formatting evidence and unique preserved business keys."""
-    if _format_facts(source, plan.mapping) != _format_facts(target, plan.mapping):
+    if _format_facts(source, source_mapping or plan.mapping) != _format_facts(target, plan.mapping):
         return False, Counter({"FORMAT_OR_CURRENCY_DRIFT": 1})
     keys = {
         decision.candidate_target: decision.source_field

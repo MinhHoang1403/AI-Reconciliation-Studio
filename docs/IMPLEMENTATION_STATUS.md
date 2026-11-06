@@ -1,5 +1,47 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Hoàn thiện tự động hóa — kiểm chứng đang thực hiện
+
+Theo yêu cầu hoàn tất mới, tiếp tục trên cùng nhánh `codex/intelligent-automation-experience`. Đây là tiến độ thực thi, chưa là nghiệm thu hoặc quyền vượt các cổng còn thiếu. Matcher, Verifier, Decimal, oracle cũ, migrations và dependencies ứng dụng không đổi.
+
+**Mapping Memory:** đã tái hiện bốn failure trên source cũ với đổi kỳ tên tệp, đảo cột, thêm ghi chú và kết hợp ba thay đổi. Cả bốn giữ nguồn đọc được nhưng không tạo canonical. Bản sửa gắn lại các cột theo tên duy nhất, giữ mọi trường được duyệt, chỉ bỏ qua cột ghi chú thuần văn bản được thêm. Tên tệp chỉ được thay một token tháng hợp lệ trong cùng mẫu. Không fuzzy key, suy currency/timezone hoặc suy nghĩa cột từ giá trị trùng nhau. Preflight toàn bảng so định dạng theo trường đích thay vì vị trí cột. Mapping mới giữ signature/evidence nguồn đích và receipt có `column_bindings`; chữ ký người duyệt gốc không đổi.
+
+Trước sửa: **157 PostgreSQL PASS / 4 FAIL**, 139,42 giây. Sau sửa: **526/526 Backend/PostgreSQL PASS**, 149,59 giây, gồm 19 ca nhận diện/từ chối drift và bốn ca API/Worker mới. Ruff, mypy51files và repository/known-secret/history/path checks đạt. Một cảnh báo TestClient deprecation giữ nguyên. Bằng chứng ở `runtime/automation-reuse-{before,after}.log`. Docker vẫn chạy application `8db257a`; chưa triển khai source sửa này hoặc gọi nó là PASS LIVE.
+
+Đặc tả độc lập `tests/fixtures/mapping-business-specifications.json` định nghĩa bảy miền, 52 vai trò cột và 28 trường hợp mơ hồ ở mỗi split. Development/validation/holdout có cách đặt tên riêng; nhãn lấy từ mô tả nghiệp vụ. Các cột tiền cố ý có cùng phân bố, mã cũng có cùng giá trị để không thể dùng overlap thay nghĩa nghiệp vụ. Holdout chưa dùng để chỉnh thuật toán. `tools/benchmark-mapping.py` chạy từng phương án trong tiến trình riêng, so alias hiện tại, RapidFuzz+profile, Valentine COMA có instances và hybrid. Đây là phép đo gợi ý cột, không tự đo grain/timezone hoặc false auto-approval. Hai nội dung sau cần kiểm riêng qua workflow thật.
+
+Valentine 1.1.0 (Apache-2.0) chạy trong thư mục thử nghiệm ngoài Git với 29 gói bổ sung, khoảng 662 MiB cho toàn thư mục thử nghiệm dùng chung với phép đo Pandera trước đó. NLTK stopwords nằm trong runtime của phép thử. Bản ứng dụng giữ dependency hiện hành. Nguồn phương pháp gồm [Valentine matchers](https://delftdata.github.io/valentine/matchers/), [nghiên cứu](https://delftdata.github.io/valentine/research/) và [RapidFuzz 3.14.6](https://rapidfuzz.github.io/RapidFuzz/Usage/fuzz.html).
+
+| Holdout 80 cột, 52 nhãn dương | Precision@1 | Recall@1 | Recall@3/@5 | Đề xuất sai trên cột mơ hồ | Bỏ lỡ khóa |
+| --- | --- | --- | --- | --- | --- |
+| Alias hiện hành | 0/1 | 0/52 | 0/52 | 1 | 17 |
+| RapidFuzz + profile | 35/44 | 35/52 | 35/52 | 7 | 8 |
+| Valentine COMA | 48/53 | 48/52 | 50/52 | 5 | 2 |
+| Hybrid | 49/60 | 49/52 | 50/52 | 10 | 1 |
+
+Valentine tăng recall trên tên cột tiếng Anh của holdout, nhưng validation với tên tiếng Việt chỉ đúng 7/52 ở hạng đầu. Hybrid tăng thêm một nhãn đúng trên holdout, đồng thời tăng từ 5 lên 10 đề xuất sai ở cột mơ hồ. Trên cả 21 bảng thử mỗi phương án, p50/p95 của alias là 0,15/0,27 ms, RapidFuzz là 0,80/1,74 ms, Valentine là 44,79/59,59 ms và hybrid là 42,35/57,67 ms. Peak bộ nhớ tiến trình lần lượt khoảng 55/55/182/182 MiB. Số đo gồm khởi tạo lúc gọi matcher lần đầu, không gồm bước tạo profile, và chưa đại diện dữ liệu thực. Receipt `runtime/automation-mapping-benchmark.json` ghi từng miền, mẫu thời gian, CPU và phiên bản gói. Giữ Valentine ở mức thử nghiệm do kết quả validation tiếng Việt, số gợi ý sai và chi phí dependency. AP-06 còn cần cải thiện độ phủ gợi ý và kiểm qua luồng phê duyệt thật.
+
+| Yêu cầu | Nguồn/hợp đồng | Test | Loại bằng chứng | Evidence | Trạng thái hiện tại |
+| --- | --- | --- | --- | --- | --- |
+| AP-01 | AUTOMATION_PRODUCT_PLAN§1, upload DTO | Product Journey | LOCAL browser | Bằng chứng checkpoint8db257a bên dưới | PASS baseline, cần replay source chốt |
+| AP-02 | ParsedTableArtifact, query DSL | parse trong inference bận | LOCAL + MOCK | 75k/Qwen receipt, PostgreSQL | PASS baseline, chưa đủ ma trận tải |
+| AP-03 | PreparedTable | prepared/checksum/source row | LOCAL + ORACLE | 5.487dòng và prepared75k | PASS baseline |
+| AP-04 | Mapping preflight | date/null/locale/currency/key | LOCAL + ORACLE | 5.458hợp lệ/29lỗi | PASS baseline |
+| AP-05 | DATA_CONTRACTS quyền reuse | owner/grant/preflight/rebind | LOCAL PostgreSQL | 526suite, bốn regression mới | PASS source, chưa deploy/UI lại |
+| AP-06 | AUTOMATION_PRODUCT_PLAN§3 | business mapping benchmark | ORACLE | fixture độc lập + benchmark mới | IN_PROGRESS, chưa nghiệm thu holdout/AI |
+| AP-07 | AUTOMATION_PRODUCT_PLAN§4 | người mới Chat-only | Browser LIVE cần chạy | Bản cũ cần nhiều trường kỹ thuật | NOT_RUN đầy đủ |
+| AP-08 | PlanningRequest/PlanProposal | multiple candidates/ties | LOCAL/ORACLE/LIVE cần mở rộng | Hai luồng LIVE cũ có một candidate | IN_PROGRESS, không coi hai luồng là benchmark |
+| AP-09 | review nonce/fingerprint/locks | permissions/idempotency/stale | LOCAL + MOCK | full PostgreSQL | PASS baseline, cần hồi quy chốt |
+| AP-10 | DataQueryPlan/QuerySelection | NLP/context/evidence/export | LOCAL + ORACLE/LIVE cần mở rộng | top3/ordinal/prepared cũ | IN_PROGRESS, chưa có holdout mới |
+| AP-11 | MetricSnapshot/report-2 | export read-back | LOCAL browser + ORACLE | Hai XLSX8sheet cũ | PASS baseline, cần journey mới |
+| AP-12 | AUTOMATION_PRODUCT_PLAN§6 | keyboard/IME/5widths | Browser | 139suite cũ | PASS baseline, cần replay UI sửa |
+| AP-13 | PG lease/fencing/publication | A–J concurrent/fault/isolation | LOCAL + MOCK + LIVE | Một75k+Qwen, chưa p50/p95 | IN_PROGRESS, chưa đủ ma trận |
+| AP-14 | backup/persistence/rollback | 24tables/7.838checksums | LOCAL restore drill | backup36c2… và rollback858→8db | PASS baseline, kiểm lại sau deploy |
+| AP-15 | Rules§11, release gates | full source/image/HTTP | LOCAL/Git | main3deac3f được giữ | NOT_RUN phát hành |
+| UAT A–H | AUTOMATION_PRODUCT_PLAN§8 + yêu cầu mới | fresh business journey, reuse, negatives, responsive | Browser/ORACLE/LIVE | Chưa có receipt cho hành trình mới | NOT_RUN đầy đủ |
+
+Cache giữ **SKIPPED_BY_POLICY — NON_BLOCKING**. Không thử lại thao tác đã bị chặn, không tạo môi trường thứ hai, không tác động dự án khác. Tiếp tục các cổng còn thiếu trong cùng nhiệm vụ; chưa kết luận `READY_FOR_SEAMLESS_LOCAL_UAT`.
+
 ## Consolidation và baseline tích hợp — 06/11/2026
 
 Đang thực hiện theo yêu cầu hợp nhất mới: cho phép đưa Foundation hợp lệ vào main khi hồi quy local đạt, dù Planner/Query AI LIVE chưa hoàn tất. Quyền này thay lệnh giữ main ở các báo cáo lịch sử; không biến các cổng AI chưa đạt thành PASS. Công đoạn tự động hóa chỉ bắt đầu sau baseline tích hợp, Docker và rollback được kiểm chứng.

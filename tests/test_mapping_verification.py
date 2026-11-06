@@ -14,6 +14,68 @@ from studio.profiling import profile_table
 
 
 @pytest.mark.parametrize(
+    "incoming,compatible",
+    [
+        ("thanh_toan_2026_11.xlsx", True),
+        ("thanh_toan_2027_01.xlsx", True),
+        ("thanh_toan_2026_13.xlsx", False),
+        ("thanh_toan_2026_11.csv", False),
+        ("chi_phi_2026_11.xlsx", False),
+        ("thanh_toan_11.xlsx", False),
+        ("thanh_toan_2026_11_2026_12.xlsx", False),
+    ],
+)
+def test_reuse_report_month_is_not_an_arbitrary_filename_wildcard(incoming, compatible):
+    from studio.mapping_reuse import report_name_identity
+
+    assert (
+        report_name_identity("thanh_toan_2026_10.xlsx") == report_name_identity(incoming)
+    ) == compatible
+
+
+@pytest.mark.parametrize(
+    "headers,rows,expected",
+    [
+        (["Paid Amount", "Order ID"], [["12.75", "0001"]], {"c1": "c2", "c2": "c1"}),
+        (["order_id", "paid_amount"], [["0001", "12.75"]], {"c1": "c1", "c2": "c2"}),
+        (
+            ["Order ID", "Paid Amount", "Ghi chú"],
+            [["0001", "12.75", "Đã kiểm"]],
+            {"c1": "c1", "c2": "c2"},
+        ),
+        (["Order ID", "Paid Amount", "Net Amount"], [["0001", "12.75", "12.75"]], None),
+        (["Order ID", "Net Amount"], [["0001", "12.75"]], None),
+        (["Customer ID", "Paid Amount"], [["0001", "12.75"]], None),
+        (["Order ID", "Paid Amount", "order_id"], [["0001", "12.75", "0002"]], None),
+        (["Order ID", "Paid Amount", "Notes"], [["0001", "12.75", "VND"]], None),
+        (["Order ID", "Paid Amount", "Notes"], [["0001", "12.75", "2026-11-01"]], None),
+        (["Order ID", "Paid Amount", "Notes"], [["0001", "12.75", "123.50"]], None),
+        (["Order ID", "Paid Amount"], [["0001", "invalid"]], None),
+        (["Order ID"], [["0001"]], None),
+    ],
+)
+def test_reuse_binds_headers_but_abstains_on_semantic_and_structural_drift(headers, rows, expected):
+    from studio.mapping_reuse import compatible_column_bindings
+
+    def profile(names, values, table_id):
+        ids = [f"c{i}" for i in range(1, len(names) + 1)]
+        return profile_table(
+            pl.DataFrame(values, schema=ids, orient="row"),
+            [
+                SourceColumn(id=key, name=name, source_index=i)
+                for i, (key, name) in enumerate(zip(ids, names, strict=True))
+            ],
+            table_id,
+            "test",
+            "artifact",
+        )
+
+    original = profile(["Order ID", "Paid Amount"], [["0001", "12.75"]], "source")
+    incoming = profile(headers, rows, "incoming")
+    assert compatible_column_bindings(original, incoming) == expected
+
+
+@pytest.mark.parametrize(
     "raw,fmt,expected",
     [
         ("2026-10-10", "%Y-%m-%d", "2026-10-10"),
