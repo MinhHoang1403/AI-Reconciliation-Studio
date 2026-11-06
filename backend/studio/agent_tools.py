@@ -63,6 +63,7 @@ class MappingAction(Contract):
     context: AssistantContext
     table_id: Identifier
     workflow_id: Identifier
+    profile_only: bool = False
 
 
 class RunAction(Contract):
@@ -172,7 +173,8 @@ def execute_tool(
             action.context.project_id,
             "agent_prepare",
             "agent-mapping:" + idempotency_key,
-            dict(workflow_id=workflow.id, table_ids=[table.id]),
+            dict(workflow_id=workflow.id, table_ids=[table.id])
+            | ({"profile_only": True} if action.profile_only else {}),
         )
         return JobReference(job_id=job.id, status=job.status)
     if isinstance(action, PlanAction):

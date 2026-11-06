@@ -1745,6 +1745,80 @@ def test_prepared_preview_is_explicit_and_scoped_without_business_approval():
     assert resolve_prepared_listing("Xem dữ liệu tự chuẩn bị", cat).intent == "CLARIFY"
 
 
+@pytest.mark.parametrize(
+    "goal, expected",
+    [
+        ("Mở bảng gốc trong tệp “Nhập kho.xlsx”", ("RAW_PREVIEW", "inventory", False)),
+        ("Bản tự chuẩn bị có bao nhiêu bản ghi?", ("PREPARED", "table", True)),
+        (
+            "Hãy đếm bản ghi trong bản đã chuẩn hóa của tệp đang mở",
+            ("CANONICAL", "canonical", True),
+        ),
+        ('Liệt kê dữ liệu gốc của tệp "Nhập kho.xlsx"', ("RAW_PREVIEW", "inventory", False)),
+        ("Xem bảng đã chuẩn bị của tệp “Nhập kho.xls”", "CLARIFY"),
+        ("Đếm dòng dữ liệu gốc tháng 11", None),
+        ("Xem dữ liệu đã chuẩn hóa rồi xóa tệp", None),
+        ("Tính tổng tiền trong bản tự chuẩn bị", None),
+    ],
+)
+def test_composed_read_grammar_matches_layer_source_and_operation(goal, expected):
+    from studio.agent_intents import resolve_layer_listing
+
+    cat = catalogue()
+    cat.context.dataset_id = "dataset"
+    cat.datasets[0].name = "Sổ thu.csv"
+    cat.datasets[0].tables[0].prepared_artifact_id = "prepared"
+    inventory = cat.datasets[0].model_copy(
+        update={"id": "stock", "name": "Nhập kho.xlsx"}, deep=True
+    )
+    inventory.tables[0].table_id = "inventory"
+    cat.datasets.append(inventory)
+    result = resolve_layer_listing(goal, cat)
+    if expected is None:
+        assert result is None
+    elif isinstance(expected, str):
+        assert result.intent == expected and result.query is None
+    else:
+        assert result.intent == "QUERY_DATA"
+        assert (
+            result.query.source_kind,
+            result.query.source_id,
+            bool(result.query.aggregations),
+        ) == expected
+
+
+@pytest.mark.parametrize(
+    "goal,intent,predicate",
+    [
+        ("Đếm số nhóm giao dịch bị lệch tiền ở kết quả đang mở", "QUERY_DATA", "AMOUNT_MISMATCH"),
+        ("Có bao nhiêu khoản không có đối ứng trong lần đối soát này?", "QUERY_DATA", "UNMATCHED"),
+        ("Tải báo cáo CSV của kết quả đang xem", "EXPORT_RESULT", None),
+        ("Cho tôi xem tổng lệch tiền có dấu", "SUMMARIZE_RESULTS", None),
+        ("Xuất báo cáo Excel chỉ các giao dịch lệch", None, None),
+        ("Đếm nhóm thiếu đối ứng tháng trước", None, None),
+    ],
+)
+def test_native_run_read_keeps_verified_scope_and_does_not_drop_filters(goal, intent, predicate):
+    from studio.agent_intents import resolve_run_read
+
+    cat = catalogue()
+    cat.context.run_id = "run"
+    cat.verified_run_fields = ["linkage_state", "comparison_state"]
+    result = resolve_run_read(goal, cat)
+    if intent is None:
+        assert result is None
+        return
+    assert result.intent == intent
+    if predicate:
+        assert result.query.source_id == "run"
+        assert result.query.filters[0].value == predicate
+        assert result.query.aggregations[0].op == "count"
+    else:
+        assert result.run_id == "run"
+    cat.context.run_id = "foreign"
+    assert resolve_run_read(goal, cat).intent == "CLARIFY"
+
+
 def test_reuse_scope_rejects_new_source_facts_instead_of_silently_discarding_them():
     from studio.agent_intents import compile_routing
 

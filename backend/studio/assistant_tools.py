@@ -154,6 +154,7 @@ def agent_catalogue(
                     table_id=table.id,
                     sheet=table.sheet,
                     row_count=table.row_count,
+                    column_count=len(table.profile["columns"]),
                     prepared_artifact_id=prepared.get("prepared_artifact_id"),
                     columns=[
                         SourceColumn(
@@ -163,7 +164,7 @@ def agent_catalogue(
                             null_count=c["null_count"],
                             distinct_count=c["distinct_count"],
                         )
-                        for c in table.profile["columns"]
+                        for c in table.profile["columns"][:40]
                     ],
                     canonical_id=canonical.id if canonical else None,
                     canonical_status=canonical.contract["quality_status"] if canonical else None,

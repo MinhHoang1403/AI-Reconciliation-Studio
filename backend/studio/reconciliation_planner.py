@@ -1,5 +1,6 @@
 """Registered planner task on the existing Gemini gateway, never an execution agent."""
 
+import hashlib
 import json
 from collections import Counter
 from collections.abc import Callable
@@ -11,9 +12,11 @@ from pydantic import Field, ValidationError
 from studio.ai_gateway import TypedProvider, build_evidence_context
 from studio.contracts import Contract, WorkspacePolicy
 from studio.contracts.reconciliation import (
+    CandidateProposal,
     CanonicalRecord,
     ComparisonMetric,
     FieldPair,
+    PlanningCandidate,
     PlanningRequest,
     PlanningSuggestions,
     PlanProposal,
@@ -30,6 +33,7 @@ from studio.reconciliation_engine import record_partition
 
 PLANNER_REVISION = "reconciliation-planning-5"
 PLANNING_PROBE_ROW_LIMIT = 20000
+PLANNING_CANDIDATE_LIMIT = 5
 
 
 class PlannerReply(Contract):
@@ -193,13 +197,13 @@ def preview_plan(
         return None
 
 
-def scoped_key_candidate(
+def scoped_key_candidates(
     request: PlanningRequest,
     catalogue: list[SourceCatalogue],
     left_rows: list[CanonicalRecord],
     right_rows: list[CanonicalRecord],
-) -> PlanProposal | None:
-    """Find an unambiguous exact-key candidate in the explicitly selected period.
+) -> CandidateProposal | None:
+    """Keep bounded, validated candidates in the explicitly selected period.
 
     Candidate pairs come from approved identifier fields. Only in-scope, valid
     records count toward overlap and multiplicity. This is evidence for review,
@@ -345,17 +349,46 @@ def scoped_key_candidate(
             )
         except DomainError:
             continue
-        candidates.append((overlap, suggestion, proposed))
-    candidates.sort(key=lambda item: item[0], reverse=True)
-    if not candidates or (len(candidates) > 1 and candidates[0][0] == candidates[1][0]):
+        candidate = PlanningCandidate(
+            id=hashlib.sha256(proposed.model_dump_json().encode()).hexdigest(),
+            plan=proposed,
+            overlap=overlap,
+            left_distinct_keys=len(counts[0]),
+            right_distinct_keys=len(counts[1]),
+            left_rows=sum(counts[0].values()),
+            right_rows=sum(counts[1].values()),
+        )
+        candidates.append((candidate, suggestion))
+    candidates.sort(key=lambda item: (-item[0].overlap, item[0].id))
+    if not candidates:
         return None
-    overlap, suggestion, proposed = candidates[0]
-    return PlanProposal(
+    shortlist = [candidate for candidate, _ in candidates[:PLANNING_CANDIDATE_LIMIT]]
+    top, suggestion = candidates[0]
+    if len(candidates) > 1 and top.overlap == candidates[1][0].overlap:
+        return CandidateProposal(
+            status="NEEDS_REVIEW",
+            candidates=shortlist,
+            missing_requirements=["Xác nhận khóa nghiệp vụ giữa các phương án ngang bằng."],
+            reasoning="Các khóa dẫn đầu có cùng số giá trị đối ứng trong kỳ đã chọn.",
+        )
+    return CandidateProposal(
         status="PROPOSED",
-        plan=proposed,
+        plan=top.plan,
         suggestions=suggestion,
-        reasoning=f"Đo được {overlap} giá trị khóa trùng giữa hai nguồn trong kỳ đã chọn.",
+        candidates=shortlist,
+        reasoning=f"Đo được {top.overlap} giá trị khóa trùng giữa hai nguồn trong kỳ đã chọn.",
     )
+
+
+def scoped_key_candidate(
+    request: PlanningRequest,
+    catalogue: list[SourceCatalogue],
+    left_rows: list[CanonicalRecord],
+    right_rows: list[CanonicalRecord],
+) -> PlanProposal | None:
+    """Compatibility helper for callers needing a unique proposed plan."""
+    proposal = scoped_key_candidates(request, catalogue, left_rows, right_rows)
+    return proposal if proposal and proposal.plan is not None else None
 
 
 def propose_plan(

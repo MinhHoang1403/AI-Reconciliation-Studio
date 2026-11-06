@@ -16,6 +16,78 @@ from test_reconciliation_postgres import prepare_pair
 pytestmark = pytest.mark.integration
 
 
+def test_chat_upload_prepares_reviews_from_profiles_without_provider_or_approval(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Upload preparation must not call a provider")
+
+    monkeypatch.setattr(agents, "model_call", forbidden)
+    client, factory, worker = pg
+    pid = project(client)
+    response = client.post(
+        "/api/agent/attachments",
+        data={"project_id": pid},
+        files=[
+            (
+                "files",
+                (
+                    "deposit.csv",
+                    b"Payment ID,Date,Amount,Currency\n00001,2026-11-01,22.50,VND\n",
+                    "text/csv",
+                ),
+            ),
+            (
+                "files",
+                (
+                    "receipts.csv",
+                    b"Receipt ID,Date,Amount,Currency\n00002,2026-11-02,23.50,VND\n",
+                    "text/csv",
+                ),
+            ),
+        ],
+        headers={"Idempotency-Key": "auto-prep-attachments"},
+    )
+    assert response.status_code == 202, response.text
+    context = {"project_id": pid}
+    request = dict(
+        conversation_id=conversation(client, context),
+        context=context,
+        mode="AGENT",
+        command="PREPARE_UPLOAD",
+        text="Chuẩn bị dữ liệu vừa tải",
+        dataset_ids=[item["id"] for item in response.json()["items"]],
+    )
+    headers = {"Idempotency-Key": "auto-prep-message"}
+    accepted = client.post("/api/assistant/messages", json=request, headers=headers)
+    assert accepted.status_code == 202, accepted.text
+    drain(factory, worker)
+    flow = workflow_for(client, factory, accepted.json()["job_id"])
+    assert flow["state"] == "WAITING_REVIEW", flow
+    assert flow["detail"]["model_calls"] == 0
+    assert len([b for b in flow["detail"]["blocks"] if b["type"] == "table"]) == 2
+    for review in flow["detail"]["reviews"]:
+        draft = review["normalization_draft"]
+        assert draft["grain"] == "unknown"
+        assert not any(field["business_key"] for field in draft["fields"])
+        assert draft["fields"][1]["timezone"] is None
+        assert draft["fields"][1]["date_format"] == "%Y-%m-%d"
+        assert draft["fields"][2]["currency"] == "VND"
+        assert draft["fields"][2]["locale"] == "en-US"
+        assert draft["fields"][2]["amount_basis"] is None
+    assert len(flow["detail"]["reviews"]) == 2
+    replay = client.post("/api/assistant/messages", json=request, headers=headers).json()
+    assert replay["job_id"] == accepted.json()["job_id"] and replay["status"] == "SUCCEEDED"
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 0
+        assert (
+            db.scalar(
+                select(func.count()).select_from(JobRow).where(JobRow.kind == "agent_prepare")
+            )
+            == 2
+        )
+
+
 def test_prepared_chat_preview_and_count_need_no_provider_or_mapping(pg, monkeypatch):  # noqa: F811
     import studio.agent_jobs as agents
     from studio.database import TraceRow
@@ -63,7 +135,8 @@ def test_prepared_chat_preview_and_count_need_no_provider_or_mapping(pg, monkeyp
 
 
 def test_review_failure_then_valid_partial_reply_clears_current_error_keeps_history(
-    pg, monkeypatch  # noqa: F811
+    pg,  # noqa: F811
+    monkeypatch,
 ):
     import studio.agent_jobs as agents
     from studio.contracts.agent import NormalizationDraft, ReviewInterpretation

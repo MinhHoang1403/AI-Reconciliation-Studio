@@ -71,6 +71,28 @@ function PlanReview({ plan, onChange, disabled }: {
     <details><summary>Thông số quy tắc</summary><p>Khóa, chỉ tiêu, cardinality và sai số ở trên là đề xuất; trả lời bằng tiếng Việt để chỉnh lại trước khi duyệt.</p><p>Bộ lọc trái: {JSON.stringify(plan.left.filters)} · phải: {JSON.stringify(plan.right.filters)}</p></details>
   </div>;
 }
+function SourceDecisions({ draft, onChange, disabled }: {
+    draft: NormalizationDraft;
+    onChange: (draft: NormalizationDraft) => void;
+    disabled: boolean;
+}) {
+    const entered = (value: string) => value === "unknown" ? "" : value;
+    return <fieldset className="agent-form-grid">
+        <legend>Ý nghĩa dữ liệu</legend>
+        <label>Loại giao dịch<input value={entered(draft.entity_kind)} maxLength={100} disabled={disabled}
+            onChange={event => onChange({ ...draft, entity_kind: event.target.value || "unknown" })}/></label>
+        <label>Mỗi dòng đại diện cho điều gì?<input value={entered(draft.grain)} maxLength={200} disabled={disabled}
+            onChange={event => onChange({ ...draft, grain: event.target.value || "unknown" })}/></label>
+        <fieldset><legend>Cột dùng để nhận diện mỗi dòng</legend>
+            {draft.fields.filter(field => field.data_type === "string").map(field => (
+                <label key={field.source_field}><input type="checkbox" checked={field.business_key} disabled={disabled}
+                    onChange={event => onChange({ ...draft, fields: draft.fields.map(item =>
+                        item.source_field === field.source_field ? { ...item, business_key: event.target.checked } : item
+                    ) })}/>{field.name}</label>
+            ))}
+        </fieldset>
+    </fieldset>;
+}
 function storedDraft(key: string, review: Review) {
     try {
         const saved = JSON.parse(sessionStorage.getItem(key) || "null");
@@ -282,16 +304,34 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
         {!!assessment.related_keys?.length&&<details><summary>Quan hệ tiềm năng giữa các nguồn</summary>{assessment.related_keys.map((r,i)=><p key={`${r.table_id}:${i}`}>{r.source_name}: {r.fields.join(' + ')}; {r.shared_keys} khóa xuất hiện ở cả hai nguồn, {r.left_duplicate_rows}/{r.right_duplicate_rows} dòng trùng khóa, {r.missing_key_rows} dòng thiếu khóa. Cần xác nhận ý nghĩa mỗi dòng và quan hệ một/nhiều trước khi đối soát; không tự duyệt từ thống kê.</p>)}</details>}
         {assessment.preflight_ready && <Notice>Đã kiểm tra trước chuẩn hóa trên {assessment.source_rows} dòng; dự kiến {assessment.predicted_invalid_rows} dòng không hợp lệ. Dữ liệu gốc và bản cũ được giữ nguyên.</Notice>}
       </>}
+      {workflow.detail.prepare_upload && <SourceDecisions draft={draft} onChange={setDraft} disabled={disabled}/>}
       {draft.fields.some(f=>f.data_type==='date'&&!f.timezone)&&<label>Múi giờ của nguồn<select aria-label="Múi giờ của nguồn" disabled={disabled} defaultValue="" onChange={e=>{if(e.target.value)setDraft({...draft,fields:draft.fields.map(f=>f.data_type==='date'&&!f.timezone?{...f,timezone:e.target.value}:f)});}}><option value="">Chọn theo quy ước dữ liệu</option><option value="UTC">UTC</option><option value="Asia/Ho_Chi_Minh">Việt Nam (Asia/Ho_Chi_Minh)</option></select></label>}
       {draft.fields.some(f=>f.data_type==='decimal'&&!f.currency)&&<label>Tiền tệ cho số tiền trong nguồn<select aria-label="Tiền tệ cho số tiền trong nguồn" disabled={disabled} defaultValue="" onChange={e=>{if(e.target.value)setDraft({...draft,fields:draft.fields.map(f=>f.data_type==='decimal'&&!f.currency?{...f,currency:e.target.value,unit:f.unit||e.target.value}:f)});}}><option value="">Chọn phạm vi tiền tệ; giá trị khác giữ lỗi riêng</option>{(assessment?.currencies||[]).map(c=><option key={c} value={c}>{c}</option>)}</select></label>}
       {draft.fields.filter(f=>f.data_type==='decimal'&&(!f.amount_basis||!f.currency||!f.semantic_metric||!f.unit||!f.locale)).map(f=><fieldset key={f.source_field}><legend>{f.name} — quyết định về số tiền</legend>
         {!f.amount_basis&&<label>Cơ sở tiền của {f.name}<select disabled={disabled} value="" onChange={e=>setDraft({...draft,fields:draft.fields.map(x=>x.source_field===f.source_field?{...x,amount_basis:e.target.value||null}:x)})}><option value="">Chưa xác định</option><option value="gross">Trước khấu trừ / gross</option><option value="net">Sau khấu trừ / net</option><option value="expected">Dự kiến phải thu / expected</option><option value="paid">Đã thanh toán / paid</option><option value="fee">Phí / fee</option></select></label>}
         {!f.currency&&<label>Tiền tệ cho {f.name}<input disabled={disabled} placeholder="VND / USD; kiểm tra cảnh báo tiền tệ" maxLength={3} onBlur={e=>{const value=e.target.value.toUpperCase();if(value)setDraft({...draft,fields:draft.fields.map(x=>x.source_field===f.source_field?{...x,currency:value,unit:x.unit||value}:x)});}}/></label>}
-        {(!f.semantic_metric||!f.unit||!f.locale)&&<p>Mở phần chỉnh sửa để xác nhận ý nghĩa, đơn vị hoặc định dạng còn thiếu.</p>}
+        {workflow.detail.prepare_upload && !f.semantic_metric && <label>Khoản tiền này là gì?<input disabled={disabled}
+          onBlur={event => {const value = event.target.value.trim(); if (value) setDraft({...draft,fields:draft.fields.map(x=>x.source_field===f.source_field?{...x,semantic_metric:value}:x)});}}/></label>}
+        {(!f.semantic_metric||!f.unit||!f.locale)&&!workflow.detail.prepare_upload&&<p>Mở phần chỉnh sửa để xác nhận ý nghĩa, đơn vị hoặc định dạng còn thiếu.</p>}
+        {workflow.detail.prepare_upload&&!f.locale&&<label>Cách ghi số của {f.name}<select value="" disabled={disabled}
+          onChange={event=>setDraft({...draft,fields:draft.fields.map(x=>x.source_field===f.source_field?{...x,locale:(event.target.value||null) as DraftField["locale"]}:x)})}>
+          <option value="">Chọn cách ghi</option><option value="en-US">1,234.56</option><option value="vi-VN">1.234,56</option>
+        </select></label>}
       </fieldset>)}
       <p>Loại dữ liệu: {draft.entity_kind}. Mỗi dòng: {draft.grain}. Khóa đề xuất: {draft.fields.filter(f=>f.business_key).map(f=>f.name).join(', ')||'chưa chọn; cần kiểm tra grain và quan hệ nguồn'}.</p>
+      {workflow.detail.prepare_upload && <ul>{draft.fields.filter(f=>f.data_type==='decimal'&&f.semantic_metric&&f.amount_basis&&f.currency).map(f=><li key={f.source_field}>{f.name} · {f.semantic_metric} · {f.amount_basis} · {f.currency}</li>)}</ul>}
       <details className="agent-review-editor"><summary>Xem và chỉnh các lựa chọn</summary><p>Chỉnh sửa chi tiết chỉ khi đề xuất chưa đúng. Các thay đổi được kiểm tra lại trước khi duyệt.</p><MappingReview draft={draft} disabled={disabled} onChange={v=>setDraft(v)}/></details>
     </>}
+    {review.kind === "RECONCILIATION" && !!review.planning_candidates?.length && <fieldset>
+      <legend>Phương án liên kết đã kiểm tra</legend>
+      {review.planning_candidates.map(candidate => <label key={candidate.id}>
+        <input type="radio" name={`planning-candidate-${review.id}`} disabled={disabled}
+          checked={!!plan && JSON.stringify(plan.join_keys) === JSON.stringify(candidate.plan.join_keys)}
+          onChange={() => setPlan(candidate.plan)}/>
+        {candidate.plan.join_keys.map(key => `${fieldName(candidate.plan.left.canonical_id,key.left)} ↔ ${fieldName(candidate.plan.right.canonical_id,key.right)}`).join(', ')}
+        {` · ${candidate.overlap} khóa có đối ứng (${candidate.left_distinct_keys} khóa nguồn A, ${candidate.right_distinct_keys} khóa nguồn B) · ${label(candidate.plan.cardinality)}`}
+      </label>)}
+    </fieldset>}
     {plan && <>
       <p>Nguồn A: {sourceName(plan.left.canonical_id)} · Nguồn B: {sourceName(plan.right.canonical_id)}</p>
       <p>Kỳ {plan.period_start||"chưa chọn"} → {plan.period_end||"chưa chọn"} · {plan.timezone||"chưa rõ múi giờ"}</p>
@@ -300,7 +340,7 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
       {plan.comparison_metrics.map(m=><p key={m.metric_id}>{fieldName(plan.left.canonical_id,m.left)} · {m.amount_basis} · {m.currency} · sai số {m.absolute_tolerance}</p>)}
       <details className="agent-review-editor"><summary>Kiểm tra phạm vi và chỉnh quy tắc</summary><PlanReview plan={plan} disabled={disabled} onChange={setPlan}/></details>
     </>}
-    {review.kind === "RECONCILIATION" && !plan && <Notice>
+    {review.kind === "RECONCILIATION" && !plan && !review.planning_candidates?.length && <Notice>
       Cần xác nhận khóa, chỉ tiêu hoặc phạm vi trước khi chạy.
       {" "}<a className="text-button" href={`#${new URLSearchParams({page: "reconcile", project: workflow.context.project_id})}`}>
         Mở Đối soát để thiết lập quy tắc

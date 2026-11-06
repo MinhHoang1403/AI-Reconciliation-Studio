@@ -42,6 +42,10 @@ Valentine tăng recall trên tên cột tiếng Anh của holdout, nhưng valida
 
 Cache giữ **SKIPPED_BY_POLICY — NON_BLOCKING**. Không thử lại thao tác đã bị chặn, không tạo môi trường thứ hai, không tác động dự án khác. Tiếp tục các cổng còn thiếu trong cùng nhiệm vụ; chưa kết luận `READY_FOR_SEAMLESS_LOCAL_UAT`.
 
+Chat tự tạo bản xem trước và thẻ xác nhận khi gửi tệp không kèm câu hỏi. Backend dùng profile và preflight để điền dữ kiện kỹ thuật. Khi Planner có nhiều khóa với cùng số đối ứng trong kỳ, thẻ hiển thị các phương án đã kiểm và đợi người dùng chọn. Trong lúc luồng inference bận, Worker ưu tiên parse, sau đó nhận các job xác định được bằng hợp đồng job. Các bước tiếp nối có thể gọi model đi qua cùng luồng inference duy nhất. Câu hỏi đọc đơn giản dùng lớp dữ liệu, tên tệp chính xác hoặc run đã chọn. Câu có điều kiện ngoài phạm vi grammar được chuyển tới tuyến định tuyến có kiểu.
+
+Lượt hồi quy đầu phát hiện lỗi import làm hàm xem trước không tìm được kiểu trả về. Sau sửa, ca upload mới đạt tới trạng thái chờ duyệt và tái gửi trả đúng ID job. Test ban đầu so cả trạng thái trước và sau xử lý nên thất bại khi receipt chuyển `QUEUED` sang `SUCCEEDED`. Bản sửa assertion kiểm đúng ID bất biến và trạng thái mới. Sau sửa này, **528/528 Backend/PostgreSQL** đạt trong 153,78 giây. Sau phần truy vấn bổ sung, **380/380 ca offline** đạt trong 10,34 giây, 162 ca PostgreSQL được tách khỏi lần chạy offline. Các ca mới vẫn cần replay trên image và trình duyệt.
+
 ## Consolidation và baseline tích hợp — 06/11/2026
 
 Đang thực hiện theo yêu cầu hợp nhất mới: cho phép đưa Foundation hợp lệ vào main khi hồi quy local đạt, dù Planner/Query AI LIVE chưa hoàn tất. Quyền này thay lệnh giữ main ở các báo cáo lịch sử; không biến các cổng AI chưa đạt thành PASS. Công đoạn tự động hóa chỉ bắt đầu sau baseline tích hợp, Docker và rollback được kiểm chứng.

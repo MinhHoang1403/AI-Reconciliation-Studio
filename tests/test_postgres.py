@@ -1319,6 +1319,9 @@ def test_parse_can_publish_while_mapping_inference_is_waiting(pg, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
 
+    from test_agent_postgres import ask_agent, workflow_for
+    from test_assistant_postgres import conversation
+
     client, factory, worker = pg
     pid = project(client)
     upload(client, pid)
@@ -1341,16 +1344,27 @@ def test_parse_can_publish_while_mapping_inference_is_waiting(pg, monkeypatch):
         waiting = executor.submit(worker.process_job, *mapping)
         try:
             assert started.wait(5)
-            incoming = upload(client, pid, b"ID,Date\n001,2026-10-01\n")
+            second = project(client, "Independent second queue project")
+            incoming = upload(client, second, b"ID,Date\n001,2026-10-01\n")
+            ctx = {"project_id": second}
+            request = ask_agent(
+                client, ctx, conversation(client, ctx), command="EXPLORE_DATA", text="Xem dữ liệu"
+            )
             with factory() as db:
-                parse_claim = worker.claim_job(db, parse_only=True)
+                parse_claim = worker.claim_job(db, inference_busy=True)
             assert parse_claim[0] == incoming["job_id"]
             worker.process_job(*parse_claim)
             table = client.get(f"/api/datasets/{incoming['id']}/tables").json()["items"][0]
             assert table["prepared"]["row_count"] == 1
+            with factory() as db:
+                preview_claim = worker.claim_job(db, inference_busy=True)
+            assert preview_claim[0] == request["job_id"]
+            worker.process_job(*preview_claim)
+            flow = workflow_for(client, factory, request["job_id"])
+            assert flow["state"] == "COMPLETED" and flow["detail"]["model_calls"] == 0
             assert not waiting.done()
             with factory() as db:
-                assert worker.claim_job(db, parse_only=True) is None
+                assert worker.claim_job(db, inference_busy=True) is None
         finally:
             release.set()
         waiting.result()

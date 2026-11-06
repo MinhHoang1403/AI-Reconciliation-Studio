@@ -65,7 +65,10 @@ function sameRequestExceptModel(previous: string, next: string, reuseUploadedSco
     const after = JSON.parse(next);
     delete before.model_choice;
     delete after.model_choice;
-    if (reuseUploadedScope && !after.dataset_ids) delete before.dataset_ids;
+    if (reuseUploadedScope && !after.dataset_ids) {
+      if (before.command === "PREPARE_UPLOAD" && after.command === null) after.command = before.command;
+      delete before.dataset_ids;
+    }
     return JSON.stringify(before) === JSON.stringify(after);
   } catch {
     return false;
@@ -559,11 +562,11 @@ export function AssistantStudio({
           const created=await api<Conversation>("/conversations",{method:"POST",body:JSON.stringify({context:next}),
             headers:{"Idempotency-Key":createKey.current}});
           localStorage.setItem(`studio.conversation.${uploaded.project_id}`,created.id);
-          const question=text.trim()||"Kiểm tra các file vừa tải lên";
+          const question=text.trim()||"Chuẩn bị dữ liệu vừa tải";
           const body=JSON.stringify({conversation_id:created.id,context:created.context,text:question,
-            mode:"AGENT",command:command||(!text.trim()?"EXPLORE_DATA":null),
+            mode:"AGENT",command:command||(!text.trim()&&uploadedDatasetIds?.length?"PREPARE_UPLOAD":null),
             ...(uploadedDatasetIds?.length ? {dataset_ids:uploadedDatasetIds} : {}),
-            ...(modelChoice ? {model_choice:modelChoice} : {})});
+            ...(modelChoice && (text.trim() || command || !uploadedDatasetIds?.length) ? {model_choice:modelChoice} : {})});
           const key=createKey.current+"-message";
           const pendingKey=`studio.assistant-request.${draftOwner}.${uploaded.project_id}`;
           sessionStorage.setItem(pendingKey,JSON.stringify({body,key}));
@@ -600,11 +603,11 @@ export function AssistantStudio({
       let body = JSON.stringify({
         conversation_id: active.id,
         context: active.context,
-        text: text.trim() || "Kiểm tra các file vừa tải lên",
+        text: text.trim() || "Chuẩn bị dữ liệu vừa tải",
         mode,
-        ...(modelChoice ? {model_choice:modelChoice} : {}),
+        ...(modelChoice && (text.trim() || command || !uploadedDatasetIds?.length || mode !== "AGENT") ? {model_choice:modelChoice} : {}),
         ...(mode === "AGENT" && uploadedDatasetIds?.length ? {dataset_ids:uploadedDatasetIds} : {}),
-        ...(mode==="AGENT"?{command:command||(!text.trim()?"EXPLORE_DATA":null)}:{}),
+        ...(mode==="AGENT"?{command:command||(!text.trim()&&uploadedDatasetIds?.length?"PREPARE_UPLOAD":null)}:{}),
       });
       let previous = pendingRequest.current;
       if (!previous) {

@@ -14,6 +14,7 @@ from studio.ai_gateway import GeminiProvider, OllamaProvider, TypedProvider
 from studio.config import ModelChoice, request_limit_reached, settings
 from studio.contracts import WorkspacePolicy
 from studio.contracts.reconciliation import (
+    CandidateProposal,
     ExceptionCase,
     PlanProposal,
     ReconciliationContract,
@@ -40,7 +41,7 @@ from studio.reconciliation_planner import (
     PLANNING_PROBE_ROW_LIMIT,
     missing_confirmations,
     propose_plan,
-    scoped_key_candidate,
+    scoped_key_candidates,
     validate_planning_request,
 )
 from studio.reconciliation_repository import (
@@ -223,11 +224,17 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
                 project_id=project_id,
                 origin=source,
                 created_by=job.payload["actor_id"],
-                proposal=proposal.model_dump(mode="json"),
+                proposal=proposal.model_dump(mode="json", exclude={"candidates"}),
             )
             db.add(row)
             db.flush()
-            result = {"plan_id": row.id, "source": source, "proposal_status": proposal.status}
+            result: dict[str, Any] = {
+                "plan_id": row.id,
+                "source": source,
+                "proposal_status": proposal.status,
+            }
+            if isinstance(proposal, CandidateProposal) and proposal.candidates:
+                result["candidates"] = [c.model_dump(mode="json") for c in proposal.candidates]
             if failure is not None:
                 result["provider_error_code"] = failure
             finish(db, job, result)
@@ -239,7 +246,7 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
             left_rows, right_rows = [
                 load_canonical_records(db, actor, cat.canonical) for cat in cats
             ]
-        candidate = scoped_key_candidate(draft, cats, left_rows, right_rows)
+        candidate = scoped_key_candidates(draft, cats, left_rows, right_rows)
         del left_rows, right_rows
         if candidate is not None:
             publish(candidate, "DETERMINISTIC")

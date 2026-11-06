@@ -11,6 +11,7 @@ const states: Record<string, string> = { CREATED: "Đã nhận yêu cầu", RUNN
     WAITING_REVIEW: "Cần bạn xác nhận", COMPLETED: "Đã hoàn thành", PARTIAL: "Hoàn thành một phần",
     FAILED: "Xử lý thất bại", BLOCKED: "Chưa thể tiếp tục", CANCELLED_BEFORE_NEXT_STEP: "Đã dừng các bước tiếp theo" };
 const tools: Record<string, string> = { parse: "Đọc dữ liệu", propose_mapping: "Chuẩn bị đề xuất",
+    reuse_mapping: "Kiểm tra mẫu đã duyệt",
     run_normalization: "Chuẩn hóa", prepare_reconciliation_plan: "Đề xuất quy tắc đối soát",
     run_approved_reconciliation: "Đối soát và kiểm chứng", start_export: "Tạo báo cáo",
     query_dataset: "Tra cứu dữ liệu", read_verified_facts: "Đọc kết quả đã xác minh" };

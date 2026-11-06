@@ -19,12 +19,14 @@ from studio.agent_intents import (
     resolve_attached_normalization,
     resolve_plain_listing,
     resolve_ranked_results,
+    resolve_run_read,
 )
 from studio.agent_preparation import (
     LOCAL_PREPARATION_REVISION,
     PREPARATION_REVISION,
     REVIEW_REVISION,
     interpret_review_reply,
+    profiled_fields,
     propose_normalization,
     validate_draft,
 )
@@ -48,6 +50,7 @@ from studio.contracts.agent import (
     AgentIntent,
     IntentBatch,
     IntentCatalogue,
+    NormalizationDraft,
     ReviewInterpretation,
     ReviewReply,
     WorkflowState,
@@ -305,10 +308,15 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
         parent = get_scoped(db, JobRow, row.parent_job_id, actor)
         command = parent.payload.get("command")
         goal = row.goal
-        plain_listing = resolve_ranked_results(goal, catalogue) or resolve_plain_listing(
-            goal, catalogue
+        plain_listing = (
+            resolve_ranked_results(goal, catalogue)
+            or resolve_run_read(goal, catalogue)
+            or resolve_plain_listing(goal, catalogue)
         )
         if plain_listing is not None:
+            if plain_listing.intent == "SUMMARIZE_RESULTS":
+                context.group_id = context.case_id = None
+                row.context = context.model_dump(mode="json")
             if plain_listing.result_position is not None:
                 # Pin the displayed group before committing the intent. The user
                 # may sort or page the previous table before advance runs.
@@ -330,6 +338,16 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
                     else "Tôi không thể tự phê duyệt ánh xạ hoặc quy tắc nghiệp vụ. "
                     "Bạn cần xem và duyệt quyết định trước khi thực hiện."
                 ],
+            )
+            save(row, state)
+            db.commit()
+            return
+        if command == "PREPARE_UPLOAD":
+            if not state.dataset_ids:
+                raise DomainError("INPUT_AMBIGUOUS", "Cần chọn các tệp vừa tải lên.", 422)
+            state.prepare_upload = True
+            state.intent = AgentIntent(
+                intent="PREPARE_NORMALIZATION", dataset_ids=state.dataset_ids
             )
             save(row, state)
             db.commit()
@@ -738,6 +756,20 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             table = get_scoped(db, TableRow, table_id, actor)
             if project_for_table(db, table).id != row.project_id:
                 raise DomainError("RESOURCE_NOT_FOUND", "Nguồn không thuộc dự án.", 404)
+            if job.payload.get("profile_only"):
+                from studio.mapping_verification import assess_table_mapping
+
+                profile = DatasetProfile.model_validate(table.profile)
+                proposal = NormalizationDraft(
+                    table_id=table.id,
+                    entity_kind="unknown",
+                    grain="unknown",
+                    fields=profiled_fields(profile),
+                )
+                draft = assess_table_mapping(db, actor, proposal, enrich=True).draft
+                finish(db, job, {"drafts": [draft.model_dump(mode="json")]})
+                db.commit()
+                return
             import polars as pl
 
             from studio.contracts import SourceColumn

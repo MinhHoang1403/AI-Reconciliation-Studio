@@ -16,6 +16,7 @@ from studio.contracts.data_query import (
     QueryResult,
 )
 from studio.contracts.reconciliation import (
+    PlanningCandidate,
     PlanningRequest,
     PlanningSource,
     PlanningSuggestions,
@@ -119,6 +120,7 @@ class TableContext(Contract):
     table_id: str
     sheet: str
     row_count: int
+    column_count: int | None = None
     prepared_artifact_id: str | None = None
     columns: list[SourceColumn] = Field(max_length=40)
     canonical_id: str | None = None
@@ -200,6 +202,7 @@ class WorkflowStep(Contract):
         "interpret_user_request",
         "parse",
         "propose_mapping",
+        "reuse_mapping",
         "run_normalization",
         "prepare_reconciliation_plan",
         "run_approved_reconciliation",
@@ -299,6 +302,7 @@ class ReviewRequest(Contract):
     plan: ReconciliationPlan | None = None
     suggestions: PlanningSuggestions | None = None
     planning_request: PlanningRequest | None = None
+    planning_candidates: list[PlanningCandidate] = Field(default_factory=list, max_length=5)
     decision_sha256: str | None = None
     result_id: str | None = None
     pending_reply_job_id: str | None = None
@@ -317,6 +321,7 @@ class QuerySelection(Contract):
 
 class WorkflowState(Contract):
     intent: AgentIntent | None = None
+    prepare_upload: bool = False
     steps: list[WorkflowStep] = Field(default_factory=list, max_length=12)
     reviews: list[ReviewRequest] = Field(default_factory=list, max_length=10)
     blocks: list[ResultBlock] = Field(default_factory=list, max_length=30)

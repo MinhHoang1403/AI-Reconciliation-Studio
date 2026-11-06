@@ -178,6 +178,11 @@ class AssistantAnswer(Contract):
     prompt_revision: str = "assistant-grounded-1"
 
 
+AssistantCommand = Literal[
+    "PREPARE_UPLOAD", "PREPARE_NORMALIZATION", "EXPLORE_DATA", "SUMMARIZE_RESULTS"
+]
+
+
 class MessageInput(Contract):
     conversation_id: Identifier
     text: str = Field(min_length=1, max_length=2000)
@@ -185,7 +190,7 @@ class MessageInput(Contract):
     mode: Literal["LEGACY", "AGENT"] = "LEGACY"
     model_choice: ModelChoice | None = None
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
-    command: Literal["PREPARE_NORMALIZATION", "EXPLORE_DATA", "SUMMARIZE_RESULTS"] | None = None
+    command: AssistantCommand | None = None
 
 
 class ConversationInput(Contract):

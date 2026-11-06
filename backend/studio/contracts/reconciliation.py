@@ -174,12 +174,28 @@ class PlanningSuggestions(Contract):
     evidence_ids: list[str] = Field(min_length=1, max_length=30)
 
 
+class PlanningCandidate(Contract):
+    """Backend-observed linkage evidence; the enclosed plan still needs approval."""
+
+    id: str
+    plan: ReconciliationPlan
+    overlap: int = Field(gt=0)
+    left_distinct_keys: int = Field(gt=0)
+    right_distinct_keys: int = Field(gt=0)
+    left_rows: int = Field(gt=0)
+    right_rows: int = Field(gt=0)
+
+
 class PlanProposal(Contract):
     status: Literal["PROPOSED", "UNKNOWN", "NEEDS_REVIEW"]
     plan: ReconciliationPlan | None = None
     suggestions: PlanningSuggestions | None = None
     missing_requirements: list[str] = Field(default_factory=list, max_length=30)
     reasoning: str = Field(default="", max_length=2000)
+
+
+class CandidateProposal(PlanProposal):
+    candidates: list[PlanningCandidate] = Field(default_factory=list, max_length=5)
 
 
 class ReconciliationContract(Contract):

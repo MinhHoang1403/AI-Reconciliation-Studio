@@ -6,7 +6,7 @@ from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
@@ -28,6 +28,7 @@ from studio.contracts import (
     WorkspacePolicy,
 )
 from studio.contracts.api import PreparedTable
+from studio.contracts.assistant import AssistantCommand
 from studio.database import (
     ArtifactRow,
     AttemptRow,
@@ -81,6 +82,12 @@ from studio.schema_mapping import compile_transform_plan, validate_mapping
 from studio.storage import checksum, storage_path, write_parquet
 
 logger = logging.getLogger("studio.worker")
+DETERMINISTIC_FLAGS = {
+    "agent_prepare": "profile_only",
+    "reconciliation_plan": "verified_candidates_only",
+    "agent_resume": "deterministic",
+}
+DETERMINISTIC_COMMANDS = get_args(AssistantCommand)
 INFERENCE_JOBS = frozenset(
     {
         "mapping",
@@ -88,13 +95,26 @@ INFERENCE_JOBS = frozenset(
         "assistant",
         "agent",
         "agent_prepare",
+        "agent_resume",
         "agent_review",
         "document_parse",
     }
 )
 
 
-def claim_job(db: Session, *, parse_only: bool = False) -> tuple[str, str] | None:
+def _needs_inference(job: JobRow) -> bool:
+    """Use the same closed job classification for claiming and dispatch."""
+    flag = DETERMINISTIC_FLAGS.get(job.kind)
+    if flag and job.payload.get(flag) is True:
+        return False
+    if job.kind == "agent" and job.payload.get("command") in DETERMINISTIC_COMMANDS:
+        return False
+    return job.kind in INFERENCE_JOBS
+
+
+def claim_job(
+    db: Session, *, parse_only: bool = False, inference_busy: bool = False
+) -> tuple[str, str] | None:
     """Claim atomically via SKIP LOCKED; exhausted expired leases are failed, never loop forever."""
     current = now()
     eligible = or_(
@@ -104,6 +124,20 @@ def claim_job(db: Session, *, parse_only: bool = False) -> tuple[str, str] | Non
     query = select(JobRow).where(eligible)
     if parse_only:
         query = query.where(JobRow.kind == "parse")
+    if inference_busy:
+        query = query.where(
+            or_(
+                JobRow.kind.not_in(INFERENCE_JOBS),
+                *(
+                    and_(JobRow.kind == kind, JobRow.payload[flag].astext == "true")
+                    for kind, flag in DETERMINISTIC_FLAGS.items()
+                ),
+                and_(
+                    JobRow.kind == "agent",
+                    JobRow.payload["command"].astext.in_(DETERMINISTIC_COMMANDS),
+                ),
+            )
+        ).order_by((JobRow.kind == "parse").desc())
     job = db.scalar(
         query.order_by(JobRow.created_at, JobRow.id).with_for_update(skip_locked=True).limit(1)
     )
@@ -1085,12 +1119,13 @@ def main() -> None:
                 inference.result()
                 inference = None
             with SessionFactory() as db:
-                claimed = claim_job(db, parse_only=inference is not None)
+                claimed = claim_job(db, inference_busy=inference is not None)
                 job = db.get(JobRow, claimed[0]) if claimed else None
-                kind = job.kind if job else None
+                needs_inference = job is not None and _needs_inference(job)
             if not claimed:
                 time.sleep(settings.worker_poll_seconds)
-            elif kind in INFERENCE_JOBS:
+            elif needs_inference:
+                assert inference is None
                 inference = executor.submit(process_job, *claimed)
             else:
                 process_job(*claimed)

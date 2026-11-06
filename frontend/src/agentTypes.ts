@@ -93,6 +93,9 @@ export type Review = {
     extraction_review_required?: boolean | null;
     plan: Plan | null;
     suggestions: Suggestions | null;
+    planning_candidates?: { id: string; plan: Plan; overlap: number;
+        left_distinct_keys: number; right_distinct_keys: number;
+        left_rows: number; right_rows: number }[];
     planning_request: Omit<Partial<Plan>, "left" | "right"> & {
         left: Partial<Slot> & {
             canonical_id: string;
@@ -161,6 +164,7 @@ export type Workflow = {
     updated_at: string;
     detail: {
         intent: AgentIntent | null;
+        prepare_upload?: boolean;
         steps: {
             tool: string;
             resource_id: string;

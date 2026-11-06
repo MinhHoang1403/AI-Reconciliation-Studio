@@ -4,7 +4,7 @@ import hashlib
 import json
 import secrets
 from datetime import timedelta
-from typing import Any
+from typing import Any, get_args
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -41,8 +41,14 @@ from studio.contracts.agent import (
     WorkflowStep,
     WorkflowView,
 )
-from studio.contracts.assistant import AssistantContext, ToolRequest, ToolResult
-from studio.contracts.reconciliation import PlanningRequest, PlanProposal, ReconciliationContract
+from studio.contracts.assistant import AssistantCommand, AssistantContext, ToolRequest, ToolResult
+from studio.contracts.data_query import DataQuery, QueryResult
+from studio.contracts.reconciliation import (
+    PlanningCandidate,
+    PlanningRequest,
+    PlanProposal,
+    ReconciliationContract,
+)
 from studio.database import (
     AgentWorkflowRow,
     CanonicalRow,
@@ -193,6 +199,7 @@ def make_review(
     question: str,
     reason: str,
     draft: NormalizationDraft | None = None,
+    planning_candidates: list[PlanningCandidate] | None = None,
 ) -> None:
     if sum(r.state == "OPEN" for r in state.reviews) >= 3 or len(state.reviews) >= 10:
         row.state = "PARTIAL"
@@ -242,6 +249,9 @@ def make_review(
         review.plan = proposal.plan
         review.suggestions = proposal.suggestions
         review.planning_request = state.intent.planning_request if state.intent else None
+        review.planning_candidates = planning_candidates or []
+        if review.planning_candidates and review.plan is None:
+            review.question = "Cột nào dùng để liên kết hai nguồn này?"
         if plan_row.origin == "DETERMINISTIC" and proposal.plan is None and proposal.reasoning:
             review.reason = proposal.reasoning
     state.reviews.append(review)
@@ -263,13 +273,17 @@ def notify_job_finished(db: Session, job: JobRow) -> None:
         .with_for_update()
     )
     for row in rows:
+        parent = db.get(JobRow, row.parent_job_id) if row.detail.get("intent") is None else None
+        deterministic = row.detail.get("intent") is not None or (
+            parent is not None and parent.payload.get("command") in get_args(AssistantCommand)
+        )
         enqueue_job(
             db,
             row.workspace_id,
             row.project_id,
             "agent_resume",
             f"agent-resume:{row.id}:{job.id}",
-            dict(workflow_id=row.id),
+            dict(workflow_id=row.id) | ({"deterministic": True} if deterministic else {}),
         )
 
 
@@ -326,7 +340,12 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
                 kind="MAPPING",
                 resource_id=draft.table_id,
                 question="Xác nhận những trường có ảnh hưởng đến ý nghĩa dữ liệu.",
-                reason="Đây là quy tắc mới; AI chưa có quyền tự phê duyệt.",
+                reason=(
+                    "Định dạng được kiểm từ dữ liệu. Ý nghĩa mỗi dòng, khóa và số tiền "
+                    "ảnh hưởng đến kết quả đối soát."
+                    if state.prepare_upload
+                    else "Đây là quy tắc mới; AI chưa có quyền tự phê duyệt."
+                ),
                 draft=draft,
             )
     elif child.kind == "reconciliation_plan":
@@ -338,6 +357,9 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
             kind="RECONCILIATION",
             resource_id=result["plan_id"],
             question="Xác nhận khóa, số tiền, kỳ và phạm vi đối soát.",
+            planning_candidates=[
+                PlanningCandidate.model_validate(item) for item in result.get("candidates", [])
+            ],
             reason=(
                 "Chưa nhận được phương án từ AI. Bạn có thể thiết lập quy tắc trong Đối soát."
                 if result.get("provider_error_code") == "AI_PLAN_MISSING"
@@ -434,6 +456,40 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
         db, actor, context, state.dataset_ids or intent.dataset_ids, workflow_id=row.id
     )
 
+    def add_source_previews() -> int:
+        shown = 0
+        for dataset in catalogue.datasets:
+            for table in dataset.tables:
+                if shown >= settings.agent_max_tool_calls:
+                    return shown
+                result = execute_tool(
+                    db,
+                    actor,
+                    QueryAction(
+                        name="query_dataset",
+                        query=DataQuery(
+                            project_id=row.project_id,
+                            source_kind="RAW_PREVIEW",
+                            source_id=table.table_id,
+                            select_fields=[c.id for c in table.columns[:8]],
+                            limit=10,
+                        ),
+                    ),
+                    row.id,
+                )
+                assert isinstance(result, QueryResult)
+                count = f"{table.row_count:,}".replace(",", ".")
+                state.blocks.extend(
+                    [
+                        ProgressBlock(
+                            text=f"Tôi đã đọc {count} dòng từ {dataset.name} · {table.sheet}."
+                        ),
+                        TableBlock(result=result),
+                    ]
+                )
+                shown += 1
+        return shown
+
     def facts(explain: bool = False) -> None:
         if len(state.steps) >= settings.agent_max_steps:
             raise DomainError("AGENT_STEP_LIMIT", "Đã đạt giới hạn bước.")
@@ -484,9 +540,52 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
 
     if intent.intent == "PREPARE_NORMALIZATION":
         require_editor(actor, db, row.id)
+        if state.prepare_upload and not state.blocks:
+            if add_source_previews():
+                state.blocks.append(
+                    ProgressBlock(
+                        text="Đã đọc dữ liệu; chưa chuẩn hóa. Bản tự chuẩn bị có thể xem ngay."
+                    )
+                )
         waiting_tables = []
         for dataset in catalogue.datasets:
             for table in dataset.tables:
+                if state.prepare_upload and not table.canonical_id:
+                    existing = db.scalar(
+                        select(JobRow)
+                        .where(
+                            JobRow.workspace_id == actor.workspace_id,
+                            JobRow.project_id == row.project_id,
+                            JobRow.kind.in_(("mapping_reuse", "normalize")),
+                            JobRow.status.in_(("QUEUED", "RUNNING", "RETRYABLE_FAILURE")),
+                            JobRow.payload["table_id"].astext == table.table_id,
+                        )
+                        .order_by(JobRow.created_at, JobRow.id)
+                        .limit(1)
+                    )
+                    if existing:
+                        wait_for(
+                            db,
+                            row,
+                            state,
+                            "run_normalization"
+                            if existing.kind == "normalize"
+                            else "reuse_mapping",
+                            table.table_id,
+                            JobReference(job_id=existing.id, status=existing.status),
+                        )
+                        save(row, state)
+                        return
+                    if (table.column_count or len(table.columns)) > 40:
+                        notice = (
+                            f"{dataset.name} · {table.sheet}: bảng có hơn 40 cột. "
+                            "Xem dữ liệu gốc trong Chat và dùng kiểm tra chi tiết để ghép cột."
+                        )
+                        if not any(
+                            isinstance(b, ProgressBlock) and b.text == notice for b in state.blocks
+                        ):
+                            state.blocks.append(ProgressBlock(text=notice))
+                        continue
                 if table.canonical_id:
                     canonical = get_scoped(db, CanonicalRow, table.canonical_id, actor)
                     if not any(
@@ -563,6 +662,7 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                     context=context,
                     table_id=waiting_tables[0],
                     workflow_id=row.id,
+                    profile_only=state.prepare_upload,
                 ),
                 f"{row.id}:{waiting_tables[0]}",
             )
@@ -582,7 +682,14 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                 "PARTIAL"
                 if any(isinstance(b, DatasetBlock) and b.status != "READY" for b in state.blocks)
                 else "COMPLETED"
-                if catalogue.datasets and all(d.tables for d in catalogue.datasets)
+                if catalogue.datasets
+                and all(d.tables for d in catalogue.datasets)
+                and (
+                    not state.prepare_upload
+                    or all(t.canonical_id for d in catalogue.datasets for t in d.tables)
+                )
+                else "PARTIAL"
+                if state.prepare_upload and state.blocks
                 else "WAITING_REVIEW"
             )
     elif intent.intent == "RECONCILE_DATASETS":
@@ -736,8 +843,6 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
         result = execute_tool(
             db, actor, QueryAction(name="query_dataset", query=intent.query), row.id
         )
-        from studio.contracts.data_query import QueryResult
-
         assert isinstance(result, QueryResult)
         intent.query = result.query
         # A new table is a new selection surface; a previously explained group
@@ -863,43 +968,14 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
             assert isinstance(ref, JobReference)
             wait_for(db, row, state, "start_export", context.run_id or "", ref)
     elif intent.intent == "EXPLORE_DATA":
-        from studio.contracts.data_query import DataQuery, QueryResult
-
-        tools_used = 0
-        for dataset in catalogue.datasets:
-            for table in dataset.tables:
-                if tools_used >= settings.agent_max_tool_calls:
-                    row.state = "PARTIAL"
-                    state.blocks.append(
-                        ProgressBlock(text="Đã đạt giới hạn trang xem; chọn nguồn để xem tiếp.")
-                    )
-                    save(row, state)
-                    return
-                result = execute_tool(
-                    db,
-                    actor,
-                    QueryAction(
-                        name="query_dataset",
-                        query=DataQuery(
-                            project_id=row.project_id,
-                            source_kind="RAW_PREVIEW",
-                            source_id=table.table_id,
-                            select_fields=[c.id for c in table.columns[:8]],
-                            limit=10,
-                        ),
-                    ),
-                    row.id,
-                )
-                assert isinstance(result, QueryResult)
-                count = f"{table.row_count:,}".replace(",", ".")
-                state.blocks.append(
-                    ProgressBlock(
-                        text=f"Tôi đã đọc {count} dòng từ {dataset.name} · {table.sheet}."
-                    )
-                )
-                state.blocks.append(TableBlock(result=result))
-                tools_used += 1
-        row.state = "COMPLETED" if tools_used else "WAITING_REVIEW"
+        tools_used = add_source_previews()
+        if tools_used < sum(len(dataset.tables) for dataset in catalogue.datasets):
+            row.state = "PARTIAL"
+            state.blocks.append(
+                ProgressBlock(text="Đã đạt giới hạn trang xem; chọn nguồn để xem tiếp.")
+            )
+        else:
+            row.state = "COMPLETED" if tools_used else "WAITING_REVIEW"
     else:
         if intent.intent == "UNSUPPORTED":
             for question in intent.questions or ["Yêu cầu này chưa được hỗ trợ."]:

@@ -178,6 +178,44 @@ def test_scoped_candidate_ignores_outside_duplicates_but_abstains_on_inside_conf
     assert scoped_key_candidate(draft, cats, left_rows, right_rows) is None
 
 
+def test_planner_retains_equal_keys_without_picking_a_plan():
+    from studio.contracts import SchemaField
+    from studio.contracts.reconciliation import PlanningRequest
+    from studio.reconciliation_planner import scoped_key_candidates
+
+    left_rows = records("shipments.csv")
+    right_rows = records("delivery-confirmations.csv")
+    cats = [
+        catalogue(side, rows, grain="shipment", metric="delivery_charge", amount="delivery_charge")
+        for side, rows in (("left", left_rows), ("right", right_rows))
+    ]
+    for cat, rows in zip(cats, (left_rows, right_rows), strict=True):
+        cat.schema_definition.fields.append(
+            SchemaField(id="manifest_reference", name="Manifest reference", data_type="string")
+        )
+        cat.identifier_fields.append("manifest_reference")
+        for record in rows:
+            record.payload["manifest_reference"] = "M-" + record.payload["tracking_id"]
+    request = PlanningRequest.from_plan(
+        plan(
+            left="left",
+            right="right",
+            entity="delivery",
+            platform="",
+            amount="delivery_charge",
+            metric="delivery_charge",
+            keys=["tracking_id"],
+        )
+    )
+    result = scoped_key_candidates(request, cats, left_rows, right_rows)
+    assert result and result.status == "NEEDS_REVIEW" and result.plan is None
+    assert len(result.candidates) == 2 and len({c.id for c in result.candidates}) == 2
+    assert {
+        (c.plan.join_keys[0].left, c.plan.join_keys[0].right, c.overlap) for c in result.candidates
+    } == {("tracking_id", "tracking_id", 2), ("manifest_reference", "manifest_reference", 2)}
+    assert scoped_key_candidates(request, cats, list(reversed(left_rows)), right_rows) == result
+
+
 @pytest.mark.parametrize("reverse", [False, True])
 def test_scoped_planner_matches_composite_anchor_to_detail_with_different_key(reverse):
     from studio.contracts.reconciliation import PlanningRequest

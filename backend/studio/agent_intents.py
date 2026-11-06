@@ -12,7 +12,7 @@ from studio.ai_gateway import TypedProvider
 from studio.assistant import plain_question
 from studio.contracts import WorkspacePolicy
 from studio.contracts.agent import AgentIntent, IntentBatch, IntentCatalogue, RoutingBatch
-from studio.contracts.data_query import DataQuery, QueryAggregation
+from studio.contracts.data_query import DataQuery, QueryAggregation, QueryFilter, QuerySourceKind
 from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
@@ -524,41 +524,149 @@ def resolve_ranked_results(goal: str, catalogue: IntentCatalogue) -> AgentIntent
     )
 
 
-def resolve_prepared_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
-    """Read or count the explicitly requested prepared layer of one scoped table."""
+def resolve_run_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
+    """Bind a whole-result read to the verified run selected in the conversation."""
     normalized = " ".join(plain_question(goal).split()).rstrip("?.!")
-    matched = re.fullmatch(
-        r"(?:(?:cho toi |cho |hay )?xem(?: truoc)? (?:du lieu|ban) tu chuan bi"
-        r"|dem (?:so )?dong (?:du lieu|ban) tu chuan bi)"
-        r"(?: cua (?:nguon|tep|file) dang (?:mo|chon))?",
+    normalized = re.sub(
+        r" (?:cua|trong|o) (?:lan doi soat|ket qua) (?:nay|dang xem|dang mo)$", "", normalized
+    )
+    population = re.fullmatch(
+        r"(?:(bao nhieu|co bao nhieu|dem|liet ke|xem|cho toi xem) )"
+        r"(?:cac |so )?(?:nhom(?: giao dich)?|giao dich|khoan) "
+        r"(lech tien|bi lech tien|chenh lech|thieu doi ung|khong co doi ung)",
         normalized,
     )
-    if not matched:
+    report = re.fullmatch(r"(?:hay )?(?:xuat|tai) bao cao (excel|xlsx|csv)", normalized)
+    summary = re.fullmatch(
+        r"(?:cho (?:toi )?xem |tinh )?tong (?:chenh lech|lech tien) (?:co dau|tuyet doi)",
+        normalized,
+    )
+    if not (population or report or summary):
         return None
+    run_id = catalogue.context.run_id
+    if run_id is None or run_id not in catalogue.run_ids or not catalogue.verified_run_fields:
+        return AgentIntent(intent="CLARIFY", questions=["Bạn muốn dùng lần đối soát nào?"])
+    if report:
+        return AgentIntent(
+            intent="EXPORT_RESULT",
+            run_id=run_id,
+            export_format="csv" if report[1] == "csv" else "xlsx",
+        )
+    if summary:
+        return AgentIntent(intent="SUMMARIZE_RESULTS", run_id=run_id)
+    assert population is not None
+    unmatched = population[2].endswith("doi ung")
+    field = "linkage_state" if unmatched else "comparison_state"
+    return AgentIntent(
+        intent="QUERY_DATA",
+        query=DataQuery(
+            project_id=catalogue.context.project_id,
+            source_kind="VERIFIED_RUN",
+            source_id=run_id,
+            filters=[
+                QueryFilter(
+                    field_id=field, op="eq", value="UNMATCHED" if unmatched else "AMOUNT_MISMATCH"
+                )
+            ],
+            select_fields=[]
+            if population[1] in {"bao nhieu", "co bao nhieu", "dem"}
+            else ["linkage_state", "comparison_state"],
+            aggregations=[QueryAggregation(op="count")]
+            if population[1] in {"bao nhieu", "co bao nhieu", "dem"}
+            else [],
+        ),
+    )
+
+
+LAYER_TERMS: dict[str, QuerySourceKind] = {
+    "du lieu goc": "RAW_PREVIEW",
+    "bang goc": "RAW_PREVIEW",
+    "ban goc": "RAW_PREVIEW",
+    "du lieu tu chuan bi": "PREPARED",
+    "ban tu chuan bi": "PREPARED",
+    "bang da chuan bi": "PREPARED",
+    "du lieu da chuan hoa": "CANONICAL",
+    "bang da chuan hoa": "CANONICAL",
+    "ban da chuan hoa": "CANONICAL",
+}
+
+
+def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
+    """Compose operation, layer and exact source slots for simple read-only questions.
+
+    Unknown modifiers (filters, dates, money) stay with the typed router. A filename
+    in quotes selects only an exact scoped name; near matches never select a source.
+    """
+    text = goal.strip().rstrip("?.!")
+    named = re.search(r'\s+(?:"([^"]+)"|“([^”]+)”)$', text)
+    filename = (named.group(1) or named.group(2)) if named else None
+    if named:
+        text = text[: named.start()]
+    normalized = " ".join(plain_question(text).split())
+    source_suffix = r"(?: (?:cua|trong) (?:nguon|tep|file) (?:dang (?:mo|chon)|nay))?$"
+    if filename:
+        normalized, removed = re.subn(r" (?:cua|trong) (?:nguon|tep|file)$", "", normalized)
+        if not removed:
+            return None
+    else:
+        normalized = re.sub(source_suffix, "", normalized)
+    layer = "|".join(re.escape(term) for term in LAYER_TERMS)
+    view = re.fullmatch(
+        r"(?:(?:cho toi |cho |hay )?xem(?: truoc)?|mo|liet ke) (" + layer + r")", normalized
+    )
+    count = re.fullmatch(
+        r"(?:hay )?dem (?:so )?(?:ban ghi|dong) (?:trong |cua )?(" + layer + r")", normalized
+    )
+    count_after = re.fullmatch(r"(" + layer + r") co bao nhieu (?:dong|ban ghi)", normalized)
+    match = view or count or count_after
+    if not match:
+        return None
+    layer_kind = LAYER_TERMS[match[1]]
     datasets = [
         dataset
         for dataset in catalogue.datasets
-        if catalogue.context.dataset_id in {None, dataset.id}
+        if (
+            unicodedata.normalize("NFC", dataset.name).casefold()
+            == unicodedata.normalize("NFC", filename).casefold()
+            if filename
+            else catalogue.context.dataset_id in {None, dataset.id}
+        )
     ]
     if len(datasets) != 1 or len(datasets[0].tables) != 1:
         return AgentIntent(
             intent="CLARIFY",
-            questions=["Hãy chọn một nguồn có một bảng để xem bản tự chuẩn bị."],
+            questions=["Bạn muốn xem bảng nào? Hãy chọn đúng tệp và bảng cần đọc."],
         )
     table = datasets[0].tables[0]
-    if table.prepared_artifact_id is None:
+    if layer_kind == "PREPARED" and table.prepared_artifact_id is None:
         return AgentIntent(
             intent="CLARIFY",
             questions=["Nguồn này chưa có bản tự chuẩn bị. Bạn có thể xem dữ liệu gốc."],
+        )
+    if layer_kind == "CANONICAL" and not table.canonical_id:
+        return AgentIntent(
+            intent="CLARIFY", questions=["Nguồn này chưa có bản chuẩn hóa đã duyệt."]
         )
     return AgentIntent(
         intent="QUERY_DATA",
         query=DataQuery(
             project_id=catalogue.context.project_id,
-            source_kind="PREPARED",
-            source_id=table.table_id,
-            aggregations=[QueryAggregation(op="count")] if normalized.startswith("dem ") else [],
+            source_kind=layer_kind,
+            source_id=(table.canonical_id or table.table_id)
+            if layer_kind == "CANONICAL"
+            else table.table_id,
+            aggregations=[QueryAggregation(op="count")] if not view else [],
         ),
+    )
+
+
+def resolve_prepared_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
+    """Allow model PREPARED operations only when they equal the native read plan."""
+    selected = resolve_layer_listing(goal, catalogue)
+    return (
+        selected
+        if selected and (selected.query is None or selected.query.source_kind == "PREPARED")
+        else None
     )
 
 
@@ -568,9 +676,9 @@ def resolve_plain_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
     A plural preview uses only current scoped sources; a row list needs a unique
     evidence-backed alias. Filters, periods, money and comparisons stay with the router.
     """
-    prepared = resolve_prepared_listing(goal, catalogue)
-    if prepared is not None:
-        return prepared
+    listing = resolve_layer_listing(goal, catalogue)
+    if listing is not None:
+        return listing
     normalized = plain_question(goal)
     # One read request can inspect several sources; never ask a model to split
     # an unfiltered preview into separate logical requests. Financial/filter
