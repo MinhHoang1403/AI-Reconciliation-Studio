@@ -83,6 +83,6 @@ Chưa nghiệm thu triển khai Internet hoặc nhiều người dùng đồng t
 
 - [Kiến trúc](docs/ARCHITECTURE.md) và [hợp đồng dữ liệu](docs/DATA_CONTRACTS.md).
 - [Tích hợp và quyền AI](docs/AI_INTEGRATION.md).
-- [Kiểm thử, backup và khôi phục](docs/TESTING_GUIDE.md).
+- [Kiểm thử, backup và khôi phục](docs/TESTING_GUIDE.md#quy-trình-kiểm-thử-và-khôi-phục-hiện-hành).
 - [Báo cáo triển khai và nghiệm thu](docs/IMPLEMENTATION_STATUS.md).
 - [Kế hoạch sản phẩm](docs/PROJECT_PLAN.md), [kế hoạch Agent](docs/AI_AGENT_MVP_IMPLEMENTATION_PLAN.md) và [quy tắc đóng góp](Rules.md).

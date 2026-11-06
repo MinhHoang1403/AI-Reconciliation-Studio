@@ -1,5 +1,33 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Consolidation và baseline tích hợp — 06/11/2026
+
+Đang thực hiện theo yêu cầu hợp nhất mới: cho phép đưa Foundation hợp lệ vào main khi hồi quy local đạt, dù Planner/Query AI LIVE chưa hoàn tất. Quyền này thay lệnh giữ main ở các báo cáo lịch sử; không biến các cổng AI chưa đạt thành PASS. Công đoạn tự động hóa chỉ bắt đầu sau baseline tích hợp, Docker và rollback được kiểm chứng.
+
+### Kiểm kê, bảo toàn và cleanup
+
+Git đầu lượt: main `a4f70b2`, product-polish `2eecb06`, Foundation `4124d17`; cả ba bằng origin sau fetch. Main là tổ tiên của product-polish, product-polish là tổ tiên của Foundation. Không có commit chưa push hoặc sửa tracked file của người dùng. Kế hoạch `AUTOMATION_PRODUCT_PLAN.md` là tệp chưa tracked được cung cấp mới; bản gốc và SHA-256 được giữ trong runtime, chưa triển khai nội dung ở công đoạn này.
+
+Rà soát cây source, imports, nội dung trùng hoàn toàn, thân hàm trùng, migrations, call sites, dependencies/lockfiles và cấu hình build. Chưa có bằng chứng đủ để xóa source, test hoặc dependency: số xóa tương ứng **0/0/0**. API Assistant cũ vẫn có tuyến tương thích; parser tài liệu, công cụ rollback, oracle và tests bảo mật vẫn cần giữ. Không có cache/runtime được tracked. Tài liệu kiến trúc, contracts, kế hoạch Agent và báo cáo lịch sử tiếp tục có giá trị truy vết; không xóa báo cáo thất bại. README trỏ tới quy trình hiện hành trong TESTING_GUIDE, các liên kết backup lỗi thời đã sửa. Không thay dependency hoặc hợp đồng tài chính.
+
+Xóa cache có thể tái tạo bị bộ kiểm duyệt tự động chặn với thông báo `blocked by policy`; không cache nào bị xóa. Giữ nguyên traces, screenshots, dữ liệu TEST, backups, cache chung và model Ollama. Markdown của 12 tài liệu tracked đạt; kế hoạch mới có 40 lỗi khoảng trắng bảng, giữ nguyên bản gốc để xử lý định dạng khi đọc kế hoạch ở công đoạn sau.
+
+### Lỗi backup đã sửa và bằng chứng
+
+Công cụ backup cũ giữ nhiều bản metadata đồng thời và bị OOM kill trong Worker 512 MiB, exit137. Lượt `backup_0e52b435f88841cf9d3f8d5e1298c023` không có receipt restore PASS, được giữ nguyên, không dùng làm mốc khôi phục. Schema thử của lượt lỗi đã được dọn trước khi tiến trình bị dừng ở bước đối chiếu cuối; không ghi vào public.
+
+`tools/check-backup-restore.py` ghi định dạng metadata cũ theo từng dòng, đối chiếu từng bảng và restore theo batch200; giải phóng bản giải mã sau mỗi bảng. Không tăng tài nguyên, tạo server hoặc đổi backup codec. Bốn ca regression bổ sung kiểm bytes tương thích và phát hiện sửa/mất/thêm bản ghi; ca codec chống giả type tags vẫn giữ.
+
+Backup `backup_676b5d2f0d06435b8032cd8bc228bb95` đạt restore trên PostgreSQL hiện có: **24 bảng, 6.755 tệp**, backup31,379giây, restore40,475giây. Metadata SHA-256 `9fc3cea0c5f2b5a94b26da07af68b8596c9927437c310b163743769da0bdb7d2` trùng bản trước sửa. Toàn bộ metadata sản xuất và artifact checksum không đổi. Backup giữ trên volume và bản sao host tại `runtime/backups/backup_676b5d2f0d06435b8032cd8bc228bb95`; kiểm SHA-256 metadata và đủ6.755tệp trên host PASS. Receipt/log trong `runtime/consolidation/`, không vào Git.
+
+### Kiểm chứng đang thực hiện
+
+Baseline Backend/PostgreSQL **479/479 PASS**, 134,90giây; năm ca backup sau sửa PASS (gồm một ca cũ, bốn ca mới). Ruff, mypy50files, TypeScript, ESLint, production build, dependency consistency, secret/history/path scan và Markdown tracked PASS. GitHub hiện Public, origin chính thức đúng; không có workflow CI hoặc GitHub Actions run để dùng làm bằng chứng CI PASS.
+
+Đã đối chiếu45tệp Backend giữa source và hai container,7tệp Frontend giữa dist/image/HTTP: cùng application revision `58cbc3c`; repository HEAD `4124d17` có thêm tài liệu/công cụ. Bốn dịch vụ healthy, queue không có tác vụ active trước backup. Sau sửa công cụ, full Backend/PostgreSQL **483/483 PASS**,183,60giây; full Playwright **139/139 PASS**,12,7phút, không retry/skip. Merge/main regression, Docker đồng bộ và rollback của baseline mới đang chờ hoàn tất; chưa tuyên bố công đoạn1 PASS hoặc READY_FOR_SEAMLESS_LOCAL_UAT.
+
+---
+
 **Hiện trạng 06/11/2026 — Foundation Reliability Audit.** Bản local chạy `58cbc3c4781d6f331b7c67c2007844bb5b012bce`, đạt 479/479 Backend/PostgreSQL và 139/139 Playwright. Hai model đã tạo đề xuất và cập nhật review thực tế. Mỗi luồng chuẩn hóa đúng 5.458 dòng hợp lệ và 29 dòng lỗi. Hai cặp đối soát trên dự án Gemini khớp đáp án độc lập. **Chưa FOUNDATION_ACCEPTED, chưa hợp nhất main.** Các mốc bên dưới ghi lịch sử theo ngày.
 
 ## Foundation — lỗi đã tái hiện và phần kiểm chứng hiện có

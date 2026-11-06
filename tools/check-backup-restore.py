@@ -67,6 +67,38 @@ def capture(connection: Any, metadata: MetaData) -> dict[str, list[dict[str, Any
     }
 
 
+def write_metadata(path: Path, rows: dict[str, list[dict[str, Any]]]) -> None:
+    """Write the existing canonical codec without copying the entire snapshot in RAM."""
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        stream.write('{"$map":{')
+        for index, name in enumerate(sorted(rows)):
+            if index:
+                stream.write(",")
+            stream.write(json.dumps(name, ensure_ascii=False) + ":[")
+            for row_index, row in enumerate(rows[name]):
+                if row_index:
+                    stream.write(",")
+                stream.write(canonical(row))
+            stream.write("]")
+        stream.write("}}")
+
+
+def verify_metadata(
+    connection: Any, metadata: MetaData, rows: dict[str, list[dict[str, Any]]]
+) -> None:
+    """Compare every row, retaining at most one additional table, never two encoded snapshots."""
+    for table in metadata.sorted_tables:
+        actual = sorted(
+            [dict(row) for row in connection.execute(select(table)).mappings()], key=canonical
+        )
+        expected = rows[table.name]
+        if len(actual) != len(expected) or any(
+            canonical(left) != canonical(right)
+            for left, right in zip(actual, expected, strict=True)
+        ):
+            raise RuntimeError(f"Backup metadata differs: {table.name}")
+
+
 def file_inventory(rows: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
     files: dict[str, str] = {}
     for table, key, digest in (
@@ -107,15 +139,14 @@ def main() -> None:
         connection.execute(text("SET TRANSACTION READ ONLY"))
         rows = capture(connection, metadata)
         files = file_inventory(rows)
-        (directory / "metadata.json").write_text(canonical(rows), encoding="utf-8")
+        write_metadata(directory / "metadata.json", rows)
         for key in files:
             target = storage_path(directory / "files", key)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(storage_path(settings.storage_root, key), target)
         connection.rollback()
     with engine.connect() as connection:
-        if canonical(capture(connection, metadata)) != canonical(rows):
-            raise RuntimeError("BLOCKED: metadata changed during backup; receipt not accepted")
+        verify_metadata(connection, metadata, rows)
     manifest = dict(
         backup_id=ident,
         created_at=datetime.now().astimezone().isoformat(),
@@ -159,15 +190,15 @@ def main() -> None:
             connection.execute(text(f'CREATE SCHEMA "{schema}"'))
             scoped = connection.execution_options(schema_translate_map={None: schema})
             metadata.create_all(scoped)
-            decoded = decode(json.loads((directory / "metadata.json").read_text(encoding="utf-8")))
+            with (directory / "metadata.json").open(encoding="utf-8") as stream:
+                encoded_tables = json.load(stream)["$map"]
             for table in metadata.sorted_tables:
-                if decoded[table.name]:
-                    scoped.execute(table.insert(), decoded[table.name])
-            for table in metadata.sorted_tables:
-                actual = sorted(
-                    [dict(r) for r in scoped.execute(select(table)).mappings()], key=canonical
-                )
-                assert canonical(actual) == canonical(rows[table.name]), table.name
+                decoded_rows = decode(encoded_tables.pop(table.name))
+                for offset in range(0, len(decoded_rows), 200):
+                    scoped.execute(table.insert(), decoded_rows[offset : offset + 200])
+                del decoded_rows
+            del encoded_tables
+            verify_metadata(scoped, metadata, rows)
         for key, digest in files.items():
             target = storage_path(restored, key)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -191,9 +222,7 @@ def main() -> None:
         if restored.exists():
             shutil.rmtree(restored)
     with engine.connect() as connection:
-        assert canonical(capture(connection, metadata)) == canonical(rows), (
-            "Production metadata changed"
-        )
+        verify_metadata(connection, metadata, rows)
     assert file_inventory(rows) == files
     (directory / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(json.dumps({k: v for k, v in manifest.items() if k != "files"}, ensure_ascii=False))

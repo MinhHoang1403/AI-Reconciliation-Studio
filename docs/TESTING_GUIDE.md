@@ -2,6 +2,24 @@
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
+## Quy trình kiểm thử và khôi phục hiện hành
+
+Số liệu nghiệm thu mới nhất nằm ở đầu [IMPLEMENTATION_STATUS](IMPLEMENTATION_STATUS.md). Các mục có ngày phía dưới giữ bằng chứng lịch sử, không phải kết quả của lần chạy hiện tại.
+
+1. Chạy Ruff, mypy, TypeScript, ESLint và production build; kiểm bí mật và liên kết bằng `python tools/check_repository.py` trong môi trường Python của dự án.
+2. Chạy `./tools/test-postgres.ps1 -All -Source` trước triển khai, hoặc `-All` để kiểm image đang chạy. Các ca PostgreSQL dùng schema cô lập trên server hiện có; không chạy trên dữ liệu nghiệp vụ.
+3. Chạy `npm --prefix frontend run test:e2e` tuần tự, một runner, retries 0. Chờ tác vụ AI kết thúc trước khi chạy. Kiểm candidate dùng `STUDIO_FRONTEND_DIST=1`; nghiệm thu Docker bỏ biến này.
+4. Trước đổi image, chờ queue hết tác vụ và tạo backup/restore bằng lệnh dưới. Không ghi dữ liệu qua UI trong lúc chụp backup. Công cụ tự từ chối nếu metadata thay đổi; giữ cả receipt thất bại.
+
+```powershell
+docker compose cp tools/check-backup-restore.py worker:/tmp/studio-backup-check.py
+docker compose exec -T worker python /tmp/studio-backup-check.py
+```
+
+Công cụ giữ backup trong `/var/lib/studio/backups/<backup_id>` trên volume, xác minh checksum và thử restore vào schema UUID của PostgreSQL hiện có. Chỉ schema thử và bản sao thử do chính lượt chạy tạo được dọn; dữ liệu public và backup giữ nguyên. Sau khi nhận `restore_status=PASS`, copy đúng thư mục backup được trả về sang `runtime/backups/<backup_id>` bằng `docker compose cp worker:/var/lib/studio/backups/<backup_id> runtime/backups/`. Kiểm checksum theo manifest trên host; thư mục runtime không vào Git. Bản sao trên cùng máy chưa bảo vệ trước mất toàn bộ máy.
+
+Trước restart/rollback, copy `tools/check-persistence.py` vào `/tmp/studio-persistence-check.py` trong Worker, chạy với đối số `snapshot`; sau mỗi lần đổi image chạy `verify`. Snapshot dùng vị trí cố định: copy receipt cũ ra runtime trước khi tạo snapshot mới. `./tools/rollback.ps1` kiểm nguồn/cùng revision và compatibility trước khi chuyển sang cặp tag `rollback`; `./tools/start.ps1 -SkipBuild` trở lại cặp `local` và xác minh phiên loopback. Không downgrade schema, xóa volume hoặc reset lịch sử request AI.
+
 ## Trạng thái nguồn, lỗi kết thúc và cuộn Chat — 05/11/2026
 
 `tests/test_agent_reliability.py` dùng cùng PostgreSQL/schema UUID hiện có để kiểm trạng thái upload/parse/mapping/READY/PARTIAL/FAILED/stale, nguồn khác project/workspace, revision hiện hành, phản hồi lỗi bền vững, unknown delivery, lease exhausted và preview hai nguồn không gọi model. Provider errors trong các ca này là MOCK, metadata/queue/transaction là PostgreSQL thật. Không dùng số tests này làm độ chính xác AI LIVE.
@@ -288,7 +306,7 @@ Nguồn candidate đã replay toàn bộ: **176 backend (138 offline/38 PostgreS
 
 Luồng ba file dùng upload thật trên UI, approval/normalization qua API có auth cho fixtures tổng hợp mới, rồi UI đề xuất hai cặp → xác nhận → kiểm tra/lưu/duyệt rule → chạy verified → hỏi chênh lệch → export. Bộ foundation riêng tiếp tục kiểm Smart Setup/mapping/normalization trên UI; Planner dùng MOCK, không dùng quota live. Không thay oracle để ép TikTok có mismatch; không bỏ validation READY cho fixtures chứa lỗi.
 
-Benchmark: `uv run python tools/benchmark-foundation.py`, `uv run python tools/benchmark-reconciliation.py`; `benchmark-assistant.py` copy/chạy trong Backend hiện có để đo Parquet evidence và read-only SQL. Không tạo service/container mới. Kết quả là samples tổng hợp; không suy ra precision/recall đại diện hoặc SLA. `check-worker-recovery.py` kiểm SIGKILL normalization thật; PG tests kiểm stale claim/fencing/không duplicate Assistant response và unknown delivery. `check-persistence.ps1` kiểm cả ConversationRow/MessageRow sau restart/recreate và frontend-only recreate. Backup/restore commands tại [README](../README.md); backup codec có regression chống JSON giả type tags.
+Benchmark: `uv run python tools/benchmark-foundation.py`, `uv run python tools/benchmark-reconciliation.py`; `benchmark-assistant.py` copy/chạy trong Backend hiện có để đo Parquet evidence và read-only SQL. Không tạo service/container mới. Kết quả là samples tổng hợp; không suy ra precision/recall đại diện hoặc SLA. `check-worker-recovery.py` kiểm SIGKILL normalization thật; PG tests kiểm stale claim/fencing/không duplicate Assistant response và unknown delivery. `check-persistence.ps1` kiểm cả ConversationRow/MessageRow sau restart/recreate và frontend-only recreate. Backup/restore commands tại [quy trình hiện hành](#quy-trình-kiểm-thử-và-khôi-phục-hiện-hành); backup codec có regression chống JSON giả type tags.
 
 ## Agent-first — kết quả và cách kiểm chứng mốc S ngày 02/11/2026
 
