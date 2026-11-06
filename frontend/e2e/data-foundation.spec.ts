@@ -188,6 +188,13 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
   await expect(
     page.getByRole("button", { name: "Xác nhận ánh xạ", exact: true }),
   ).toBeEnabled();
+  await expect(page).toHaveURL(new RegExp(`dataset_id=${datasetId}`));
+  await page.reload();
+  await expect(page.getByRole("tab", {name: "AI Smart Setup", exact: true})).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("combobox", {name: "Bảng / sheet", exact: true})).toHaveValue(tableId);
+  await expect(page.getByLabel("Loại dữ liệu", {exact: true})).toHaveValue("order");
+  await expect(page.getByLabel("Locale Gross amount", {exact: true})).toHaveValue("en-US");
+  await expect(page.getByRole("button", {name: "Xác nhận ánh xạ", exact: true})).toBeEnabled();
   await page
     .getByRole("button", { name: "Xác nhận ánh xạ", exact: true })
     .click();
