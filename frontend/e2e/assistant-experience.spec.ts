@@ -111,8 +111,18 @@ for(const width of [390,768,1366,1440,1920]) {
     const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
     await expect(input).toBeEnabled();
     const form=page.locator('.assistant-composer');
-    const box=await form.boundingBox();expect(box!.height).toBeLessThanOrEqual(64);
     const send=form.getByRole('button',{name:'Gửi câu hỏi',exact:true});
+    const box=await form.boundingBox();
+    const model=form.getByRole('combobox',{name:'Model cho tin nhắn mới',exact:true});
+    if(width===390 && await model.isVisible()){
+      await expect(model.locator('option')).toHaveText(['Gemini 3.5 Flash Lite','Qwen 3:8B']);
+      const inputBox=(await input.boundingBox())!;
+      const modelBox=(await model.boundingBox())!;
+      expect(box!.height).toBeLessThanOrEqual(110);
+      expect(modelBox.y).toBeGreaterThanOrEqual(inputBox.y+inputBox.height);
+      expect(inputBox.width).toBeGreaterThan(box!.width*0.75);
+      await expect(send).toBeInViewport();
+    }else expect(box!.height).toBeLessThanOrEqual(64);
     await expect(send).toHaveText('');await expect(send).toBeDisabled();
     await input.click();
     await expect(page.locator('.app-shell')).toHaveAttribute('data-focus-mode','pointer');

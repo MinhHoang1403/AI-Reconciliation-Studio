@@ -61,6 +61,7 @@ function PlanReview({ plan, onChange, disabled }: {
     return <div className="agent-review-fields"><p>Khóa: {plan.join_keys.map(k => `${k.left} ↔ ${k.right}`).join(", ")}</p><p>{plan.comparison_grain} · {label(plan.cardinality)} · {label(plan.aggregation)}</p>
     {plan.comparison_metrics.map(m => <p key={m.metric_id}>{m.metric_id} · {m.amount_basis} · {m.currency} · sai số {m.absolute_tolerance}</p>)}
     <div className="agent-form-grid">{(["period_start", "period_end", "effective_from"] as const).map(k => <label key={k}>{{ period_start: "Bắt đầu kỳ", period_end: "Kết thúc kỳ (không bao gồm)", effective_from: "Quy tắc có hiệu lực từ" }[k]}<input type="date" value={plan[k]} disabled={disabled} onChange={e => onChange({ ...plan, [k]: e.target.value })}/></label>)}
+    <label>Quy tắc có hiệu lực đến (không bao gồm)<input type="date" value={plan.effective_to ?? ""} disabled={disabled} onChange={e => onChange({ ...plan, effective_to: e.target.value || null })}/></label>
     <label>Múi giờ<input value={plan.timezone} disabled={disabled} onChange={e => onChange({ ...plan, timezone: e.target.value })}/></label></div>
     {(["left", "right"] as const).map(side => <fieldset key={side}><legend>{side === "left" ? "Nguồn trái" : "Nguồn phải"} · {plan[side].role}</legend><div className="agent-form-grid">
       <label>Trường ngày<input value={plan[side].date_field} disabled={disabled} onChange={e => onChange({ ...plan, [side]: { ...plan[side], date_field: e.target.value } })}/></label>
@@ -291,7 +292,14 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
       <p>Loại dữ liệu: {draft.entity_kind}. Mỗi dòng: {draft.grain}. Khóa đề xuất: {draft.fields.filter(f=>f.business_key).map(f=>f.name).join(', ')||'chưa chọn; cần kiểm tra grain và quan hệ nguồn'}.</p>
       <details className="agent-review-editor"><summary>Xem và chỉnh các lựa chọn</summary><p>Chỉnh sửa chi tiết chỉ khi đề xuất chưa đúng. Các thay đổi được kiểm tra lại trước khi duyệt.</p><MappingReview draft={draft} disabled={disabled} onChange={v=>setDraft(v)}/></details>
     </>}
-    {plan && <><p>Nguồn A: {sourceName(plan.left.canonical_id)} · Nguồn B: {sourceName(plan.right.canonical_id)}</p><p>Kỳ {plan.period_start||"chưa chọn"} → {plan.period_end||"chưa chọn"} · {plan.timezone||"chưa rõ múi giờ"}</p><p>Khóa: {plan.join_keys.map(k=>`${fieldName(plan.left.canonical_id,k.left)} ↔ ${fieldName(plan.right.canonical_id,k.right)}`).join(", ")}. {label(plan.cardinality)} · {label(plan.aggregation)}</p>{plan.comparison_metrics.map(m=><p key={m.metric_id}>{fieldName(plan.left.canonical_id,m.left)} · {m.amount_basis} · {m.currency} · sai số {m.absolute_tolerance}</p>)}<details className="agent-review-editor"><summary>Kiểm tra phạm vi và chỉnh quy tắc</summary><PlanReview plan={plan} disabled={disabled} onChange={v => { setPlan(v); }}/></details></>}
+    {plan && <>
+      <p>Nguồn A: {sourceName(plan.left.canonical_id)} · Nguồn B: {sourceName(plan.right.canonical_id)}</p>
+      <p>Kỳ {plan.period_start||"chưa chọn"} → {plan.period_end||"chưa chọn"} · {plan.timezone||"chưa rõ múi giờ"}</p>
+      <p>Quy tắc có hiệu lực từ {plan.effective_from || "ngày chưa chọn"}{plan.effective_to ? ` đến trước ${plan.effective_to}` : " · chưa đặt ngày kết thúc"}.</p>
+      <p>Khóa: {plan.join_keys.map(k=>`${fieldName(plan.left.canonical_id,k.left)} ↔ ${fieldName(plan.right.canonical_id,k.right)}`).join(", ")}. {label(plan.cardinality)} · {label(plan.aggregation)}</p>
+      {plan.comparison_metrics.map(m=><p key={m.metric_id}>{fieldName(plan.left.canonical_id,m.left)} · {m.amount_basis} · {m.currency} · sai số {m.absolute_tolerance}</p>)}
+      <details className="agent-review-editor"><summary>Kiểm tra phạm vi và chỉnh quy tắc</summary><PlanReview plan={plan} disabled={disabled} onChange={setPlan}/></details>
+    </>}
     {review.kind === "RECONCILIATION" && !plan && <Notice>Cần bổ sung kỳ, múi giờ và độ đầy đủ. Chưa có quy tắc đủ điều kiện chạy.</Notice>}
     {expired && <Notice>Thẻ đã hết thời hạn. Nếu nguồn còn nguyên, bạn có thể mở lại để tiếp tục.<button type="button" className="text-button" disabled={busy || !canEdit || !!review.pending_reply_job_id} onClick={()=>void saveOrRenew(true)}>Mở lại thẻ xác nhận</button></Notice>}
     <button className="text-button" disabled={replyDisabled} onClick={()=>void requestReply()}>Bổ sung bằng tiếng Việt</button>
