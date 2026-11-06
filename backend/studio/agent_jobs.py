@@ -216,7 +216,17 @@ def model_call(
             return True
 
     try:
-        return call(provider, policy, reserve)
+        result = call(provider, policy, reserve)
+        if isinstance(result, ReviewInterpretation):
+            provider.usage["review_shape"] = dict(
+                draft_fields=len(result.draft.fields) if result.draft else 0,
+                has_plan=result.plan is not None,
+                has_planning_request=result.planning_request is not None,
+                has_suggestions=result.suggestions is not None,
+                has_intent=result.intent is not None,
+                question_count=len(result.questions),
+            )
+        return result
     except DomainError as exc:
         outcome = exc.code
         raise
@@ -527,6 +537,56 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 table = get_scoped(db, TableRow, current.resource_id, actor)
                 validate_draft(output.draft, table.id, DatasetProfile.model_validate(table.profile))
                 current.normalization_draft = output.draft
+            if output.planning_request:
+                from studio.reconciliation_contracts import (
+                    validate_planning_suggestions,
+                    validate_reconciliation_contract,
+                )
+                from studio.reconciliation_planner import (
+                    missing_confirmations,
+                    preview_plan,
+                    validate_planning_request,
+                )
+                from studio.reconciliation_repository import selected_catalogue
+
+                expected = current.planning_request
+                supplied = output.planning_request
+                if (
+                    current.kind != "RECONCILIATION"
+                    or not expected
+                    or (supplied.left.canonical_id, supplied.right.canonical_id)
+                    != (expected.left.canonical_id, expected.right.canonical_id)
+                ):
+                    raise DomainError("AI_INVALID_SOURCE", "Không được đổi nguồn đang chờ.")
+                cats = selected_catalogue(
+                    db,
+                    actor,
+                    row.project_id,
+                    [
+                        supplied.left.canonical_id,
+                        supplied.right.canonical_id,
+                    ],
+                )
+                validate_planning_request(supplied, cats, actor.workspace_id, row.project_id)
+                if output.suggestions:
+                    validate_planning_suggestions(output.suggestions, cats)
+                plan_preview = preview_plan(
+                    supplied, output.suggestions, cats[0].canonical.entity_kind, current.plan
+                )
+                if plan_preview:
+                    validate_reconciliation_contract(
+                        plan_preview, cats, actor.workspace_id, row.project_id
+                    )
+                current.planning_request = supplied
+                current.suggestions = output.suggestions
+                current.plan = plan_preview
+                if not plan_preview and not output.questions:
+                    missing = missing_confirmations(supplied)
+                    output.questions = [
+                        "Cần xác nhận thêm phạm vi: " + ", ".join(missing)
+                        if missing
+                        else "Cần hoàn thiện khóa, chỉ tiêu và quan hệ đối soát."
+                    ]
             if output.plan:
                 from studio.reconciliation_contracts import validate_reconciliation_contract
                 from studio.reconciliation_repository import selected_catalogue
@@ -584,12 +644,16 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 output.questions = output.intent.questions
             current.reply_questions = output.questions or (
                 []
-                if any([output.draft, output.plan, output.intent])
+                if any([output.draft, output.plan, output.intent, output.planning_request])
                 else ["Cần thêm thông tin để tiếp tục."]
             )
             current.pending_reply_job_id = None
             current.nonce = secrets.token_hex(16)
             current.expires_at = now() + timedelta(minutes=30)
+            # A successful correction resolves the current reply error; failed
+            # messages/jobs remain immutable history. Unrelated failed steps stay visible.
+            if not any(step.status in {"FAILED", "BLOCKED"} for step in state.steps):
+                state.error_code = None
             if continued:
                 assert output.intent is not None
                 # No business approval: advance still enforces every mapping,

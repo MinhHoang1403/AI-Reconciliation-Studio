@@ -4,7 +4,10 @@ import json
 
 import httpx
 import pytest
-from pydantic import ValidationError
+from hypothesis import settings as hypothesis_settings
+from hypothesis import strategies as st
+from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
+from pydantic import SecretStr, ValidationError
 from studio.agent_intents import (
     interpret_requests,
     resolve_attached_normalization,
@@ -16,6 +19,251 @@ from studio.config import Settings
 from studio.contracts import WorkspacePolicy
 from studio.contracts.agent import AgentIntent, IntentCatalogue
 from studio.errors import DomainError
+
+
+class ReviewDraftStateMachine(RuleBasedStateMachine):
+    """Model editing sequences without cloud: partial edits, replay and invalid updates."""
+
+    def __init__(self):
+        super().__init__()
+        from studio.contracts.agent import ReviewRequest
+        from studio.database import now
+
+        self.review = ReviewRequest(
+            id="review",
+            kind="MAPPING",
+            question="Múi giờ?",
+            reason="missing",
+            resource_id="table",
+            nonce="b" * 32,
+            fingerprint="a" * 64,
+            expires_at=now(),
+            expected_effects=[],
+            normalization_draft=dict(
+                table_id="table",
+                entity_kind="invoice",
+                grain="one invoice",
+                fields=[
+                    dict(source_field="c1", target_id="day", name="Day", data_type="date"),
+                    dict(source_field="c2", target_id="amount", name="Amount", data_type="decimal"),
+                ],
+            ),
+        )
+        self.timezone = None
+        self.currency = None
+
+    @rule(timezone=st.sampled_from([None, "UTC", "Asia/Ho_Chi_Minh", "America/New_York"]))
+    def edit_timezone(self, timezone):
+        self.apply("c1", "timezone", timezone)
+        self.timezone = timezone
+
+    @rule(currency=st.sampled_from([None, "VND", "USD", "EUR"]))
+    def edit_currency(self, currency):
+        self.apply("c2", "currency", currency)
+        self.currency = currency
+
+    @rule()
+    def invalid_source_and_type_do_not_destroy_known_facts(self):
+        before = self.review.normalization_draft.model_dump_json()
+        self.apply("foreign", "timezone", "UTC")
+        self.apply("c1", "timezone", "Wrong/Zone")
+        self.apply("c2", "business_key", "true")
+        assert self.review.normalization_draft.model_dump_json() == before
+
+    def apply(self, source, prop, value):
+        from studio.agent_preparation import MappingEdits, merge_mapping_edits
+
+        edits = MappingEdits.model_validate(
+            dict(
+                changes=[dict(source_field=source, property=prop, value=value)],
+                questions=["Còn thiếu phạm vi?"],
+            )
+        )
+        first = merge_mapping_edits(self.review, edits)
+        self.review.normalization_draft = first.draft
+        second = merge_mapping_edits(self.review, edits)
+        assert first == second  # replay cannot multiply or erase facts
+        assert first.questions == ["Còn thiếu phạm vi?"] or len(first.questions) > 1
+
+    @invariant()
+    def known_facts_identity_and_approval_boundary_are_preserved(self):
+        draft = self.review.normalization_draft
+        assert draft.table_id == "table" and draft.grain == "one invoice"
+        assert [(f.source_field, f.target_id) for f in draft.fields] == [
+            ("c1", "day"),
+            ("c2", "amount"),
+        ]
+        assert draft.fields[0].timezone == self.timezone
+        assert draft.fields[1].currency == self.currency
+        assert self.review.state == "OPEN" and self.review.result_id is None
+
+
+TestReviewDraftState = ReviewDraftStateMachine.TestCase
+TestReviewDraftState.settings = hypothesis_settings(max_examples=25, stateful_step_count=30)
+
+
+@pytest.mark.parametrize("provider_name", ["gemini", "ollama"])
+@pytest.mark.parametrize("invalid", [False, True])
+def test_review_partial_edits_keep_valid_facts_and_questions(config, provider_name, invalid):
+    """MOCK provider protocol parity, not a live model accuracy measurement."""
+    from studio.agent_preparation import interpret_review_reply
+    from studio.contracts.agent import ReviewRequest
+    from studio.database import now
+
+    config.gemini_api_key = SecretStr("synthetic-key")
+    config.allow_external_ai = True
+    config.external_ai_request_budget = None
+    config.local_demo_access = True
+    config.ollama_url = "http://host.docker.internal:11434"
+    review = ReviewRequest(
+        id="review",
+        kind="MAPPING",
+        question="Xác nhận ngày và tiền?",
+        reason="unknown",
+        resource_id="table",
+        fingerprint="a" * 64,
+        nonce="b" * 32,
+        expires_at=now(),
+        expected_effects=[],
+        normalization_draft=dict(
+            table_id="table",
+            entity_kind="order",
+            grain="one order",
+            fields=[
+                dict(
+                    source_field="c1",
+                    target_id="day",
+                    name="Ngày",
+                    data_type="date",
+                    timezone=None,
+                    date_format="%Y-%m-%d",
+                    question="Múi giờ?",
+                ),
+                dict(
+                    source_field="c2",
+                    target_id="total",
+                    name="Tiền",
+                    data_type="decimal",
+                    amount_basis=None,
+                    question="Gross hay net?",
+                ),
+            ],
+        ),
+    )
+    before = review.model_dump_json()
+    changes = [dict(source_field="c1", property="timezone", value="UTC")]
+    if invalid:
+        changes.extend(
+            [
+                dict(source_field="outside", property="currency", value="VND"),
+                dict(source_field="c2", property="locale", value="wrong"),
+                dict(source_field="c2", property="business_key", value="true"),
+                dict(source_field="c1", property="date_format", value="%Q"),
+            ]
+        )
+    output = dict(changes=changes, questions=["Cột tiền là gross hay net?"])
+
+    def transport(request):
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200, json={"models": [{"name": "qwen3:8b", "size": 10, "digest": "a" * 64}]}
+            )
+        body = json.loads(request.content)
+        schema = (
+            body["format"]
+            if provider_name == "ollama"
+            else body["generationConfig"]["responseJsonSchema"]
+        )
+        assert "NormalizationDraft" not in schema.get("$defs", {})
+        assert schema["$defs"]["MappingFieldChange"]["properties"]["source_field"]["enum"] == [
+            "c1",
+            "c2",
+        ]
+        if provider_name == "ollama":
+            return httpx.Response(
+                200,
+                json=dict(done=True, done_reason="stop", message=dict(content=json.dumps(output))),
+            )
+        return httpx.Response(
+            200,
+            json=dict(
+                candidates=[
+                    dict(finishReason="STOP", content=dict(parts=[dict(text=json.dumps(output))]))
+                ]
+            ),
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        provider = (
+            OllamaProvider(config, "QWEN_8B", client)
+            if provider_name == "ollama"
+            else GeminiProvider(config, client)
+        )
+        result = interpret_review_reply(
+            provider,
+            review,
+            "Ngày theo UTC, chưa biết gross hay net.",
+            WorkspacePolicy(
+                mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=None
+            ),
+            lambda: True,
+        )
+    assert result.draft.fields[0].timezone == "UTC"
+    assert result.draft.fields[0].date_format == "%Y-%m-%d"
+    assert result.draft.fields[1].amount_basis is None
+    assert result.draft.fields[1].locale is None
+    assert not result.draft.fields[1].business_key
+    assert result.questions[0] == output["questions"][0]
+    assert review.model_dump_json() == before
+    assert result.plan is result.intent is None
+
+
+@pytest.mark.parametrize("foreign", [False, True])
+def test_rule_reply_preserves_unanswered_facts_and_source_identity(foreign):
+    from studio.agent_preparation import RuleEdits, merge_planning_reply
+    from studio.contracts.agent import ReviewRequest
+    from studio.database import now
+
+    review = ReviewRequest(
+        id="review",
+        kind="RECONCILIATION",
+        question="Kỳ và múi giờ?",
+        reason="unknown",
+        resource_id="proposal",
+        fingerprint="a" * 64,
+        nonce="b" * 32,
+        expires_at=now(),
+        expected_effects=[],
+        planning_request=dict(
+            left=dict(canonical_id="left", role="orders", filters={"platform": "A"}),
+            right=dict(canonical_id="right"),
+            period_start="2026-10-01",
+        ),
+    )
+    before = review.model_dump_json()
+    edits = RuleEdits.model_validate(
+        dict(
+            request=dict(
+                left=dict(canonical_id="foreign" if foreign else "left"),
+                right=dict(canonical_id="right"),
+                timezone="UTC",
+            ),
+            questions=["Ngày kết thúc kỳ là ngày nào?"],
+        )
+    )
+    if foreign:
+        with pytest.raises(DomainError, match="AI_INVALID_SOURCE"):
+            merge_planning_reply(review, edits)
+    else:
+        result = merge_planning_reply(review, edits)
+        assert str(result.planning_request.period_start) == "2026-10-01"
+        assert result.planning_request.period_end is None
+        assert result.planning_request.left.filters == {"platform": "A"}
+        assert result.planning_request.left.role == "orders"
+        assert result.planning_request.right.completeness is None
+        assert result.planning_request.timezone == "UTC"
+        assert result.plan is None and result.questions
+    assert review.model_dump_json() == before
 
 
 @pytest.mark.parametrize("bad_column", [False, True])

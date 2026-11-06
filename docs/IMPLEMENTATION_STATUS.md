@@ -1,6 +1,25 @@
 # Trạng thái triển khai và nghiệm thu
 
-**Kết quả hiện tại — 02/11/2026:** UI AI Assistant và các kiểm tra kỹ thuật đã hoàn tất trên feature branch; **chưa đạt nghiệm thu toàn Agent-first MVP** vì chất lượng NLP chưa đạt và Gemini đã hết 50/50 attempts. Chưa merge hoặc release main. Đọc mục S để biết số đo mới; các mục A–R là lịch sử, không thay kết quả hiện tại.
+**Hiện trạng06/11/2026 — Foundation Reliability Audit đang thực hiện:** nhánh `codex/foundation-reliability-hardening`, baseline `2eecb068`. Gemini đã nhận sáu HTTP200 mới và được chọn làm mặc định chính; Qwen phụ, cùng contracts/validators. Baseline đạt449Backend/PostgreSQL và139browser. Nhóm sửa parser/review/draft/idempotency đạt468Backend/PostgreSQL trên source mới; hai kiểm thử property/stateful bổ sung đạt riêng sau lượt đó. Chưa chạy full browser trên release hardening, chưa hoàn tất UAT hai provider và toàn bộ các gate của master prompt; **chưa FOUNDATION_ACCEPTED, chưa merge main**. Các kết luận và quota dưới đây là lịch sử theo ngày, không thay phần hiện trạng này.
+
+## Foundation — lỗi đã tái hiện và phần kiểm chứng hiện có
+
+| ID / mức | Tái hiện và nguyên nhân | Sửa và kiểm chứng | Hiện trạng |
+| --- | --- | --- | --- |
+| FND01 / P1 | Header CSV/XLSX trùng bị bỏ; dòng dữ liệu đầu thành header | Giữ nhãn trùng và technical column IDs, warning extraction; regression hai định dạng | PASS source, parser commit38d3f1b |
+| FND02 / P1 | Header CSV chỉ định sau ô quoted nhiều dòng bị hiểu theo logical index | Ánh xạ dòng vật lý bắt đầu record; từ chối dòng giữa quoted cell | PASS source, commit38d3f1b |
+| FND03 / P1 | Review có candidate và câu hỏi bị từ chối AI_INVALID_REVIEW; full union yêu cầu echo cả draft | Sparse typed edits, giữ phần hợp lệ và hỏi tiếp; MOCK transport Gemini/Ollama + PostgreSQL partial preview | PASS source; LIVE revision mới còn chờ |
+| FND04 / P2 | Chat giữ draft trong state component, Manager đọc proposal khác | Backend mở đọc cùng review theo bảng và lưu draft có nonce/source fence | API PASS; client/handoff còn thực hiện |
+| FND05 / P2 | Review hết30phút không có hành động gia hạn | Explicit renew, giữ unchanged-source/owner/editor/pending gates | API PASS; UI còn thực hiện |
+| FND06 / P1 | POST duyệt mapping thủ công tạo revision mới khi gửi lại | Actor-scoped idempotency receipt cùng transaction/advisory lock, conflict409 | PostgreSQL PASS |
+| FND07 / P2 | Reply hợp lệ sau lỗi vẫn giữ error_code hiện hành | Xóa lỗi hiện hành khi không còn bước lỗi khác, giữ message/job cũ | Fault/recovery PostgreSQL PASS |
+| FND08 / P2 | Reply rule buộc plan hoàn chỉnh, khó giữ facts từng phần | Hợp nhất PlanningRequest chỉ những trường đã cung cấp, không đổi nguồn, preview/approval riêng | Unit/contract PASS; UAT tiếp tục |
+
+Backup `backup_2fbbe0bc84ed4c5e8b752f83099af041` được tạo53,581giây và restore thực33,195giây trong schema cô lập trên PostgreSQL hiện có; đối chiếu24bảng và artifacts, guards checksum/path đạt, dữ liệu public giữ nguyên. Lần chạy đầu trên Backend bị dừng do áp lực bộ nhớ không được tính là backup đạt. Rollback thực sang cặp gần nhất5373cf7/729821e rồi trở về baselinea268abe đạt health/persistence. Sáu image Studio cũ đã được kiểm từng ID/không container tham chiếu và xóa; không prune, không xóa volumes/model/cache hoặc tác động27container ngoài project vốn đang dừng. Cặp hiện hành và rollback gần nhất vẫn được giữ; dọn sau release còn chờ.
+
+Đo một lượt trên host Windows, CSV tổng hợp, Polars2threads, không AI:75.000dòng parse89,86ms, profile1.112,64ms, normalization+write2.528,90ms, process peak222,83MiB. Đối soát75.000records tổng hai nguồn, mỗi nguồn37.500: match2.556,20ms, verify1.509,92ms,37.500exact groups, peak454,68MiB. Đây là phép đo từng stage bằng helper hiện có, **không phải p95 hoặc UAT75k qua Docker/UI**; chưa kết luận mọi định dạng/tác vụ đều nằm trong512MiB của Worker. Các mức10/100/1.000/10.000dòng cũng đã chạy có kiểm số dòng/invalid và giữ mã0đầu.
+
+**Mốc lịch sử — 02/11/2026:** UI AI Assistant và các kiểm tra kỹ thuật đã hoàn tất trên feature branch; **chưa đạt nghiệm thu toàn Agent-first MVP** vì chất lượng NLP chưa đạt và Gemini đã hết 50/50 attempts. Chưa merge hoặc release main. Đọc mục S để biết số đo tại thời điểm đó; các mục A–R là lịch sử.
 
 Bối cảnh lịch sử: Quality Hardening + UX Refinement trước đây nằm trên `codex/interface-quality`, từ main `0b9421e`. Các nhiệm vụ P/Q triển khai Assistant trên `codex/assistant-automation` và dừng trước merge. Mục R ghi ủy quyền hợp nhất mới cùng gate live đang BLOCKED; không thay đổi kết luận lịch sử ở mục N.
 

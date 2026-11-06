@@ -2,6 +2,7 @@
 
 import secrets
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Annotated, Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from studio.access import Actor, require_editor
 from studio.agent_intents import validate_intents
-from studio.agent_preparation import approval_from_draft
+from studio.agent_preparation import approval_from_draft, validate_draft
 from studio.agent_workflows import (
     advance,
     digest,
@@ -33,7 +34,10 @@ from studio.contracts.agent import (
     PlanReviewDecision,
     QuerySelection,
     ReviewDecision,
+    ReviewDraftUpdate,
     ReviewReply,
+    ReviewRequest,
+    ReviewToken,
     TableBlock,
     WorkflowState,
     WorkflowView,
@@ -42,7 +46,9 @@ from studio.contracts.assistant import AssistantContext
 from studio.contracts.data_query import DataQuery, QueryResult, SourceRowRequest, SourceRowResult
 from studio.contracts.reconciliation import PlanProposal
 from studio.database import (
+    AgentWorkflowRow,
     AuditRow,
+    ConversationRow,
     JobRow,
     MappingRow,
     MessageRow,
@@ -177,6 +183,36 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
     return view(row)
 
 
+def editable_review(
+    db: Session, actor: Actor, workflow_id: str, binding: ReviewToken, *, renew: bool = False
+) -> tuple[AgentWorkflowRow, WorkflowState, ReviewRequest]:
+    """Fence draft writes with the same owner, source locks and nonce as approval.
+
+    Only an explicit renewal may cross expiry, and only with unchanged source state.
+    No provider request, approval, normalization or financial job is started here.
+    """
+    row = own_workflow(db, actor, workflow_id, lock=True)
+    require_editor(actor, db, row.id)
+    state = WorkflowState.model_validate(row.detail)
+    review = next((r for r in state.reviews if r.id == binding.review_id), None)
+    if review is None:
+        raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy thẻ xác nhận.", 404)
+    if review.pending_reply_job_id:
+        raise DomainError("REVIEW_REPLY_PENDING", "Chờ câu trả lời đang được xử lý.", 409)
+    lock_review_sources(db, actor, review)
+    if (
+        row.state not in {"WAITING_REVIEW", "RUNNING"}
+        or review.state != "OPEN"
+        or not secrets.compare_digest(review.nonce, binding.nonce)
+        or not secrets.compare_digest(review.fingerprint, binding.fingerprint)
+        or (not renew and review.expires_at <= now())
+        or review.fingerprint
+        != review_fingerprint(db, actor, review.kind, review.resource_id, review.evidence_refs)
+    ):
+        raise DomainError("STALE_CONTEXT", "Thẻ hoặc nguồn đã thay đổi; hãy mở lại thẻ.", 409)
+    return row, state, review
+
+
 def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]) -> APIRouter:
     router = APIRouter(prefix="/api/agent", tags=["Agent"])
     DB = Annotated[Session, Depends(database)]
@@ -292,6 +328,102 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     @router.get("/workflows/{workflow_id}", response_model=WorkflowView)
     def workflow(workflow_id: str, db: DB, actor: User) -> WorkflowView:
         return view(own_workflow(db, actor, workflow_id))
+
+    @router.get("/tables/{table_id}/mapping-reviews", response_model=list[WorkflowView])
+    def mapping_reviews(table_id: str, db: DB, actor: User) -> list[WorkflowView]:
+        """Expose the existing actor-owned draft to both Chat and Data Manager."""
+        table = get_scoped(db, TableRow, table_id, actor)
+        project = project_for_table(db, table)
+        rows = db.scalars(
+            select(AgentWorkflowRow)
+            .join(ConversationRow, AgentWorkflowRow.conversation_id == ConversationRow.id)
+            .where(
+                AgentWorkflowRow.workspace_id == actor.workspace_id,
+                AgentWorkflowRow.project_id == project.id,
+                AgentWorkflowRow.actor_id == actor.id,
+                ConversationRow.deleted_at.is_(None),
+                AgentWorkflowRow.detail.contains(
+                    {"reviews": [dict(kind="MAPPING", resource_id=table.id, state="OPEN")]}
+                ),
+            )
+            .order_by(AgentWorkflowRow.updated_at.desc())
+            .limit(10)
+        )
+        return [view(own_workflow(db, actor, row.id)) for row in rows]
+
+    @router.post("/workflows/{workflow_id}/draft", response_model=WorkflowView)
+    def save_draft(
+        workflow_id: str, body: ReviewDraftUpdate, db: DB, actor: User, key: Key
+    ) -> WorkflowView:
+        row, state, review = editable_review(db, actor, workflow_id, body)
+        if sum(v is not None for v in (body.draft, body.plan, body.planning_request)) != 1:
+            raise DomainError("INVALID_REVIEW_DRAFT", "Chỉ lưu một bản nháp đúng loại thẻ.", 422)
+        if body.draft is not None and review.kind == "MAPPING":
+            table = get_scoped(db, TableRow, review.resource_id, actor)
+            validate_draft(body.draft, table.id, DatasetProfile.model_validate(table.profile))
+            review.normalization_draft = body.draft
+        elif review.kind == "RECONCILIATION" and (body.plan or body.planning_request):
+            from studio.contracts.reconciliation import PlanningRequest
+            from studio.reconciliation_contracts import validate_reconciliation_contract
+            from studio.reconciliation_planner import preview_plan, validate_planning_request
+            from studio.reconciliation_repository import selected_catalogue
+
+            request = PlanningRequest.from_plan(body.plan) if body.plan else body.planning_request
+            assert request is not None
+            expected = review.planning_request
+            if not expected or (request.left.canonical_id, request.right.canonical_id) != (
+                expected.left.canonical_id,
+                expected.right.canonical_id,
+            ):
+                raise DomainError("AI_INVALID_SOURCE", "Không được đổi nguồn đang chờ.", 422)
+            cats = selected_catalogue(
+                db,
+                actor,
+                row.project_id,
+                [
+                    request.left.canonical_id,
+                    request.right.canonical_id,
+                ],
+            )
+            validate_planning_request(request, cats, actor.workspace_id, row.project_id)
+            plan = body.plan or preview_plan(
+                request, review.suggestions, cats[0].canonical.entity_kind, review.plan
+            )
+            if plan:
+                validate_reconciliation_contract(plan, cats, actor.workspace_id, row.project_id)
+            review.planning_request, review.plan = request, plan
+        else:
+            raise DomainError("INVALID_REVIEW_DRAFT", "Bản nháp khác loại thẻ đang chờ.", 422)
+        review.nonce, review.expires_at = secrets.token_hex(16), now() + timedelta(minutes=30)
+        save(row, state)
+        db.add(
+            AuditRow(
+                workspace_id=actor.workspace_id,
+                actor_id=actor.id,
+                action="AGENT_DRAFT_SAVED",
+                resource_id=review.id,
+            )
+        )
+        db.commit()
+        return view(row)
+
+    @router.post("/workflows/{workflow_id}/renew-review", response_model=WorkflowView)
+    def renew_review(
+        workflow_id: str, body: ReviewToken, db: DB, actor: User, key: Key
+    ) -> WorkflowView:
+        row, state, review = editable_review(db, actor, workflow_id, body, renew=True)
+        review.nonce, review.expires_at = secrets.token_hex(16), now() + timedelta(minutes=30)
+        save(row, state)
+        db.add(
+            AuditRow(
+                workspace_id=actor.workspace_id,
+                actor_id=actor.id,
+                action="AGENT_REVIEW_RENEWED",
+                resource_id=review.id,
+            )
+        )
+        db.commit()
+        return view(row)
 
     @router.post("/workflows/{workflow_id}/query-pages", response_model=QueryResult)
     def query_page(workflow_id: str, body: DataQuery, db: DB, actor: User) -> QueryResult:

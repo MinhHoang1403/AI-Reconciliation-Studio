@@ -1029,7 +1029,7 @@ def test_agent_durable_unknown_delivery_reserves_once_and_never_resends(pg, monk
         )
 
 
-@pytest.mark.parametrize("answer", ["complete", "ambiguous", "wrong-source"])
+@pytest.mark.parametrize("answer", ["complete", "partial", "ambiguous", "wrong-source"])
 def test_agent_review_natural_reply_is_bound_preview_never_auto_approval(pg, monkeypatch, answer):  # noqa: F811
     import studio.agent_jobs as agents
     from studio.contracts.agent import ReviewInterpretation
@@ -1047,7 +1047,10 @@ def test_agent_review_natural_reply_is_bound_preview_never_auto_approval(pg, mon
         lambda *args: (
             ReviewInterpretation(questions=["Bạn muốn gross hay net?"])
             if answer == "ambiguous"
-            else ReviewInterpretation(draft=candidate)
+            else ReviewInterpretation(
+                draft=candidate,
+                questions=["Múi giờ nào?"] if answer == "partial" else [],
+            )
         ),
     )
     body = dict(
@@ -1105,6 +1108,8 @@ def test_agent_review_natural_reply_is_bound_preview_never_auto_approval(pg, mon
         assert review["normalization_draft"] == original["normalization_draft"]
     else:
         assert review["normalization_draft"]["fields"][1]["amount_basis"] == "net"
+        if answer == "partial":
+            assert review["reply_questions"] == ["Múi giờ nào?"]
         assert (
             client.post(
                 path + "/decisions",

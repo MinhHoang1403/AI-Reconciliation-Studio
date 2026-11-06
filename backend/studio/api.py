@@ -1,6 +1,7 @@
 """Same-origin REST API for data foundation. Monetary values serialize as exact strings."""
 
 import hashlib
+import json
 import shutil
 import tempfile
 from collections.abc import Generator
@@ -873,9 +874,45 @@ def preview_mapping(
 
 @app.post("/api/mappings/{mapping_id}/approve", response_model=MappingRevision)
 def approve_mapping(
-    mapping_id: str, body: ApprovalInput, db: DB, actor: CurrentActor
+    mapping_id: str,
+    body: ApprovalInput,
+    db: DB,
+    actor: CurrentActor,
+    idempotency_key: Annotated[str | None, Header(min_length=1, max_length=160)] = None,
 ) -> MappingRevision:
+    """Replay the immutable approval receipt on a retried request, under one DB lock."""
+    require_editor(actor, db, mapping_id)
+    receipt_id = None
+    request_hash = None
+    if idempotency_key is not None:
+        receipt_id = hashlib.sha256(
+            json.dumps(["approve-mapping", actor.workspace_id, actor.id, idempotency_key]).encode()
+        ).hexdigest()
+        request_hash = hashlib.sha256(
+            json.dumps([mapping_id, body.model_dump(mode="json")], sort_keys=True).encode()
+        ).hexdigest()
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"),
+            {"key": int.from_bytes(bytes.fromhex(receipt_id)[:8], "big", signed=True)},
+        )
+        receipt = db.get(AuditRow, receipt_id)
+        if receipt:
+            if receipt.action != "APPROVE_RECEIPT:" + request_hash:
+                raise DomainError(
+                    "IDEMPOTENCY_CONFLICT", "Mã duyệt đã dùng cho nội dung khác.", 409
+                )
+            return mapping_contract(get_scoped(db, MappingRow, receipt.resource_id, actor))
     result = apply_mapping_approval(mapping_id, body, db, actor)
+    if receipt_id is not None:
+        db.add(
+            AuditRow(
+                id=receipt_id,
+                workspace_id=actor.workspace_id,
+                actor_id=actor.id,
+                action="APPROVE_RECEIPT:" + str(request_hash),
+                resource_id=result.id,
+            )
+        )
     db.commit()
     return result
 
@@ -884,6 +921,9 @@ def approve_mapping(
 def reject_mapping(mapping_id: str, db: DB, actor: CurrentActor) -> dict[str, str]:
     require_editor(actor, db, mapping_id)
     mapping = get_scoped(db, MappingRow, mapping_id, actor)
+    table = get_scoped(db, TableRow, mapping.source_table_id, actor)
+    db.refresh(table, with_for_update=True)
+    db.refresh(mapping)
     if mapping.status in {"APPROVED", "SUPERSEDED"}:
         raise DomainError(
             "IMMUTABLE_APPROVAL", "Cần tạo revision mới thay vì sửa lịch sử đã duyệt.", 409
@@ -1049,6 +1089,7 @@ def apply_mapping_approval(
     original = get_scoped(db, MappingRow, mapping_id, actor)
     table = get_scoped(db, TableRow, original.source_table_id, actor)
     db.refresh(table, with_for_update=True)
+    db.refresh(original)
     if original.status in {"REJECTED", "SUPERSEDED"}:
         raise DomainError("MAPPING_SUPERSEDED", "Ánh xạ đã bị thay thế hoặc từ chối.", 409)
     if table.parsed_contract["warnings"] and not body.extraction_reviewed:

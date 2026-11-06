@@ -362,20 +362,26 @@ class ClarificationDecision(Contract):
     intent: AgentIntent
 
 
-class ReviewDecision(Contract):
+class ReviewToken(Contract):
     review_id: Identifier
     nonce: str = Field(min_length=16, max_length=64)
     fingerprint: str = Field(pattern="^[a-f0-9]{64}$")
+
+
+class ReviewDecision(ReviewToken):
     decision: Annotated[
         MappingReviewDecision | PlanReviewDecision | ClarificationDecision,
         Field(discriminator="type"),
     ]
 
 
-class ReviewReply(Contract):
-    review_id: Identifier
-    nonce: str = Field(min_length=16, max_length=64)
-    fingerprint: str = Field(pattern="^[a-f0-9]{64}$")
+class ReviewDraftUpdate(ReviewToken):
+    draft: NormalizationDraft | None = None
+    plan: ReconciliationPlan | None = None
+    planning_request: PlanningRequest | None = None
+
+
+class ReviewReply(ReviewToken):
     text: str = Field(min_length=1, max_length=2000)
     model_choice: ModelChoice | None = None
 
@@ -386,4 +392,6 @@ class ReviewInterpretation(Contract):
     draft: NormalizationDraft | None = None
     plan: ReconciliationPlan | None = None
     intent: AgentIntent | None = None
+    planning_request: PlanningRequest | None = None
+    suggestions: PlanningSuggestions | None = None
     questions: list[str] = Field(default_factory=list, max_length=5)

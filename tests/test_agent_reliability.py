@@ -16,6 +16,168 @@ from test_reconciliation_postgres import prepare_pair
 pytestmark = pytest.mark.integration
 
 
+def test_review_failure_then_valid_partial_reply_clears_current_error_keeps_history(
+    pg, monkeypatch  # noqa: F811
+):
+    import studio.agent_jobs as agents
+    from studio.contracts.agent import NormalizationDraft, ReviewInterpretation
+    from test_agent_postgres import mapping_fixture
+
+    client, factory, worker = pg
+    wf, _ = mapping_fixture(pg, monkeypatch)
+    path = f"/api/agent/workflows/{wf['id']}"
+
+    def fail(*args):
+        raise DomainError("AI_INVALID_REVIEW", "Không đọc được bản xem trước.")
+
+    monkeypatch.setattr(agents, "interpret_review_reply", fail)
+    for number in range(2):
+        review = client.get(path).json()["detail"]["reviews"][0]
+        if number:
+            draft = NormalizationDraft.model_validate(review["normalization_draft"])
+            draft.fields[1].amount_basis = "net"
+            monkeypatch.setattr(
+                agents,
+                "interpret_review_reply",
+                lambda *args, draft=draft: ReviewInterpretation(
+                    draft=draft, questions=["Cần xác nhận múi giờ."]
+                ),
+            )
+        body = {k: review[k] for k in ("nonce", "fingerprint")}
+        body.update(review_id=review["id"], text="Cột tiền là net.")
+        queued = client.post(
+            path + "/replies", json=body, headers={"Idempotency-Key": f"recovery-{number}"}
+        )
+        assert queued.status_code == 202, queued.text
+        drain(factory, worker)
+    after = client.get(path).json()
+    assert after["detail"]["error_code"] is None
+    assert after["state"] == "WAITING_REVIEW"
+    assert after["detail"]["reviews"][0]["reply_questions"] == ["Cần xác nhận múi giờ."]
+    history = client.get(f"/api/conversations/{wf['conversation_id']}").json()["items"]
+    assert any(message["error_code"] == "AI_INVALID_REVIEW" for message in history)
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 0
+
+
+def test_manual_mapping_approval_retries_return_one_immutable_receipt(pg, monkeypatch):  # noqa: F811
+    from copy import deepcopy
+
+    from studio.agent_preparation import approval_from_draft
+    from studio.contracts import DatasetProfile
+    from studio.contracts.agent import NormalizationDraft
+    from test_agent_postgres import mapping_fixture
+
+    client, factory, _ = pg
+    wf, decision = mapping_fixture(pg, monkeypatch)
+    draft = NormalizationDraft.model_validate(decision["decision"]["draft"])
+    with factory() as db:
+        table = db.get(TableRow, draft.table_id)
+        body = approval_from_draft(draft, DatasetProfile.model_validate(table.profile), False)
+        proposal_id = db.scalar(
+            select(MappingRow.id)
+            .where(MappingRow.source_table_id == table.id)
+            .order_by(MappingRow.revision.desc())
+        )
+    path = f"/api/mappings/{proposal_id}/approve"
+    headers = {"Idempotency-Key": "manual-approval-retry"}
+    payload = body.model_dump(mode="json")
+    first = client.post(path, json=payload, headers=headers)
+    assert first.status_code == 200, first.text
+    second = client.post(path, json=payload, headers=headers)
+    assert second.status_code == 200 and first.json() == second.json()
+    changed = deepcopy(payload)
+    changed["schema_definition"]["name"] += " changed"
+    assert client.post(path, json=changed, headers=headers).status_code == 409
+    with factory() as db:
+        assert (
+            db.scalar(
+                select(func.count()).select_from(MappingRow).where(MappingRow.status == "APPROVED")
+            )
+            == 1
+        )
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 0
+    # The original Chat card is fenced by the changed manual mapping fingerprint.
+    assert (
+        client.post(
+            f"/api/agent/workflows/{wf['id']}/decisions",
+            json=decision,
+            headers={"Idempotency-Key": "stale-chat"},
+        ).status_code
+        == 409
+    )
+
+
+@pytest.mark.parametrize("blocked", [None, "expiry", "source", "viewer", "pending"])
+def test_shared_review_draft_save_renew_and_stale_fences(pg, monkeypatch, blocked):  # noqa: F811
+    from copy import deepcopy
+
+    from studio.database import AgentWorkflowRow, MembershipRow
+    from test_agent_postgres import mapping_fixture
+
+    client, factory, _ = pg
+    wf, decision = mapping_fixture(pg, monkeypatch)
+    review = wf["detail"]["reviews"][0]
+    token = {k: review[k] for k in ("id", "nonce", "fingerprint")}
+    token["review_id"] = token.pop("id")
+    draft = decision["decision"]["draft"]
+    draft["fields"][1]["amount_basis"] = "net"
+    path = f"/api/agent/workflows/{wf['id']}"
+    with factory() as db:
+        if blocked == "viewer":
+            db.get(MembershipRow, ("demo", "test-owner")).role = "viewer"
+        elif blocked == "source":
+            table = db.get(TableRow, review["resource_id"])
+            table.profile = dict(table.profile, row_count=999)
+        elif blocked in {"expiry", "pending"}:
+            row = db.get(AgentWorkflowRow, wf["id"])
+            detail = deepcopy(row.detail)
+            if blocked == "expiry":
+                detail["reviews"][0]["expires_at"] = (now() - timedelta(minutes=1)).isoformat()
+            else:
+                detail["reviews"][0]["pending_reply_job_id"] = "pending-reply"
+            row.detail = detail
+        db.commit()
+    found = client.get(f"/api/agent/tables/{review['resource_id']}/mapping-reviews")
+    assert found.status_code == 200 and found.json()[0]["id"] == wf["id"]
+    assert client.get("/api/agent/tables/foreign-table/mapping-reviews").status_code == 404
+    headers = {"Idempotency-Key": "save-draft"}
+    saved = client.post(path + "/draft", json=dict(**token, draft=draft), headers=headers)
+    if blocked:
+        assert saved.status_code == (403 if blocked == "viewer" else 409), saved.text
+    else:
+        assert saved.status_code == 200, saved.text
+        latest = saved.json()["detail"]["reviews"][0]
+        assert latest["normalization_draft"] == draft
+        assert latest["nonce"] != token["nonce"]
+        assert (
+            client.post(
+                path + "/draft", json=dict(**token, draft=draft), headers=headers
+            ).status_code
+            == 409
+        )
+        retrieved = client.get(f"/api/agent/tables/{review['resource_id']}/mapping-reviews").json()
+        assert retrieved[0]["detail"]["reviews"][0] == latest
+        token = {k: latest[k] for k in ("nonce", "fingerprint")}
+        token["review_id"] = latest["id"]
+    renewed = client.post(path + "/renew-review", json=token, headers=headers)
+    if blocked in {"source", "viewer", "pending"}:
+        assert renewed.status_code == (403 if blocked == "viewer" else 409), renewed.text
+    else:
+        assert renewed.status_code == 200, renewed.text
+        latest = renewed.json()["detail"]["reviews"][0]
+        assert latest["nonce"] != token["nonce"] and latest["state"] == "OPEN"
+        assert client.post(path + "/renew-review", json=token, headers=headers).status_code == 409
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 0
+        assert (
+            db.scalar(
+                select(func.count()).select_from(MappingRow).where(MappingRow.status == "APPROVED")
+            )
+            == 0
+        )
+
+
 def test_mapping_preflight_is_scoped_read_only_and_rechecks_human_decisions(pg, monkeypatch):  # noqa: F811
     from copy import deepcopy
 

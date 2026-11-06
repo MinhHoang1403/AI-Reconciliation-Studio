@@ -173,3 +173,21 @@ def test_property_permutations_membership_and_determinism(left_order, right_orde
     members = [(m.side, m.record_id) for g in result.groups for m in g.members]
     assert len(members) == len(set(members)) == 17
     assert all(c.passed for c in verify_result(plan(), left, right, result))
+
+
+@settings(max_examples=40, deadline=None)
+@given(st.integers(-10000000, 10000000), st.integers(-10000000, 10000000))
+def test_amount_sign_metamorphism_preserves_linkage_and_absolute_variance(left_cents, right_cents):
+    """Independent integer-cent oracle; exact linkage must not depend on amounts."""
+    left, right = records("internal-sales.csv")[:1], records("shopee-orders.csv")[:1]
+    expected = Decimal(left_cents - right_cents) / 100
+    for sign in (1, -1):
+        left[0].payload["gross_amount"] = Decimal(sign * left_cents) / 100
+        right[0].payload["gross_amount"] = Decimal(sign * right_cents) / 100
+        result = match_records(plan(), left, right)
+        group = result.groups[0]
+        assert group.linkage_state == "LINKED"
+        assert group.comparisons[0].delta == sign * expected
+        assert group.comparisons[0].absolute_variance == abs(expected)
+        assert group.comparison_state == ("EQUAL" if not expected else "AMOUNT_MISMATCH")
+        assert all(c.passed for c in verify_result(plan(), left, right, result))

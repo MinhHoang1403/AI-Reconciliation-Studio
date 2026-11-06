@@ -1,5 +1,15 @@
 # AI Gateway và provider contracts
 
+## Review từng phần dùng chung Gemini/Qwen — 06/11/2026
+
+Theo chỉ dẫn mới, Gemini là lựa chọn chính khi gọi được, Qwen `qwen3:8b` là lựa chọn phụ. Cấu hình local đã chuyển về Gemini; lựa chọn cá nhân và model đã bind vào job được giữ. Vòng kiểm tra mới ngày06/11 nhận sáu HTTP200 (hai probe có schema và một yêu cầu tự nhiên qua UI với router/ba đề xuất). Kết quả503 ngày05/11 bên dưới là lịch sử, không còn là kết luận duy nhất về hiện trạng; sáu thành công cũng chưa chứng minh ổn định dài hạn hoặc đạt full live gold.
+
+`agent-review-2` dùng cùng schema/validators cho cả hai provider. Mapping chỉ trả thay đổi typed theo source_field/property/value cùng câu hỏi còn thiếu; Backend giữ cột/target/table ID, hợp nhất những giá trị hợp lệ và giữ giá trị cũ khi cập nhật sai. Hai giá trị mâu thuẫn cho cùng thuộc tính không được chọn theo thứ tự. Kiểm kiểu strict, ngày/IANA và draft/profile được thực hiện độc lập; bản xem trước có câu hỏi không bị biến thành AI_INVALID_REVIEW. Review đối soát trả PlanningRequest từng phần và suggestions riêng, không phải approval. Backend giữ facts chưa được thay, kiểm catalogue/source và chỉ dựng preview plan khi đủ thông tin.
+
+Mỗi giá trị hợp nhất được validate, không dùng model_copy(update=...) như một bước kiểm kiểu; xem [Pydantic model_copy](https://docs.pydantic.dev/latest/api/base_model/#pydantic.BaseModel.model_copy). Không ghi raw provider output vào trace; review_shape chỉ lưu số trường, số câu hỏi và cờ loại preview. Lỗi reply trước được giải quyết khi có reply hợp lệ và không còn bước FAILED/BLOCKED khác; tin nhắn lỗi và job lịch sử giữ nguyên.
+
+Trần an toàn mặc định của workflow là8model calls, vẫn trong hard ceiling8 có sẵn: một router + ba proposal + ba phản hồi chủ động cần7calls. Không tăng timeout, không gọi per-row, không reset ledger và không tự retry unknown delivery. Mốc6calls bên dưới mô tả cấu hình lịch sử.
+
 ## Smart Mapping local theo profile và ngữ nghĩa — 05/11/2026
 
 Theo yêu cầu khôi phục Smart Mapping, Qwen 8B nhận một envelope ngắn cho từng bảng. Backend tạo đủ trường của `NormalizationDraft` từ profile toàn cột. Header và số liệu đọc được cùng hỗ trợ gợi ý kiểu ngày/tiền, còn mã định danh giữ chuỗi. Qwen chỉ gợi ý loại bảng, ý nghĩa một dòng, ứng viên khóa và nghĩa gross/net/fee. Schema đầu ra giới hạn tham chiếu trong danh sách cột thực. Bộ kiểm tra từ chối tham chiếu sai hoặc trùng. Múi giờ, nghĩa tiền còn mơ hồ, đơn vị và các điều kiện nghiệp vụ tiếp tục chờ xác nhận qua preflight và thẻ duyệt.

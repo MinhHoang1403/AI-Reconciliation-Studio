@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import Field, ValidationError
+from pydantic import Field, StrictBool, StrictStr, TypeAdapter, ValidationError
 
 from studio.ai_gateway import TypedProvider, build_evidence_context
 from studio.contracts import (
@@ -26,12 +26,117 @@ from studio.contracts.agent import (
 )
 from studio.contracts.api import ApprovalInput
 from studio.contracts.assistant import Identifier
+from studio.contracts.reconciliation import PlanningRequest, PlanningSuggestions
 from studio.errors import DomainError
 from studio.profiling import normalized_name
 
 PREPARATION_REVISION = "agent-normalization-6"
 LOCAL_PREPARATION_REVISION = "agent-mapping-semantics-1"
-REVIEW_REVISION = "agent-review-1"
+REVIEW_REVISION = "agent-review-2"
+
+
+class MappingFieldChange(Contract):
+    """Sparse edit; source/target identity is immutable during a natural reply."""
+
+    source_field: Identifier
+    property: Literal[
+        "name",
+        "data_type",
+        "business_key",
+        "semantic_metric",
+        "amount_basis",
+        "currency",
+        "unit",
+        "locale",
+        "date_format",
+        "timezone",
+        "question",
+    ]
+    value: StrictStr | StrictBool | None
+
+
+class MappingEdits(Contract):
+    entity_kind: str | None = Field(default=None, min_length=1, max_length=100)
+    grain: str | None = Field(default=None, min_length=1, max_length=200)
+    changes: list[MappingFieldChange] = Field(default_factory=list, max_length=80)
+    questions: list[str] = Field(default_factory=list, max_length=5)
+
+
+class RuleEdits(Contract):
+    """Partial confirmed facts, separate from non-executable rule suggestions."""
+
+    request: PlanningRequest | None = None
+    suggestions: PlanningSuggestions | None = None
+    questions: list[str] = Field(default_factory=list, max_length=5)
+
+
+def merge_planning_reply(review: ReviewRequest, edits: RuleEdits) -> ReviewInterpretation:
+    """Merge only explicitly present facts; never let the provider replace source IDs."""
+    previous = PlanningRequest.from_plan(review.plan) if review.plan else review.planning_request
+    if previous is None:
+        raise DomainError("AI_INVALID_REVIEW", "Thẻ không có phạm vi đối soát.")
+    data = previous.model_dump(mode="json")
+    if edits.request is not None:
+        patch = edits.request.model_dump(mode="json", exclude_unset=True)
+        for side in ("left", "right"):
+            if getattr(edits.request, side).canonical_id != getattr(previous, side).canonical_id:
+                raise DomainError("AI_INVALID_SOURCE", "Không được đổi nguồn đang chờ.")
+            data[side].update(patch.pop(side, {}))
+        data.update(patch)
+    return ReviewInterpretation(
+        planning_request=PlanningRequest.model_validate(data),
+        suggestions=edits.suggestions or review.suggestions,
+        questions=edits.questions,
+    )
+
+
+def merge_mapping_edits(review: ReviewRequest, edits: MappingEdits) -> ReviewInterpretation:
+    """Keep valid partial facts and unresolved questions without applying an approval.
+
+    Each field value uses the existing domain type, then the complete draft is
+    validated again by the caller against the scoped profile under the job fence.
+    Conflicting edits to one property are rejected together; order cannot pick a winner.
+    """
+    from studio.date_parsing import date_format, date_zone
+
+    original = review.normalization_draft
+    if original is None or review.kind != "MAPPING":
+        raise DomainError("AI_INVALID_REVIEW", "Thẻ không có bản nháp ánh xạ.")
+    data = original.model_dump(mode="json")
+    by_source = {field["source_field"]: field for field in data["fields"]}
+    questions = list(edits.questions)
+    grouped: dict[tuple[str, str], list[MappingFieldChange]] = {}
+    for change in edits.changes:
+        grouped.setdefault((change.source_field, change.property), []).append(change)
+    for (source, prop), changes in grouped.items():
+        try:
+            if source not in by_source or any(c.value != changes[0].value for c in changes[1:]):
+                raise ValueError("Unknown source or conflicting changes")
+            annotation = NormalizationField.model_fields[prop].rebuild_annotation()
+            value = TypeAdapter(annotation).validate_json(json.dumps(changes[0].value), strict=True)
+            if value is not None and prop == "timezone":
+                date_zone(value)
+            if value is not None and prop == "date_format":
+                date_format(value)
+            # Revalidate the whole field; model_copy(update=...) bypasses validation.
+            field = NormalizationField.model_validate({**by_source[source], prop: value})
+            by_source[source].update(field.model_dump(mode="json"))
+        except (ValidationError, DomainError, ValueError):
+            questions.append(f"Chưa cập nhật {source}.{prop}; cần xác nhận giá trị hợp lệ.")
+    for previous in original.fields:
+        field = by_source[previous.source_field]
+        if field["business_key"] and field["data_type"] == "decimal":
+            field.update(previous.model_dump(mode="json"))
+            questions.append(
+                f"Giữ bản nháp cũ cho {previous.source_field}; khóa phải giữ kiểu chuỗi."
+            )
+    for prop in ("entity_kind", "grain"):
+        if getattr(edits, prop) is not None:
+            data[prop] = getattr(edits, prop)
+    return ReviewInterpretation(
+        draft=NormalizationDraft.model_validate(data),
+        questions=list(dict.fromkeys(questions))[:5],
+    )
 
 
 def interpret_review_reply(
@@ -42,6 +147,19 @@ def interpret_review_reply(
     reserve: Callable[[], bool],
 ) -> ReviewInterpretation:
     """Đọc một reply đã bind review; chỉ trả preview, tuyệt đối không phê duyệt."""
+    mapping = review.kind == "MAPPING"
+    rule = review.kind == "RECONCILIATION"
+    schema = (
+        MappingEdits.model_json_schema()
+        if mapping
+        else RuleEdits.model_json_schema()
+        if rule
+        else ReviewInterpretation.model_json_schema()
+    )
+    if mapping and review.normalization_draft:
+        schema["$defs"]["MappingFieldChange"]["properties"]["source_field"]["enum"] = [
+            field.source_field for field in review.normalization_draft.fields
+        ]
     prompt = [
         dict(
             role="system",
@@ -51,11 +169,24 @@ def interpret_review_reply(
                 "except facts explicitly provided by the user. Preserve IDs/columns/keys "
                 "and sources. Never infer timezone, year, currency, gross/net, "
                 "paid/completed or missing amounts. "
-                "If insufficient, return null candidates and concise Vietnamese questions. "
-                "Return exactly one candidate matching review kind (draft/plan/intent), or none. "
-                "No actor/permission/SQL/path fields. User must review the parsed preview "
+                "Keep valid partial facts even when other facts are missing. Return concise "
+                "Vietnamese questions for unresolved facts alongside those edits. "
+                + (
+                    "Return only changed properties in changes; never echo the full draft. "
+                    "Omitted properties remain unchanged; null explicitly clears a nullable fact. "
+                    "Never change source_field, target_id or table_id. Do not clear unresolved "
+                    "field questions unless the reply actually answers them. "
+                    if mapping
+                    else "For rule reviews, return only supplied facts in request, with both "
+                    "unchanged canonical IDs. Omit every unchanged optional property, including "
+                    "nested source properties. Missing coverage/period/timezone stays unknown. "
+                    "suggestions are non-executable candidates and must cite allowed evidence. "
+                    if rule
+                    else "Return one intent candidate for clarification, or none. "
+                )
+                + "No actor/permission/SQL/path fields. User must review the parsed preview "
                 "and confirm. "
-                "JSON ONLY: " + json.dumps(ReviewInterpretation.model_json_schema())
+                "JSON ONLY: " + json.dumps(schema)
             ),
         ),
         dict(
@@ -83,6 +214,10 @@ def interpret_review_reply(
 
     def validate(content: str) -> ReviewInterpretation:
         try:
+            if mapping:
+                return merge_mapping_edits(review, MappingEdits.model_validate_json(content))
+            if rule:
+                return merge_planning_reply(review, RuleEdits.model_validate_json(content))
             output = ReviewInterpretation.model_validate_json(content)
         except ValidationError as exc:
             raise DomainError(
@@ -98,10 +233,6 @@ def interpret_review_reply(
             and review.kind != "CLARIFICATION"
         ):
             raise DomainError("AI_INVALID_REVIEW", "Lựa chọn khác loại xác nhận đang chờ.")
-        if output.questions and any(item is not None for item in candidates):
-            raise DomainError(
-                "AI_INVALID_REVIEW", "Chưa đủ thông tin; không được đưa lựa chọn hoàn chỉnh."
-            )
         return output
 
     return provider.request_typed(
@@ -110,7 +241,7 @@ def interpret_review_reply(
         reserve,
         validate,
         max_attempts=1,
-        response_schema=ReviewInterpretation.model_json_schema() if provider.local else None,
+        response_schema=schema,
     )
 
 

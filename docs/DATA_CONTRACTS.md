@@ -6,6 +6,14 @@
 
 `tabular-2` giữ header có nhãn trùng ở đúng vị trí, cảnh báo EMPTY_OR_DUPLICATE_HEADER và giữ từng cột c1/c2 riêng. Không chuyển dòng dữ liệu đầu thành header chỉ vì tên cột lặp. Với CSV, ParseConfig.header_row là dòng vật lý bắt đầu một bản ghi, cùng đơn vị với provenance; dòng nằm giữa một ô quoted nhiều dòng không phải header hợp lệ. Parser dừng ngay trong lúc đọc khi vượt số bản ghi/cột đã giới hạn; không tích lũy hết file trước khi từ chối. Raw/checksum, parser cũ và các artifact/revision lịch sử không bị viết lại. Parse signature mới tách kết quả mới khỏi cache của tabular-1.
 
+## Review dùng chung và khôi phục bản nháp — 06/11/2026
+
+Nguồn sự thật của thẻ review là `AgentWorkflowRow.detail.reviews`, tách khỏi proposal ánh xạ thủ công và approval bất biến. `GET /api/agent/tables/{table_id}/mapping-reviews` trả tối đa10 workflow có thẻ MAPPING OPEN đúng bảng, project, workspace và actor, loại hội thoại đã xóa. Chat và Dữ liệu phải đọc cùng thẻ này; không lấy proposal thủ công làm bản thay thế ngầm.
+
+`POST /api/agent/workflows/{id}/draft` nhận ReviewDraftUpdate: review_id/nonce/fingerprint và đúng một draft, plan hoặc planning_request cùng loại. Lưu bản nháp không tạo approval, canonical hay job AI. Mapping kiểm lại toàn bộ cột với profile; planning kiểm source và những facts đã cung cấp, plan hoàn chỉnh kiểm business contract. Nguồn/nonce cũ, hết hạn, viewer hoặc reply còn chạy bị chặn. Lưu thành công đổi nonce và gia hạn30phút; gửi nonce cũ trả409, client cần đọc bản hiện hành. `POST .../renew-review` là hành động người dùng để mở lại thời hạn; chỉ được gia hạn khi nguồn/fingerprint còn nguyên, không bỏ qua stale-source gate.
+
+`POST /api/mappings/{id}/approve` dùng Idempotency-Key theo actor/workspace. Gửi lại cùng key và nội dung trả nguyên snapshot approval đã lưu, kể cả revision đó được thay thế sau này; nội dung khác cùng key trả409. Advisory transaction lock và audit receipt được công bố cùng approval; không tạo bảng hoặc queue giả. Client cũ thiếu header vẫn tương thích nhưng không có receipt chống gửi lặp. Reject/approve cùng khóa bảng và đọc lại proposal sau khóa để tránh trạng thái cũ.
+
 ## Smart Mapping local và lựa chọn ban đầu — 05/11/2026
 
 Adapter local dùng `MappingSemantics` nội bộ: entity, grain, tham chiếu khóa và nghĩa tiền. Schema giới hạn tham chiếu theo cột của bảng hiện tại; Backend vẫn từ chối cột sai/trùng. Backend tạo đầy đủ `NormalizationDraft` từ profile rồi dùng cùng assessment, preflight và approval. Đây là thay đổi cách chuẩn bị đề xuất; public draft, compiler, Decimal, Matcher và Verifier giữ nguyên. Grain unknown không được mang khóa suy đoán. Tham chiếu có thật chưa chứng minh khóa hoặc grain đúng nghiệp vụ.

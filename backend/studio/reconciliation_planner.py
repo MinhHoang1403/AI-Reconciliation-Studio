@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Callable
-from typing import Literal
+from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, ValidationError
@@ -138,6 +138,53 @@ def missing_confirmations(request: PlanningRequest) -> list[str]:
     return missing
 
 
+def preview_plan(
+    request: PlanningRequest,
+    suggestions: PlanningSuggestions | None,
+    entity_kind: str,
+    previous: ReconciliationPlan | None = None,
+) -> ReconciliationPlan | None:
+    """Assemble a typed preview only when facts and candidates are complete.
+
+    No approval or inference. The caller still validates source scope and every
+    business invariant against the current catalogue before publishing this preview.
+    """
+    if missing_confirmations(request) or suggestions is None:
+        return None
+    data: dict[str, Any] = (
+        previous.model_dump(mode="json")
+        if previous
+        else {
+            "name": "Đề xuất đối soát cần duyệt",
+            "entity_kind": entity_kind,
+        }
+    )
+    data.update(
+        {
+            k: v
+            for k, v in request.model_dump(mode="json").items()
+            if k in ReconciliationPlan.model_fields
+        }
+    )
+    data.update(
+        {
+            k: v
+            for k, v in suggestions.model_dump(mode="json").items()
+            if k in ReconciliationPlan.model_fields
+        }
+    )
+    # Null partial flags are unknown, not a replacement for the domain default.
+    if data.get("allow_partial") is None:
+        data.pop("allow_partial", None)
+    for side in ("left", "right"):
+        if data[side].get("filters") is None:
+            data[side].pop("filters", None)
+    try:
+        return ReconciliationPlan.model_validate(data)
+    except ValidationError:
+        return None
+
+
 def propose_plan(
     provider: TypedProvider,
     catalogue: list[SourceCatalogue],
@@ -239,28 +286,11 @@ def propose_plan(
                         }
                     )
                 # Ghép facts đã xác nhận với gợi ý typed; không tạo approval hoặc đoán thời gian.
-                selection = proposal.suggestions.model_dump(mode="json")
-                try:
-                    proposal.plan = ReconciliationPlan.model_validate(
-                        {
-                            **{
-                                k: v
-                                for k, v in request.model_dump(
-                                    mode="json", exclude_unset=True, exclude_none=True
-                                ).items()
-                                if k in ReconciliationPlan.model_fields
-                            },
-                            **{
-                                k: v
-                                for k, v in selection.items()
-                                if k in ReconciliationPlan.model_fields
-                            },
-                            "name": "Đề xuất đối soát cần duyệt",
-                            "entity_kind": catalogue[0].canonical.entity_kind,
-                        }
-                    )
-                except ValidationError as exc:
-                    raise DomainError("AI_INVALID_JSON", "Gợi ý thiếu trường cần thiết.") from exc
+                proposal.plan = preview_plan(
+                    request, proposal.suggestions, catalogue[0].canonical.entity_kind
+                )
+                if proposal.plan is None:
+                    raise DomainError("AI_INVALID_JSON", "Gợi ý thiếu trường cần thiết.")
         if proposal.plan is not None:
             validate_reconciliation_contract(proposal.plan, catalogue, workspace_id, project_id)
             confirmed = request.model_dump(mode="json", exclude_unset=True, exclude_none=True)
