@@ -145,6 +145,85 @@ def test_csv_multiline_quoted_cell_keeps_physical_start_row(tmp_path, config):
     assert parsed.frame["c2"][0] == "line one\nline two"
 
 
+@pytest.mark.parametrize("extension", ["csv", "xlsx"])
+def test_duplicate_header_preserves_columns_and_first_source_record(tmp_path, config, extension):
+    """FND-PARSER: duplicate labels must never consume a data row as the header."""
+    path = tmp_path / f"duplicate.{extension}"
+    rows = [["ID", "amount", "amount"], ["000001", "10", "20"], ["000002", "30", "40"]]
+    if extension == "xlsx":
+        book = openpyxl.Workbook()
+        for row in rows:
+            book.active.append(row)
+        book.save(path)
+    else:
+        path.write_text("\n".join(",".join(row) for row in rows) + "\n", encoding="utf-8")
+    original = path.read_bytes()
+    inspection = inspect_upload(io.BytesIO(original), path.name, "application/octet-stream", config)
+    parsed = parse_to_artifacts(path, inspection, ParseConfig(), config)[0]
+    assert parsed.header_row == 1
+    assert [column.name for column in parsed.columns] == rows[0]
+    assert parsed.frame["c1"].to_list() == ["000001", "000002"]
+    assert parsed.frame["c2"].to_list() == ["10", "30"]
+    assert parsed.frame["c3"].to_list() == ["20", "40"]
+    assert parsed.frame["_source_row"].to_list() == [2, 3]
+    assert "EMPTY_OR_DUPLICATE_HEADER" in parsed.warnings
+    assert verify_parse(parsed, config) == "UNVERIFIED_EXTRACTION"
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("header_row,valid", [(3, True), (2, False)])
+def test_csv_explicit_header_uses_physical_record_start(tmp_path, config, header_row, valid):
+    path = tmp_path / "multiline-preamble.csv"
+    raw = b'"Report\ncaption"\nid,amount\n000001,10\n000002,20\n'
+    path.write_bytes(raw)
+    inspection = inspect_upload(io.BytesIO(raw), path.name, "text/csv", config)
+    if not valid:
+        with pytest.raises(DomainError, match="INVALID_HEADER_ROW"):
+            parse_to_artifacts(path, inspection, ParseConfig(header_row=header_row), config)
+        return
+    parsed = parse_to_artifacts(path, inspection, ParseConfig(header_row=header_row), config)[0]
+    assert parsed.header_row == 3
+    assert [c.name for c in parsed.columns] == ["id", "amount"]
+    assert parsed.frame["c1"].to_list() == ["000001", "000002"]
+    assert parsed.frame["_source_row"].to_list() == [4, 5]
+    assert path.read_bytes() == raw
+
+
+def test_csv_rejects_row_overflow_during_read_instead_of_collecting_whole_file(
+    tmp_path, config, monkeypatch
+):
+    import studio.parsing as parsing
+
+    original_reader = parsing.csv.reader
+    read = []
+
+    class ObservedReader:
+        def __init__(self, *args, **kwargs):
+            self.reader = original_reader(*args, **kwargs)
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            record = next(self.reader)
+            read.append(1)
+            return record
+
+        @property
+        def line_num(self):
+            return self.reader.line_num
+
+    monkeypatch.setattr(parsing.csv, "reader", ObservedReader)
+    config.max_rows = 2
+    path = tmp_path / "overflow.csv"
+    raw = b"id,value\n" + b"000001,10\n" * 100
+    path.write_bytes(raw)
+    inspection = inspect_upload(io.BytesIO(raw), path.name, "text/csv", config)
+    with pytest.raises(DomainError, match="TABLE_LIMIT_EXCEEDED"):
+        parse_to_artifacts(path, inspection, ParseConfig(delimiter=","), config)
+    assert len(read) <= config.max_rows + 31
+
+
 def test_T07_profile_exact_null_empty_duplicate(profile):
     amount = profile.columns[1]
     assert (profile.row_count, amount.null_count, amount.empty_count, amount.distinct_count) == (

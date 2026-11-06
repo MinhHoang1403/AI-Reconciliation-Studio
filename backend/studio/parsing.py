@@ -24,7 +24,7 @@ from studio.config import Settings
 from studio.contracts import Contract, SourceColumn, WorkspacePolicy
 from studio.errors import DomainError
 
-PARSER_REVISION = "tabular-1"
+PARSER_REVISION = "tabular-2"
 MAIN_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 REL_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 
@@ -150,7 +150,9 @@ def _header_index(rows: list[list[str | None]], requested: int | None) -> tuple[
         return requested - 1, []
     for index, row in enumerate(rows[:30]):
         populated = [v for v in row if v not in (None, "")]
-        if len(populated) >= 2 and len(set(populated)) == len(populated):
+        # Nhãn trùng là cảnh báo extraction, không phải lý do lấy dòng dữ liệu
+        # tiếp theo làm header. _columns giữ từng vị trí bằng c1/c2 độc lập.
+        if len(populated) >= 2:
             return index, ["HEADER_INFERRED_REVIEW"] if index else []
     if rows and any(v not in (None, "") for v in rows[0]):
         return 0, ["SINGLE_COLUMN_HEADER_REVIEW"]
@@ -182,6 +184,8 @@ def _csv(path: Path, parse_config: ParseConfig, config: Settings) -> list[Parsed
         source_rows: list[int] = []
         previous_line = 0
         for record in reader:
+            if len(rows) >= config.max_rows + 30 or len(record) > config.max_columns:
+                raise DomainError("TABLE_LIMIT_EXCEEDED", "Bảng vượt giới hạn số dòng hoặc cột.")
             source_rows.append(previous_line + 1)
             rows.append(list(record))
             previous_line = reader.line_num
@@ -190,7 +194,16 @@ def _csv(path: Path, parse_config: ParseConfig, config: Settings) -> list[Parsed
             or max((len(r) for r in rows), default=0) > config.max_columns
         ):
             raise DomainError("TABLE_LIMIT_EXCEEDED", "Bảng vượt giới hạn số dòng hoặc cột.")
-        head, warnings = _header_index(rows, parse_config.header_row)
+        requested = parse_config.header_row
+        if requested is not None:
+            # CSV quoted newline làm số bản ghi khác số dòng vật lý. Cùng đơn vị
+            # với source provenance và lựa chọn header trên bảng xem trước.
+            if requested not in source_rows:
+                raise DomainError(
+                    "INVALID_HEADER_ROW", "Dòng tiêu đề không bắt đầu một bản ghi CSV."
+                )
+            requested = source_rows.index(requested) + 1
+        head, warnings = _header_index(rows, requested)
         columns, more = _columns(rows[head])
         # Polars preserves quoted empty string versus absent/null. No numeric inference.
         frame = pl.read_csv(

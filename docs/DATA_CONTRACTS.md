@@ -2,6 +2,10 @@
 
 Định nghĩa thực thi nằm trong `backend/studio/contracts/`. OpenAPI tại `/openapi.json` và `/docs` mô tả request/response; endpoint này không cấp quyền đọc dữ liệu. Error envelope: `code`, `message_vi`, `details` đã redacted, `retryable`, `correlation_id`.
 
+## Parser giữ header và dòng vật lý — 06/11/2026
+
+`tabular-2` giữ header có nhãn trùng ở đúng vị trí, cảnh báo EMPTY_OR_DUPLICATE_HEADER và giữ từng cột c1/c2 riêng. Không chuyển dòng dữ liệu đầu thành header chỉ vì tên cột lặp. Với CSV, ParseConfig.header_row là dòng vật lý bắt đầu một bản ghi, cùng đơn vị với provenance; dòng nằm giữa một ô quoted nhiều dòng không phải header hợp lệ. Parser dừng ngay trong lúc đọc khi vượt số bản ghi/cột đã giới hạn; không tích lũy hết file trước khi từ chối. Raw/checksum, parser cũ và các artifact/revision lịch sử không bị viết lại. Parse signature mới tách kết quả mới khỏi cache của tabular-1.
+
 ## Smart Mapping local và lựa chọn ban đầu — 05/11/2026
 
 Adapter local dùng `MappingSemantics` nội bộ: entity, grain, tham chiếu khóa và nghĩa tiền. Schema giới hạn tham chiếu theo cột của bảng hiện tại; Backend vẫn từ chối cột sai/trùng. Backend tạo đầy đủ `NormalizationDraft` từ profile rồi dùng cùng assessment, preflight và approval. Đây là thay đổi cách chuẩn bị đề xuất; public draft, compiler, Decimal, Matcher và Verifier giữ nguyên. Grain unknown không được mang khóa suy đoán. Tham chiếu có thật chưa chứng minh khóa hoặc grain đúng nghiệp vụ.

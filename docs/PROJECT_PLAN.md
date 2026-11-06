@@ -12,6 +12,12 @@
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Kiểm toán nền tảng và hardening — 06/11/2026
+
+Chủ dự án giao Foundation Reliability Audit trên nhánh `codex/foundation-reliability-hardening`, xuất phát từ baseline bất biến `2eecb068b0a866a538cda95a218ac9e375b10eb0` của `codex/product-polish`. Phạm vi là các hợp đồng, state/review/draft, sự nhất quán Chat–Data Manager, dữ liệu, truy vấn, persistence, security, Docker và hồi quy toàn hệ thống; không mở giai đoạn sản phẩm mới. Cho phép sửa cách cập nhật từng phần có kiểm chứng trong review, giữ các câu hỏi chưa rõ và approval riêng. Không thay công thức hoặc Matcher/Verifier nếu chưa có lỗi thực chứng. Nghiệm thu gồm full Backend/PostgreSQL, full browser, property/stateful/fault, nhiều bộ có oracle và hành trình người dùng thật. Chỉ FOUNDATION_ACCEPTED khi các gate bắt buộc đạt; giới hạn provider phải báo riêng.
+
+Quyền Docker mới thay yêu cầu giữ nhiều cặp image lịch sử: sau backup/restore và kiểm chứng rollback, chỉ giữ bộ hiện hành cùng một bộ rollback gần nhất; giữ PostgreSQL/artifact volumes, mọi backup, cache chung, model Ollama và dự án khác. Nhánh product-polish là mốc Git giữ nguyên. Chỉ dẫn tiếp theo cùng nhiệm vụ yêu cầu thử lại Gemini bằng cấu hình hiện hành; cho phép vòng LIVE có mục đích, giữ ledger/usage và không retry vô hạn khi provider trả429/503. Khi gọi được, Gemini là lựa chọn chính, Qwen là lựa chọn phụ; cả hai dùng chung contracts và validators, được nghiệm thu riêng. Sau nền tảng, bộ chọn model chỉ hiện hai tên “Gemini 3.5 Flash Lite” và “Qwen 3:8B”; rà soát lại logic và bố cục giao diện, không dùng nhãn kết nối để thay tên model.
+
 ### Khôi phục Smart Mapping và model local — 05/11/2026
 
 Chủ dự án cấp quyền một vòng chẩn đoán Gemini với khóa mới trong cấu hình, rồi tối ưu Ollama `qwen3:8b` nếu Gemini vẫn lỗi. Quyền này cho phép dùng Qwen chạy trên Windows qua Gateway hiện có và hoàn thiện bộ chọn model trong Chat. Backend tính profiling và tạo đầy đủ bản nháp, model tập trung vào ngữ nghĩa, mọi đề xuất đi qua validator và thẻ duyệt. Đo trên ba tệp TEST 5.487 dòng, giữ oracle chuẩn hóa và hai cặp đối soát. Không tải Qwen 27B trong điều kiện thiếu RAM. Mặc định local có thể chọn Qwen sau phép thử tác vụ đạt, trong khi các cổng nghiệm thu AI tổng thể tiếp tục quyết định việc hợp nhất main. Quyết định mới thay các yêu cầu hoãn Qwen của những nhiệm vụ trước trong phạm vi này.
