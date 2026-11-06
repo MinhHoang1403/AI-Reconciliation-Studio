@@ -259,7 +259,11 @@ def test_routing_provider_grammar_excludes_tools_that_do_not_belong_to_intent(
         assert normalize["additionalProperties"] is False
         query = next(v for v in variants if v["properties"]["intent"]["enum"] == ["QUERY_DATA"])
         assert set(query["properties"]) == {"intent", "query"}
-        assert "maxItems" not in schema["properties"]["intents"]
+        bounds = schema["properties"]["intents"]
+        if provider_name == "ollama":
+            assert bounds["minItems"] == bounds["maxItems"] == 1
+        else:
+            assert "maxItems" not in bounds
         if provider_name == "ollama":
             return httpx.Response(
                 200,

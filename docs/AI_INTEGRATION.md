@@ -12,6 +12,8 @@ A/B LIVE cùng review tổng hợp: grammar `changes.maxItems=80` trả400 INVAL
 
 Audit Qwen nhận HTTP200 nhưng bị AI_INVALID_INTENT ở lượt router tự nhiên. Phát hiện Gateway local đang nhận public RoutingBatch rộng, trong khi Gemini đã nhận grammar chia theo từng intent; public DTO cho phép các optional tool fields cùng xuất hiện trước kiểm tra ngữ nghĩa. `agent-intent-33` truyền cùng grammar theo intent cho cả hai: chuẩn bị ánh xạ không được kèm query/reconciliation. Không thêm grammar khớp câu hỏi mẫu để thay suy luận. Trace routing_shape chỉ lưu enum intent/cờ tool/số nguồn và câu hỏi; không lưu raw output. Chưa có raw output của lượt lỗi cũ nên không quy kết chính xác thuộc tính nào model đã trộn. MOCK transport xác minh schema tương đương; LIVE sau sửa được báo riêng.
 
+`agent-intent-35` giảm phần mô tả lặp khi gọi Qwen và giới hạn số ý định tại grammar Ollama theo số câu hỏi thực. Gemini tiếp tục dùng validator số lượng ở Backend vì grammar Gemini đã từng từ chối array bound. Cùng một yêu cầu TEST dài trên máy này: bản trước hết 90 giây, probe rút ngữ cảnh trả hai intent trong 73,3 giây và bị chặn, probe rút ngữ cảnh với bound trả đúng một RECONCILE_DATASETS trong 44,5 giây (2.869 token vào, 195 token ra). Model giữ kỳ, múi giờ và ngày hiệu lực nhưng bỏ sót một số dữ kiện nguồn. Đây là bằng chứng cải thiện định tuyến và thời gian. Thẻ tiếp tục yêu cầu xác nhận dữ kiện chưa đủ trước khi chạy.
+
 Trần an toàn mặc định của workflow là8model calls, vẫn trong hard ceiling8 có sẵn: một router + ba proposal + ba phản hồi chủ động cần7calls. Không tăng timeout, không gọi per-row, không reset ledger và không tự retry unknown delivery. Mốc6calls bên dưới mô tả cấu hình lịch sử.
 
 ## Smart Mapping local theo profile và ngữ nghĩa — 05/11/2026
