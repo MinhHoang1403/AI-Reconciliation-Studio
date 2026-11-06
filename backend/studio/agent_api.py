@@ -21,6 +21,7 @@ from studio.agent_workflows import (
     review_fingerprint,
     save,
     view,
+    wait_for,
 )
 from studio.assistant_tools import agent_catalogue
 from studio.config import AGENT_UPLOAD_EXTENSIONS, settings
@@ -356,6 +357,10 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         workflow_id: str, body: ReviewDraftUpdate, db: DB, actor: User, key: Key
     ) -> WorkflowView:
         row, state, review = editable_review(db, actor, workflow_id, body)
+        if body.check_planning_scope and (
+            review.kind != "RECONCILIATION" or body.planning_request is None or review.plan
+        ):
+            raise DomainError("INVALID_REVIEW_DRAFT", "Chỉ kiểm tra phạm vi đang thiếu.", 422)
         if sum(v is not None for v in (body.draft, body.plan, body.planning_request)) != 1:
             raise DomainError("INVALID_REVIEW_DRAFT", "Chỉ lưu một bản nháp đúng loại thẻ.", 422)
         if body.draft is not None and review.kind == "MAPPING":
@@ -386,6 +391,46 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                 ],
             )
             validate_planning_request(request, cats, actor.workspace_id, row.project_id)
+            if body.check_planning_scope:
+                from studio.agent_tools import JobReference, PlanAction, execute_tool
+                from studio.reconciliation_planner import missing_confirmations
+
+                if missing_confirmations(request) or state.intent is None:
+                    raise DomainError(
+                        "REVIEW_REQUIRED", "Cần xác nhận kỳ, ngày và độ đầy đủ của hai nguồn.", 422
+                    )
+                reference = execute_tool(
+                    db,
+                    actor,
+                    PlanAction(
+                        name="prepare_reconciliation_plan",
+                        context=AssistantContext.model_validate(row.context),
+                        request=request,
+                    ),
+                    f"{row.id}:scope:{review.id}:{digest(request.model_dump(mode='json'))}",
+                )
+                assert isinstance(reference, JobReference)
+                review.state = "INVALIDATED"
+                state.intent.planning_request = request
+                wait_for(
+                    db,
+                    row,
+                    state,
+                    "prepare_reconciliation_plan",
+                    request.left.canonical_id,
+                    reference,
+                )
+                save(row, state)
+                db.add(
+                    AuditRow(
+                        workspace_id=actor.workspace_id,
+                        actor_id=actor.id,
+                        action="AGENT_PLANNING_SCOPE_CONFIRMED",
+                        resource_id=review.id,
+                    )
+                )
+                db.commit()
+                return view(row)
             plan = body.plan or preview_plan(
                 request, review.suggestions, cats[0].canonical.entity_kind, review.plan
             )

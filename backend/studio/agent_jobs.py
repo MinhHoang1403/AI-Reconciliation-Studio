@@ -17,6 +17,7 @@ from studio.agent_intents import (
     currency_bypass_requested,
     interpret_requests,
     resolve_attached_normalization,
+    resolve_named_reconciliation,
     resolve_plain_listing,
     resolve_ranked_results,
     resolve_run_read,
@@ -312,6 +313,7 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
             resolve_ranked_results(goal, catalogue)
             or resolve_run_read(goal, catalogue)
             or resolve_plain_listing(goal, catalogue)
+            or resolve_named_reconciliation(goal, catalogue)
         )
         if plain_listing is not None:
             if plain_listing.intent == "SUMMARIZE_RESULTS":

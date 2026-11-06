@@ -134,6 +134,59 @@ def test_prepared_chat_preview_and_count_need_no_provider_or_mapping(pg, monkeyp
         assert not db.scalar(select(MappingRow.id).where(MappingRow.status == "APPROVED").limit(1))
 
 
+def test_chat_scope_confirmation_builds_a_new_preview_and_never_approves(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+    from studio.contracts.reconciliation import PlanningRequest
+    from studio.database import ReconciliationContractRow, RunRow
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("An exact source pair with a typed scope needs no provider")
+
+    monkeypatch.setattr(agents, "model_call", forbidden)
+    client, factory, worker = pg
+    pid, plan = prepare_pair(pg)
+    context = {"project_id": pid}
+    message = ask_agent(
+        client,
+        context,
+        conversation(client, context),
+        text="Đối soát “shipments.csv” với “delivery-confirmations.csv”",
+    )
+    drain(factory, worker)
+    workflow = workflow_for(client, factory, message["job_id"])
+    original = workflow["detail"]["reviews"][0]
+    assert workflow["state"] == "WAITING_REVIEW" and original["plan"] is None
+    path = f"/api/agent/workflows/{workflow['id']}/draft"
+    scope = PlanningRequest.from_plan(plan).model_dump(mode="json")
+    body = dict(
+        review_id=original["id"],
+        nonce=original["nonce"],
+        fingerprint=original["fingerprint"],
+        check_planning_scope=True,
+        planning_request=scope,
+    )
+    headers = {"Idempotency-Key": "scope-check"}
+    wrong = {
+        **body,
+        "planning_request": {**scope, "right": {**scope["right"], "canonical_id": "unknown"}},
+    }
+    assert client.post(path, json=wrong, headers=headers).status_code == 422
+    assert client.post(path, json=body, headers=headers).status_code == 200
+    drain(factory, worker)
+    workflow = client.get(f"/api/agent/workflows/{workflow['id']}").json()
+    old, new = workflow["detail"]["reviews"]
+    assert old["state"] == "INVALIDATED" and new["state"] == "OPEN"
+    assert new["plan"]["join_keys"] == [
+        {"left": "carrier", "right": "carrier"},
+        {"left": "tracking_id", "right": "tracking_id"},
+    ]
+    assert new["planning_candidates"][0]["overlap"] == 2
+    assert client.post(path, json=body, headers=headers).status_code == 409
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(ReconciliationContractRow)) == 0
+        assert db.scalar(select(func.count()).select_from(RunRow)) == 0
+
+
 def test_review_failure_then_valid_partial_reply_clears_current_error_keeps_history(
     pg,  # noqa: F811
     monkeypatch,

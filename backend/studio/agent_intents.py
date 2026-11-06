@@ -578,6 +578,47 @@ def resolve_run_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | Non
     )
 
 
+def resolve_named_reconciliation(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
+    """Resolve only an unqualified request with two exact filenames in stated order."""
+    quoted = list(re.finditer(r'"([^"]+)"|“([^”]+)”', goal))
+    if len(quoted) != 2:
+        return None
+    skeleton = re.sub(r'"[^"]+"|“[^”]+”', "{file}", goal)
+    normalized = " ".join(plain_question(skeleton).split()).rstrip("?.!")
+    if not re.fullmatch(
+        r"(?:(?:hay|giup toi|toi muon) )?(?:doi soat|so doi) "
+        r"(?:tep |file )?\{file\} (?:voi|va) (?:tep |file )?\{file\}",
+        normalized,
+    ):
+        return None
+    ids = []
+    for match in quoted:
+        name = unicodedata.normalize("NFC", match.group(1) or match.group(2)).casefold()
+        sources = [
+            table
+            for dataset in catalogue.datasets
+            if unicodedata.normalize("NFC", dataset.name).casefold() == name
+            for table in dataset.tables
+            if table.canonical_id and table.canonical_status != "FAILED"
+        ]
+        if len(sources) != 1 or sources[0].canonical_id is None:
+            return AgentIntent(
+                intent="CLARIFY",
+                questions=["Bạn muốn đối soát bảng nào? Mỗi tệp cần có một bảng đã chuẩn hóa."],
+            )
+        ids.append(sources[0].canonical_id)
+    if ids[0] == ids[1]:
+        return AgentIntent(intent="CLARIFY", questions=["Hãy chọn hai nguồn khác nhau."])
+    return AgentIntent(
+        intent="RECONCILE_DATASETS",
+        planning_request=PlanningRequest(
+            left=PlanningSource(canonical_id=ids[0], role="reference"),
+            right=PlanningSource(canonical_id=ids[1], role="counterpart"),
+            intent=goal,
+        ),
+    )
+
+
 LAYER_TERMS: dict[str, QuerySourceKind] = {
     "du lieu goc": "RAW_PREVIEW",
     "bang goc": "RAW_PREVIEW",

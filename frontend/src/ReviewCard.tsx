@@ -93,6 +93,65 @@ function SourceDecisions({ draft, onChange, disabled }: {
         </fieldset>
     </fieldset>;
 }
+
+type PlanningScope = NonNullable<Review["planning_request"]>;
+
+function ScopeConfirmation({ request, catalogue, disabled, onConfirm }: {
+    request: PlanningScope;
+    catalogue: Catalogue[];
+    disabled: boolean;
+    onConfirm: (scope: PlanningScope) => void;
+}) {
+    const [start, setStart] = useState(request.period_start || "");
+    const [end, setEnd] = useState(request.period_end || "");
+    const [zone, setZone] = useState(request.timezone || "");
+    const [snapshot, setSnapshot] = useState("");
+    const [confirmed, setConfirmed] = useState(false);
+    const sides = ["left", "right"] as const;
+    const sources = sides.map(side => catalogue.find(source => source.canonical.id === request[side].canonical_id));
+    const dateFields = sources.map(source => source?.schema_definition.fields.filter(field => field.data_type === "date") || []);
+    const [dates, setDates] = useState(["", ""]);
+    const dateFor = (index: number) => dates[index] || request[sides[index]].date_field ||
+        (dateFields[index].length === 1 ? dateFields[index][0].id : "");
+    const snapshotNeeded = sides.some(side => !request[side].snapshot_at);
+    const ready = confirmed && start && end && start < end && zone && (!snapshotNeeded || snapshot) &&
+        sources.every(Boolean) && sides.every((side, index) => !!dateFor(index) && !!request[side].role);
+    function confirm() {
+        if (!ready) return;
+        const slot = (side: typeof sides[number], index: number): PlanningScope["left"] => {
+            const source = sources[index];
+            const currency = source?.schema_definition.fields.find(field => field.id === "currency" && field.data_type === "string");
+            return { ...request[side], date_field: dateFor(index),
+                time_basis: request[side].time_basis || dateFor(index),
+                currency_field: request[side].currency_field ?? currency?.id ?? null,
+                coverage_start: request[side].coverage_start || start,
+                coverage_end: request[side].coverage_end || end,
+                snapshot_at: request[side].snapshot_at || `${snapshot}:00Z`,
+                completeness: request[side].completeness && request[side].completeness !== "UNKNOWN"
+                    ? request[side].completeness : "CONFIRMED",
+            };
+        };
+        onConfirm({ ...request, period_start: start, period_end: end, timezone: zone,
+            effective_from: request.effective_from || start, left: slot("left", 0), right: slot("right", 1) });
+    }
+    return <fieldset className="agent-form-grid">
+        <legend>Kỳ và phạm vi dữ liệu</legend>
+        <label>Ngày đầu kỳ<input type="date" value={start} disabled={disabled} onChange={event=>setStart(event.target.value)}/></label>
+        <label>Ngày sau cuối kỳ<input type="date" value={end} disabled={disabled} onChange={event=>setEnd(event.target.value)}/></label>
+        <label>Múi giờ đối soát<select value={zone} disabled={disabled} onChange={event=>setZone(event.target.value)}>
+            <option value="">Chọn múi giờ</option>{Array.from(new Set(["UTC", "Asia/Ho_Chi_Minh", ...(request.timezone ? [request.timezone] : [])])).map(value=><option key={value}>{value}</option>)}
+        </select></label>
+        {snapshotNeeded && <label>Thời điểm chốt dữ liệu (UTC)<input type="datetime-local" value={snapshot} disabled={disabled} onChange={event=>setSnapshot(event.target.value)}/></label>}
+        {sides.map((side, index) => <label key={side}>Ngày dùng cho {sources[index]?.name || (index ? "nguồn đối ứng" : "nguồn tham chiếu")}
+            <select value={dateFor(index)} disabled={disabled} onChange={event=>setDates(previous=>previous.map((value, i)=>i===index ? event.target.value : value))}>
+                <option value="">Chọn cột ngày</option>{dateFields[index].map(field=><option value={field.id} key={field.id}>{field.name}</option>)}
+            </select></label>)}
+        <p>Quy tắc dự kiến có hiệu lực từ {request.effective_from || start || "ngày đầu kỳ"}. Bạn sẽ được xem đề xuất trước khi duyệt.</p>
+        <label><input type="checkbox" checked={confirmed} disabled={disabled} onChange={event=>setConfirmed(event.target.checked)}/>
+            Tôi xác nhận các nguồn chưa khai báo độ phủ có đủ dữ liệu trong kỳ đã chọn.</label>
+        <button className="button secondary" type="button" disabled={disabled || !ready} onClick={confirm}>Kiểm tra phạm vi và tìm khóa</button>
+    </fieldset>;
+}
 function storedDraft(key: string, review: Review) {
     try {
         const saved = JSON.parse(sessionStorage.getItem(key) || "null");
@@ -249,6 +308,25 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     const planSources = plan ? [plan.left.canonical_id, plan.right.canonical_id]
         .map(id => catalogue.find(item => item.canonical.id === id)) : [];
     const partialSources = planSources.filter(item => item?.canonical.quality_status === "PARTIAL");
+    const scope = review.planning_request;
+    const needsScope = scope && scope.left.role && scope.right.role && (
+        !scope.period_start || !scope.period_end || !scope.timezone || !scope.effective_from ||
+        [scope.left, scope.right].some(slot => !slot.date_field || !slot.time_basis || !slot.coverage_start ||
+            !slot.coverage_end || !slot.snapshot_at || !slot.completeness || slot.completeness === "UNKNOWN")
+    );
+    async function checkScope(planningRequest: PlanningScope) {
+        if (disabled || submitting.current) return;
+        submitting.current = true;
+        setBusy(true); setError("");
+        try {
+            await api(`/agent/workflows/${workflow.id}/draft`, {method: "POST", body: JSON.stringify({
+                review_id: review.id, nonce: review.nonce, fingerprint: review.fingerprint,
+                planning_request: planningRequest, check_planning_scope: true,
+            })});
+            await refresh();
+        } catch (err) { setError(err instanceof Error ? err.message : "Không kiểm tra được phạm vi."); }
+        finally { submitting.current = false; if (alive.current) setBusy(false); }
+    }
     const fieldName=(id:string,field:string)=>catalogue.find(c=>c.canonical.id===id)?.schema_definition.fields.find(f=>f.id===field)?.name||field;
     async function action(intent = review.reply_intent) {
         if (submitting.current || disabled) return;
@@ -340,7 +418,9 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
       {plan.comparison_metrics.map(m=><p key={m.metric_id}>{fieldName(plan.left.canonical_id,m.left)} · {m.amount_basis} · {m.currency} · sai số {m.absolute_tolerance}</p>)}
       <details className="agent-review-editor"><summary>Kiểm tra phạm vi và chỉnh quy tắc</summary><PlanReview plan={plan} disabled={disabled} onChange={setPlan}/></details>
     </>}
-    {review.kind === "RECONCILIATION" && !plan && !review.planning_candidates?.length && <Notice>
+    {review.kind === "RECONCILIATION" && !plan && scope && needsScope && <ScopeConfirmation
+        request={scope} catalogue={catalogue} disabled={disabled} onConfirm={value=>void checkScope(value)}/>}
+    {review.kind === "RECONCILIATION" && !plan && !needsScope && !review.planning_candidates?.length && <Notice>
       Cần xác nhận khóa, chỉ tiêu hoặc phạm vi trước khi chạy.
       {" "}<a className="text-button" href={`#${new URLSearchParams({page: "reconcile", project: workflow.context.project_id})}`}>
         Mở Đối soát để thiết lập quy tắc

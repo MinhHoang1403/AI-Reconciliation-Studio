@@ -386,6 +386,7 @@ class ReviewDraftUpdate(ReviewToken):
     draft: NormalizationDraft | None = None
     plan: ReconciliationPlan | None = None
     planning_request: PlanningRequest | None = None
+    check_planning_scope: bool = False
 
 
 class ReviewReply(ReviewToken):
