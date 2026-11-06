@@ -154,6 +154,7 @@ export function ReconciliationStudio({
     [download, setDownload] = useState("");
   const [scopeConfirmed, setScopeConfirmed] = useState(false),
     [exportNotice, setExportNotice] = useState("");
+  const [invalidRowsReviewedPlan, setInvalidRowsReviewedPlan] = useState<string | null>(null);
   const [templates, setTemplates] = useState<{ id: string; plan: Plan }[]>([]);
   const [runOffset, setRunOffset] = useState(0),
     [runTotal, setRunTotal] = useState(0);
@@ -354,6 +355,11 @@ export function ReconciliationStudio({
   const sources = catalogue.filter(
     (c) => !c.canonical.stale && c.canonical.quality_status !== "FAILED",
   );
+  const proposedPlan = proposal?.proposal.plan;
+  const partialSources = proposedPlan ? sources.filter(source =>
+    source.canonical.quality_status === "PARTIAL" &&
+    [proposedPlan.left.canonical_id, proposedPlan.right.canonical_id].includes(source.canonical.id)
+  ) : [];
   const makeDraft = (leftId: string, rightId: string) => {
     const left = sources.find((c) => c.canonical.id === leftId),
       right = sources.find((c) => c.canonical.id === rightId);
@@ -1185,12 +1191,27 @@ export function ReconciliationStudio({
                         {draft.period_end || "chưa xác nhận"},{" "}
                         {draft.timezone || "chưa xác nhận múi giờ"}.
                       </p>
+                      {!proposal.contract_id && partialSources.length > 0 && (
+                        <Notice>
+                          <p>Dòng lỗi chuẩn hóa đã được tách riêng trong {partialSources.map(source => `${source.name} (${source.canonical.invalid_count} dòng)`).join(", ")}.</p>
+                          <label className="check-label">
+                            <input
+                              type="checkbox"
+                              checked={invalidRowsReviewedPlan === proposal.id}
+                              disabled={busy}
+                              onChange={(e) => setInvalidRowsReviewedPlan(e.target.checked ? proposal.id : null)}
+                            />
+                            Tôi đã kiểm tra dòng lỗi và xác nhận đối soát phần dữ liệu hợp lệ.
+                          </label>
+                        </Notice>
+                      )}
                       {!proposal.contract_id ? (
                         <button
                           className="button primary"
                           disabled={
                             busy ||
                             !scopeConfirmed ||
+                            (partialSources.length > 0 && invalidRowsReviewedPlan !== proposal.id) ||
                             proposal.proposal.status !== "PROPOSED" ||
                             !proposal.proposal.plan ||
                             proposal.proposal.missing_requirements.length > 0
@@ -1199,7 +1220,7 @@ export function ReconciliationStudio({
                             void action(async () => {
                               const rule = await api<{ id: string }>(
                                 `/reconciliation-contracts/${proposal.id}/approve`,
-                                { method: "POST" },
+                                send({ invalid_rows_reviewed: invalidRowsReviewedPlan === proposal.id }),
                               );
                               setProposal({
                                 ...proposal,

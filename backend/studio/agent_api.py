@@ -129,8 +129,6 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         review.result_id = approved.id
     elif isinstance(body.decision, PlanReviewDecision):
         from studio.reconciliation_api import approve_plan
-        from studio.reconciliation_contracts import validate_reconciliation_contract
-        from studio.reconciliation_repository import selected_catalogue
 
         plan = body.decision.plan
         expected = review.planning_request
@@ -139,18 +137,6 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
             expected.right.canonical_id,
         ):
             raise DomainError("STALE_CONTEXT", "Nguồn đối soát khác yêu cầu đang chờ.", 409)
-        cats = selected_catalogue(
-            db, actor, row.project_id, [plan.left.canonical_id, plan.right.canonical_id]
-        )
-        if any(cat.canonical.quality_status == "PARTIAL" for cat in cats) and not (
-            body.decision.invalid_rows_reviewed
-        ):
-            raise DomainError(
-                "INVALID_ROWS_REVIEW_REQUIRED",
-                "Cần xác nhận các dòng lỗi chuẩn hóa đã được tách riêng trước khi đối soát.",
-                422,
-            )
-        validate_reconciliation_contract(plan, cats, actor.workspace_id, row.project_id)
         # Giữ nguyên proposal AI; quyết định sửa rule là một bản có nguồn HUMAN_REVIEW.
         proposal = PlanRow(
             workspace_id=actor.workspace_id,
@@ -161,7 +147,9 @@ def decide(db: Session, actor: Actor, workflow_id: str, body: ReviewDecision) ->
         )
         db.add(proposal)
         db.flush()
-        contract = approve_plan(proposal.id, db, actor)
+        contract = approve_plan(
+            proposal.id, db, actor, invalid_rows_reviewed=body.decision.invalid_rows_reviewed
+        )
         state.confirmed_contract_id = contract.id
         review.result_id = contract.id
     elif isinstance(body.decision, ClarificationDecision):

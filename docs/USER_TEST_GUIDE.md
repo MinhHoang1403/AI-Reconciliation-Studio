@@ -227,7 +227,7 @@ Trên thẻ quy tắc, kiểm tra đúng hai tên nguồn, khóa, tiền tệ, s
 7. Có thể chọn cho phép kết quả một phần để giữ các nhóm cần kiểm tra; điều này không biến nhóm lỗi/mơ hồ thành khớp.
 8. Tích **Tôi xác nhận kỳ, múi giờ và phạm vi nguồn**, bấm **Kiểm tra điều kiện**.
 9. Đọc thông báo kiểm tra, bấm **Lưu đề xuất thủ công**. Trong **Review trước khi chạy**, kiểm tra lại hai nguồn, khóa, chỉ tiêu, kỳ và múi giờ.
-10. Bấm **Xác nhận quy tắc và dấu số tiền**. Đây là bước phê duyệt, chưa chạy đối soát. Sau thông báo đã duyệt, bấm **Chạy đối soát đã duyệt** và chờ kết quả.
+10. Nếu nguồn có dòng lỗi chuẩn hóa, xem số dòng bị tách và kiểm tra danh sách lỗi trong phần dữ liệu. Khi đồng ý đối soát phần hợp lệ, đánh dấu **Tôi đã kiểm tra dòng lỗi và xác nhận đối soát phần dữ liệu hợp lệ**. Bấm **Xác nhận quy tắc và dấu số tiền** để phê duyệt. Sau thông báo đã duyệt, bấm **Chạy đối soát đã duyệt** và chờ kết quả.
 11. Chờ công việc hoàn tất. Nếu bị chặn, đọc lý do; không thay tiền tệ/khóa hoặc hạ điều kiện chỉ để chạy được.
 
 ## 7. Đọc và kiểm chứng kết quả
