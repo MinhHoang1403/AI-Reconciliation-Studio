@@ -196,6 +196,11 @@ export type Readiness = {
   }[];
 };
 export const reconciliationLabels: Record<string, string> = {
+  ONE_TO_ONE: "Một–một",
+  ONE_TO_MANY: "Một–nhiều",
+  MANY_TO_ONE: "Nhiều–một",
+  NONE: "Không cộng nhóm",
+  SUM_SIGNED: "Cộng số tiền có dấu",
   VERIFIED: "Đã xác minh",
   PARTIAL_VERIFIED: "Đã xác minh một phần",
   VERIFICATION_FAILED: "Kiểm chứng thất bại",

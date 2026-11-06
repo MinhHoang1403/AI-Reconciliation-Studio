@@ -75,6 +75,8 @@ Gemini LIVE sau sửa tạo đúng scope, vai trò, khóa ghép và quan hệ 1:
 
 Qwen LIVE chọn đúng hai nguồn và kỳ nhưng bỏ dữ kiện vai trò, ngày và phạm vi đã nêu. Workflow dừng ở thẻ cần bổ sung, không tạo run. Định tuyến trả hợp đồng hợp lệ sau 51,058 giây, 2.895 prompt token và 194 output token, 0 cloud requests. Trong lúc inference này đang chạy, một upload CSV tổng hợp 75.000 dòng được parse và tạo prepared xong trước khi inference kết thúc. Browser quan sát 5,677 giây, thời gian xử lý job parse là 3,631 giây. Đây là một lượt đồng thời, chưa phải p50/p95. Receipt ở `runtime/automation-live-planner-QWEN_8B.json`.
 
+Phát hiện prompt rút gọn riêng của Qwen thay toàn bộ prompt chung. Source mới thêm hướng dẫn vai trò/bộ lọc vào đúng prompt local, yêu cầu hai đối tượng nguồn và đủ các trường nullable trong JSON Schema. Dữ kiện chưa được nêu tiếp tục là null. Regression đi qua Ollama transport giả lập, kiểm hợp đồng local thực sự gửi và bảo toàn việc hỏi khi chưa đủ nguồn. Nhãn quan hệ và phép cộng nhóm trên thẻ duyệt được hiển thị bằng tiếng Việt.
+
 ### Bảo toàn và công cụ backup
 
 Lượt `backup_23e21b4d901442dc8ab9c43e93cd5897` có metadata 64.907.007 byte, bị OOM tại bước đọc toàn bộ metadata để restore. Exit137 được giữ, không có receipt PASS. Công cụ backup lập chỉ mục byte của từng bản ghi lúc ghi file, rồi đọc và insert từng batch200 từ chính file backup. Định dạng codec cũ giữ nguyên byte, được regression kiểm Unicode, ngày, Decimal và nhãn JSON không đáng tin.

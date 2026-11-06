@@ -1635,6 +1635,53 @@ def test_new_reconciliation_scope_keeps_explicit_source_and_effective_facts():
     assert result.planning_request.effective_from is None
 
 
+def test_local_reconciliation_router_keeps_explicit_source_fact_slots():
+    from studio.ai_gateway import OllamaProvider
+
+    def handler(request):
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200, json={"models": [{"name": "qwen3:8b", "size": 1, "digest": "a" * 64}]}
+            )
+        payload = json.loads(request.content)
+        definitions = payload["format"]["$defs"]
+        assert {"left_source", "right_source"} <= set(
+            definitions["ReconciliationSelection"]["required"]
+        )
+        assert set(definitions["PlanningSource"]["properties"]) == set(
+            definitions["PlanningSource"]["required"]
+        )
+        instructions = payload["messages"][0]["content"]
+        assert "role=reference" in instructions and "role=counterpart" in instructions
+        assert "belongs in filters" in instructions
+        return httpx.Response(
+            200,
+            json={
+                "done": True,
+                "done_reason": "stop",
+                "message": {
+                    "content": json.dumps(
+                        {"intents": [{"intent": "CLARIFY", "questions": ["Chọn hai nguồn?"]}]}
+                    )
+                },
+            },
+        )
+
+    provider = OllamaProvider(
+        Settings(local_demo_access=True, ollama_url="http://127.0.0.1:11434"),
+        "QWEN_8B",
+        httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    try:
+        result = interpret_requests(
+            provider, ["Đề xuất đối soát"], routing_catalogue(), WorkspacePolicy(), lambda: True
+        )
+        assert result[0].intent == "CLARIFY"
+        assert provider.usage["ai_calls"] == 1 and provider.usage["cloud_requests"] == 0
+    finally:
+        provider.close()
+
+
 def test_reuse_scope_rejects_new_source_facts_instead_of_silently_discarding_them():
     from studio.agent_intents import compile_routing
 
