@@ -76,6 +76,7 @@ function ManualMappingStudio({
   onApproved,
   onEvidence,
   draftOwner,
+  canManageReuse = false,
 }: {
   table: Table;
   profile: Profile;
@@ -86,6 +87,7 @@ function ManualMappingStudio({
   onApproved: () => Promise<void>;
   onEvidence: (id: string) => void;
   draftOwner: string;
+  canManageReuse?: boolean;
 }) {
   const [selected, setSelected] = useState("");
   const mapping = mappings.find((m) => m.id === selected) || mappings[0];
@@ -275,6 +277,27 @@ function ManualMappingStudio({
       </div>
       {mapping.template_mapping_id && (
         <Notice>Đã điền thông tin từ một mẫu từng được duyệt. Hãy kiểm tra trước khi dùng cho tệp này.</Notice>
+      )}
+      {canManageReuse && (mapping.reuse_eligible || mapping.reuse_enabled) && (
+        <details>
+          <summary>Tự áp dụng cho lần tải tương thích</summary>
+          <p>Áp dụng cho tệp cùng tên trong dự án này. Hệ thống kiểm tra cấu trúc, định dạng, khóa và tất cả các dòng trước khi chuẩn hóa theo mẫu đã duyệt.</p>
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={() => void run(async () => {
+              const enabled = Boolean(mapping.reuse_enabled);
+              await api(`/mappings/${mapping.id}/reuse-policy`, {
+                method: "PATCH",
+                body: JSON.stringify({enabled: !enabled, expected_enabled: enabled}),
+              });
+              await onApproved();
+            })}
+          >
+            {mapping.reuse_enabled ? "Tắt tự áp dụng mẫu" : "Cho phép tự áp dụng mẫu"}
+          </button>
+        </details>
       )}
       <div className="form-grid">
         <label>

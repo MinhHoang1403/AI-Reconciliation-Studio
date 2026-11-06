@@ -31,6 +31,7 @@ from studio.contracts.api import PreparedTable
 from studio.database import (
     ArtifactRow,
     AttemptRow,
+    AuditRow,
     CanonicalRow,
     DatasetRow,
     JobRow,
@@ -51,6 +52,12 @@ from studio.document_parser import (
     verify_parser_account,
 )
 from studio.errors import DomainError
+from studio.mapping_reuse import (
+    approved_reference,
+    current_reuse_grant,
+    exact_reuse_source,
+    passes_reuse_preflight,
+)
 from studio.normalization import NORMALIZATION_REVISION, apply_transform_plan
 from studio.parsing import FileInspection, ParseConfig, parse_to_artifacts, verify_parse
 from studio.profiling import (
@@ -193,29 +200,46 @@ def _finish(db: Session, job: JobRow, result: dict[str, Any]) -> None:
 
 def _approved_mapping_draft(
     db: Session, table: TableRow, profile: DatasetProfile
-) -> tuple[str, SchemaDefinition, SchemaProposal] | None:
+) -> tuple[str, SchemaDefinition, SchemaProposal, str | None] | None:
     """Reuse a compatible approved revision as a draft with current source evidence."""
     current = db.get(VersionRow, table.dataset_version_id)
     assert current is not None
     if table.parsed_contract["warnings"]:
         return None
-    template = db.scalar(
-        select(MappingRow)
-        .join(TableRow, TableRow.active_mapping_id == MappingRow.id)
-        .join(VersionRow, VersionRow.id == TableRow.dataset_version_id)
-        .where(
-            MappingRow.workspace_id == table.workspace_id,
-            MappingRow.signature == source_signature(profile),
-            MappingRow.business_scope == project_for_table(db, table).business_scope,
-            MappingRow.status == "APPROVED",
-            MappingRow.source_table_id != table.id,
-            VersionRow.parser_revision == current.parser_revision,
-            VersionRow.parse_config == current.parse_config,
+    candidates = list(
+        db.scalars(
+            select(MappingRow)
+            .join(TableRow, TableRow.active_mapping_id == MappingRow.id)
+            .join(VersionRow, VersionRow.id == TableRow.dataset_version_id)
+            .where(
+                MappingRow.workspace_id == table.workspace_id,
+                MappingRow.signature == source_signature(profile),
+                MappingRow.business_scope == project_for_table(db, table).business_scope,
+                MappingRow.status == "APPROVED",
+                MappingRow.source_table_id != table.id,
+                VersionRow.parser_revision == current.parser_revision,
+                VersionRow.parse_config == current.parse_config,
+            )
+            .order_by(MappingRow.created_at.desc(), MappingRow.id)
+            .limit(11)
         )
-        .order_by(MappingRow.created_at.desc(), MappingRow.id)
-        .limit(1)
     )
-    if template is None or template.decision is None:
+    if not candidates:
+        return None
+    template = candidates[0]
+    grant_id = None
+    eligible = []
+    if len(candidates) <= 10:
+        for candidate in candidates:
+            grant = current_reuse_grant(db, candidate)
+            if grant is None:
+                continue
+            source = db.get(TableRow, candidate.source_table_id)
+            if source is not None and exact_reuse_source(db, source, table, candidate):
+                eligible.append((candidate, grant.id))
+    if len(eligible) == 1:
+        template, grant_id = eligible[0]
+    if template.decision is None:
         return None
     old = mapping_contract(template)
     if old.rules:
@@ -239,7 +263,7 @@ def _approved_mapping_draft(
         unresolved_questions=["Xác nhận mẫu đã duyệt vẫn đúng với nguồn mới."],
     )
     try:
-        return template.id, schema, validate_mapping(proposal, profile, schema)
+        return template.id, schema, validate_mapping(proposal, profile, schema), grant_id
     except DomainError:
         # A historical template can become incompatible with newer validation.
         # The freshly parsed source remains readable and gets an ordinary draft.
@@ -364,9 +388,23 @@ def _parse(job_id: str, token: str) -> None:
             db.flush()
             template = _approved_mapping_draft(db, table, profile)
             if template is not None:
-                template_id, schema, proposal = template
+                template_id, schema, proposal, grant_id = template
                 mapping = create_mapping(db, table, proposal.model_dump(mode="json"), schema)
                 reused_templates[mapping.id] = template_id
+                if grant_id is not None:
+                    enqueue_job(
+                        db,
+                        job.workspace_id,
+                        job.project_id,
+                        "mapping_reuse",
+                        f"mapping:reuse:{table.id}:{template_id}:{grant_id}",
+                        {
+                            "table_id": table.id,
+                            "draft_id": mapping.id,
+                            "template_id": template_id,
+                            "grant_id": grant_id,
+                        },
+                    )
                 continue
             schema = default_schema(job.workspace_id, identifier())
             fallback = manual_proposal(profile, schema)
@@ -387,6 +425,156 @@ def _parse(job_id: str, token: str) -> None:
             db,
             job,
             {"table_ids": [t.id for _, _, t, _ in pending], "reused_templates": reused_templates},
+        )
+        db.commit()
+
+
+def _reuse_mapping(job_id: str, token: str) -> None:
+    """Apply only an explicit current owner grant after full-table preflight.
+
+    Receipt retains the original human signature and records the system application
+    separately. Drift or revocation leaves the existing prepared data and draft.
+    """
+    with SessionFactory() as db:
+        job = db.get(JobRow, job_id)
+        assert job is not None
+        payload = job.payload
+        template = db.get(MappingRow, payload["template_id"])
+        draft = db.get(MappingRow, payload["draft_id"])
+        target = db.get(TableRow, payload["table_id"])
+        source = db.get(TableRow, template.source_table_id) if template else None
+        if not all((template, draft, target, source)):
+            raise DomainError("REUSE_SOURCE_MISSING", "Không tìm thấy nguồn hoặc bản nháp.")
+        assert (
+            template is not None and draft is not None and target is not None and source is not None
+        )
+
+        def eligible() -> bool:
+            grant = current_reuse_grant(db, template)
+            return (
+                grant is not None
+                and grant.id == payload["grant_id"]
+                and template.workspace_id
+                == draft.workspace_id
+                == target.workspace_id
+                == job.workspace_id
+                and draft.source_table_id == target.id
+                and draft.status == "PROPOSED"
+                and target.active_mapping_id is None
+                and template.signature == draft.signature
+                and project_for_table(db, target).id == job.project_id
+                and exact_reuse_source(db, source, target, template)
+                and approved_reference(db, template, source)
+            )
+
+        def review_required(code: str, counts: dict[str, int] | None = None) -> None:
+            claimed = _fence(db, job_id, token)
+            _finish(
+                db,
+                claimed,
+                {"reuse_status": "REVIEW_REQUIRED", "reason": code, "error_counts": counts or {}},
+            )
+            db.commit()
+
+        if not eligible():
+            review_required("REUSE_INCOMPATIBLE")
+            return
+        original = mapping_contract(template)
+        schema_row = db.get(SchemaRow, template.schema_id)
+        parsed = db.get(ArtifactRow, target.artifact_id)
+        version = db.get(VersionRow, target.dataset_version_id)
+        assert schema_row is not None and parsed is not None and version is not None
+        schema = SchemaDefinition.model_validate(schema_row.definition)
+        source_profile = DatasetProfile.model_validate(source.profile)
+        target_profile = DatasetProfile.model_validate(target.profile)
+        target_id, source_id = target.id, source.id
+        dataset_id = version.dataset_id
+        path = storage_path(settings.storage_root, parsed.storage_key)
+        digest = parsed.sha256
+        rebound = original.model_copy(
+            update={
+                "source_table_id": target_id,
+                "decisions": [
+                    decision.model_copy(
+                        update={"evidence_ids": [f"{target_id}:{decision.source_field}"]}
+                    )
+                    for decision in original.decisions
+                ],
+            }
+        )
+        db.rollback()
+        if checksum(path) != digest:
+            review_required("PARSED_CHECKSUM_MISMATCH")
+            return
+        try:
+            plan = compile_transform_plan(rebound, schema, target_profile)
+            passed, errors = passes_reuse_preflight(
+                pl.read_parquet(path), source_profile, target_profile, plan
+            )
+        except DomainError as exc:
+            review_required(exc.code)
+            return
+        if not passed:
+            review_required("REUSE_PREFLIGHT_REVIEW", dict(errors))
+            return
+
+        claimed = _fence(db, job_id, token)
+        db.scalars(
+            select(TableRow)
+            .where(TableRow.id.in_([target_id, source_id]))
+            .order_by(TableRow.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).all()
+        db.refresh(template)
+        db.refresh(draft)
+        if not eligible():
+            review_required("REUSE_INCOMPATIBLE")
+            return
+        applied = create_mapping(db, target, draft.proposal, schema)
+        applied.status = "APPROVED"
+        applied.decision = rebound.model_copy(
+            update={
+                "id": applied.id,
+                "revision": applied.revision,
+                "schema_id": applied.schema_id,
+            }
+        ).model_dump(mode="json")
+        target.active_mapping_id = applied.id
+        dataset = db.get(DatasetRow, dataset_id)
+        assert dataset is not None
+        dataset.status = "MAPPED"
+        db.add(
+            AuditRow(
+                workspace_id=claimed.workspace_id,
+                actor_id="system",
+                action="APPLY_APPROVED_MAPPING",
+                resource_id=applied.id,
+            )
+        )
+        normalize = enqueue_job(
+            db,
+            claimed.workspace_id,
+            claimed.project_id,
+            "normalize",
+            f"normalize:reuse:{applied.id}:{NORMALIZATION_REVISION}",
+            {
+                "dataset_id": dataset_id,
+                "table_id": target_id,
+                "mapping_id": applied.id,
+                "normalization_revision": NORMALIZATION_REVISION,
+            },
+        )
+        _finish(
+            db,
+            claimed,
+            {
+                "reuse_status": "APPLIED",
+                "mapping_id": applied.id,
+                "normalize_job_id": normalize.id,
+                "template_mapping_id": payload["template_id"],
+                "grant_id": payload["grant_id"],
+            },
         )
         db.commit()
 
@@ -412,7 +600,7 @@ def _mapping(job_id: str, token: str) -> None:
             template = _approved_mapping_draft(db, table, profile)
             template_id = None
             if template is not None:
-                template_id, schema, proposal = template
+                template_id, schema, proposal, _ = template
                 cached = True
             else:
                 if job.attempts > 1:
@@ -761,6 +949,7 @@ def process_job(job_id: str, token: str) -> None:
             ),
             "parse": _parse,
             "mapping": _mapping,
+            "mapping_reuse": _reuse_mapping,
             "normalize": _normalize,
             "document_parse": _document,
             "export": lambda job_id, token: execute_export(

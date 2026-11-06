@@ -164,6 +164,12 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     await expect(
       page.getByRole("cell", { name: i ? "10.00" : "12.75", exact: true }),
     ).toBeVisible();
+    if (i === 0) {
+      await page.getByRole("tab", { name: "AI Smart Setup", exact: true }).click();
+      await page.getByText("Tự áp dụng cho lần tải tương thích", { exact: true }).click();
+      await page.getByRole("button", { name: "Cho phép tự áp dụng mẫu", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Tắt tự áp dụng mẫu", exact: true })).toBeVisible();
+    }
   }
   const catalogue = (
     await (
@@ -335,6 +341,25 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     ),
   );
   expect(exported).toEqual(snapshot);
+  await page.getByRole("navigation", { name: "Điều hướng chính" })
+    .getByRole("button", { name: "Dữ liệu", exact: true }).click();
+  await page.getByRole("button", { name: "Tải dữ liệu", exact: true }).click();
+  const repeatUpload = page.getByRole("dialog", { name: "Tải nguồn dữ liệu", exact: true });
+  const revised = (await readFile("../tests/fixtures/shipments.csv", "utf8"))
+    .replace("Parcel A", "Parcel A repeat");
+  await repeatUpload.getByLabel("Chọn tệp dữ liệu").setInputFiles({
+    name: names[0],
+    mimeType: "text/csv",
+    buffer: Buffer.from(revised),
+  });
+  await repeatUpload.getByText("Tùy chọn đọc nâng cao", { exact: true }).click();
+  await repeatUpload.getByLabel("Dùng AI đề xuất ánh xạ trong hạn mức").uncheck();
+  await repeatUpload.getByRole("button", { name: "Tải 1 tệp", exact: true }).click();
+  await expect(repeatUpload).not.toBeVisible();
+  await expect(page.getByRole("cell", { name: "Parcel A repeat", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Tự chuẩn bị", exact: true }).click();
+  await page.getByRole("button", { name: "Xem bản chuẩn hóa đã duyệt", exact: true }).click();
+  await expect(page.getByRole("cell", { name: "Parcel A repeat", exact: true })).toBeVisible();
   expect(
     (await (await page.request.get("/api/settings")).json())
       .gemini_requests_used,

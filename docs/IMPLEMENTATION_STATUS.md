@@ -40,7 +40,13 @@ Full Backend/PostgreSQL trên nguồn triển khai đạt **488/488** trong 147,
 
 Benchmark CSV tổng hợp trên Windows với hai luồng Polars, năm lượt mỗi mức, không AI. Bước tạo và ghi Parquet prepared đạt p50/p95 quan sát lần lượt 2,65/68,69 ms ở 10 dòng, 2,73/3,82 ms ở 1.000 dòng, 4,49/5,99 ms ở 10.000 dòng và 15,40/16,15 ms ở 75.000 dòng. Đây là phép đo riêng bước prepared sau parse và profile. Receipt ở `runtime/automation-preparation-benchmark.json`, ngoài Git.
 
-Mapping Memory hiện điền lại bản nháp để người dùng kiểm tra. Tự áp dụng qua policy owner, kiểm thử bộ dữ liệu mới, nghiệm thu provider LIVE và phát hành vẫn là phần đang triển khai.
+Mapping Memory hỗ trợ cấp quyền tái áp dụng theo mẫu đã duyệt. Kiểm thử PostgreSQL gồm quyền owner, chống gửi cũ, preflight toàn bảng, tiền tệ đổi, tên tệp khác và thu hồi quyền. Full Backend/PostgreSQL trên nguồn bổ sung đạt **489/489** trong 145,25 giây. Bài thử dùng transport giả lập hoặc xử lý nội bộ.
+
+Benchmark kiểm khóa duy nhất và currency dùng 15 mẫu thời gian mỗi kích thước. Cả Polars trực tiếp và Pandera 0.35.0 phát hiện khóa trùng và USD trong bộ hóa đơn tổng hợp. Ở 75.000 dòng, p50/p95 của Polars là 1,872/3,140 ms và Pandera là 8,012/9,717 ms. Đây là phép đo hai điều kiện, tách khỏi preflight nghiệp vụ. Pandera chỉ được cài trong thư mục thử nghiệm ngoài cây source và không vào lockfile. [Pandera Polars](https://pandera.readthedocs.io/en/v0.35.0/polars.html).
+
+Valentine 1.1.0 có matcher cấu trúc và phân bố. Dry-run dependency cho thấy thêm nhiều gói, gồm NumPy, SciPy, pandas và bộ giải tối ưu. Benchmark thực thi Valentine được bỏ qua trong vòng này để giữ phạm vi tài nguyên của máy chạy Ollama. Chưa có bằng chứng so chất lượng Valentine với matcher hiện tại. [Valentine](https://delftdata.github.io/valentine/).
+
+Kiểm thử bộ dữ liệu mới qua trình duyệt, nghiệm thu provider LIVE và phát hành còn chờ.
 
 ---
 

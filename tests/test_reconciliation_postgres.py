@@ -203,6 +203,64 @@ def create_approved_run(pg, *, workbooks=False, grouped=False):  # noqa: F811
     return pid, p, rule.json(), response.json()
 
 
+def test_owner_mapping_reuse_checks_full_table_and_records_original_approval(pg):  # noqa: F811
+    from reconciliation_cases import FIXTURES
+    from studio.database import JobRow, MappingRow, MembershipRow
+
+    client, factory, worker = pg
+    pid, plan = prepare_pair(pg)
+    with factory() as db:
+        original = db.get(CanonicalRow, plan.left.canonical_id)
+        original_mapping_id = original.mapping_id
+        original_decision = db.get(MappingRow, original_mapping_id).decision
+        db.get(MembershipRow, ("demo", "test-owner")).role = "editor"
+        db.commit()
+    policy_path = f"/api/mappings/{original_mapping_id}/reuse-policy"
+    enable = {"enabled": True, "expected_enabled": False}
+    assert client.patch(policy_path, json=enable).status_code == 403
+    with factory() as db:
+        db.get(MembershipRow, ("demo", "test-owner")).role = "owner"
+        db.commit()
+    assert client.patch(policy_path, json=enable).json() == {"enabled": True}
+    assert client.patch(policy_path, json=enable).status_code == 409
+    raw = (FIXTURES / "shipments.csv").read_bytes()
+
+    def repeat(data, filename="shipments.csv"):
+        response = client.post(
+            "/api/datasets/uploads",
+            data={"project_id": pid, "request_ai_mapping": "false"},
+            files={"files": (filename, data, "text/csv")},
+        )
+        assert response.status_code == 202, response.text
+        item = response.json()["items"][0]
+        drain(factory, worker)
+        return item["id"]
+
+    new_id = repeat(raw.replace(b"Parcel A", b"Parcel A this month"))
+    canonical = client.get(f"/api/datasets/{new_id}/artifacts").json()["canonical_datasets"]
+    assert len(canonical) == 1 and canonical[0]["quality_status"] == "READY"
+    applied_mapping_id = canonical[0]["mapping_revision_id"]
+    with factory() as db:
+        applied = db.get(MappingRow, applied_mapping_id).decision
+        assert applied["approved_by"] == original_decision["approved_by"]
+        assert applied["approved_at"] == original_decision["approved_at"]
+        assert db.get(MappingRow, original_mapping_id).decision == original_decision
+        event = db.scalar(select(AuditRow).where(AuditRow.resource_id == applied_mapping_id))
+        assert event.action == "APPLY_APPROVED_MAPPING" and event.actor_id == "system"
+        job = db.scalar(select(JobRow).where(JobRow.kind == "mapping_reuse"))
+        assert job.result["template_mapping_id"] == original_mapping_id
+
+    wrong_currency = repeat(raw.replace(b",VND,Parcel A", b",USD,Parcel changed"))
+    assert not client.get(f"/api/datasets/{wrong_currency}/artifacts").json()["canonical_datasets"]
+    wrong_name = repeat(raw.replace(b"Parcel A", b"Parcel A from another report"), "other.csv")
+    assert not client.get(f"/api/datasets/{wrong_name}/artifacts").json()["canonical_datasets"]
+    assert client.patch(policy_path, json={"enabled": False, "expected_enabled": True}).json() == {
+        "enabled": False
+    }
+    revoked = repeat(raw.replace(b"Parcel A", b"Parcel A after revocation"))
+    assert not client.get(f"/api/datasets/{revoked}/artifacts").json()["canonical_datasets"]
+
+
 def test_manual_approval_requires_explicit_confirmation_for_invalid_rows(pg):  # noqa: F811
     client, factory, _ = pg
     pid, plan = prepare_pair(pg, partial=True)

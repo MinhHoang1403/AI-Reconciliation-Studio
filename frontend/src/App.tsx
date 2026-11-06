@@ -1633,6 +1633,7 @@ export function App() {
                                 key={table.id}
                                 draftOwner={draftOwner}
                                 readOnly={!canEdit}
+                                canManageReuse={actorRole === "owner"}
                                 table={table}
                                 profile={profile}
                                 mappings={mappings}

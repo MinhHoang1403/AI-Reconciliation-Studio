@@ -99,6 +99,13 @@ class MappingView(Contract):
     decision: MappingRevision | None
     schema_definition: SchemaDefinition = Field(alias="schema")
     template_mapping_id: str | None = None
+    reuse_enabled: bool = False
+    reuse_eligible: bool = False
+
+
+class MappingReusePolicy(Contract):
+    enabled: bool
+    expected_enabled: bool
 
 
 class MappingList(Contract):

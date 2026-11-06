@@ -147,6 +147,8 @@ export interface Proposal {
 }
 export interface Mapping {
   template_mapping_id?: string | null;
+  reuse_eligible?: boolean;
+  reuse_enabled?: boolean;
   id: string;
   revision: number;
   status: string;
@@ -241,6 +243,7 @@ export const jobKind: Record<string, string> = {
   document_parse: "Đọc tài liệu được cấp phép",
   parse: "Đọc và phân tích",
   mapping: "AI đề xuất cách ghép cột",
+  mapping_reuse: "Kiểm tra và áp dụng mẫu đã duyệt",
   normalize: "Chuẩn hóa dữ liệu",
   reconciliation_plan: "AI đề xuất quy tắc đối soát",
   reconcile: "Đối soát và kiểm chứng",

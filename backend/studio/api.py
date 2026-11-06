@@ -42,6 +42,7 @@ from studio.contracts.api import (
     JobList,
     JobView,
     MappingList,
+    MappingReusePolicy,
     MappingView,
     NormalizationPreflight,
     PreviewResponse,
@@ -69,6 +70,12 @@ from studio.database import (
 )
 from studio.document_parser import DOCUMENT_PARSER_REVISION, DocumentArtifact, DocumentExtraction
 from studio.errors import DomainError
+from studio.mapping_reuse import (
+    REUSE_DISABLED,
+    REUSE_ENABLED,
+    approved_reference,
+    current_reuse_grant,
+)
 from studio.normalization import NORMALIZATION_REVISION
 from studio.parsing import PARSER_REVISION, ParseConfig, choose_parser, inspect_upload
 from studio.repository import (
@@ -804,10 +811,12 @@ def preview(
 @app.get("/api/tables/{table_id}/mappings", response_model=MappingList)
 def mappings(table_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
     table = get_scoped(db, TableRow, table_id, actor)
-    rows = db.scalars(
-        select(MappingRow)
-        .where(MappingRow.source_table_id == table.id)
-        .order_by(MappingRow.revision.desc())
+    rows = list(
+        db.scalars(
+            select(MappingRow)
+            .where(MappingRow.source_table_id == table.id)
+            .order_by(MappingRow.revision.desc())
+        )
     )
     parse_result = db.scalar(
         select(JobRow.result)
@@ -836,10 +845,46 @@ def mappings(table_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
                 "decision": r.decision,
                 "schema": schema_definition(r.schema_id),
                 "template_mapping_id": template_ids.get(r.id),
+                "reuse_enabled": r.id == table.active_mapping_id
+                and current_reuse_grant(db, r) is not None,
+                "reuse_eligible": r.id == table.active_mapping_id
+                and approved_reference(db, r, table),
             }
             for r in rows
         ]
     }
+
+
+@app.patch("/api/mappings/{mapping_id}/reuse-policy")
+def set_mapping_reuse(
+    mapping_id: str, body: MappingReusePolicy, db: DB, actor: CurrentActor
+) -> dict[str, bool]:
+    """Authorize reuse of one human-approved reference for exact repeat uploads."""
+    require_owner(actor, db, mapping_id)
+    mapping = get_scoped(db, MappingRow, mapping_id, actor)
+    table = get_scoped(db, TableRow, mapping.source_table_id, actor)
+    db.refresh(table, with_for_update=True)
+    db.refresh(mapping)
+    enabled = current_reuse_grant(db, mapping) is not None
+    if body.expected_enabled != enabled:
+        raise DomainError("REUSE_POLICY_CONFLICT", "Chính sách đã đổi. Hãy cập nhật lại.", 409)
+    if enabled == body.enabled:
+        return {"enabled": enabled}
+    if body.enabled and not approved_reference(db, mapping, table):
+        raise DomainError(
+            "REUSE_REFERENCE_NOT_ELIGIBLE",
+            "Cần mẫu được duyệt trực tiếp, còn hiệu lực và đã chuẩn hóa không lỗi.",
+        )
+    db.add(
+        AuditRow(
+            workspace_id=actor.workspace_id,
+            actor_id=actor.id,
+            resource_id=mapping_id,
+            action=REUSE_ENABLED if body.enabled else REUSE_DISABLED,
+        )
+    )
+    db.commit()
+    return {"enabled": body.enabled}
 
 
 @app.get("/api/mapping-proposals/{mapping_id}", response_model=MappingView)
