@@ -1,16 +1,18 @@
-param([ValidatePattern('^[a-f0-9]{7,40}$')][string]$ReleaseRevision = 'dac8dd1')
+param([ValidatePattern('^([a-f0-9]{7,40})?$')][string]$ReleaseRevision = '')
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $taskImages = @{}
+$taskRevisions = @{}
 foreach ($taskService in @('backend', 'frontend')) {
-    $taskTag = "ai-reconciliation-studio-${taskService}:accepted-main-$ReleaseRevision"
+    $taskTag = if ($ReleaseRevision) { "ai-reconciliation-studio-${taskService}:accepted-main-$ReleaseRevision" } else { "ai-reconciliation-studio-${taskService}:rollback" }
     $taskImage = docker image inspect $taskTag --format '{{json .}}' | ConvertFrom-Json
-    if ($LASTEXITCODE -ne 0 -or $taskImage.Config.Labels.'org.opencontainers.image.source' -ne 'https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git' -or -not $taskImage.Config.Labels.'org.opencontainers.image.revision'.StartsWith($ReleaseRevision)) { throw 'Accepted source/image identity mismatch.' }
+    if ($LASTEXITCODE -ne 0 -or $taskImage.Config.Labels.'org.opencontainers.image.source' -ne 'https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git' -or $taskImage.Config.Labels.'org.opencontainers.image.revision' -notmatch '^[a-f0-9]{40}$' -or ($ReleaseRevision -and -not $taskImage.Config.Labels.'org.opencontainers.image.revision'.StartsWith($ReleaseRevision))) { throw 'Rollback source/image identity mismatch.' }
     $taskImages[$taskService] = $taskTag
+    $taskRevisions[$taskService] = $taskImage.Config.Labels.'org.opencontainers.image.revision'
 }
+if ($taskRevisions.backend -ne $taskRevisions.frontend) { throw 'Rollback images must have the same source revision.' }
 # Source của image đã xác minh cho biết có đọc được nullable request policy hay không.
-$taskBackendImage = docker image inspect $taskImages.backend --format '{{json .}}' | ConvertFrom-Json
-$taskBackendRevision = $taskBackendImage.Config.Labels.'org.opencontainers.image.revision'
+$taskBackendRevision = $taskRevisions.backend
 $taskConfigSource = git show "${taskBackendRevision}:backend/studio/config.py"
 if ($LASTEXITCODE -ne 0) { throw 'Cannot verify rollback configuration compatibility from repository history.' }
 $taskSupportsNullable = ($taskConfigSource -join "`n") -match 'external_ai_request_budget:\s+int\s*\|\s*None'
@@ -53,4 +55,4 @@ docker compose -f compose.yaml -f $taskPath up -d --no-build --wait
 if ($LASTEXITCODE -ne 0) { throw 'Rollback deployment failed; keep volumes and inspect health.' }
 & (Join-Path $PSScriptRoot 'verify-local.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Rollback local verification failed.' }
-Write-Output 'Rollback running accepted main images on unchanged schema/volumes. Use the same override for operations; plain compose up returns to local candidate images.'
+Write-Output 'Rollback running verified Studio images on unchanged schema/volumes. Use the same override for operations; plain compose up returns to local candidate images.'
