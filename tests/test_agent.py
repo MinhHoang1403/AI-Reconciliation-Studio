@@ -175,6 +175,7 @@ def test_review_partial_edits_keep_valid_facts_and_questions(config, provider_na
             else body["generationConfig"]["responseJsonSchema"]
         )
         assert "NormalizationDraft" not in schema.get("$defs", {})
+        assert "maxItems" not in schema["properties"]["changes"]
         assert schema["$defs"]["MappingFieldChange"]["properties"]["source_field"]["enum"] == [
             "c1",
             "c2",
@@ -216,6 +217,15 @@ def test_review_partial_edits_keep_valid_facts_and_questions(config, provider_na
     assert result.questions[0] == output["questions"][0]
     assert review.model_dump_json() == before
     assert result.plan is result.intent is None
+
+
+def test_review_envelope_does_not_relax_backend_change_limit():
+    from studio.agent_preparation import MappingEdits
+
+    change = dict(source_field="c1", property="timezone", value="UTC")
+    assert len(MappingEdits(changes=[change] * 80).changes) == 80
+    with pytest.raises(ValidationError):
+        MappingEdits(changes=[change] * 81)
 
 
 @pytest.mark.parametrize("foreign", [False, True])

@@ -32,7 +32,7 @@ from studio.profiling import normalized_name
 
 PREPARATION_REVISION = "agent-normalization-6"
 LOCAL_PREPARATION_REVISION = "agent-mapping-semantics-1"
-REVIEW_REVISION = "agent-review-2"
+REVIEW_REVISION = "agent-review-3"
 
 
 class MappingFieldChange(Contract):
@@ -160,6 +160,10 @@ def interpret_review_reply(
         schema["$defs"]["MappingFieldChange"]["properties"]["source_field"]["enum"] = [
             field.source_field for field in review.normalization_draft.fields
         ]
+        # Controlled live A/B: changes.maxItems=80 is rejected with Gemini400;
+        # removing only this grammar bound returns200. Both providers use the
+        # same envelope; MappingEdits still enforces <=80 changes on the server.
+        schema["properties"]["changes"].pop("maxItems", None)
     prompt = [
         dict(
             role="system",
