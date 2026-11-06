@@ -28,6 +28,13 @@ import type {
 const AssistantDataDrawer = lazy(() => import("./AssistantDataDrawer").then(m => ({default:m.AssistantDataDrawer})));
 const ReconciliationStudio = lazy(() => import("./ReconciliationStudio").then(m => ({default:m.ReconciliationStudio})));
 
+const composerModels = [
+  { id: "GEMINI", name: "Gemini 3.5 Flash Lite" },
+  { id: "QWEN_8B", name: "Qwen 3:8B" },
+] as const;
+const historicalModelLabel = (id: ModelChoice) =>
+  composerModels.find(model => model.id === id)?.name ?? "Qwen 27B";
+
 const labels: Record<string, string> = {
   VERIFIED_FACT: "Dữ kiện đã xác minh",
   SUPPORTED_INTERPRETATION: "Diễn giải có bằng chứng",
@@ -88,6 +95,7 @@ export function AssistantStudio({
   onReview,
   projectName,
   draftOwner,
+  initialConversationId,
   onContextChange,
   onUploadProject,
   agentEnabled = false,
@@ -102,6 +110,7 @@ export function AssistantStudio({
   onReview: (planId: string) => void;
   projectName: string;
   draftOwner: string;
+  initialConversationId?: string;
   onContextChange: (context: AssistantContext) => void;
   onUploadProject: (id: string) => Promise<void>;
   agentEnabled?: boolean;
@@ -114,7 +123,7 @@ export function AssistantStudio({
   const modelStorageKey = `studio.assistant-model.${draftOwner}`;
   const [modelChoice, setModelChoice] = useState<ModelChoice | null>(() => {
     const saved = localStorage.getItem(modelStorageKey);
-    return saved === "GEMINI" || saved === "QWEN_8B" || saved === "QWEN_27B" ? saved : null;
+    return saved === "GEMINI" || saved === "QWEN_8B" ? saved : null;
   });
   const [models, setModels] = useState<AssistantModelOption[]>([]);
   const toolbarOptions = useRef<HTMLDetailsElement>(null);
@@ -136,19 +145,14 @@ export function AssistantStudio({
         if (controller.signal.aborted) return;
         const choices = Array.isArray(options) ? options : [];
         setModels(choices);
-        const preferred = choices.find(option => option.preferred && option.available);
+        const preferred = choices.find(option => option.preferred && option.available &&
+          composerModels.some(model => model.id === option.id));
         if (preferred) setModelChoice(previous => previous || preferred.id);
       })
       .catch(() => { if (!controller.signal.aborted) setModels([]); });
     return () => controller.abort();
   }, [context.project_id, modelRefresh]);
-  const modelLabels: Record<ModelChoice, string> = {GEMINI: "Gemini", QWEN_8B: "Qwen 8B", QWEN_27B: "Qwen 27B"};
-  const modelStatuses: Record<AssistantModelOption["status"], string> = {
-    READY: "Sẵn sàng", UNVERIFIED: "Chưa kiểm chứng", UNAVAILABLE: "Không khả dụng",
-    LIMITED: "Đang bị giới hạn", NOT_CONFIGURED: "Chưa cấu hình", NOT_ALLOWED: "Chưa được cấp quyền",
-  };
   const selectedModel = modelChoice || "GEMINI";
-  const selectedOption = models.find(option => option.id === selectedModel);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [history, setHistory] = useState<Conversation[]>([]);
@@ -305,8 +309,8 @@ export function AssistantStudio({
       composerInput.current?.focus({ preventScroll: true });
   }, [busy, loading]);
   useEffect(() => {
-    onContextChange(context);
-  }, [context]);
+    if (!initialConversationId || conversation) onContextChange(context);
+  }, [context, conversation]);
 
   async function loadHistory(append = false) {
     if (!initialContext.project_id) return;
@@ -420,11 +424,17 @@ export function AssistantStudio({
   useEffect(() => {
     alive.current = true;
     controller.current = new AbortController();
+    const initialSequence = sequence.current;
+    const initialSignal = controller.current.signal;
     restoreDraft(initialContext);
     void (async () => {
       try {
         await Promise.all([loadHistory(), loadRuns()]);
-        if (!alive.current || sequence.current !== 0) return;
+        if (initialSignal.aborted || !alive.current || sequence.current !== initialSequence) return;
+        if (initialConversationId) {
+          await openConversation(initialConversationId);
+          return;
+        }
         const saved = localStorage.getItem(storageKey);
         if (saved) {
           // A contextual link may resume only the exact same scope, never another run/case.
@@ -432,7 +442,7 @@ export function AssistantStudio({
             `/conversations/${saved}?limit=20`,
             getOptions(),
           );
-          if (!alive.current || sequence.current !== 0) return;
+          if (initialSignal.aborted || !alive.current || sequence.current !== initialSequence) return;
           const scoped = [
             "run_id",
             "dataset_id",
@@ -450,7 +460,7 @@ export function AssistantStudio({
             await openConversation(saved, savedPage);
         }
       } catch (err) {
-        if (alive.current) {
+        if (alive.current && !initialSignal.aborted) {
           setError(errorText(err));
           if (
             err instanceof ApiError &&
@@ -459,7 +469,7 @@ export function AssistantStudio({
             localStorage.removeItem(storageKey);
         }
       } finally {
-        if (alive.current) setLoading(false);
+        if (alive.current && !initialSignal.aborted) setLoading(false);
       }
     })();
     return () => {
@@ -943,7 +953,7 @@ export function AssistantStudio({
                     setReviewReply(binding);sessionStorage.setItem(replyKeyFor(context,conversation.id),JSON.stringify(binding));composerInput.current?.focus();}}/>}
                   {message.role==="assistant"&&!message.answer&&!message.workflow_id&&<p>{message.text}</p>}
                   {message.role==="user"&&message.error_code&&["FAILED","BLOCKED","CANCELLED"].includes(message.job_status||"")&&!messages.some(m=>m.role==="assistant"&&m.job_id===message.job_id)&&<Notice tone="error">{jobErrors[message.error_code]||"Yêu cầu này chưa hoàn tất. Hãy kiểm tra dữ liệu và kết quả đã lưu trước khi tạo yêu cầu mới."}<details><summary>Chi tiết hỗ trợ</summary>{message.error_code} · {message.job_id}</details></Notice>}
-                  {message.role==="assistant"&&<MessageInfo createdAt={message.created_at} model={message.model_choice ? modelLabels[message.model_choice] : undefined}/>}
+                  {message.role==="assistant"&&<MessageInfo createdAt={message.created_at} model={message.model_choice ? historicalModelLabel(message.model_choice) : undefined}/>}
                 </article>
               ))}
             </div>
@@ -1044,7 +1054,6 @@ export function AssistantStudio({
             {(models.length > 0 || modelChoice) && <select
               className="composer-model"
               aria-label="Model cho tin nhắn mới"
-              title={selectedOption ? modelStatuses[selectedOption.status] : "Chưa kiểm chứng"}
               value={selectedModel}
               disabled={busy && !pendingJob}
               onFocus={() => setModelRefresh(value => value + 1)}
@@ -1055,11 +1064,11 @@ export function AssistantStudio({
                 setModelChoice(choice.id);
               }}
             >
-              {!selectedOption && <option value={selectedModel} disabled>{modelLabels[selectedModel]}</option>}
-              {models.map(option => (
-                <optgroup key={option.id} label={`${option.id === "GEMINI" ? "AI đám mây" : "AI trên máy"} · ${modelStatuses[option.status]}`}>
-                  <option value={option.id} disabled={!option.available}>{option.label}</option>
-                </optgroup>
+              {composerModels.map(model => (
+                <option key={model.id} value={model.id}
+                  disabled={!models.some(option => option.id === model.id && option.available)}>
+                  {model.name}
+                </option>
               ))}
             </select>}
             <button

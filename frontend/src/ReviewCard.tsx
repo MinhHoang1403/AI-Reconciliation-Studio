@@ -161,6 +161,8 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     }, [review.id, review.nonce]);
     const disabled = busy || !canEdit || expired || !!review.pending_reply_job_id;
     const replyDisabled = disabled || workflow.state !== "WAITING_REVIEW";
+    const changed = JSON.stringify(draft) !== JSON.stringify(review.normalization_draft ?? null) ||
+        JSON.stringify(plan) !== JSON.stringify(review.plan || proposedPlan(review, catalogue));
     function preserveLocal(next: Review) {
         const key=`studio.review-draft.${draftOwner}.${workflow.id}.${next.id}.${next.nonce}.${next.fingerprint}`;
         try { sessionStorage.setItem(key,JSON.stringify({
@@ -171,8 +173,7 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     async function savePreview() {
         const base = {review_id: review.id, nonce: review.nonce, fingerprint: review.fingerprint};
         if (review.kind === "CLARIFICATION") return review;
-        if (JSON.stringify(draft) === JSON.stringify(review.normalization_draft ?? null) &&
-            JSON.stringify(plan) === JSON.stringify(review.plan || proposedPlan(review, catalogue))) return review;
+        if (!changed) return review;
         const facts = plan && {
             ...Object.fromEntries(["period_start", "period_end", "timezone", "effective_from", "effective_to", "allow_partial"].map(k => {const value=plan[k as keyof Plan];return [k,value===""?null:value??null];})),
             ...Object.fromEntries((["left", "right"] as const).map(side => [side, Object.fromEntries(Object.entries(plan[side]).map(([k,v]) => [k, v === "" ? null : v]))])),
@@ -291,7 +292,7 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     {expired && <Notice>Thẻ đã hết thời hạn. Nếu nguồn còn nguyên, bạn có thể mở lại để tiếp tục.<button type="button" className="text-button" disabled={busy || !canEdit || !!review.pending_reply_job_id} onClick={()=>void saveOrRenew(true)}>Mở lại thẻ xác nhận</button></Notice>}
     <button className="text-button" disabled={replyDisabled} onClick={()=>void requestReply()}>Bổ sung bằng tiếng Việt</button>
     {replyOpen && <form onSubmit={e=>{e.preventDefault();void sendInlineReply();}}><label>Câu trả lời cho thẻ này<textarea value={replyText} disabled={replyDisabled || !!replyPending.current} maxLength={2000} onChange={e=>{setReplyText(e.target.value);try{sessionStorage.setItem(replyKey,e.target.value);}catch{/* optional local recovery */}}}/></label><button type="submit" className="button secondary" disabled={replyDisabled || !replyText.trim()}>Gửi câu trả lời để xem trước</button></form>}
-    <button type="button" className="text-button" disabled={disabled} onClick={()=>void saveOrRenew()}>Lưu bản nháp</button>
+    <button type="button" className="text-button" disabled={disabled || !changed} onClick={()=>void saveOrRenew()}>Lưu bản nháp</button>
     {review.pending_reply_job_id && <Spinner />}<p className="muted">Câu trả lời được diễn giải để bạn kiểm tra; hệ thống chưa phê duyệt thay bạn.</p>
     {draft && review.extraction_review_required!==false && <label><input type="checkbox" checked={extraction} disabled={disabled} onChange={e => setExtraction(e.target.checked)}/>Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.</label>}
     {!ready && <p className="muted">Mở phần chỉnh sửa hoặc bổ sung bằng tiếng Việt để hoàn tất các điều kiện còn thiếu.</p>}

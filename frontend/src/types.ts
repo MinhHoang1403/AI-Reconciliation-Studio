@@ -233,6 +233,10 @@ export const jobKind: Record<string, string> = {
   reconcile: "Đối soát và kiểm chứng",
   export: "Xuất báo cáo",
   assistant: "AI Assistant có bằng chứng",
+  agent: "Xử lý yêu cầu hội thoại",
+  agent_prepare: "Chuẩn bị cách ghép cột",
+  agent_review: "Đọc thông tin bổ sung",
+  agent_resume: "Tiếp tục xử lý dữ liệu",
 };
 export const errorText: Record<string, string> = {
   INSUFFICIENT_EVIDENCE: "Chưa đủ bằng chứng cho yêu cầu này. Hãy kiểm tra nguồn đã chọn; kết quả đối soát cần được xác minh trước khi dùng.",

@@ -93,6 +93,7 @@ export function App() {
     context: AssistantContext | null = null,
     selectedProject = projectId,
     replace = false,
+    conversationId?: string,
   ) {
     navigationSequence.current++;
     setRestoringLocation(false);
@@ -101,6 +102,7 @@ export function App() {
       projectId: selectedProject,
       context,
       origin: page === "assistant" ? location.origin : page,
+      conversationId,
     };
     locationRef.current = nextLocation;
     writeLocation(nextLocation, replace);
@@ -1337,7 +1339,7 @@ export function App() {
                 </button>}
                 <Suspense fallback={<Spinner />}>
                   <AssistantStudio
-                    key={JSON.stringify(assistantContext)}
+                    key={JSON.stringify([assistantContext, location.conversationId])}
                     projectSelector={<ProjectSelector
                       showLabel
                       project={project}
@@ -1350,13 +1352,14 @@ export function App() {
                     initialContext={assistantContext || {project_id:projectId}}
                     projectName={project?.name || "Chưa chọn dự án · tải file để bắt đầu"}
                     draftOwner={draftOwner}
+                    initialConversationId={location.conversationId}
                     onContextChange={(context) => {
                       const current = readLocation();
                       if (
                         current.page === "assistant" &&
                         current.projectId === context.project_id
                       )
-                        writeLocation({ ...current, context }, true);
+                        writeLocation({ ...current, context, conversationId: undefined }, true);
                     }}
                     cloudEnabled={!!workspace?.assistant_cloud_enabled}
                     agentEnabled={!!workspace?.agent_cloud_enabled}
@@ -1620,6 +1623,7 @@ export function App() {
                                   setSuccess("Đã cập nhật ánh xạ.");
                                 }}
                                 onEvidence={showEvidence}
+                                onOpenConversation={(id) => navigate("assistant", {project_id: projectId}, projectId, false, id)}
                               />
                             )}
                             {tab === "normalize" && (

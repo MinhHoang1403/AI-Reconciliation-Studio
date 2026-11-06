@@ -587,7 +587,9 @@ function ManualMappingStudio({
   );
 }
 
-export function MappingStudio(props: Parameters<typeof ManualMappingStudio>[0]) {
+export function MappingStudio({onOpenConversation, ...props}: Parameters<typeof ManualMappingStudio>[0] & {
+  onOpenConversation: (id: string) => void;
+}) {
   const [workflows, setWorkflows] = useState<Workflow[] | null>(null);
   const [error, setError] = useState("");
   const [chosen, setChosen] = useState("");
@@ -619,6 +621,7 @@ export function MappingStudio(props: Parameters<typeof ManualMappingStudio>[0]) 
   const workflow = workflows.find(row => row.id === chosen) || workflows[0];
   return <div className="mapping-studio"><h2>Đề xuất đang chờ xác nhận</h2>
     <p>Đây là cùng bản nháp trong hội thoại. Lưu bản nháp để tiếp tục ở màn hình khác; dữ liệu chỉ được chuẩn hóa sau khi bạn duyệt.</p>
+    <button type="button" className="text-button" onClick={() => onOpenConversation(workflow.conversation_id)}>Mở trong hội thoại</button>
     {workflows.length > 1 && <label>Chọn bản nháp đang chờ<select value={workflow.id} onChange={e=>setChosen(e.target.value)}>{workflows.map((row,index)=><option key={row.id} value={row.id}>Bản nháp {index+1} · {new Date(row.updated_at).toLocaleString("vi-VN")}</option>)}</select></label>}
     {workflow.detail.reviews.filter(r=>r.kind==="MAPPING"&&r.resource_id===props.table.id&&r.state==="OPEN").map(review=><ReviewCard key={`${review.id}:${review.nonce}`} review={review} workflow={workflow} canEdit={!props.readOnly&&!props.busy} draftOwner={props.draftOwner} refresh={async()=>{const rows=await refresh();if(!rows.length)await props.onApproved();}}/>)}
     <details><summary>Tạo cách ghép cột thủ công riêng</summary><Notice>Đây là proposal độc lập. Nếu duyệt cách ghép thủ công, thẻ trong hội thoại phải được kiểm tra lại vì nguồn ánh xạ đã thay đổi.</Notice><ManualMappingStudio {...props}/></details>
