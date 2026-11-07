@@ -54,6 +54,12 @@ Bản44 ràng buộc tầng tường minh tại schema và validator, gom nhánh
 
 Source bản44 đạt **615/615** Backend/PostgreSQL,177,21giây; SHA256 source và tests trong container kiểm thử khớp host. Ruff/mypy46modules, Markdown13tệp và source/history/known-secret/path checks đạt trước commit. Chưa dùng kết quả source này thay kết quả image hoặc LIVE sau triển khai.
 
+Image `c2f9114` đạt615/615 Backend/PostgreSQL,223,69giây. Lượt Gemini H01 trả đúng dữ liệu gốc. H02 nhận HTTP200 nhưng job `3c6c745f-91d5-432b-b1d6-364213bd7a65` bị chặn vì literal `query.null_policy` không hợp lệ. Ledger395→397. Bản45 dùng enum một phần tử cho literal chuỗi trong schema Gemini và nêu rõ `PRESERVE`/`ALL_MATCHING` trong prompt. Validator vẫn yêu cầu chính xác các giá trị này. H07 chưa đến lượt trong lần replay đó.
+
+Hai ca browser dùng ba CSV mới với header Việt tái hiện việc preflight thiếu bằng chứng tiền tệ. Bộ nhận diện kiểu đã thấy `Giá trị gộp` nhưng kiểm chứng vẫn dùng ba tên cột cố định và bỏ qua `Đơn vị tiền tệ`. Bản sửa dùng từ vựng chung để gắn cột tiền tệ duy nhất vào đích `currency` trong bản nháp. Chỉ đề xuất mã khi các giá trị có dữ liệu thống nhất và có dạng ba chữ hoa. Kiểm thử giữ trường hợp VND/USD hỗn hợp và mã sai dạng. Khi xác nhận VND, các dòng sai tiền tệ vẫn bị kiểm tra theo bộ chuẩn hóa hiện có. Lượt browser thất bại được giữ ở `runtime/completion-vietnamese-inventory.log`.
+
+Source của hai bản sửa đạt **618/618** Backend/PostgreSQL trong 237,94 giây. TypeScript, ESLint, build frontend, Ruff, mypy và kiểm kho mã đều đạt. Hai oracle tài chính được chạy lại trên các rule thử nghiệm mới ở image `c2f9114`, đạt số dòng 5.487/5.458/29, checksum, trạng thái verified và đọc lại XLSX.
+
 Nguồn đã đọc trực tiếp: [Python Unicode normalization](https://docs.python.org/3.12/library/unicodedata.html), [RapidFuzz preprocessing](https://rapidfuzz.github.io/RapidFuzz/Usage/utils.html), [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs), [thinking](https://docs.ollama.com/capabilities/thinking), [chat API và timing](https://docs.ollama.com/api/chat). NFKD và default_process không tự chứng minh hai khái niệm nghiệp vụ tương đương; vocabulary và abstention là heuristic dự án [D], được đo riêng.
 
 ## Báo cáo hoàn thiện ứng viên `9fb6200` — 07/11/2026

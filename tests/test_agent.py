@@ -1291,6 +1291,9 @@ def test_routing_gemini_mock_sends_bounded_schema_once_and_binds_native_source()
         assert "minItems" not in schema["properties"]["intents"]
         assert "maxItems" not in schema["properties"]["intents"]
         assert "PlanningRequest" not in schema["$defs"]
+        for query in schema["$defs"]["RoutingQuery"]["anyOf"]:
+            assert query["properties"]["null_policy"]["enum"] == ["PRESERVE"]
+            assert query["properties"]["result_scope"]["enum"] == ["ALL_MATCHING"]
         canonical_ids = [
             s["source_id"] for s in routing_sources(cat) if s["source_kind"] == "CANONICAL"
         ]

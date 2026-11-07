@@ -1,5 +1,6 @@
 """Kiểm chứng draft trên toàn bảng, không approval hoặc công bố canonical."""
 
+import re
 from collections import Counter
 from typing import Any
 from uuid import uuid4
@@ -20,7 +21,7 @@ from studio.contracts.api import ApprovalInput, NormalizationPreflight
 from studio.date_parsing import date_format, date_zone, parse_date
 from studio.errors import DomainError
 from studio.normalization import apply_transform_plan, parse_decimal
-from studio.profiling import normalized_name, profile_table
+from studio.profiling import field_name_tokens, normalized_name, profile_table
 from studio.schema_mapping import TransformPlan, compile_transform_plan
 
 
@@ -52,14 +53,24 @@ def assess_mapping(
     columns = {c.column_id: c for c in fresh.columns}
     checks = []
     questions = []
-    currency_columns = [
-        c
-        for c in fresh.columns
-        if normalized_name(c.name).replace("_", " ") in {"currency", "tien te", "ma tien te"}
-    ]
+    currency_columns = [c for c in fresh.columns if field_name_tokens(c.name) == ("currency",)]
     currencies = set()
     for column in currency_columns:
         currencies.update(frame[column.column_id].drop_nulls().unique().to_list())
+    if enrich and len(currency_columns) == 1:
+        currency_field = next(
+            f for f in draft.fields if f.source_field == currency_columns[0].column_id
+        )
+        # Bind the new proposal to the existing per-row currency check. Keep
+        # the raw column and any existing conflicting target intact.
+        if currency_field.data_type == "string" and not any(
+            f.target_id == "currency" and f is not currency_field for f in draft.fields
+        ):
+            currency_field.target_id = "currency"
+    currency_bound = len(currency_columns) == 1 and any(
+        f.target_id == "currency" and f.source_field == currency_columns[0].column_id
+        for f in draft.fields
+    )
     for f in draft.fields:
         c = columns[f.source_field]
         notes: list[str] = []
@@ -111,11 +122,15 @@ def assess_mapping(
                         pending.append(
                             "Không tìm thấy định dạng số có thể đọc; kiểm tra cột nguồn."
                         )
-                if len(currencies) == 1:
+                if (
+                    currency_bound
+                    and len(currencies) == 1
+                    and all(re.fullmatch(r"[A-Z]{3}", code) for code in currencies)
+                ):
                     f.currency = next(iter(currencies))
                     f.unit = f.currency
-                elif len(currencies) > 1:
-                    # Không chọn đa số hoặc đổi tiền; giữ giới hạn field đơn tiền tệ.
+                elif currency_columns:
+                    # Không chọn đa số, mã không đúng dạng hoặc cột bị xung đột.
                     f.currency = f.unit = None
                 if name in {"amount", "total", "so tien", "tong"}:
                     f.amount_basis = None

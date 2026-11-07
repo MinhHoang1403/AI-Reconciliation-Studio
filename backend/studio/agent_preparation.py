@@ -30,8 +30,8 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSuggestions
 from studio.errors import DomainError
 from studio.profiling import field_name_tokens, normalized_name
 
-PREPARATION_REVISION = "agent-normalization-7"
-LOCAL_PREPARATION_REVISION = "agent-mapping-semantics-2"
+PREPARATION_REVISION = "agent-normalization-8"
+LOCAL_PREPARATION_REVISION = "agent-mapping-semantics-3"
 REVIEW_REVISION = "agent-review-3"
 
 

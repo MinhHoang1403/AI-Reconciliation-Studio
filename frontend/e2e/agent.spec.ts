@@ -130,6 +130,11 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventor
   test.setTimeout(120000);
   const viewportWidth=Number(process.env.STUDIO_JOURNEY_WIDTH??1440);
   await page.setViewportSize({width:viewportWidth,height:900});
+  const vietnameseHeaders=process.env.STUDIO_JOURNEY_HEADERS==='VI';
+  const headers=vietnameseHeaders
+    ? ['Mã hàng','Ngày kiểm kê','Giá trị gộp','Đơn vị tiền tệ']
+    : ['Stock ID','Snapshot Date','Gross Amount','Currency'];
+  const [keyHeader,,moneyHeader]=headers;
   const suffix=crypto.randomUUID().slice(0,8);
   const names=[`So-ton-${suffix}.csv`,`Kiem-ke-${suffix}.csv`,`Ton-du-phong-${suffix}.csv`];
   const values=[
@@ -137,7 +142,7 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventor
     [['0001','100.00'],['0002','200.00'],['0004','15.00']],
     [['0001','100.00'],['0002','200.00'],['0004','15.01']],
   ];
-  const receipts:Record<string,unknown>={names,viewportWidth,sharedReview,expected:{equal:1,mismatch:1,unmatched:2,signed:'50.00',absolute:'50.00'}};
+  const receipts:Record<string,unknown>={names,headers,viewportWidth,sharedReview,expected:{equal:1,mismatch:1,unmatched:2,signed:'50.00',absolute:'50.00'}};
   const errors:string[]=[];
   let clicks=0,manualFields=0;
   await page.exposeFunction('recordJourneyClick',()=>{clicks++;});
@@ -162,7 +167,7 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventor
   await expect(page.getByText('Đã lưu phân loại. Dữ liệu và lịch sử vẫn được giữ nguyên.',{exact:true})).toBeVisible();
   await page.keyboard.press('Escape');
   await page.locator('.assistant-composer input[type=file]').setInputFiles(names.map((name,index)=>({name,mimeType:'text/csv',buffer:Buffer.from(
-    'Stock ID,Snapshot Date,Gross Amount,Currency\n'+values[index].map(([id,amount])=>`${id},2026-11-01,${amount},VND\n`).join('')
+    headers.join(',')+'\n'+values[index].map(([id,amount])=>`${id},2026-11-01,${amount},VND\n`).join('')
   )})));
   const upload=page.waitForResponse(response=>response.url().endsWith('/agent/attachments')&&response.request().method()==='POST');
   const start=Date.now();
@@ -194,16 +199,16 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventor
       const card=cards.filter({hasText:name});
       await expect(card.getByRole('textbox',{name:'Loại giao dịch',exact:true})).toHaveValue('inventory');
       await expect(card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true})).toHaveValue('stock_item');
-      await card.getByRole('checkbox',{name:'Stock ID',exact:true}).check();manualFields++;
+      await card.getByRole('checkbox',{name:keyHeader,exact:true}).check();manualFields++;
     }
   }else{
   for(const name of names){
     const card=cards.filter({hasText:name});
     await card.getByRole('textbox',{name:'Loại giao dịch',exact:true}).fill('inventory');
     await card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true}).fill('stock_item');
-    await card.getByRole('checkbox',{name:'Stock ID',exact:true}).check();
+    await card.getByRole('checkbox',{name:keyHeader,exact:true}).check();
     await card.getByRole('combobox',{name:'Múi giờ của nguồn',exact:true}).selectOption('UTC');
-    await card.getByRole('combobox',{name:'Cơ sở tiền của Gross Amount',exact:true}).selectOption('gross');
+    await card.getByRole('combobox',{name:`Cơ sở tiền của ${moneyHeader}`,exact:true}).selectOption('gross');
     const meaning=card.getByRole('textbox',{name:'Khoản tiền này là gì?',exact:true});
     await meaning.fill('stock_value');await meaning.press('Tab');
     manualFields+=6;

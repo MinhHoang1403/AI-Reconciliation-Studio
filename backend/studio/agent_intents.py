@@ -18,7 +18,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-44"
+INTENT_REVISION = "agent-intent-45"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -1415,6 +1415,10 @@ def interpret_requests(
         if isinstance(node, dict):
             node.pop("minItems", None)
             node.pop("maxItems", None)
+            # Gemini's response schema supports string enums. Encode fixed
+            # string literals with that keyword, keeping the same exact value.
+            if not provider.local and isinstance(node.get("const"), str):
+                node["enum"] = [node.pop("const")]
             if "enum" in node:
                 for constraint in ("pattern", "minLength", "maxLength"):
                     node.pop(constraint, None)
@@ -1692,6 +1696,7 @@ def interpret_requests(
                 "điều kiện (như chưa thanh toán thay đã thanh toán), không giữ bộ lọc mâu thuẫn. "
                 "Không suy gross=net, order=paid, không bịa tháng từ run thiếu trường ngày. "
                 "Mỗi query phải khai báo filters, aggregations, group_by, currency_field; "
+                "null_policy chỉ nhận PRESERVE, result_scope chỉ nhận ALL_MATCHING. "
                 "Giới hạn cứng: select_fields tối đa 20; filters 8; aggregations 5; "
                 "group_by 3; sort 3; limit 1–50. Không đặt toàn bộ fields vào group_by. "
                 "chỉ dùng []/null khi mục tiêu không yêu cầu điều kiện/phép tính đó. "

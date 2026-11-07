@@ -203,6 +203,32 @@ def test_full_column_enrichment_does_not_guess_timezone_currency_or_customer_key
     assert draft.fields[0].date_format == "YYYY-MM-DD" and draft.fields[3].business_key
 
 
+@pytest.mark.parametrize(
+    "codes,suggested", [(["VND"] * 3, "VND"), (["VND", "VND", "USD"], None), (["cash"] * 3, None)]
+)
+def test_vietnamese_currency_alias_binds_the_existing_row_check(codes, suggested):
+    frame, profile, draft = sample()
+    frame = frame.with_columns(pl.Series("c3", codes))
+    profile.columns[2].name = draft.fields[2].name = "Đơn vị tiền tệ"
+    draft.fields[2].target_id = "don_vi_tien_te"
+
+    result = assess_mapping(draft, frame, profile, "sha", enrich=True)
+    assert result.draft.fields[2].target_id == "currency"
+    assert draft.fields[2].target_id == "don_vi_tien_te"
+    assert result.currencies == sorted(set(codes))
+    assert result.draft.fields[1].currency == suggested
+
+    # A user can select VND for the field. The approved mapping must still
+    # report USD rows as mismatches through the existing normalizer.
+    confirmed = result.draft
+    confirmed.fields[0].timezone = "UTC"
+    confirmed.fields[1].amount_basis = "gross"
+    confirmed.fields[1].currency = confirmed.fields[1].unit = "VND"
+    checks = assess_mapping(confirmed, frame, profile, "sha")
+    assert checks.preflight_ready
+    assert checks.error_counts.get("CURRENCY_MISMATCH", 0) == sum(code != "VND" for code in codes)
+
+
 def test_preflight_matches_real_transform_without_artifact_publication():
     frame, profile, draft = sample()
     draft.fields[3].business_key = False
