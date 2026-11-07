@@ -60,6 +60,12 @@ Hai ca browser dùng ba CSV mới với header Việt tái hiện việc preflig
 
 Source của hai bản sửa đạt **618/618** Backend/PostgreSQL trong 237,94 giây. TypeScript, ESLint, build frontend, Ruff, mypy và kiểm kho mã đều đạt. Hai oracle tài chính được chạy lại trên các rule thử nghiệm mới ở image `c2f9114`, đạt số dòng 5.487/5.458/29, checksum, trạng thái verified và đọc lại XLSX.
 
+Image `f6f54af` đạt **618/618** Backend/PostgreSQL trong 178,92 giây. Đã kiểm khớp 46 module ở backend/worker, 7 assets frontend và HTTP, cùng toàn bộ metadata và checksum của 7.358 artifacts khi thay image. Hai luồng CSV với header Việt ở 1440px đạt oracle 1 khớp/1 lệch/2 thiếu đối ứng, chênh lệch có dấu và tuyệt đối 50 VND. Đọc lại cả hai CSV/XLSX đạt, mỗi luồng có 9 workflow hoàn tất và 0 lượt model. Nhập riêng 23 trường/26 click, nhập chung 14 trường/30 click, cả hai dùng 2 lượt duyệt cho 4 tài nguyên.
+
+Gemini H02 trên `f6f54af` thực thi đúng `RAW_PREVIEW` và trả số đếm 2 với bằng chứng dòng, 2.328 ms tính từ submit tới kết quả. H07 đã được kiểm riêng trên `c2f9114` và `f6f54af`, cả hai trả HTTP 400. Planner trên cặp thanh toán–sao kê cũng trả HTTP 400 ở `f6f54af`. Trace báo `INVALID_ARGUMENT` chung và không xác định thuộc tính schema bị từ chối. Các lượt có trạng thái HTTP rõ ràng, ledger 397→401, không đổi provider, quota hoặc model.
+
+Bản46 dùng một cấu trúc query có danh sách ID giới hạn cho Gemini khi có nhiều ngữ cảnh nguồn. Với catalogue H07, schema từ 24.823 xuống 13.924 bytes, giữ 10 refs. Đổi riêng schema gửi provider, compiler vẫn chặn field thuộc nguồn khác, kể cả field có trong enum chung. Bảng prepared vẫn chỉ xem/đếm với các tham số giới hạn. Hai mock kiểm cùng cấu trúc có ca chấp nhận field đúng và ca từ chối `case_id` của ngoại lệ khi nguồn là canonical. Source Backend/PostgreSQL đạt 619/619 trong 155,86 giây. Kết quả LIVE bản46 đang chờ triển khai.
+
 Nguồn đã đọc trực tiếp: [Python Unicode normalization](https://docs.python.org/3.12/library/unicodedata.html), [RapidFuzz preprocessing](https://rapidfuzz.github.io/RapidFuzz/Usage/utils.html), [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs), [thinking](https://docs.ollama.com/capabilities/thinking), [chat API và timing](https://docs.ollama.com/api/chat). NFKD và default_process không tự chứng minh hai khái niệm nghiệp vụ tương đương; vocabulary và abstention là heuristic dự án [D], được đo riêng.
 
 ## Báo cáo hoàn thiện ứng viên `9fb6200` — 07/11/2026

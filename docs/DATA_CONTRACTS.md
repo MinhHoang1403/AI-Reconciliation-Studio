@@ -16,6 +16,8 @@ Schema truy vấn giới hạn field IDs theo từng source, bao gồm select/fi
 
 Khi mọi mục tiêu đều nêu một tầng dữ liệu tường minh, schema query chỉ cung cấp các tầng đó; nhiều tầng xung đột, phủ định hoặc chưa nêu thì giữ catalogue đầy đủ. Đây là giới hạn capability, không tự chọn dataset/action hoặc cấp quyền. Validator từ chối tráo tầng dù raw/prepared có cùng số dòng. Các enum field dùng `$ref` chung; chỉ các nhánh query có toàn bộ field/metric/operation constraints giống nhau mới gộp enum source refs. Binding project/artifact, quyền và semantic checks vẫn theo từng ref. Gemini nhận schema ở tham số response, không chép lại toàn bộ schema trong system prompt.
 
+Khi một yêu cầu Gemini có nhiều bảng hoặc kết hợp bảng với kết quả đối soát, schema provider dùng một cấu trúc query với danh sách source ref, trường và metric có giới hạn. Các yêu cầu trong một ngữ cảnh và Qwen giữ các nhánh riêng theo nguồn. Backend luôn kiểm trường và metric theo đúng ref được chọn. Prepared chỉ hỗ trợ xem/đếm và yêu cầu mảng trường, lọc, sắp xếp, nhóm rỗng. Lựa chọn cấu trúc diễn ra trước lượt gọi, dùng cùng policy và giới hạn một attempt.
+
 UI cho phép người dùng nhập thông tin chung khi có ít nhất hai thẻ mapping, mỗi nguồn chỉ có một field tiền. Phạm vi gồm danh sách review/nonce/fingerprint cụ thể. Người dùng khai báo cùng loại dữ liệu, grain, timezone, basis và metric rồi xác nhận áp dụng. Chỉ điền chỗ thiếu; không đổi khóa hoặc giá trị đã có của từng nguồn. Bản nháp lưu theo actor/workflow/token trong session; payload duyệt gộp cũ bị xóa để chờ kiểm lại từng thẻ. Đây không là approval hoặc quyền reuse; nonce, fingerprint, authorization, preflight, idempotency và audit per-resource giữ nguyên.
 
 ## Parser giữ header và dòng vật lý — 06/11/2026

@@ -1278,7 +1278,8 @@ def test_routing_refuses_partial_reconciliation_and_duplicate_normalization_sour
     ].dataset_ids == [cat.datasets[0].id]
 
 
-def test_routing_gemini_mock_sends_bounded_schema_once_and_binds_native_source():
+@pytest.mark.parametrize("foreign_field", [False, True])
+def test_routing_gemini_mock_sends_bounded_schema_once_and_binds_native_source(foreign_field):
     from studio.agent_intents import routing_sources
 
     received, reserved = [], []
@@ -1291,9 +1292,11 @@ def test_routing_gemini_mock_sends_bounded_schema_once_and_binds_native_source()
         assert "minItems" not in schema["properties"]["intents"]
         assert "maxItems" not in schema["properties"]["intents"]
         assert "PlanningRequest" not in schema["$defs"]
-        for query in schema["$defs"]["RoutingQuery"]["anyOf"]:
-            assert query["properties"]["null_policy"]["enum"] == ["PRESERVE"]
-            assert query["properties"]["result_scope"]["enum"] == ["ALL_MATCHING"]
+        query = schema["$defs"]["RoutingQuery"]["properties"]
+        assert query["source_ref"]["enum"] == [s["ref"] for s in routing_sources(cat)]
+        assert "case_id" in query["select_fields"]["items"]["enum"]
+        assert query["null_policy"]["enum"] == ["PRESERVE"]
+        assert query["result_scope"]["enum"] == ["ALL_MATCHING"]
         canonical_ids = [
             s["source_id"] for s in routing_sources(cat) if s["source_kind"] == "CANONICAL"
         ]
@@ -1311,6 +1314,7 @@ def test_routing_gemini_mock_sends_bounded_schema_once_and_binds_native_source()
                     intent="QUERY_DATA",
                     query=dict(
                         source_ref=source["ref"],
+                        select_fields=["case_id"] if foreign_field else [],
                         filters=[],
                         group_by=[],
                         currency_field=None,
@@ -1336,21 +1340,26 @@ def test_routing_gemini_mock_sends_bounded_schema_once_and_binds_native_source()
         ),
         httpx.Client(transport=httpx.MockTransport(handler)),
     )
-    try:
-        result = interpret_requests(
-            provider,
-            ["Đếm dữ liệu nguồn"],
-            cat,
-            WorkspacePolicy(
-                mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=1
-            ),
-            lambda: reserved.append(True) or True,
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=1
+    )
+
+    def ask():
+        return interpret_requests(
+            provider, ["Đếm dữ liệu nguồn"], cat, policy, lambda: reserved.append(True) or True
         )
+
+    try:
+        if foreign_field:
+            with pytest.raises(DomainError, match="AI_INVALID_FIELD"):
+                ask()
+        else:
+            result = ask()
+            assert result[0].query.source_id == cat.confirmed_plan.left.canonical_id
+            assert result[0].query.project_id == cat.context.project_id
     finally:
         provider.close()
     assert len(received) == len(reserved) == 1
-    assert result[0].query.source_id == cat.confirmed_plan.left.canonical_id
-    assert result[0].query.project_id == cat.context.project_id
 
 
 def test_independent_variant_suite_keeps_original_gold_and_negative_rubric():

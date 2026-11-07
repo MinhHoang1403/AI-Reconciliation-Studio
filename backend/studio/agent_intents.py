@@ -18,7 +18,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-45"
+INTENT_REVISION = "agent-intent-46"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -184,6 +184,7 @@ def validate_prepared_read(goal: str, query: DataQuery, catalogue: IntentCatalog
         or query.filters
         or query.sort
         or query.group_by
+        or query.select_fields
         or query.currency_field
         or query.metric_id
         or query.aggregations not in ([], [QueryAggregation(op="count")])
@@ -1364,13 +1365,29 @@ def interpret_requests(
         [source for source in sources if source["source_kind"] in layers] if layers else sources
     )
     query_sources = query_sources or sources
+    query_contexts = {
+        (source.get("dataset_id", source["source_id"]), source.get("sheet"))
+        for source in query_sources
+    }
+    # Keep the precise grammar for one table and for Ollama. Gemini rejected
+    # the nested branches when more than one table or a table and a run were
+    # present. For mixed contexts use one query shape with bounded IDs. The
+    # compiler still binds each field, metric and operation to its chosen ref.
+    scoped_query_grammar = bool(query_sources) and (provider.local or len(query_contexts) == 1)
     if not catalogue.previous_groups:
         # Without a prior displayed result, an ordinal is not an admissible slot.
         # Keep the public DTO compatible while constraining this provider request.
         schema["$defs"]["RoutingIntent"]["properties"]["result_position"] = {"type": "null"}
     # Grammar chỉ cho field IDs thực, không cho semantic_metric làm tên cột.
     # Server vẫn kiểm tra từng field thuộc đúng nguồn, không dựa vào enum liên nguồn.
-    field_ids = sorted({f["id"] for source in sources for f in source["fields"]})
+    field_ids = sorted(
+        {
+            field["id"]
+            for source in query_sources
+            if source["source_kind"] not in {"PREPARED", "PREPARED_FINDINGS"}
+            for field in source["fields"]
+        }
+    )
     if field_ids:
         definitions = schema["$defs"]
         for name in ("QueryFilter", "QuerySort"):
@@ -1381,7 +1398,7 @@ def interpret_requests(
                     variant["enum"] = field_ids
         for key in ("select_fields", "group_by"):
             definitions["RoutingQuery"]["properties"][key]["items"]["enum"] = field_ids
-    if sources:
+    if scoped_query_grammar:
         # Query metrics belong to a source. The earlier shared grammar allowed a
         # canonical query to carry a verified-run metric, then fail semantics.
         query_schema = schema["$defs"]["RoutingQuery"]
@@ -1401,6 +1418,15 @@ def interpret_requests(
                 )
                 for s in query_sources
             ]
+        )
+    elif query_sources:
+        query_properties = schema["$defs"]["RoutingQuery"]["properties"]
+        query_properties["source_ref"] = dict(type="string", enum=[s["ref"] for s in query_sources])
+        metrics = sorted({metric for s in query_sources for metric in s.get("metric_ids", [])})
+        query_properties["metric_id"] = (
+            dict(anyOf=[dict(type="string", enum=metrics), dict(type="null")])
+            if metrics
+            else dict(type="null")
         )
     canonical_ids = [s["source_id"] for s in sources if s["source_kind"] == "CANONICAL"]
     if canonical_ids:
@@ -1429,7 +1455,7 @@ def interpret_requests(
                 provider_grammar(child)
 
     provider_grammar(schema)
-    if sources:
+    if scoped_query_grammar:
         field_definitions: dict[tuple[str, ...], str] = {}
         for source, source_query in zip(
             query_sources, schema["$defs"]["RoutingQuery"]["anyOf"], strict=True
