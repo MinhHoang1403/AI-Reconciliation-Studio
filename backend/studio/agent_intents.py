@@ -4,6 +4,7 @@ import json
 import re
 import unicodedata
 from collections.abc import Callable
+from copy import deepcopy
 from typing import Any
 
 from pydantic import ValidationError
@@ -17,7 +18,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-40"
+INTENT_REVISION = "agent-intent-41"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -517,6 +518,12 @@ def routing_sources(catalogue: IntentCatalogue) -> list[dict[str, Any]]:
                             verification="UNAPPROVED_EXPLORATION",
                             paid_status_fields=[],
                             allowed_operations=["preview", "count"],
+                            description=(
+                                "Rows already filtered by backend for invalid calendar dates; "
+                                "preserves raw values and source-row evidence. Do not filter again."
+                                if kind == "PREPARED_FINDINGS"
+                                else "Prepared preview/count snapshot; not approved financial data."
+                            ),
                         )
                     )
             if table.canonical_id and table.schema_definition:
@@ -567,6 +574,12 @@ def routing_sources(catalogue: IntentCatalogue) -> list[dict[str, Any]]:
         if source["source_kind"] in {"CANONICAL", "RAW_PREVIEW"}:
             source["name"] = (
                 "Đã chuẩn hóa · " if source["source_kind"] == "CANONICAL" else "Dữ liệu gốc · "
+            ) + source["name"]
+        elif source["source_kind"] in {"PREPARED", "PREPARED_FINDINGS"}:
+            source["name"] = (
+                "Dòng có ngày không hợp lệ · "
+                if source["source_kind"] == "PREPARED_FINDINGS"
+                else "Bản tự chuẩn bị · "
             ) + source["name"]
     return result
 
@@ -1341,6 +1354,31 @@ def interpret_requests(
         for source, source_query in zip(
             sources, schema["$defs"]["RoutingQuery"]["anyOf"], strict=True
         ):
+            scoped_fields = sorted(field["id"] for field in source["fields"])
+            properties = source_query["properties"]
+            for key in ("select_fields", "group_by"):
+                properties[key] = (
+                    dict(type="array", items=dict(type="string", enum=scoped_fields))
+                    if scoped_fields
+                    else dict(type="array", items=dict(type="string"), maxItems=0)
+                )
+            for key, definition in (("filters", "QueryFilter"), ("sort", "QuerySort")):
+                item = deepcopy(schema["$defs"][definition])
+                item["properties"]["field_id"] = dict(type="string", enum=scoped_fields)
+                properties[key] = (
+                    dict(type="array", items=item)
+                    if scoped_fields
+                    else dict(type="array", items=dict(type="string"), maxItems=0)
+                )
+            aggregate = deepcopy(schema["$defs"]["QueryAggregation"])
+            nullable = (
+                dict(anyOf=[dict(type="string", enum=scoped_fields), dict(type="null")])
+                if scoped_fields
+                else dict(type="null")
+            )
+            aggregate["properties"]["field_id"] = nullable
+            properties["aggregations"] = dict(type="array", items=aggregate)
+            properties["currency_field"] = deepcopy(nullable)
             source_query["properties"]["group_by"]["description"] = (
                 "Thống kê theo nhóm có aggregate: các trường nhóm (tối đa 3). "
                 "Liệt kê/xem dòng hoặc nhóm giao dịch: [] vì mỗi dòng VERIFIED_RUN đã là một nhóm. "

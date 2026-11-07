@@ -1834,6 +1834,46 @@ def test_model_cannot_add_a_count_or_null_filter_to_a_plain_read(goal, count, mi
             validate_intents(body, [goal], cat)
 
 
+def test_provider_query_grammar_binds_field_enums_to_each_source():
+    from studio.agent_intents import routing_sources
+    from studio.contracts.agent import SourceColumn
+
+    cat = catalogue()
+    cat.datasets[0].tables[0].columns = [
+        SourceColumn(
+            id="code", name="Code", type_candidates=["string"], null_count=0, distinct_count=3
+        )
+    ]
+    cat.datasets[0].tables[0].prepared_artifact_id = "prepared"
+    captured = {}
+
+    class Capture:
+        local = True
+        usage = {}
+
+        def request_typed(self, *args, **kwargs):
+            captured.update(kwargs["response_schema"])
+            return []
+
+    interpret_requests(Capture(), ["Đọc dữ liệu tổng hợp"], cat, WorkspacePolicy(), lambda: True)
+    sources = routing_sources(cat)
+    variants = captured["$defs"]["RoutingQuery"]["anyOf"]
+    for source, query in zip(sources, variants, strict=True):
+        props = query["properties"]
+        assert props["source_ref"]["enum"] == [source["ref"]]
+        if source["source_kind"] in {"PREPARED", "PREPARED_FINDINGS"}:
+            assert props["filters"]["maxItems"] == props["select_fields"]["maxItems"] == 0
+        else:
+            allowed = sorted(field["id"] for field in source["fields"])
+            assert props["select_fields"]["items"]["enum"] == allowed == ["code"]
+            assert props["filters"]["items"]["properties"]["field_id"]["enum"] == allowed
+            assert props["sort"]["items"]["properties"]["field_id"]["enum"] == allowed
+            assert (
+                props["aggregations"]["items"]["properties"]["field_id"]["anyOf"][0]["enum"]
+                == allowed
+            )
+
+
 @pytest.mark.parametrize(
     "goal,denied",
     [

@@ -83,7 +83,9 @@ for(const width of [390,768,1366,1440,1920]){
   });
 }
 
-test('[LOCAL ORACLE] Date findings in Chat preserve raw values and source evidence',async({page})=>{
+test(`[${process.env.STUDIO_LIVE_PROVIDER==='GEMINI'?'LIVE GEMINI':'LOCAL ORACLE'}] Date findings in Chat preserve raw values and source evidence`,async({page})=>{
+  const live=process.env.STUDIO_LIVE_PROVIDER==='GEMINI';
+  if(live)test.setTimeout(120000);
   await page.addInitScript(()=>{localStorage.clear();sessionStorage.clear();});
   await page.goto('/');
   await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeEnabled();
@@ -102,11 +104,17 @@ test('[LOCAL ORACLE] Date findings in Chat preserve raw values and source eviden
   await page.getByRole('button',{name:'Xác nhận phân loại',exact:true}).click();
   await expect(page.getByText('Đã lưu phân loại. Dữ liệu và lịch sử vẫn được giữ nguyên.',{exact:true})).toBeVisible();
   await page.keyboard.press('Escape');
-  await page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true}).fill('Những dòng lỗi ngày tháng nằm ở đâu?');
+  if(live)await page.getByRole('combobox',{name:'Model cho tin nhắn mới',exact:true}).selectOption('GEMINI');
+  await page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true}).fill(live
+    ? 'Hãy kiểm tra giúp mình: trong tệp này, những hàng nào chứa ngày bị ghi sai?'
+    : 'Những dòng lỗi ngày tháng nằm ở đâu?');
+  const delivery=live?page.waitForResponse(response=>response.url().endsWith('/assistant/messages')&&response.request().method()==='POST'):null;
   await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();
+  const accepted=delivery?await(await delivery).json():null;
+  if(live)await writeFile(test.info().outputPath('live-receipt.json'),JSON.stringify({provider:'GEMINI',job_id:accepted.job_id,project_id:await page.locator('#project-select').getAttribute('data-project-id'),requests_before:before.gemini_requests_used},null,2));
   await expect(workflows).toHaveCount(2);
   const findings=workflows.last().getByRole('region',{name:'Kết quả truy vấn',exact:true});
-  await expect(findings).toContainText('Chỉ gồm dòng có cảnh báo ngày');
+  await expect(findings).toContainText('Chỉ gồm dòng có cảnh báo ngày',{timeout:live?90000:15000});
   await expect(findings).toContainText('0002');
   await expect(findings).toContainText('2026-02-29');
   await expect(findings.getByRole('cell',{name:'0001',exact:true})).toHaveCount(0);
@@ -115,7 +123,7 @@ test('[LOCAL ORACLE] Date findings in Chat preserve raw values and source eviden
   await expect(evidence).toContainText('2026-02-29');
   await expect(evidence).toContainText('0002');
   await page.keyboard.press('Escape');
-  expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used);
+  expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used+(live?1:0));
 });
 
 for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventory sources through Chat approval, reconciliation and export${sharedReview ? ' with shared business facts' : ''}`,async({page})=>{
