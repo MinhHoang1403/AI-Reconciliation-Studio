@@ -42,16 +42,27 @@ from studio.repository import get_scoped, mapping_contract, schema_fingerprint
 from studio.storage import checksum, storage_path, write_parquet
 
 
-def catalogue_for_project(db: Session, actor: Actor, project_id: str) -> list[SourceCatalogue]:
-    rows = db.scalars(
+def catalogue_for_project(
+    db: Session,
+    actor: Actor,
+    project_id: str,
+    *,
+    canonical_ids: list[str] | None = None,
+    after_id: str | None = None,
+    limit: int = 200,
+) -> list[SourceCatalogue]:
+    query = (
         select(CanonicalRow)
         .join(TableRow, CanonicalRow.source_table_id == TableRow.id)
         .join(VersionRow, TableRow.dataset_version_id == VersionRow.id)
         .join(DatasetRow, VersionRow.dataset_id == DatasetRow.id)
         .where(CanonicalRow.workspace_id == actor.workspace_id, DatasetRow.project_id == project_id)
-        .order_by(CanonicalRow.id)
-        .limit(200)
     )
+    if canonical_ids is not None:
+        query = query.where(CanonicalRow.id.in_(canonical_ids))
+    if after_id is not None:
+        query = query.where(CanonicalRow.id > after_id)
+    rows = db.scalars(query.order_by(CanonicalRow.id).limit(limit))
     result = []
     for row in rows:
         canonical = CanonicalDataset.model_validate(row.contract).model_copy(
@@ -95,8 +106,12 @@ def catalogue_for_project(db: Session, actor: Actor, project_id: str) -> list[So
 def selected_catalogue(
     db: Session, actor: Actor, project_id: str, ids: list[str]
 ) -> list[SourceCatalogue]:
-    indexed = {c.canonical.id: c for c in catalogue_for_project(db, actor, project_id)}
-    if len(ids) != 2 or ids[0] == ids[1] or any(i not in indexed for i in ids):
+    if len(ids) != 2 or ids[0] == ids[1]:
+        raise DomainError("SOURCE_SCOPE_INVALID", "Chọn hai canonical thuộc đúng project.", 422)
+    indexed = {
+        c.canonical.id: c for c in catalogue_for_project(db, actor, project_id, canonical_ids=ids)
+    }
+    if any(i not in indexed for i in ids):
         raise DomainError("SOURCE_SCOPE_INVALID", "Chọn hai canonical thuộc đúng project.", 422)
     return [indexed[i] for i in ids]
 

@@ -56,6 +56,8 @@ Trong Chat, chọn một tệp có một bảng làm ngữ cảnh rồi gửi **
 
 Nếu một bước báo thiếu dữ kiện, bổ sung đúng câu hỏi trên thẻ. Khi model báo lỗi kết nối hoặc hết thời gian, giữ nội dung và thông báo để kiểm tra. Các yêu cầu xem dữ liệu và kết quả đã đủ ngữ cảnh ở trên có thể xử lý trực tiếp từ dữ liệu đã lưu.
 
+Nếu dùng phần kiểm tra thủ công để duyệt mapping và chuẩn hóa, khi trở về Chat, thẻ cũ của nguồn đó tự hết hiệu lực. Bản chuẩn hóa được liên kết vào cùng công việc. Nguồn khác chưa được xác nhận vẫn giữ thẻ riêng.
+
 ## 2. Những từ cần hiểu
 
 | Từ trong tài liệu | Hiểu đơn giản |

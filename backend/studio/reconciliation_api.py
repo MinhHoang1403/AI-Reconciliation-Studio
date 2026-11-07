@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from studio.access import Actor, require_editor
 from studio.contracts import Contract, EvidenceRef, MappingRevision, ParsedTableArtifact
 from studio.contracts.api import JobAccepted
+from studio.contracts.assistant import Identifier
 from studio.contracts.data_query import DataQuery
 from studio.contracts.reconciliation import (
     ComparisonResult,
@@ -110,6 +111,7 @@ class PlanView(Contract):
 
 class CatalogueList(Contract):
     items: list[SourceCatalogue]
+    next_cursor: str | None = None
 
 
 class RunList(Contract):
@@ -177,9 +179,27 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     Key = Annotated[str, Header(min_length=1, max_length=160, alias="Idempotency-Key")]
 
     @router.get("/projects/{project_id}/canonical-catalogue", response_model=CatalogueList)
-    def catalogue(project_id: str, db: DB, actor: User) -> CatalogueList:
+    def catalogue(
+        project_id: str,
+        db: DB,
+        actor: User,
+        after_id: Identifier | None = None,
+        limit: int = Query(200, ge=1, le=200),
+        canonical_ids: Annotated[list[Identifier] | None, Query(max_length=5)] = None,
+    ) -> CatalogueList:
         get_scoped(db, ProjectRow, project_id, actor)
-        return CatalogueList(items=catalogue_for_project(db, actor, project_id))
+        items = catalogue_for_project(
+            db,
+            actor,
+            project_id,
+            after_id=after_id,
+            canonical_ids=canonical_ids or None,
+            limit=limit + 1,
+        )
+        return CatalogueList(
+            items=items[:limit],
+            next_cursor=items[limit - 1].canonical.id if len(items) > limit else None,
+        )
 
     @router.get("/projects/{project_id}/domain-schema-templates")
     def schema_templates(project_id: str, db: DB, actor: User) -> dict[str, Any]:
@@ -341,17 +361,25 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         return result
 
     @router.get("/projects/{project_id}/reconciliation-templates")
-    def templates(project_id: str, db: DB, actor: User) -> dict[str, Any]:
+    def templates(
+        project_id: str,
+        db: DB,
+        actor: User,
+        after_id: Identifier | None = None,
+        limit: int = Query(100, ge=1, le=200),
+    ) -> dict[str, Any]:
         get_scoped(db, ProjectRow, project_id, actor)
-        rows = db.scalars(
-            select(ReconciliationContractRow)
-            .where(
-                ReconciliationContractRow.project_id == project_id,
-                ReconciliationContractRow.workspace_id == actor.workspace_id,
-            )
-            .limit(100)
+        query = select(ReconciliationContractRow).where(
+            ReconciliationContractRow.project_id == project_id,
+            ReconciliationContractRow.workspace_id == actor.workspace_id,
         )
-        return {"items": [ReconciliationContract.model_validate(r.definition) for r in rows]}
+        if after_id is not None:
+            query = query.where(ReconciliationContractRow.id > after_id)
+        rows = list(db.scalars(query.order_by(ReconciliationContractRow.id).limit(limit + 1)))
+        return {
+            "items": [ReconciliationContract.model_validate(r.definition) for r in rows[:limit]],
+            "next_cursor": rows[limit - 1].id if len(rows) > limit else None,
+        }
 
     @router.post(
         "/reconciliation-contracts/{contract_id}/reuse", response_model=PlanView, status_code=201

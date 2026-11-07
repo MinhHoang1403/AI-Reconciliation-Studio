@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "./api";
+import { api, apiPages } from "./api";
 import { Notice, Spinner } from "./components";
 import type { Catalogue, Proposal } from "./reconciliationTypes";
 import type { AssistantAnswer, AssistantRule } from "./assistantTypes";
@@ -43,11 +43,11 @@ export function AssistantWorkflow({
     const controller = new AbortController();
     alive.current = true;
     void Promise.all([
-      api<{ items: Catalogue[] }>(
+      apiPages<Catalogue>(
         `/projects/${projectId}/canonical-catalogue`,
         { signal: controller.signal },
       ),
-      api<{ items: AssistantRule[] }>(
+      apiPages<AssistantRule>(
         `/projects/${projectId}/reconciliation-templates`,
         { signal: controller.signal },
       ),
@@ -59,13 +59,13 @@ export function AssistantWorkflow({
       .then(([catalogue, rules, plans]) => {
         if (!alive.current) return;
         setSources(
-          catalogue.items.filter(
+          catalogue.filter(
             (s) => s.canonical.quality_status === "READY" && !s.canonical.stale,
           ),
         );
         // Proposal contains a bounded shortlist, not an authorization allowlist.
         // The existing scoped endpoint supplies all currently approved templates.
-        setTemplates(rules.items);
+        setTemplates(rules);
         setPending(plans.items);
         setPendingTotal(plans.total);
       })

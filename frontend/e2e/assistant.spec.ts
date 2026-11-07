@@ -3,6 +3,7 @@ import { expect, type Page } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import { selectProject, openLegacyPage } from "./project-selection";
 import type { Catalogue } from "../src/reconciliationTypes";
+import type { AssistantRule } from "../src/assistantTypes";
 
 type State = {
   project_id: string;
@@ -409,7 +410,9 @@ test("language workflow requires source/period/template confirmation before exis
   const beforeCatalogue = (
     await (
       await page.request.get(
-        `/api/projects/${s.project_id}/canonical-catalogue`,
+        `/api/projects/${s.project_id}/canonical-catalogue?${new URLSearchParams(
+          filenames.map(name=>["canonical_ids",s.sources[name].canonical_id]),
+        )}`,
       )
     ).json()
   ).items as (Catalogue & {
@@ -566,13 +569,15 @@ test("language workflow requires source/period/template confirmation before exis
   await workflow
     .getByLabel("Nguồn đối chiếu thứ hai", { exact: true })
     .selectOption(canonical["tiktok-order-lines.csv"]);
-  const rules = (
-    await (
-      await page.request.get(
-        `/api/projects/${s.project_id}/reconciliation-templates`,
-      )
-    ).json()
-  ).items;
+  const rules:AssistantRule[]=[];
+  let ruleCursor:string|null=null;
+  do{
+    const response:{items:AssistantRule[];next_cursor?:string|null}=await(
+      await page.request.get(`/api/projects/${s.project_id}/reconciliation-templates${ruleCursor ? `?after_id=${encodeURIComponent(ruleCursor)}` : ""}`)
+    ).json();
+    rules.push(...response.items);
+    ruleCursor=response.next_cursor??null;
+  }while(ruleCursor);
   for (const [index, name] of ["shopee", "tiktok"].entries()) {
     const r = rules.find(
       (r: {

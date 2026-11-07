@@ -14,7 +14,7 @@ import {
   AriaComponent,
 } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
-import { api } from "./api";
+import { api, apiPages } from "./api";
 import { ReconciliationEvidence } from "./ReconciliationEvidence";
 import { Badge, Notice, Spinner } from "./components";
 import {
@@ -241,21 +241,23 @@ export function ReconciliationStudio({
     setListLoading(true);
     try {
       const [c, r, t] = await Promise.all([
-        api<{ items: Catalogue[] }>(
+        apiPages<Catalogue>(
           `/projects/${projectId}/canonical-catalogue`,
+          { signal: controller.current.signal },
         ),
         api<{ items: Run[]; total: number }>(
           `/runs?project_id=${projectId}&offset=${runOffset}${fromPeriod ? `&period_start=${fromPeriod}` : ""}${toPeriod ? `&period_end=${toPeriod}` : ""}${sourceFilter ? `&source_id=${sourceFilter}` : ""}`,
         ),
-        api<{ items: { id: string; plan: Plan }[] }>(
+        apiPages<{ id: string; plan: Plan }>(
           `/projects/${projectId}/reconciliation-templates`,
+          { signal: controller.current.signal },
         ),
       ]);
       if (!alive.current || sequence !== refreshSequence.current) return;
-      setCatalogue(c.items);
+      setCatalogue(c);
       setRuns(r.items);
       setRunTotal(r.total);
-      setTemplates(t.items);
+      setTemplates(t);
       // A bounded/filtered history page is not the authority for an explicitly selected run.
       setRunId((old) => old || r.items[0]?.id || "");
     } catch (err) {

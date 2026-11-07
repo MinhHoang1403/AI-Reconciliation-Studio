@@ -51,7 +51,9 @@ from studio.contracts.reconciliation import (
 )
 from studio.database import (
     AgentWorkflowRow,
+    AuditRow,
     CanonicalRow,
+    ConversationRow,
     DatasetRow,
     JobRow,
     MappingRow,
@@ -258,12 +260,77 @@ def make_review(
     row.state = "WAITING_REVIEW"
 
 
+def resume_prepared_reviews(db: Session, table_id: str | None = None) -> None:
+    """Queue a read of approved canonical sources, including historical waiting cards.
+
+    No workflow lock is taken while a normalizer holds its source lock. The
+    existing resume job reauthorizes and locks the workflow before invalidating
+    old cards. Its restricted advance cannot call a model or approve a mapping.
+    """
+    if db.scalar(text("SELECT to_regclass('agent_workflows')")) is None:
+        return
+    query = (
+        select(AgentWorkflowRow)
+        .join(ConversationRow, ConversationRow.id == AgentWorkflowRow.conversation_id)
+        .join(
+            MembershipRow,
+            (MembershipRow.workspace_id == AgentWorkflowRow.workspace_id)
+            & (MembershipRow.actor_id == AgentWorkflowRow.actor_id),
+        )
+        .where(
+            AgentWorkflowRow.state == "WAITING_REVIEW",
+            AgentWorkflowRow.waiting_job_id.is_(None),
+            AgentWorkflowRow.detail["intent"]["intent"].astext == "PREPARE_NORMALIZATION",
+            ConversationRow.deleted_at.is_(None),
+            MembershipRow.role.in_(["owner", "editor"]),
+        )
+    )
+    if table_id:
+        query = query.where(
+            AgentWorkflowRow.detail.contains(
+                {"reviews": [dict(kind="MAPPING", resource_id=table_id, state="OPEN")]}
+            )
+        )
+    for row in db.scalars(query):
+        tables = [
+            review["resource_id"]
+            for review in row.detail.get("reviews", [])
+            if review["kind"] == "MAPPING" and review["state"] == "OPEN"
+        ]
+        canonical_ids = sorted(
+            db.scalars(
+                select(CanonicalRow.id)
+                .join(TableRow, TableRow.id == CanonicalRow.source_table_id)
+                .join(VersionRow, VersionRow.id == TableRow.dataset_version_id)
+                .join(DatasetRow, DatasetRow.id == VersionRow.dataset_id)
+                .where(
+                    TableRow.id.in_(tables),
+                    CanonicalRow.workspace_id == row.workspace_id,
+                    DatasetRow.project_id == row.project_id,
+                    CanonicalRow.mapping_id == TableRow.active_mapping_id,
+                    CanonicalRow.stale.is_(False),
+                )
+            )
+        )
+        if canonical_ids:
+            enqueue_job(
+                db,
+                row.workspace_id,
+                row.project_id,
+                "agent_resume",
+                f"agent-approved-sources:{row.id}:{digest(canonical_ids)[:32]}",
+                dict(workflow_id=row.id, deterministic=True, approved_sources=True),
+            )
+
+
 def notify_job_finished(db: Session, job: JobRow) -> None:
     """Cùng transaction với kết quả child job; crash không làm mất tín hiệu resume."""
     # Compatibility trước migration additive: jobs nền tảng vẫn công bố được.
     # Không nuốt ProgrammingError (nó sẽ làm hỏng transaction đã chứa artifacts).
     if db.scalar(text("SELECT to_regclass('agent_workflows')")) is None:
         return
+    if job.kind == "normalize" and job.status == "SUCCEEDED":
+        resume_prepared_reviews(db, job.payload["table_id"])
     rows = db.scalars(
         select(AgentWorkflowRow)
         .where(
@@ -379,12 +446,22 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
     return True
 
 
-def advance(db: Session, row: AgentWorkflowRow) -> None:
+def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) -> None:
     """Chọn bước bằng state/policy xác định; không để model quản lý retry hoặc completion."""
     if row.state in {"COMPLETED", "FAILED", "BLOCKED", "CANCELLED_BEFORE_NEXT_STEP", "PARTIAL"}:
         return
     actor = owner(db, row)
     state = WorkflowState.model_validate(row.detail)
+    if approved_only and (
+        row.state != "WAITING_REVIEW"
+        or state.intent is None
+        or state.intent.intent != "PREPARE_NORMALIZATION"
+    ):
+        return
+    if approved_only:
+        for review in sorted(state.reviews, key=lambda item: item.resource_id):
+            if review.kind == "MAPPING" and review.state == "OPEN":
+                lock_review_sources(db, actor, review)
     if not consume_child(db, row, state):
         save(row, state)
         return
@@ -550,7 +627,7 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
         waiting_tables = []
         for dataset in catalogue.datasets:
             for table in dataset.tables:
-                if state.prepare_upload and not table.canonical_id:
+                if state.prepare_upload and not table.canonical_id and not approved_only:
                     existing = db.scalar(
                         select(JobRow)
                         .where(
@@ -587,6 +664,22 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                             state.blocks.append(ProgressBlock(text=notice))
                         continue
                 if table.canonical_id:
+                    for review in state.reviews:
+                        if (
+                            review.kind == "MAPPING"
+                            and review.resource_id == table.table_id
+                            and review.state == "OPEN"
+                        ):
+                            review.state = "INVALIDATED"
+                            review.pending_reply_job_id = None
+                            db.add(
+                                AuditRow(
+                                    workspace_id=actor.workspace_id,
+                                    actor_id="system",
+                                    action="AGENT_REVIEW_INVALIDATED",
+                                    resource_id=review.id,
+                                )
+                            )
                     canonical = get_scoped(db, CanonicalRow, table.canonical_id, actor)
                     if not any(
                         isinstance(b, DatasetBlock) and b.canonical_id == canonical.id
@@ -610,6 +703,8 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                                 ],
                             )
                         )
+                elif approved_only:
+                    continue
                 elif table.mapping_id:
                     reference = execute_tool(
                         db,
@@ -685,13 +780,15 @@ def advance(db: Session, row: AgentWorkflowRow) -> None:
                 if catalogue.datasets
                 and all(d.tables for d in catalogue.datasets)
                 and (
-                    not state.prepare_upload
+                    not (state.prepare_upload or approved_only)
                     or all(t.canonical_id for d in catalogue.datasets for t in d.tables)
                 )
                 else "PARTIAL"
-                if state.prepare_upload and state.blocks
+                if (state.prepare_upload or approved_only) and state.blocks
                 else "WAITING_REVIEW"
             )
+        if approved_only and row.state == "COMPLETED":
+            state.error_code = None
     elif intent.intent == "RECONCILE_DATASETS":
         require_editor(actor, db, row.id)
         existing_run = next(

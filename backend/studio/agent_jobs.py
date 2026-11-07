@@ -312,7 +312,8 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
         goal = row.goal
         displayed_export = resolve_displayed_export(goal, catalogue)
         plain_listing = (
-            displayed_export or resolve_ranked_results(goal, catalogue)
+            displayed_export
+            or resolve_ranked_results(goal, catalogue)
             or resolve_run_read(goal, catalogue)
             or resolve_plain_listing(goal, catalogue)
             or resolve_named_reconciliation(goal, catalogue)
@@ -416,6 +417,9 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
 def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: Finish) -> None:
     with factory() as db:
         job = fence(db, job_id, token)
+        approved_refresh = (
+            job.kind == "agent_resume" and job.payload.get("approved_sources") is True
+        )
         if job.kind == "agent":
             membership = db.get(MembershipRow, (job.workspace_id, job.payload["actor_id"]))
             if membership is None:
@@ -477,7 +481,7 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy công việc.", 404)
             if job.kind == "agent_resume":
                 # Nhận kết quả child trước khi chọn quyết định ngôn ngữ tiếp theo.
-                advance(db, row)
+                advance(db, row, approved_only=approved_refresh)
                 db.commit()
         kind = job.kind
     if kind == "agent_review":
@@ -887,12 +891,13 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             finish(db, job, {"drafts": [draft.model_dump(mode="json")]})
             db.commit()
         return
-    interpret(job_id, token, row_id, factory, fence)
+    if not approved_refresh:
+        interpret(job_id, token, row_id, factory, fence)
     with factory() as db:
         job = fence(db, job_id, token)
         row = db.get(AgentWorkflowRow, row_id, with_for_update=True)
         assert row is not None
-        advance(db, row)
+        advance(db, row, approved_only=approved_refresh)
         if kind == "agent":
             conversation = db.get(
                 ConversationRow, row.conversation_id, with_for_update=True, populate_existing=True

@@ -10,6 +10,108 @@ from test_postgres import approve, drain, pg, project, upload  # noqa: F401, F81
 pytestmark = pytest.mark.integration
 
 
+def test_canonical_cursor_pages_do_not_limit_explicit_source_validation(pg):  # noqa: F811
+    from copy import deepcopy
+
+    client, factory, _ = pg
+    pid, plan = prepare_pair(pg)
+    expected = {plan.left.canonical_id, plan.right.canonical_id}
+    with factory() as db:
+        source = db.get(CanonicalRow, plan.left.canonical_id)
+        for index in range(201):
+            ident = f"0-history-{index:04}"
+            revision = f"catalogue-history-{index}"
+            contract = deepcopy(source.contract)
+            contract.update(id=ident, normalization_revision=revision)
+            db.add(
+                CanonicalRow(
+                    id=ident,
+                    workspace_id=source.workspace_id,
+                    source_table_id=source.source_table_id,
+                    mapping_id=source.mapping_id,
+                    normalization_revision=revision,
+                    contract=contract,
+                    stale=True,
+                )
+            )
+        db.commit()
+    url = f"/api/projects/{pid}/canonical-catalogue"
+    first = client.get(url).json()
+    assert len(first["items"]) == 200
+    assert not expected & {item["canonical"]["id"] for item in first["items"]}
+    assert first["next_cursor"]
+    second = client.get(url, params={"after_id": first["next_cursor"]}).json()
+    assert len(second["items"]) == 3 and second["next_cursor"] is None
+    assert expected <= {item["canonical"]["id"] for item in second["items"]}
+    selected = client.get(
+        url, params=[("canonical_ids", ident) for ident in sorted(expected)]
+    ).json()
+    assert {item["canonical"]["id"] for item in selected["items"]} == expected
+    assert selected["next_cursor"] is None
+    checked = client.post(
+        "/api/reconciliation-plans/validate",
+        json={
+            "project_id": pid,
+            "plan": plan.model_dump(mode="json"),
+        },
+    )
+    assert checked.status_code == 200, checked.text
+    foreign = client.post(
+        "/api/reconciliation-plans/validate",
+        json={
+            "project_id": project(client),
+            "plan": plan.model_dump(mode="json"),
+        },
+    )
+    assert foreign.status_code == 422
+    assert client.get(url, params={"limit": 201}).status_code == 422
+    assert client.get(url, params={"after_id": "../outside"}).status_code == 422
+
+
+def test_approved_templates_are_available_past_the_first_page(pg):  # noqa: F811
+    from copy import deepcopy
+
+    from studio.database import PlanRow
+
+    client, factory, _ = pg
+    pid, _, rule, _ = create_approved_run(pg)
+    with factory() as db:
+        original = db.get(ReconciliationContractRow, rule["id"])
+        source = db.get(PlanRow, original.plan_id)
+        for index in range(101):
+            plan_id, rule_id = f"plan-history-{index:04}", f"0-template-{index:04}"
+            db.add(
+                PlanRow(
+                    id=plan_id,
+                    workspace_id=source.workspace_id,
+                    project_id=pid,
+                    proposal=deepcopy(source.proposal),
+                    origin=source.origin,
+                    created_by=source.created_by,
+                )
+            )
+            db.flush()
+            definition = deepcopy(original.definition)
+            definition.update(id=rule_id)
+            db.add(
+                ReconciliationContractRow(
+                    id=rule_id,
+                    workspace_id=original.workspace_id,
+                    project_id=pid,
+                    plan_id=plan_id,
+                    definition=definition,
+                    source_signatures=deepcopy(original.source_signatures),
+                )
+            )
+        db.commit()
+    url = f"/api/projects/{pid}/reconciliation-templates"
+    first = client.get(url).json()
+    assert len(first["items"]) == 100 and first["next_cursor"]
+    second = client.get(url, params={"after_id": first["next_cursor"]}).json()
+    assert len(second["items"]) == 2 and second["next_cursor"] is None
+    assert rule["id"] in {item["id"] for item in second["items"]}
+
+
 @pytest.mark.parametrize("pg", ["create_data_foundation"], indirect=True)
 def test_additive_migration_preserves_existing_approved_canonical(pg):  # noqa: F811
     client, factory, worker = pg

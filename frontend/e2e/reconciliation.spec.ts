@@ -365,11 +365,17 @@ test("Planner UI accepts sources with no common key and presents review-only sug
   let proposalRequests = 0;
   const left = s.sources["shipments.csv"].canonical_id,
     right = s.sources["delivery-confirmations.csv"].canonical_id;
+  await page.goto("/#page=home");
+  await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
+  const selected = await (await page.request.get(
+    `/api/projects/${s.project_id}/canonical-catalogue?${new URLSearchParams([["canonical_ids",left],["canonical_ids",right]])}`,
+  )).json();
+  let cataloguePages=0;
   await page.route(
-    `**/api/projects/${s.project_id}/canonical-catalogue`,
+    url=>url.pathname===`/api/projects/${s.project_id}/canonical-catalogue`,
     async (route) => {
-      const response = await route.fetch();
-      const data = await response.json();
+      cataloguePages++;
+      const data=structuredClone(selected);
       const source = data.items.find(
         (c: { canonical: { id: string } }) => c.canonical.id === right,
       );
@@ -387,7 +393,12 @@ test("Planner UI accepts sources with no common key and presents review-only sug
         (c: { canonical: { id: string } }) => c.canonical.id === left,
       );
       reference.schema_definition.business_key_fields = ["tracking_id"];
-      await route.fulfill({ response, json: data });
+      const cursor=new URL(route.request().url()).searchParams.get("after_id");
+      expect(cursor).toBe(cursor===null?null:left);
+      await route.fulfill({json:{
+        items:[cursor ? source : reference],
+        next_cursor:cursor?null:left,
+      }});
     },
   );
   await page.route("**/api/reconciliation-plans/ai", async (route) => {
@@ -491,6 +502,7 @@ test("Planner UI accepts sources with no common key and presents review-only sug
     page.getByRole("group", { name: "Khóa liên kết đã xác nhận", exact: true }),
   ).toBeVisible();
   expect(proposalRequests).toBe(2); // Both HTTP endpoints are intercepted; no provider/job was invoked.
+  expect(cataloguePages).toBeGreaterThanOrEqual(2);
 });
 
 for (const size of [

@@ -1113,6 +1113,12 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     heartbeat = Path("/tmp/studio-worker-heartbeat")
+    heartbeat.touch()
+    from studio.agent_workflows import resume_prepared_reviews
+
+    with SessionFactory() as db:
+        resume_prepared_reviews(db)
+        db.commit()
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="studio-inference") as executor:
         inference: Future[None] | None = None
         while True:

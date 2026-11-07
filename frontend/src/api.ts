@@ -47,3 +47,21 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     );
   return body as T;
 }
+
+/** Collect cursor pages for metadata selectors, preserving stable source identifiers. */
+export async function apiPages<T>(path: string, init: RequestInit = {}): Promise<T[]> {
+  const items: T[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const separator = path.includes("?") ? "&" : "?";
+    const url = cursor ? `${path}${separator}after_id=${encodeURIComponent(cursor)}` : path;
+    const page: { items: T[]; next_cursor?: string | null } = await api(url, init);
+    items.push(...page.items);
+    cursor = page.next_cursor ?? null;
+    if (cursor && seen.has(cursor))
+      throw new ApiError("PAGINATION_STALLED", "Danh sách chưa tải đủ. Hãy cập nhật lại.");
+    if (cursor) seen.add(cursor);
+  } while (cursor);
+  return items;
+}

@@ -16,6 +16,224 @@ from test_reconciliation_postgres import prepare_pair
 pytestmark = pytest.mark.integration
 
 
+@pytest.mark.parametrize(
+    "historical,blocked",
+    [
+        (False, None),
+        (True, None),
+        (True, "viewer"),
+        (True, "cancelled"),
+        (True, "deleted"),
+        (True, "stale"),
+    ],
+)
+def test_manual_normalization_resumes_existing_chat_reviews_without_approving_again(
+    pg,  # noqa: F811
+    monkeypatch,
+    historical,
+    blocked,
+):
+    import studio.agent_jobs as agents
+    import studio.agent_workflows as workflows
+    from test_postgres import approve
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Adopting already approved canonical data must not call a model")
+
+    monkeypatch.setattr(agents, "model_call", forbidden)
+    client, factory, worker = pg
+    pid = project(client)
+    response = client.post(
+        "/api/datasets/uploads",
+        data={"project_id": pid, "request_ai_mapping": "false"},
+        files=[
+            (
+                "files",
+                (
+                    f"manual-{index}.csv",
+                    f"Order ID,Gross amount\n000{index},12.50\n".encode(),
+                    "text/csv",
+                ),
+            )
+            for index in (1, 2)
+        ],
+    )
+    assert response.status_code == 202
+    datasets = response.json()["items"]
+    drain(factory, worker)
+    context = {"project_id": pid}
+    cid = conversation(client, context)
+    queued = client.post(
+        "/api/assistant/messages",
+        json={
+            "conversation_id": cid,
+            "context": context,
+            "mode": "AGENT",
+            "command": "PREPARE_UPLOAD",
+            "dataset_ids": [item["id"] for item in datasets],
+            "text": "Chuẩn bị các tệp vừa tải",
+        },
+        headers={"Idempotency-Key": "manual-preparation"},
+    )
+    assert queued.status_code == 202
+    drain(factory, worker)
+    initial = workflow_for(client, factory, queued.json()["job_id"])
+    assert initial["state"] == "WAITING_REVIEW"
+    path = f"/api/agent/workflows/{initial['id']}"
+    if historical:
+        original = workflows.resume_prepared_reviews
+        monkeypatch.setattr(workflows, "resume_prepared_reviews", lambda *args, **kwargs: None)
+    for index, dataset in enumerate(datasets):
+        (table,) = client.get(f"/api/datasets/{dataset['id']}/tables").json()["items"]
+        approved, _ = approve(client, table["id"])
+        result = client.post(
+            f"/api/datasets/{dataset['id']}/normalize",
+            json={"mapping_id": approved["id"]},
+            headers={"Idempotency-Key": f"manual-normalize-{index}"},
+        )
+        assert result.status_code == 202
+        drain(factory, worker)
+        current = client.get(path).json()
+        if not historical and index == 0:
+            assert current["state"] == "WAITING_REVIEW"
+            assert sorted(r["state"] for r in current["detail"]["reviews"]) == [
+                "INVALIDATED",
+                "OPEN",
+            ]
+    if historical:
+        assert current["state"] == "WAITING_REVIEW"
+        monkeypatch.setattr(workflows, "resume_prepared_reviews", original)
+        with factory() as db:
+            from studio.database import AgentWorkflowRow, ConversationRow, MembershipRow
+
+            row = db.get(AgentWorkflowRow, initial["id"])
+            if blocked == "viewer":
+                db.get(MembershipRow, ("demo", "test-owner")).role = "viewer"
+            elif blocked == "cancelled":
+                row.state = "CANCELLED_BEFORE_NEXT_STEP"
+            elif blocked == "deleted":
+                db.get(ConversationRow, row.conversation_id).deleted_at = now()
+            elif blocked == "stale":
+                for canonical in db.scalars(select(CanonicalRow)):
+                    canonical.stale = True
+            before_jobs = db.scalar(select(func.count()).select_from(JobRow))
+            original(db)
+            original(db)
+            if blocked:
+                assert db.scalar(select(func.count()).select_from(JobRow)) == before_jobs
+            db.commit()
+        if blocked:
+            with factory() as db:
+                row = db.get(AgentWorkflowRow, initial["id"])
+                assert row.state == (
+                    "CANCELLED_BEFORE_NEXT_STEP" if blocked == "cancelled" else "WAITING_REVIEW"
+                )
+                assert {r["state"] for r in row.detail["reviews"]} == {"OPEN"}
+            return
+        drain(factory, worker)
+        current = client.get(path).json()
+    assert current["state"] == "COMPLETED"
+    assert {r["state"] for r in current["detail"]["reviews"]} == {"INVALIDATED"}
+    assert [r["normalization_draft"] for r in current["detail"]["reviews"]] == [
+        r["normalization_draft"] for r in initial["detail"]["reviews"]
+    ]
+    assert (
+        len([block for block in current["detail"]["blocks"] if block["type"] == "dataset_summary"])
+        == 2
+    )
+    with factory() as db:
+        from studio.database import AuditRow
+
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 2
+        assert (
+            db.scalar(
+                select(func.count()).select_from(MappingRow).where(MappingRow.status == "APPROVED")
+            )
+            == 2
+        )
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(AuditRow)
+                .where(
+                    AuditRow.action == "AGENT_REVIEW_INVALIDATED",
+                    AuditRow.actor_id == "system",
+                )
+            )
+            == 2
+        )
+
+
+def test_historical_refresh_does_not_prepare_sources_added_after_the_original_review(
+    pg,  # noqa: F811
+    monkeypatch,
+):
+    import studio.agent_jobs as agents
+    import studio.agent_workflows as workflows
+    from studio.agent_preparation import approval_from_draft
+    from studio.contracts import DatasetProfile
+    from studio.contracts.agent import NormalizationDraft
+    from studio.database import VersionRow
+    from test_agent_postgres import mapping_fixture
+
+    client, factory, worker = pg
+    initial, decision = mapping_fixture(pg, monkeypatch)
+    review = initial["detail"]["reviews"][0]
+    table_id = review["resource_id"]
+    mappings = client.get(f"/api/tables/{table_id}/mappings").json()["items"]
+    with factory() as db:
+        table = db.get(TableRow, table_id)
+        version = db.get(VersionRow, table.dataset_version_id)
+        dataset_id = version.dataset_id
+        approval = approval_from_draft(
+            NormalizationDraft.model_validate(decision["decision"]["draft"]),
+            DatasetProfile.model_validate(table.profile),
+            True,
+        )
+    approved = client.post(
+        f"/api/mappings/{mappings[0]['id']}/approve",
+        json=approval.model_dump(mode="json"),
+    )
+    assert approved.status_code == 200
+    original = workflows.resume_prepared_reviews
+    monkeypatch.setattr(workflows, "resume_prepared_reviews", lambda *args, **kwargs: None)
+    assert (
+        client.post(
+            f"/api/datasets/{dataset_id}/normalize",
+            json={"mapping_id": approved.json()["id"]},
+            headers={"Idempotency-Key": "historical-manual"},
+        ).status_code
+        == 202
+    )
+    drain(factory, worker)
+    response = client.post(
+        "/api/datasets/uploads",
+        data={"project_id": initial["context"]["project_id"], "request_ai_mapping": "false"},
+        files={"files": ("later.csv", b"Unknown code,Total\n0009,18.50\n", "text/csv")},
+    )
+    assert response.status_code == 202
+    drain(factory, worker)
+    monkeypatch.setattr(workflows, "resume_prepared_reviews", original)
+    monkeypatch.setattr(
+        agents, "model_call", lambda *args, **kwargs: pytest.fail("Unexpected model call")
+    )
+    with factory() as db:
+        original(db)
+        db.commit()
+    drain(factory, worker)
+    current = client.get(f"/api/agent/workflows/{initial['id']}").json()
+    assert current["state"] == "PARTIAL"
+    assert current["detail"]["reviews"][0]["state"] == "INVALIDATED"
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 1
+        assert (
+            db.scalar(
+                select(func.count()).select_from(MappingRow).where(MappingRow.status == "APPROVED")
+            )
+            == 1
+        )
+
+
 def test_chat_upload_prepares_reviews_from_profiles_without_provider_or_approval(pg, monkeypatch):  # noqa: F811
     import studio.agent_jobs as agents
 

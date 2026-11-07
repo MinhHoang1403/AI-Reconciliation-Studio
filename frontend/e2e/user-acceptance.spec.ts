@@ -80,6 +80,7 @@ for(const scenario of manifest.datasets){
       expect(artifacts.canonical_datasets[0].row_count).toBe(f.rows);
       await page.locator('.sidebar').getByRole('button',{name:'AI Assistant',exact:true}).click();
       await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeEnabled();
+      await expect(page.getByRole('region',{name:'Quyết định cần xác nhận',exact:true}).filter({hasText:f.name})).toHaveCount(0);
     }
     const normalizeMs=Date.now()-start-uploadMs;
     const catalogue=await(await page.request.get(`/api/projects/${projectId}/canonical-catalogue`)).json();

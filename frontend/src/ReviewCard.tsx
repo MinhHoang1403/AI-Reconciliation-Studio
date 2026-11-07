@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "./api";
+import { api, apiPages } from "./api";
 import { Notice, Spinner } from "./components";
 import type { DraftField, NormalizationDraft, Review, Workflow, MappingAssessment } from "./agentTypes";
 import { label, type Plan, type Catalogue, type Slot } from "./reconciliationTypes";
@@ -234,11 +234,13 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
         if (review.kind !== "RECONCILIATION")
             return;
         const controller = new AbortController();
-        void api<{
-            items: Catalogue[];
-        }>(`/projects/${workflow.context.project_id}/canonical-catalogue`, { signal: controller.signal })
+        const sources=review.plan || review.planning_request;
+        const selected=sources ? new URLSearchParams([
+            ["canonical_ids",sources.left.canonical_id],["canonical_ids",sources.right.canonical_id],
+        ]).toString() : "";
+        void apiPages<Catalogue>(`/projects/${workflow.context.project_id}/canonical-catalogue${selected ? `?${selected}` : ""}`, { signal: controller.signal })
             .then(data => { if (!controller.signal.aborted){
-            setCatalogue(data.items);if(!review.plan&&!cached?.plan)setPlan(proposedPlan(review, data.items));} })
+            setCatalogue(data);if(!review.plan&&!cached?.plan)setPlan(proposedPlan(review, data));} })
             .catch(err => { if (!controller.signal.aborted)
             setError(String(err)); });
         return () => controller.abort();
