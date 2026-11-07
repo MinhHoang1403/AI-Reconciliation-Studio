@@ -48,7 +48,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     "import csv,sys;from openpyxl import Workbook;w=Workbook();s=w.active;s.title='Deliveries';[s.append(r) for r in csv.reader(open('../tests/fixtures/delivery-confirmations.csv',encoding='utf-8'))];w.save(sys.argv[1])",
     xlsxPath,
   ]);
-  const names = [`reference-${marker}.csv`, `counterpart-${marker}.xlsx`];
+  const names = [`reference-${marker}_2026_10.csv`, `counterpart-${marker}.xlsx`];
   for (let i = 0; i < 2; i++) {
     await page
       .getByRole("button", { name: "Tải dữ liệu", exact: true })
@@ -346,9 +346,10 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   await page.getByRole("button", { name: "Tải dữ liệu", exact: true }).click();
   const repeatUpload = page.getByRole("dialog", { name: "Tải nguồn dữ liệu", exact: true });
   const revised = (await readFile("../tests/fixtures/shipments.csv", "utf8"))
-    .replace("Parcel A", "Parcel A repeat");
+    .replace("Parcel A", "Parcel A repeat")
+    .replaceAll("2026-10-", "2026-11-");
   await repeatUpload.getByLabel("Chọn tệp dữ liệu").setInputFiles({
-    name: names[0],
+    name: names[0].replace("_2026_10", "_2026_11"),
     mimeType: "text/csv",
     buffer: Buffer.from(revised),
   });
@@ -360,6 +361,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   await page.getByRole("button", { name: "Tự chuẩn bị", exact: true }).click();
   await page.getByRole("button", { name: "Xem bản chuẩn hóa đã duyệt", exact: true }).click();
   await expect(page.getByRole("cell", { name: "Parcel A repeat", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /2026-11-01/ })).toBeVisible();
   expect(
     (await (await page.request.get("/api/settings")).json())
       .gemini_requests_used,

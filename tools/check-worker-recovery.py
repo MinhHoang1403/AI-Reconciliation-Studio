@@ -206,7 +206,16 @@ with SessionFactory() as db:
         )
         raw_ref = next(item for item in artifacts["items"] if item["kind"] == "raw")
         assert raw_ref["sha256"] == hashlib.sha256(raw).hexdigest()
-        assert len([item for item in artifacts["items"] if item["kind"] == "parsed"]) == 1
+        (table,) = (
+            client.get(f"/api/datasets/{dataset['id']}/tables").raise_for_status().json()["items"]
+        )
+        parsed_id = table["parsed"]["artifact"]["id"]
+        prepared = table["prepared"]
+        assert prepared["source_artifact_id"] == parsed_id and prepared["row_count"] == rows
+        assert {item["id"] for item in artifacts["items"] if item["kind"] == "parsed"} == {
+            parsed_id,
+            prepared["prepared_artifact_id"],
+        }
         for _ in range(180):
             workflow = client.get(f"/api/agent/workflows/{workflow_id}").json()
             if workflow["state"] == "COMPLETED":

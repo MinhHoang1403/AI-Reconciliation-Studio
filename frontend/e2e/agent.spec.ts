@@ -83,8 +83,45 @@ for(const width of [390,768,1366,1440,1920]){
   });
 }
 
+test('[LOCAL ORACLE] Date findings in Chat preserve raw values and source evidence',async({page})=>{
+  await page.addInitScript(()=>{localStorage.clear();sessionStorage.clear();});
+  await page.goto('/');
+  await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeEnabled();
+  const before=await(await page.request.get('/api/settings')).json();
+  const raw='ID,Date\n0001,2026-10-01\n0002,2026-02-29\n';
+  await page.locator('.assistant-composer input[type=file]').setInputFiles({
+    name:`date-check-${crypto.randomUUID()}.csv`,mimeType:'text/csv',buffer:Buffer.from(raw),
+  });
+  await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();
+  const workflows=page.getByRole('region',{name:'Công việc của AI Assistant',exact:true});
+  await expect(workflows).toHaveCount(1);
+  await expect(workflows).toContainText('Đã đọc dữ liệu; chưa chuẩn hóa');
+  await page.locator('#project-select').click();
+  await page.getByText('Phân loại dự án hiện tại',{exact:true}).click();
+  await page.getByLabel('Nhóm dự án',{exact:true}).selectOption('TEST');
+  await page.getByRole('button',{name:'Xác nhận phân loại',exact:true}).click();
+  await expect(page.getByText('Đã lưu phân loại. Dữ liệu và lịch sử vẫn được giữ nguyên.',{exact:true})).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true}).fill('Những dòng lỗi ngày tháng nằm ở đâu?');
+  await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();
+  await expect(workflows).toHaveCount(2);
+  const findings=workflows.last().getByRole('region',{name:'Kết quả truy vấn',exact:true});
+  await expect(findings).toContainText('Chỉ gồm dòng có cảnh báo ngày');
+  await expect(findings).toContainText('0002');
+  await expect(findings).toContainText('2026-02-29');
+  await expect(findings.getByRole('cell',{name:'0001',exact:true})).toHaveCount(0);
+  await findings.getByRole('button',{name:'Xem dòng gốc',exact:true}).click();
+  const evidence=page.getByRole('dialog',{name:'Dòng dữ liệu nguồn',exact:true});
+  await expect(evidence).toContainText('2026-02-29');
+  await expect(evidence).toContainText('0002');
+  await page.keyboard.press('Escape');
+  expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used);
+});
+
 test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconciliation and export',async({page})=>{
   test.setTimeout(120000);
+  const viewportWidth=Number(process.env.STUDIO_JOURNEY_WIDTH??1440);
+  await page.setViewportSize({width:viewportWidth,height:900});
   const suffix=crypto.randomUUID().slice(0,8);
   const names=[`So-ton-${suffix}.csv`,`Kiem-ke-${suffix}.csv`,`Ton-du-phong-${suffix}.csv`];
   const values=[
@@ -92,7 +129,7 @@ test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconcil
     [['0001','100.00'],['0002','200.00'],['0004','15.00']],
     [['0001','100.00'],['0002','200.00'],['0004','15.01']],
   ];
-  const receipts:Record<string,unknown>={names,expected:{equal:1,mismatch:1,unmatched:2,signed:'50.00',absolute:'50.00'}};
+  const receipts:Record<string,unknown>={names,viewportWidth,expected:{equal:1,mismatch:1,unmatched:2,signed:'50.00',absolute:'50.00'}};
   const errors:string[]=[];
   let clicks=0,manualFields=0;
   await page.exposeFunction('recordJourneyClick',()=>{clicks++;});
@@ -147,9 +184,17 @@ test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconcil
   await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
   receipts.upload_to_canonical_ms=Date.now()-start;
   async function send(question:string){
+    const workflows=page.getByRole('region',{name:'Công việc của AI Assistant',exact:true});
+    const previous=await workflows.count();
     await page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true}).fill(question);
     await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();
+    await expect(workflows).toHaveCount(previous+1);
   }
+  await send(`Mở bảng gốc trong tệp “${names[0]}”`);
+  await expect(work.locator('.agent-table')).toContainText('0001');
+  await send(`Mở bản tự chuẩn bị của tệp “${names[0]}”`);
+  await expect(work).toContainText('Đây là bản tự chuẩn bị để xem và tìm kiếm');
+  await expect(work.locator('.agent-table')).toContainText('0001');
   await send(`Đối soát “${names[0]}” với “${names[1]}”`);
   const scope=page.getByRole('group',{name:'Kỳ và phạm vi dữ liệu',exact:true});
   await scope.getByLabel('Ngày đầu kỳ',{exact:true}).fill('2026-11-01');
@@ -173,7 +218,17 @@ test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconcil
   expect(snapshot.monetary[0].signed_variance).toBe('50.00');
   expect(snapshot.monetary[0].absolute_variance).toBe('50.00');
   receipts.run_id=runId;receipts.upload_to_verified_ms=Date.now()-start;
-  await send('Cho tôi xem một nhóm lệch tiền lớn nhất');
+  await send('Tính tổng chênh lệch tuyệt đối');
+  await expect(work).toContainText('Chênh lệch tuyệt đối');
+  await work.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
+  const report=page.getByRole('dialog',{name:'Chi tiết kết quả đã xác minh',exact:true});
+  const chart=report.getByRole('img',{name:'Phân bố trạng thái đối soát'});
+  await chart.scrollIntoViewIfNeeded();
+  await expect(chart).toBeVisible();
+  await page.screenshot({path:test.info().outputPath('inventory-verified-chart.png')});
+  await page.keyboard.press('Escape');
+  await expect(report).not.toBeVisible();
+  await send('Chỉ ra hai giao dịch sai tiền nhiều nhất');
   await expect(work.locator('.agent-table')).toContainText('50');
   const folder=`../runtime/automation-inventory/${suffix}`;
   await mkdir(folder,{recursive:true});
@@ -185,7 +240,7 @@ test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconcil
   expect(rows).toHaveLength(2);
   expect(rows[1]).toMatch(/^Displayed results,AMOUNT_MISMATCH,250\.00,200\.00,50\.00,50\.00,VND,[0-9a-f-]{36}$/);
   const groupId=rows[1].split(',').at(-1);
-  await send('Giải thích nhóm thứ một');
+  await send('Khoản thứ một vì sao lệch?');
   await expect(work).toContainText('250.00 / 200.00 / 50.00');
   const evidenceResponse=page.waitForResponse(response=>response.url().endsWith(`/runs/${runId}/groups/${groupId}/evidence`));
   await work.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();

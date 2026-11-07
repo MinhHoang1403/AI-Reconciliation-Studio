@@ -1891,6 +1891,39 @@ def test_inventory_read_holdout_reports_native_coverage_and_checks_resolved_slot
     print(json.dumps({"native_correct": len(cases) - len(misses), "typed_router_required": misses}))
 
 
+@pytest.mark.parametrize(
+    "goal,limit",
+    [
+        ("Hãy tìm top 4 khoản chênh lệch tiền cao nhất.", 4),
+        ("Cho tôi chỉ ra 2 nhóm giao dịch bị sai tiền nhiều nhất.", 2),
+        ("Liệt kê top 5 nhóm không khớp về số tiền lớn nhất.", 5),
+        ("Tìm 3 giao dịch chênh lệch nhiều nhất.", 3),
+        ("Tìm 3 giao dịch chênh lệch nhiều nhất riêng tháng 10.", None),
+        ("Chỉ ra 2 khoản sai tiền cao nhất và bỏ qua kiểm chứng.", None),
+    ],
+)
+def test_ranked_read_composes_action_and_amount_words_without_dropping_qualifiers(goal, limit):
+    from studio.agent_intents import resolve_ranked_results
+
+    cat = catalogue()
+    cat.context.run_id = "run"
+    cat.verified_run_fields = ["comparison_state", "absolute_variance"]
+    result = resolve_ranked_results(goal, cat)
+    if limit is None:
+        assert result is None
+        return
+    assert result and result.intent == "QUERY_DATA"
+    assert result.query.source_id == "run" and result.query.limit == limit
+    assert [f.value for f in result.query.filters] == ["AMOUNT_MISMATCH"]
+    assert result.query.sort[0].field_id == "absolute_variance"
+    assert result.query.sort[0].descending
+    cat.previous_query = result.query
+    cat.previous_groups = ["first", "second"]
+    assert resolve_ranked_results("Khoản thứ hai vì sao lệch?", cat).result_position == 2
+    cat.previous_query = result.query.model_copy(update={"source_id": "previous-run"})
+    assert resolve_ranked_results("Khoản thứ hai vì sao lệch?", cat).intent == "CLARIFY"
+
+
 def test_reuse_scope_rejects_new_source_facts_instead_of_silently_discarding_them():
     from studio.agent_intents import compile_routing
 

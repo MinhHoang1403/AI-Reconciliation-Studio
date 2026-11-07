@@ -40,9 +40,21 @@ Khi gửi câu mới, Chat đưa bạn xuống nội dung mới nhất. Khi AI t
 2. Chọn tệp hoặc sheet vừa tải. Sau khi đọc xong, chuyển giữa **Giá trị gốc**, **Tự chuẩn bị** và **Cảnh báo / lỗi**. Dùng **Xem nguồn** để truy về dòng gốc.
 3. Khi cần xác nhận nghĩa của cột, mở **AI Smart Setup**. Sau khi duyệt và chuẩn hóa, chọn **Xem bản chuẩn hóa đã duyệt** để xem bản dùng tiếp cho đối soát.
 
-Chủ không gian có thể mở **Tự áp dụng cho lần tải tương thích** tại mapping đã duyệt và có bản chuẩn hóa không lỗi. Quyền này áp dụng cho tệp cùng tên, cùng cấu trúc và phạm vi trong dự án. Hệ thống kiểm toàn bảng khi tải lại. Nếu phát hiện thay đổi cần xác nhận, bạn vẫn có bản tự chuẩn bị và bản nháp để kiểm tra.
+Chủ không gian có thể mở **Tự áp dụng cho lần tải tương thích** tại mapping đã duyệt và có bản chuẩn hóa không lỗi. Quyền này áp dụng trong cùng dự án và phạm vi nghiệp vụ. Tên tệp có thể đổi một kỳ như `2026_10` thành `2026_11`. Hệ thống kiểm cách ghép cột và toàn bảng khi tải lại. Nếu phát hiện thay đổi cần xác nhận, bạn vẫn có bản tự chuẩn bị và bản nháp để kiểm tra.
 
 Trong Chat, chọn một tệp có một bảng làm ngữ cảnh rồi gửi **“Xem bản tự chuẩn bị”** hoặc **“Đếm số dòng dữ liệu tự chuẩn bị”**. Hai yêu cầu này dùng dữ liệu đã lưu và không cần gọi model. Nếu chưa có bản tự chuẩn bị hoặc đang chọn nhiều nguồn, hệ thống hướng dẫn chọn lại. Ý nghĩa tiền và điều kiện đối soát vẫn cần được xác nhận ở bước nghiệp vụ.
+
+### Hoàn thành một lượt đối soát trong Chat
+
+1. Tạo dự án và đính kèm các tệp bằng dấu cộng. Có thể để trống ô hỏi rồi bấm gửi. Chờ bảng xem trước và thẻ **Quyết định cần xác nhận**.
+2. Trên từng thẻ, xác nhận mỗi dòng là gì, cột mã dùng làm khóa, múi giờ và ý nghĩa khoản tiền. Mở phần chi tiết nếu cần chỉnh cách đọc ngày hoặc số. Khi mọi thẻ đã đủ dữ kiện, nút **Duyệt 3 nguồn và chuẩn hóa** duyệt các thẻ đã điền trong một lượt bấm.
+3. Để chọn đúng nguồn khi có nhiều tệp, gửi tên chính xác trong dấu ngoặc kép, chẳng hạn **Mở bản tự chuẩn bị của tệp “Sổ tồn.csv”**. Để xem cảnh báo ngày của nguồn đã chọn, gửi **Những dòng lỗi ngày tháng nằm ở đâu?**. Bảng cảnh báo giữ giá trị gốc, cột và vị trí dòng.
+4. Gửi **Đối soát “Sổ tồn.csv” với “Kiểm kê.csv”**, thay bằng hai tên tệp của bạn. Điền kỳ, múi giờ, thời điểm chốt và xác nhận độ phủ trên thẻ **Kỳ và phạm vi dữ liệu**. Bấm **Kiểm tra phạm vi và tìm khóa**.
+5. Kiểm khóa, khoản tiền và quan hệ nguồn được đề xuất. Nếu có nhiều khóa ngang nhau, chọn phương án đúng nghiệp vụ. Bấm **Duyệt quy tắc và đối soát** để chạy.
+6. Gửi **Tính tổng chênh lệch tuyệt đối** rồi bấm **Mở kết quả và bằng chứng** để xem báo cáo và biểu đồ. Gửi **Cho tôi xem ba nhóm lệch tiền lớn nhất** để xem bảng, rồi **Giải thích nhóm thứ hai** để đọc đúng nhóm thứ hai của bảng.
+7. Gửi **Xuất danh sách trên CSV** để tải trang kết quả vừa xem. Gửi **Xuất báo cáo Excel của lần đối soát này** để tải báo cáo đầy đủ. Reload hoặc mở lại hội thoại trong **Lịch sử** để đọc kết quả đã lưu.
+
+Nếu một bước báo thiếu dữ kiện, bổ sung đúng câu hỏi trên thẻ. Khi model báo lỗi kết nối hoặc hết thời gian, giữ nội dung và thông báo để kiểm tra. Các yêu cầu xem dữ liệu và kết quả đã đủ ngữ cảnh ở trên có thể xử lý trực tiếp từ dữ liệu đã lưu.
 
 ## 2. Những từ cần hiểu
 

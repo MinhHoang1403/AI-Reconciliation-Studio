@@ -11,6 +11,10 @@ Số liệu nghiệm thu mới nhất nằm ở đầu [IMPLEMENTATION_STATUS](I
 3. Chạy `npm --prefix frontend run test:e2e` tuần tự, một runner, retries 0. Chờ tác vụ AI kết thúc trước khi chạy. Kiểm candidate dùng `STUDIO_FRONTEND_DIST=1`; nghiệm thu Docker bỏ biến này.
 4. Trước đổi image, chờ queue hết tác vụ và tạo backup/restore bằng lệnh dưới. Không ghi dữ liệu qua UI trong lúc chụp backup. Công cụ tự từ chối nếu metadata thay đổi; giữ cả receipt thất bại.
 
+Ca `agent.spec.ts` với tên `Three new inventory sources` thao tác thật từ upload ba tệp đến duyệt gộp, xem raw/prepared, xác nhận kỳ, đối soát, biểu đồ, giải thích, bằng chứng và hai dạng xuất. Có thể đặt `STUDIO_JOURNEY_WIDTH` thành 390/768/1366/1440/1920 rồi chạy riêng ca này để kiểm cả hành trình tại từng kích thước. Chạy tuần tự để các phép đo thao tác không bị ảnh hưởng bởi runner khác. Receipts nằm ở `runtime/automation-inventory/<id>/receipt.json`.
+
+Ca `Date findings` kiểm bản tự chuẩn bị có ngày không hợp lệ, mã có số 0 đầu và mở dòng gốc ngay trong Chat. Product Journey bật quyền tái áp dụng qua UI rồi tải tệp đổi kỳ `2026_10` sang `2026_11`, xác nhận bản chuẩn hóa mới xuất hiện mà không duyệt lại.
+
 ```powershell
 docker compose cp tools/check-backup-restore.py worker:/tmp/studio-backup-check.py
 docker compose exec -T worker python /tmp/studio-backup-check.py

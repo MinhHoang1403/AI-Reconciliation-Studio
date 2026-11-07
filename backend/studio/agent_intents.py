@@ -465,9 +465,11 @@ def resolve_ranked_results(goal: str, catalogue: IntentCatalogue) -> AgentIntent
     number = r"([1-9][0-9]?|mot|hai|ba|bon|nam)"
     run_id = catalogue.context.run_id
     ranked = re.fullmatch(
-        r"(?:(?:hay |cho toi |cho )?(?:xem|liet ke) |top )"
+        r"(?:(?:hay |cho toi |cho )?(?:xem|liet ke|tim|chi ra) (?:top )?|top )"
         + number
-        + r" (?:nhom(?: giao dich)?|giao dich|khoan) (?:lech tien|chenh lech) lon nhat"
+        + r" (?:nhom(?: giao dich)?|giao dich|khoan) (?:bi )?"
+        r"(?:lech tien|sai tien|chenh lech(?: tien)?|khong khop ve so tien) "
+        r"(?:lon|cao|nhieu) nhat"
         r"(?: (?:cua|trong) (?:ket qua|lan doi soat) (?:nay|dang xem))?",
         normalized,
     )
@@ -502,11 +504,18 @@ def resolve_ranked_results(goal: str, catalogue: IntentCatalogue) -> AgentIntent
             ),
         )
     ordinal = re.fullmatch(
-        r"(?:hay )?giai thich (?:nhom(?: giao dich)?|giao dich|dong) thu "
+        r"(?:hay )?giai thich (?:nhom(?: giao dich)?|giao dich|khoan|dong) thu "
         + number
         + r"(?: (?:trong|cua) bang (?:tren|vua (?:hien thi|dua|gui)))?",
         normalized,
     )
+    if ordinal is None:
+        ordinal = re.fullmatch(
+            r"(?:nhom(?: giao dich)?|giao dich|khoan|dong) thu "
+            + number
+            + r" (?:vi sao|tai sao) (?:bi )?(?:lech|sai tien|chenh lech)",
+            normalized,
+        )
     if not ordinal:
         return None
     previous = catalogue.previous_query

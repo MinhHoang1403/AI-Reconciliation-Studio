@@ -4,11 +4,52 @@
 
 Theo yêu cầu hoàn tất mới, tiếp tục trên cùng nhánh `codex/intelligent-automation-experience`. Đây là tiến độ thực thi, chưa là nghiệm thu hoặc quyền vượt các cổng còn thiếu. Matcher, Verifier, Decimal, oracle cũ, migrations và dependencies ứng dụng không đổi.
 
+### Kiểm chứng trên application source `65aed51` — 07/11/2026
+
+Image backend/worker `5a33f5976956`, frontend `e80bf2601394` cùng nhãn revision `65aed51859ef8ae0d5d1a29ba7e86a1e0f894983`. Source/image/HTTP khớp 46 tệp backend và 7 assets frontend. Bộ backend/PostgreSQL trên image đạt **558/558**, 193,84 giây, một cảnh báo TestClient deprecation. TypeScript, ESLint, build, Ruff, mypy và kiểm source/history/Markdown đã qua.
+
+Sau khôi phục dịch vụ, bộ Playwright chạy lại đạt **141/141**, 13,5 phút, retries 0. Gồm hành trình tồn kho qua Chat ở 390px, đọc cảnh báo ngày và bằng chứng gốc, đổi kỳ tên tệp để tái áp dụng mapping, cùng 11 bộ UAT giữ oracle. Sửa nhận diện từ vựng xếp hạng sau lượt này đạt **564/564 backend/PostgreSQL trên source**, 192,19 giây. Số 141 trên image `65aed51` chưa thay kiểm chứng image chứa thay đổi từ vựng đó.
+
+Lượt trình duyệt trước bị ngắt khi các container dừng, với `ECONNRESET` rồi `ERR_CONNECTION_REFUSED`. Sau khởi động lại đúng Compose project, 4/4 dịch vụ healthy. PostgreSQL hoàn tất phục hồi WAL. Kiểm tra baseline không có bản ghi thay đổi hoặc bị thiếu, và mọi checksum artifact đã công bố còn khớp. Các ca bị ngắt được chạy lại.
+
+Hai oracle tài chính chạy lại trên runtime hiện hành. Tổng ba nguồn vẫn 5.487 dòng, gồm 5.458 hợp lệ và 29 lỗi. Cặp đơn hàng/thanh toán có 2.040 khớp, 200 lệch, 215 thiếu đối ứng, chênh lệch có dấu +7.867 và tuyệt đối 60.883 VND. Cặp thanh toán/sao kê có 323 khớp, 40 lệch, 31 thiếu đối ứng, có dấu −8.306 và tuyệt đối 11.812 VND. Cả hai giữ `PARTIAL_VERIFIED`, vượt các kiểm chứng độc lập và có Excel 8 trang chứa cùng snapshot, không có ô công thức. Receipt ở `runtime/automation-chat-quality-financial/receipt.json`.
+
+Gemini Planner LIVE đã trả đúng plan và oracle cặp thứ nhất, dùng một call, ledger 382→383. Lượt đọc holdout R11 sau đó gặp HTTP503 sau một call, ledger 383→384. Tuyến này dừng tại R11, mười câu còn lại chưa gọi. Qwen dưới tải chạm giới hạn 90 giây, `OLLAMA_UNAVAILABLE`, `delivery_unknown=true`, đúng một attempt và không gửi lại sau restart. Các lỗi này chặn nghiệm thu AI hiện hành. Receipts lần lượt ở `runtime/automation-chat-quality-live-planner-GEMINI.json`, `runtime/automation-chat-quality-read-live.json` và `runtime/automation-workload-qwen.json`.
+
+Lượt Qwen thành công trước đó có 3.018 token vào và 458 token ra, 76,97 giây. Trong số đo của provider, load mất 6,81 giây, prefill 4,16 giây và decode 65,89 giây. Lượt dưới tải không trả token/timing của model, nên không suy lại các con số đó. Payload là 36.216 byte, context limit 8.192. Kiểm schema không gọi inference xác nhận không có definition thừa có thể bỏ trực tiếp. Trong lúc model đang tải, RAM host có mẫu còn 10.484 KiB. `/api/ps` ghi model dùng khoảng 4,19/6,60 GB ở VRAM/tổng bộ nhớ. Đây là quan sát cùng lượt timeout, chưa chứng minh quan hệ nhân quả. Cấu hình GPU, model và timeout giữ nguyên.
+
+### Worker và tải đồng thời A–J
+
+Hai lượt đo dùng một worker ứng dụng với hai luồng gửi upload. Mỗi lượt có 5 tệp 20 dòng, 2 tệp 1.000 dòng và 3 tệp 75.000 dòng. Lượt Qwen bắt đầu khi job inference đã `RUNNING`. Cả 10 upload được gửi và công bố xong trước khi job inference kết thúc. Từng parse job có một attempt, số dòng và mã có số 0 đầu đúng ở query `PREPARED`.
+
+| Phép đo, ms, p50/p95 | Cục bộ, n=3 tệp 75k | Đồng thời Qwen, n=3 tệp 75k |
+| --- | --- | --- |
+| Upload được tiếp nhận | 125,22 / 130,89 | 120,41 / 233,13 |
+| Upload → raw và prepared quan sát được | 3.278,53 / 3.290,01 | 3.541,84 / 3.741,08 |
+| Queue wait theo PostgreSQL | 602,79 / 678,54 | 484,58 / 590,98 |
+| Parse/profile/prepared trong attempt | 2.185,55 / 2.332,35 | 2.764,45 / 2.777,56 |
+| Query prepared | 86,91 / 90,31 | 94,27 / 123,74 |
+
+Số mẫu nhỏ và p95 dùng nội suy inclusive. Thời gian prepared là thời điểm client quan sát được sau polling 400 ms. Tệp 20 dòng có p50/p95 prepared 1.055,70/1.081,60 ms cục bộ và 1.142,17/1.326,62 ms khi Qwen bận. Bộ nhớ worker cao nhất trong mẫu là 187,6 MiB cục bộ và 155,7 MiB khi Qwen bận. CPU worker cao nhất trong mẫu là 101,99% và 104,76%, theo thang Docker. Host RAM, VRAM và mẫu Docker nằm trong hai receipt `automation-workload-{native,qwen}.json`. Mẫu tài nguyên không phải peak tuyệt đối.
+
+| Kịch bản | Bằng chứng và kết quả |
+| --- | --- |
+| A/B inference dài + tệp nhỏ/75k | LIVE Qwen chạy 90,48 giây rồi timeout, cả 10 parse hoàn thành trong khoảng inference |
+| C mapping + parse/profile/query | PostgreSQL giữ provider giả lập, parse và query prepared của project khác vẫn hoàn tất |
+| D reconciliation + export + upload | Ba job nhận đồng thời qua API, đều một attempt và vượt oracle. Attempt reconcile 95,84 ms, export 99,45 ms, parse 68,23 ms. Worker thực hiện công việc xác định tuần tự |
+| E/F upload đồng thời, cùng project | Hai producer, hai project xen kẽ, 10 upload mỗi lượt và số liệu theo từng job |
+| G hai workspace hợp lệ | PostgreSQL với hai phiên owner thật trong schema cô lập, cùng parse dữ liệu, trả 404 khi đọc job/artifact của workspace khác |
+| H worker restart trong job | LIVE SIGKILL khi chuẩn hóa 75k, reclaim lease, 2 attempt, đúng 1 canonical, workflow tiếp tục COMPLETED, 0 cloud, toàn hành trình 18,39 giây |
+| I timeout/unknown delivery | Qwen LIVE một call cùng tests PostgreSQL về unknown delivery, lưu lỗi và không tự gửi lại |
+| J retry lỗi tạm | PostgreSQL crash trước publish, lease/fencing và retry không công bố trùng |
+
+Công cụ recovery cũ giả định chỉ một artifact loại `parsed`. Bản tự chuẩn bị dùng cùng loại lưu trữ làm assertion đó thất bại sau khi recovery đã thành công. Công cụ sửa để kiểm đúng ID parsed gốc và prepared tham chiếu nó. Lượt fault injection chạy lại qua guard không có job ngoài phạm vi đã đạt. Receipt ở `runtime/worker-recovery.json`, log cũ vẫn giữ.
+
 **Mapping Memory:** đã tái hiện bốn failure trên source cũ với đổi kỳ tên tệp, đảo cột, thêm ghi chú và kết hợp ba thay đổi. Cả bốn giữ nguồn đọc được nhưng không tạo canonical. Bản sửa gắn lại các cột theo tên duy nhất, giữ mọi trường được duyệt, chỉ bỏ qua cột ghi chú thuần văn bản được thêm. Tên tệp chỉ được thay một token tháng hợp lệ trong cùng mẫu. Không fuzzy key, suy currency/timezone hoặc suy nghĩa cột từ giá trị trùng nhau. Preflight toàn bảng so định dạng theo trường đích thay vì vị trí cột. Mapping mới giữ signature/evidence nguồn đích và receipt có `column_bindings`; chữ ký người duyệt gốc không đổi.
 
 Trước sửa: **157 PostgreSQL PASS / 4 FAIL**, 139,42 giây. Sau sửa: **526/526 Backend/PostgreSQL PASS**, 149,59 giây, gồm 19 ca nhận diện/từ chối drift và bốn ca API/Worker mới. Ruff, mypy51files và repository/known-secret/history/path checks đạt. Một cảnh báo TestClient deprecation giữ nguyên. Bằng chứng ở `runtime/automation-reuse-{before,after}.log`. Lượt đo source ban đầu thực hiện khi Docker còn chạy `8db257a`.
 
-Đặc tả độc lập `tests/fixtures/mapping-business-specifications.json` định nghĩa bảy miền, 52 vai trò cột và 28 trường hợp mơ hồ ở mỗi split. Development/validation/holdout có cách đặt tên riêng; nhãn lấy từ mô tả nghiệp vụ. Các cột tiền cố ý có cùng phân bố, mã cũng có cùng giá trị để không thể dùng overlap thay nghĩa nghiệp vụ. Holdout chưa dùng để chỉnh thuật toán. `tools/benchmark-mapping.py` chạy từng phương án trong tiến trình riêng, so alias hiện tại, RapidFuzz+profile, Valentine COMA có instances và hybrid. Đây là phép đo gợi ý cột, không tự đo grain/timezone hoặc false auto-approval. Hai nội dung sau cần kiểm riêng qua workflow thật.
+Đặc tả độc lập `tests/fixtures/mapping-business-specifications.json` định nghĩa bảy miền, 52 vai trò cột và 28 trường hợp mơ hồ ở mỗi split. Development/validation/holdout có cách đặt tên riêng, nhãn lấy từ mô tả nghiệp vụ. Các cột tiền cố ý có cùng phân bố, mã cũng có cùng giá trị để không thể dùng overlap thay nghĩa nghiệp vụ. Holdout của lượt baseline được chốt trước khi đo bốn phương án. Kết quả chạy lại sau sửa được ghi riêng là replay. `tools/benchmark-mapping.py` chạy từng phương án trong tiến trình riêng, so alias hiện tại, RapidFuzz+profile, Valentine COMA có instances và hybrid. Đây là phép đo gợi ý cột, không tự đo grain/timezone hoặc false auto-approval. Hai nội dung sau cần kiểm riêng qua workflow thật.
 
 Valentine 1.1.0 (Apache-2.0) chạy trong thư mục thử nghiệm ngoài Git với 29 gói bổ sung, khoảng 662 MiB cho toàn thư mục thử nghiệm dùng chung với phép đo Pandera trước đó. NLTK stopwords nằm trong runtime của phép thử. Bản ứng dụng giữ dependency hiện hành. Nguồn phương pháp gồm [Valentine matchers](https://delftdata.github.io/valentine/matchers/), [nghiên cứu](https://delftdata.github.io/valentine/research/) và [RapidFuzz 3.14.6](https://rapidfuzz.github.io/RapidFuzz/Usage/fuzz.html).
 
@@ -70,7 +111,7 @@ Mỗi cột thời gian là một quan sát, chưa đủ mẫu để suy ra mứ
 
 Planner có 10 ca nghiệp vụ tổng hợp mới với khóa trái/phải tên khác nhau và tiền bằng nhau. Ba ca 1:1, 1:N và N:1 trả đúng khóa và số đối ứng theo oracle. Bảy ca còn lại giữ trạng thái cần quyết định khi không có khóa khớp, có trùng khóa, hai phía đều nhiều, lệch cơ sở tiền/currency hoặc thiếu grain/coverage. Đây là bằng chứng cho Planner xác định, tách với các lần chạy provider LIVE.
 
-Holdout `tests/fixtures/agent-read-holdout.json` có 32 yêu cầu và ngữ cảnh kho/phí/run, chấm cả nguồn, run, filter, sort, giới hạn, thứ tự và định dạng. Lượt đầu tuyến xác định xử lý đúng 17/32. Replay sau bổ sung cụm mở bảng và giới hạn phạm vi xuất đạt 21/32. Mười một câu còn lại cần tuyến định tuyến có kiểu hoặc câu hỏi làm rõ. Điểm này chưa đo độ chính xác end-to-end của model. Chat đọc cảnh báo ngày từ bản tự chuẩn bị và đối chiếu vị trí dòng, nhãn cột cùng giá trị gốc. Phạm vi chỉ gồm cảnh báo ngày đã phát hiện trong artifact.
+Holdout `tests/fixtures/agent-read-holdout.json` có 32 yêu cầu và ngữ cảnh kho/phí/run, chấm cả nguồn, run, filter, sort, giới hạn, thứ tự và định dạng. Lượt đầu tuyến xác định xử lý đúng 17/32. Replay sau bổ sung cụm mở bảng và giới hạn phạm vi xuất đạt 21/32. Mở rộng từ vựng hành động/xếp hạng trong cùng grammar đạt 23/32 trên replay, gồm câu R11 và cách hỏi “khoản thứ hai vì sao lệch”. Chín câu còn lại cần tuyến định tuyến có kiểu hoặc câu hỏi làm rõ. Bộ sáu ca bổ sung kiểm các biến thể xếp hạng, từ chối mất điều kiện tháng và giữ kiểm tra run khi hỏi theo thứ tự. Các điểm replay chưa đo độ chính xác end-to-end của model. Chat đọc cảnh báo ngày từ bản tự chuẩn bị và đối chiếu vị trí dòng, nhãn cột cùng giá trị gốc. Phạm vi chỉ gồm cảnh báo ngày đã phát hiện trong artifact.
 
 Lượt hồi quy trên source đạt **558/558** trước chỉnh sửa alias và phạm vi xuất. Bộ trình duyệt trên `7eb4c85` ban đầu có 129 ca qua và 11 ca thủ công dừng ở bộ chọn trường trùng nhãn. Các ca này giờ mở mục đề xuất thủ công riêng rồi dùng chính biểu mẫu đó. Ca đơn hàng/thanh toán đã chạy lại thành công với oracle cũ.
 
