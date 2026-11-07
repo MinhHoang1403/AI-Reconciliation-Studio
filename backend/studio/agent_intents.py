@@ -18,7 +18,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-42"
+INTENT_REVISION = "agent-intent-43"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -88,6 +88,17 @@ def invalid_date_condition_requested(goal: str) -> bool:
         )
         for match in re.finditer(
             date + r".{0,24}" + invalid + "|" + invalid + r".{0,24}" + date, normalized
+        )
+    )
+
+
+def count_requested(goal: str) -> bool:
+    """Bound the count capability to an explicit row-count/statistical request."""
+    return bool(
+        re.search(
+            r"\b(?:dem|bao nhieu|so luong|tong so|thong ke|phan bo|count|how many|"
+            r"number of|distribution|breakdown|so (?:ban ghi|dong|hang|giao dich|cap|nhom))\b",
+            plain_question(goal),
         )
     )
 
@@ -306,11 +317,7 @@ def validate_intents(
                 intent.intent == "QUERY_DATA"
                 and q.aggregations
                 and all(a.op == "count" for a in q.aggregations)
-                and not re.search(
-                    r"\b(?:dem|bao nhieu|so luong|tong so|thong ke|phan bo|count|how many|"
-                    r"number of|distribution|breakdown)\b",
-                    language,
-                )
+                and not count_requested(goal)
             ):
                 raise DomainError(
                     "INPUT_AMBIGUOUS",
@@ -1425,7 +1432,7 @@ def interpret_requests(
                 properties["currency_field"] = properties["metric_id"] = dict(type="null")
                 properties["aggregations"] = dict(
                     type="array",
-                    maxItems=1,
+                    maxItems=1 if any(count_requested(goal) for goal in goals) else 0,
                     items=dict(
                         type="object",
                         additionalProperties=False,
@@ -1586,8 +1593,11 @@ def interpret_requests(
                 "QUERY_DATA với PREPARED_FINDINGS, không mở toàn bộ RAW_PREVIEW và không "
                 "tạo lại bộ lọc ngày. Với hai nguồn prepared này chỉ xem hoặc count: "
                 "select_fields=[], filters=[], sort=[], group_by=[], currency_field=null, "
-                "metric_id=null, aggregations=[] hoặc count(field_id=null). Không có bản "
-                "findings hoặc chưa rõ nguồn thì CLARIFY, không bỏ điều kiện người dùng. "
+                "metric_id=null, aggregations=[] hoặc count(field_id=null). "
+                "Xem/liệt kê hàng dùng aggregations=[]; chỉ thêm count khi người dùng hỏi "
+                "đếm/số lượng/bao nhiêu. Không đổi yêu cầu xem dòng thành phép đếm. "
+                "Không có bản findings hoặc chưa rõ nguồn thì CLARIFY; "
+                "không bỏ điều kiện người dùng. "
                 "Đối soát chọn left_canonical_id/right_canonical_id bằng source_id của hai "
                 "mục source_kind=CANONICAL trong sources, không dùng ref, dataset_id hoặc "
                 "source_id của RAW_PREVIEW. Hai nguồn phải khác nhau. "

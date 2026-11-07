@@ -1871,6 +1871,7 @@ def test_provider_query_grammar_binds_field_enums_to_each_source():
         assert props["source_ref"]["enum"] == [source["ref"]]
         if source["source_kind"] in {"PREPARED", "PREPARED_FINDINGS"}:
             assert props["filters"]["maxItems"] == props["select_fields"]["maxItems"] == 0
+            assert props["aggregations"]["maxItems"] == 0
         else:
             allowed = sorted(field["id"] for field in source["fields"])
             assert props["select_fields"]["items"]["enum"] == allowed == ["code"]
@@ -1880,6 +1881,12 @@ def test_provider_query_grammar_binds_field_enums_to_each_source():
                 props["aggregations"]["items"]["properties"]["field_id"]["anyOf"][0]["enum"]
                 == allowed
             )
+    interpret_requests(
+        Capture(), ["Số hàng sau chuẩn bị là bao nhiêu?"], cat, WorkspacePolicy(), lambda: True
+    )
+    for source, query in zip(sources, captured["$defs"]["RoutingQuery"]["anyOf"], strict=True):
+        if source["source_kind"] in {"PREPARED", "PREPARED_FINDINGS"}:
+            assert query["properties"]["aggregations"]["maxItems"] == 1
 
 
 @pytest.mark.parametrize(
