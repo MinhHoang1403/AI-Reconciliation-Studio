@@ -371,17 +371,19 @@ Kết quả nghiệm thu kỹ thuật, ảnh thực tế và các ca AI LIVE cò
 
 ## 13. Kiểm thử bộ ba nguồn tháng 10/2026
 
-Dùng ba tệp tổng hợp đã tải vào dự án **TEST Đối soát 3 nguồn tháng 10-2026**. Nếu muốn làm từ đầu, tải lại bản gốc qua **Tệp đã tải → Tải tệp gốc**, sau đó tạo dự án TEST mới. Không sửa tệp, không xóa bản chuẩn hóa cũ. Ba tệp này thuộc dữ liệu kiểm thử local và không đi kèm source GitHub.
+Dùng ba tệp tổng hợp trong dự án **TEST tự động hóa ba nguồn dc786735** đã kiểm lại ngày 07/11/2026. Bật hiển thị dự án kiểm thử rồi tìm tên dự án này. Nếu muốn làm từ đầu, tải lại bản gốc qua **Tệp đã tải → Tải tệp gốc**, sau đó tạo dự án TEST mới. Ba tệp thuộc dữ liệu kiểm thử local và không đi kèm source GitHub; các bản lịch sử ở dự án **TEST Đối soát 3 nguồn tháng 10-2026** vẫn được giữ.
 
 | Tệp | Tổng dòng | Dòng hợp lệ sau chuẩn hóa | Dòng không hợp lệ | Lỗi ngày thật |
 | --- | ---: | ---: | ---: | ---: |
-| `01_don_hang_du_kien_2400.csv` | 2.418 | 2.408 | 10 | 2 |
+| `01_don_hang_du_kien_2400.csv` | 2.418 | 2.406 | 12 | 2 |
 | `02_su_kien_thanh_toan_2685.xlsx` | 2.685 | 2.674 | 11 | 5 |
-| `03_sao_ke_ngan_hang_theo_lo.csv` | 384 | 380 | 4 | 0 |
+| `03_sao_ke_ngan_hang_theo_lo.csv` | 384 | 378 | 6 | 0 |
 
-1. Tải cả ba tệp; kiểm tổng 5.487 dòng. Xác nhận ngày `%Y-%m-%d` và UTC theo quy ước của bộ thử. Với tệp 01 đã có ánh xạ được duyệt, người vận hành có thể chạy **Chuẩn hóa dữ liệu** để tạo bản `normalization-2`; giữ bản cũ để đối chiếu. Không cần duyệt lại chỉ vì cách hiển thị `YYYY-MM-DD` đã được bộ chuyển đổi hiểu đúng.
+Tổng bản chuẩn hóa theo bộ khóa hiện hành là **5.458 hợp lệ / 29 lỗi**, trên 5.487 dòng nguồn. Các bản thủ công lịch sử từng có 2.408/380 dòng hợp lệ ở nguồn 01/03 thuộc mapping trước khi dùng đầy đủ bộ khóa này; giữ bản đó để truy vết. Số cảnh báo ngày là một loại lỗi riêng, không cộng thêm vào tổng dòng lỗi.
+
+1. Tải cả ba tệp; kiểm tổng 5.487 dòng. Xác nhận ngày `%Y-%m-%d` và UTC theo quy ước của bộ thử. Chọn bản chuẩn hóa có bộ khóa như bước 3; giữ tham chiếu mapping và bản lịch sử để đối chiếu.
 2. Trong **Dòng lỗi**, kiểm tra các lỗi còn lại thuộc `EDGE_CASE`; các dòng `MAIN_VND` đã kiểm không còn lỗi. Một dòng có thể có nhiều lỗi/cảnh báo; số bản ghi lỗi có thể lớn hơn số dòng không hợp lệ. Kiểm tra USD giữ nguyên giá trị gốc, không được tính như VND.
-3. Ở nguồn 01, `scope + reference` nhận diện đơn dự kiến; `customer_code` là mã khách hàng. Ở nguồn 02, mỗi dòng là sự kiện thanh toán; giữ `payment_id`, `reference`, `batch_id`, tiền âm và trạng thái gốc. Nguồn 03 là một dòng theo lô sao kê; `gross_amount`, `net_amount` và `fee_amount` là ba cột riêng. Không dùng net để so tổng gross.
+3. Khóa chuẩn hóa của nguồn 01 là `scope + reference`; `customer_code` là mã khách hàng. Ở nguồn 02, mỗi dòng là sự kiện thanh toán với khóa `payment_id`; giữ cả `reference`, `batch_id`, tiền âm và trạng thái gốc để liên kết. Nguồn 03 là một dòng theo lô sao kê với khóa `scope + batch_id`; `gross_amount`, `net_amount` và `fee_amount` là ba cột riêng. Không dùng net để so tổng gross.
 4. Tạo hai quy tắc riêng theo mục 6. Chọn `scope = MAIN_VND` ở cả hai phía, tiền tệ VND, UTC, kỳ từ `2026-10-01` đến trước `2026-11-01`. Đáp án bên dưới dùng sai số tuyệt đối `0 VND`, quy tắc giữ dấu số tiền, có xác nhận nguồn đầy đủ trong kỳ. Nếu dùng sai số khác, số nhóm trong ngưỡng sẽ thay đổi.
 5. Đối chiếu đáp án, mở **Xem bằng chứng**, rồi xuất CSV và XLSX cho từng lần chạy. Mở lại theo đúng lần đối soát, không dùng kết quả của cặp còn lại để kiểm tiền.
 
@@ -413,7 +415,7 @@ Nếu Gemini báo giới hạn hoặc lỗi, bạn có thể chọn Qwen và g�
 
 ## 15. Thử Smart Mapping Qwen với ba tệp
 
-Lượt LIVE mới nhất tại [báo cáo mục AH](IMPLEMENTATION_STATUS.md#ah-khôi-phục-smart-mapping-với-qwen-local--05112026). Có thể mở dự án **TEST Qwen 8B — kiểm chứng ánh xạ** để đọc kết quả đã giữ trên máy. Các dự án thử cùng tên có thể thuộc những lượt thất bại trước; project của lượt đã duyệt là `510a220a-2e94-46be-9537-0940a115fa8b`. Để thử lại, tạo dự án TEST riêng và tải đúng ba tệp trong mục 13; không xóa các bản cũ.
+Lượt Smart Mapping Qwen đã thành công ngày 05/11/2026 được giữ tại [báo cáo mục AH](IMPLEMENTATION_STATUS.md#ah-khôi-phục-smart-mapping-với-qwen-local--05112026). Có thể mở dự án **TEST Qwen 8B — kiểm chứng ánh xạ** để đọc kết quả đã giữ trên máy. Các dự án thử cùng tên có thể thuộc những lượt thất bại trước; project của lượt đã duyệt là `510a220a-2e94-46be-9537-0940a115fa8b`. Lượt inference dưới tải ngày 07/11/2026 đã timeout với trạng thái gửi chưa xác định; Gemini có HTTP503 ở lượt đọc holdout. Xem trạng thái hiện hành ở đầu báo cáo, không coi lượt thành công cũ là bằng chứng provider đang ổn định. Nếu tự thử luồng này, tạo dự án TEST riêng và tải đúng ba tệp trong mục 13; không xóa các bản cũ.
 
 1. Chọn **Qwen 3:8B**, đính kèm cả ba tệp trong cùng tin nhắn. Gửi “Tôi vừa tải dữ liệu lên. Hãy kiểm tra và đề xuất cách chuẩn hóa để tôi có thể đối soát.” Qwen đọc yêu cầu, chọn tác vụ và đề xuất ngữ nghĩa từng nguồn.
 2. Chờ đủ ba thẻ **Quyết định cần xác nhận**, đúng tên nguồn, tổng 5.487 dòng. Lượt nghiệm thu mất khoảng 54 giây cho ba lần suy luận, chưa gồm thao tác người dùng. Máy thiếu RAM hoặc nạp model lại có thể lâu hơn. Không bấm gửi thêm vì đang chờ.

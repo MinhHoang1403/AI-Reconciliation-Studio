@@ -1,6 +1,141 @@
 # Trạng thái triển khai và nghiệm thu
 
-## Hoàn thiện tự động hóa — kiểm chứng đang thực hiện
+## Báo cáo hoàn thiện ứng viên `9fb6200` — 07/11/2026
+
+### A. Tổng quan
+
+**PARTIAL — còn cổng LIVE AI bị chặn; chưa phát hành hoặc hợp nhất main.** Source ứng dụng `9fb62005744169e8f7b75c99479360b45dd07519` đã push và triển khai trên đúng Compose Studio. Đã kiểm khớp 46 modules backend, 7 assets frontend và bytes phục vụ qua HTTP. Matcher, Verifier, Decimal, migrations và dependencies ứng dụng giữ nguyên.
+
+Luồng Chat đã tự chuẩn bị tệp, hiển thị bản gốc/cảnh báo, gộp xác nhận mapping, xác nhận phạm vi và khóa trước đối soát, đọc kết quả, biểu đồ, bằng chứng và xuất báo cáo. Mapping đã được cho phép tái dùng được gắn lại khi đổi kỳ tên tệp, đổi thứ tự hoặc thêm ghi chú không quan trọng, qua preflight và audit. Hai lỗi tích hợp mới về thẻ chờ thủ công và danh mục vượt giới hạn trang đã sửa từ nguyên nhân gốc.
+
+Đối chiếu tài liệu: `Rules.md` §9.1 còn ghi sidebar ba mục theo quyết định Assistant-only cũ. Yêu cầu mới trong master prompt §0 và §IV.4, cùng `AUTOMATION_PRODUCT_PLAN.md`, cho phép Dữ liệu/Đối soát/Báo cáo làm nơi quản lý và kiểm tra sâu. Áp dụng chỉ dẫn người dùng mới cho giao diện hiện hành; Chat vẫn là trung tâm và hành trình Chat không phụ thuộc việc mở các trang này. Không thay hợp đồng tài chính từ khác biệt mô tả giao diện.
+
+### B. AP-01 đến AP-15
+
+`PASS LOCAL` chỉ nghiệm thu phạm vi có bằng chứng cục bộ. `PARTIAL/BLOCKED` không được đổi thành PASS nhờ test mock. Các số liệu lịch sử bên dưới luôn gắn revision riêng; không cộng lượt replay thành số ca độc lập.
+
+| Cổng và yêu cầu | Source/hợp đồng | Kiểm chứng và evidence runtime | Trạng thái | Giới hạn |
+| --- | --- | --- | --- | --- |
+| AP-01 upload tự khởi chạy | upload/agent API, `PREPARE_UPLOAD` | Image 573; Chat ba tệp mới tại `automation-inventory/*/receipt.json` | PASS LOCAL | Nguồn mới còn cần nghĩa nghiệp vụ |
+| AP-02 raw khi AI lỗi | parser, ArtifactRef, DataQuery | Image 573; raw browser; 10 parse trong Qwen LIVE bận ở `automation-workload-qwen.json` | PASS LOCAL | Provider timeout được giữ riêng |
+| AP-03 prepared không giả approved | PreparedTable, checksum/revision | Image 573; date-findings browser và prepared75k | PASS LOCAL | Prepared chưa đủ điều kiện đối soát |
+| AP-04 toàn bảng và lineage | preflight, normalization | Image 573, oracle 5.487/5.458/29, source evidence | PASS LOCAL | Không suy nghiệp vụ từ kiểu dữ liệu |
+| AP-05 memory đúng scope | mapping grants/signature/bindings | Image 573, drift/revoke/isolation, kỳ 10→11 browser | PASS LOCAL | Chỉ reuse trong quyền và family tương thích |
+| AP-06 gợi ý mapping tin cậy | schema matching, typed Gateway | `automation-mapping-benchmark.json`, `automation-mapping-unseen.json` | PARTIAL | Precision lexical 41/41; recall41/52, tiếng Việt thấp, chưa LIVE holdout đầy đủ |
+| AP-07 review tối giản | batch decisions, ReviewCard, state | Chat-only oracle, 4 resources/2 clicks; manual/shared-state canary | PARTIAL | 23 trường nghiệp vụ với nguồn mới; chưa kiểm người dùng độc lập |
+| AP-08 backend-first Planner | candidates, PlanningRequest, approval | Image 573; 10 oracle; `automation-chat-quality-live-planner-GEMINI.json` | PARTIAL / BLOCKED LIVE | Gemini cặp đã kiểm đạt; Qwen mới timeout unknown; chưa bộ LIVE mới đầy đủ |
+| AP-09 approval/policy | nonce/fingerprint/locks/idempotency | Image 573, stale batch toàn bộ rollback, viewer/replay | PASS LOCAL | Quy tắc tài chính mới vẫn cần duyệt |
+| AP-10 typed Chat queries | native reads, DataQuery, QuerySelection | 32-câu replay, date/rank/ordinal/evidence/CSV browser | PARTIAL / BLOCKED LIVE | 23/32 native; 9 cần router/làm rõ, provider503 |
+| AP-11 charts và export thống nhất | verified MetricSnapshot/report-2 | Oracle read-back, 8-sheet XLSX, displayed CSV cùng group | PASS LOCAL | Không coi trang xuất là toàn run |
+| AP-12 giao diện/responsive | App, ReviewCard, layout/context | Ma trận 23 trạng thái ×5 widths, bàn phím/IME và hành trình390 | PASS LOCAL trong các ca đã chạy | Không tuyên bố WCAG toàn diện hoặc nghiên cứu người mới |
+| AP-13 không nghẽn vì AI | worker/jobs/inference lane | A–J, p50/p95 n=3/n=5, Qwen90s+10parse, recovery75k image chốt | PASS LOCAL về scheduler | Chưa chứng minh tải nhiều inference, AI LIVE kết quả vẫn lỗi |
+| AP-14 recovery/quyền/toàn vẹn | lease/fencing/access/artifacts | Image573, SIGKILL75k, backup24bảng, bounded repair23WF, rollback/return equality | PASS LOCAL các kiểm đã chạy | Không thay nghiệm thu AI |
+| AP-15 release sạch | Git, Compose, source/image/HTTP | `automation-shared-review-identity.json`, remote feature9fb6200 | BLOCKED RELEASE | Không merge main khi AP-06/07/08/10 chưa đủ nghiệm thu |
+
+UAT A–H được đối chiếu bằng hành trình Chat mới, reuse đổi kỳ, negative/drift, summary/top/ordinal, evidence/exports, responsive và security/recovery. Bộ manual 11 miền giữ oracle riêng bổ sung hồi quy; nó không thay bằng chứng Chat-only hay LIVE. Kết quả full browser và năm hành trình image chốt ghi ở mục F/I.
+
+### C. Mapping
+
+Đặc tả độc lập có bảy miền, 52 cột có nhãn và 28 cột mơ hồ mỗi split. Ground truth lấy từ mô tả nghiệp vụ, không lấy từ matcher. Trên holdout ban đầu, RapidFuzz + profile đúng 35/44 đề xuất, recall 35/52; Valentine COMA 48/53 và 48/52; hybrid 49/60 và 49/52. Valentine và hybrid lần lượt đề xuất sai 5 và 10 cột negative. Validation tiếng Việt của Valentine chỉ đúng 7/52 ở hạng đầu, nên không tích hợp dependency này vào ứng dụng.
+
+Sau sửa alias mơ hồ `Reference`, replay tập thứ hai là 24/24 precision và 24/52 recall. Tập từ vựng mới chốt ở `4f848cd` cho precision 41/41, recall 41/52, 0 negative false proposal, 5 khóa bỏ lỡ và 39 abstention trên 80 cột. Phạm vi là bổ nghĩa tên cột tiếng Anh; không đại diện ngữ nghĩa đa ngôn ngữ. Tập tiếng Việt đã xem còn độ phủ thấp. Các kết quả này là **gợi ý**, không là cơ sở mở auto-approval.
+
+Valentine chỉ nằm trong runtime thử nghiệm ngoài Git. Pandera 0.35.0 trên hai điều kiện khóa trùng/currency ở 75k dòng có p50/p95 8,012/9,717 ms, so với Polars 1,872/3,140 ms, chưa chứng minh phát hiện thêm lỗi để tích hợp. Không thêm thư viện hoặc framework trùng chức năng. Chi tiết benchmark, license, kích thước và nguồn chính thức ở các mục lịch sử ngay dưới.
+
+Mapping Memory giữ workspace/project/parser/sheet/source family, các trường quan trọng, định dạng và lineage phê duyệt. Đổi kỳ dữ liệu thực 10→11/2026 có ca trình duyệt riêng. Drift khóa, gross/net, currency, kiểu dữ liệu hoặc source family bị từ chối tái dùng tự động. Tính đúng của memory và preflight được kiểm riêng với độ phủ gợi ý từ tên cột.
+
+### D. AI Planner
+
+Backend tạo và kiểm candidates trước; model chỉ chọn/giải thích ứng viên có ID. Mười ca tổng hợp mới có ba ca 1:1/1:N/N:1 đúng oracle và bảy ca thiếu bằng chứng giữ review; khóa ngang nhau không bị tự chọn. Kiểm currency, basis, grain, aggregation, coverage và approval giữ nguyên.
+
+Gemini Planner LIVE trên `65aed51` dùng một call, trả đúng kế hoạch và oracle cặp đơn hàng/thanh toán; ledger 382→383. Qwen LIVE dưới tải chạy 90,480 giây rồi `OLLAMA_UNAVAILABLE`, `delivery_unknown=true`, một attempt và một call. Không gửi lại sau restart, không thay model/timeout/GPU. Một lượt Qwen thành công trước đó mất 76,973 giây: 3.018 input tokens, 458 output tokens, 0 cached tokens; load 6,808 giây, prefill 4,155 giây, decode 65,893 giây. Đây là các quan sát, không phải p95 hoặc cam kết hiệu năng.
+
+Lượt đọc holdout Gemini gặp HTTP503 `UNAVAILABLE` sau 3,656 giây ở R11, ledger 383→384. Dừng tuyến LIVE, mười câu còn lại chưa gửi. Việc xử lý R11 bằng tuyến xác định từ `4f848cd` không biến lần provider thất bại thành PASS LIVE. Chưa có bộ LIVE holdout đầy đủ trên image chốt; phần này còn BLOCKED.
+
+### E. Chat-first
+
+Hỗ trợ trực tiếp upload không kèm prompt, đọc raw/prepared/canonical theo tên chính xác, cảnh báo ngày và nguồn gốc, count, summary đã xác minh, top-N sai tiền, hỏi nhóm theo thứ tự của bảng hiện tại, bằng chứng và xuất đúng trang đang xem hoặc báo cáo đầy đủ. Mọi truy vấn dùng DSL có kiểu và kiểm quyền; số tiền/KPI lấy từ snapshot của đúng run.
+
+Holdout 32 câu chấm nguồn/run/filter/sort/limit/ordinal/format: tuyến xác định từ 17/32 lên 23/32 trên **replay**. R02/R05/R09/R15/R27/R28/R29/R31/R32 còn cần model router hoặc làm rõ. Không bỏ điều kiện tháng, tự chọn run hoặc dùng regex để đoán điều kiện chưa hỗ trợ. Độ chính xác end-to-end của chín câu này chưa được kiểm LIVE vì provider đã lỗi.
+
+Hành trình tồn kho mới có ba tệp và oracle tính tay: 1 equal, 1 mismatch, 2 unmatched, signed/absolute variance đều 50,00 VND. Chọn một cặp trong ba nguồn, xác nhận phạm vi, duyệt rule, hỏi xếp hạng/nhóm đầu tiên, kiểm cùng group ID ở bằng chứng và CSV, tải Excel và reload. Receipt ghi riêng model calls và ledger; đây là bằng chứng LOCAL, không thay nghiệm thu AI. Audit độc lập PostgreSQL của năm lượt trên image chốt có tổng 45 workflow COMPLETED, 0 model calls và 0 AI traces; CSV/XLSX đọc lại đều khớp oracle. Evidence `runtime/automation-shared-review-inventory-readback.json`.
+
+### F. UX
+
+Thẻ gộp cho phép hai lượt bấm duyệt bốn resource đã hiển thị; nonce, fingerprint, preflight và audit vẫn riêng từng resource. Với nguồn hoàn toàn mới, người kiểm thử vẫn nhập 23 quyết định/trường nghiệp vụ cho ba nguồn và phạm vi. Đây chưa là trải nghiệm không cần xác nhận ngữ nghĩa. So sánh một quan sát duyệt riêng/gộp trước đó là 4→2 lượt bấm duyệt và 13,721→11,363 giây upload→verified; không suy ra cải thiện ổn định từ hai mẫu.
+
+Năm hành trình đầy đủ trên image chốt đạt, từng lượt tạo project/ba tệp mới. Thời gian client quan sát dưới đây tính từ gửi upload, chưa bao gồm các câu hỏi và export sau verified; n=1 mỗi chiều rộng, không báo p95. Mỗi lượt ghi 26 trusted clicks, 23 trường và 2 lần bấm duyệt.
+
+| Chiều rộng, px | Raw hiện, ms | Thẻ review, ms | Canonical, ms | Verified, ms |
+| --- | ---: | ---: | ---: | ---: |
+| 390 | 2.130 | 3.003 | 6.382 | 17.496 |
+| 768 | 1.513 | 2.378 | 5.882 | 15.837 |
+| 1366 | 2.098 | 2.955 | 6.559 | 14.644 |
+| 1440 | 1.570 | 2.421 | 5.846 | 15.825 |
+| 1920 | 2.061 | 2.931 | 6.765 | 17.395 |
+
+Ảnh biểu đồ thực có ở `runtime/automation-shared-review-full-browser-artifacts/` (390px) và `runtime/automation-shared-review-width-{768,1366,1440,1920}-artifacts/`. Đã đọc ảnh390 và1440: biểu đồ tròn, chú giải, scope và KPI hiển thị trong khung; hai phần trăm mang mẫu số/ý nghĩa riêng. Không cộng ảnh thành số test. Kiểm tra do Codex vận hành trình duyệt, chưa là nghiên cứu với người dùng mới độc lập. Kỳ, timezone, cutoff, coverage, nghĩa tiền/khóa và quy tắc tài chính mới vẫn phải xác nhận khi chưa có quyền tái dùng hợp lệ.
+
+### G. Worker
+
+Giữ một luồng inference và một luồng công việc xác định trong Worker hiện có. Hai producer gửi 5 tệp 20 dòng, 2 tệp 1k và 3 tệp 75k mỗi lượt qua hai project. Trong lượt Qwen LIVE bận, cả mười parse công bố trước khi inference kết thúc, mỗi job đúng một attempt và không mất số 0 đầu. Không có model gọi từ luồng xác định.
+
+Ở 75k, n=3: upload→raw/prepared p50/p95 là 3.278,53/3.290,01 ms cục bộ và 3.541,84/3.741,08 ms khi Qwen bận; queue 602,79/678,54 và 484,58/590,98 ms; query 86,91/90,31 và 94,27/123,74 ms. Các phân vị dùng nội suy inclusive với mẫu nhỏ, đo qua client polling. Peak worker lấy mẫu 187,6/155,7 MiB, CPU 101,99/104,76% theo Docker. Host RAM có lúc thấp trong lượt Qwen; không suy ra quan hệ nhân quả hoặc tự đổi cấu hình phần cứng.
+
+Ma trận A–J có parse trong inference LIVE, mapping giả lập chậm, reconcile/export/upload nhận đồng thời, hai producer/project/workspace, permission isolation, unknown delivery và retry/fencing. Kết quả retry tạm thời là PostgreSQL fault test, tách khỏi lỗi provider thật. Trên image `9fb6200`, SIGKILL trong normalize 75k đã khôi phục: 2 attempt, 1 canonical, Agent COMPLETED, 0 cloud, toàn hành trình 19,828 giây. Receipt `runtime/automation-shared-review-worker-recovery.json`. Không gọi đây là thông lượng ổn định.
+
+### H. Financial Accuracy
+
+Oracle ba nguồn giữ 5.487 dòng, 5.458 hợp lệ và 29 lỗi. Cặp 01↔02: 2.040 equal, 200 mismatch, 215 unmatched, signed +7.867 và absolute 60.883 VND. Cặp 02↔03: 323 equal, 40 mismatch, 31 unmatched, signed −8.306 và absolute 11.812 VND. Hai run giữ `PARTIAL_VERIFIED`; không đổi invalid thành zero hoặc gọi partial là đầy đủ. Holdout tồn kho có oracle riêng 1/1/2 và 50,00 VND.
+
+Decimal, partition/membership, conservation, evidence, KPI population và Verifier độc lập được bảo vệ bởi golden/property/PostgreSQL và read-back. XLSX đầy đủ có tám sheets, snapshot giống API và không ô công thức. CSV bảng đang xem giữ đúng truy vấn và ID nhóm; không đánh tráo phạm vi trang với toàn run. Đọc lại hai run/export tài chính đã lưu trên image chốt đạt, gồm raw checksum, số dòng, mọi verification checks và snapshot Excel; log `runtime/automation-shared-review-financial-readback.log`. Sau full browser, cả hai quy tắc được đề xuất/duyệt lại qua API trong dự án tổng hợp và thực thi thành hai run mới trên image chốt; cùng oracle và read-back XLSX đạt, 0 cloud. Log `runtime/automation-shared-review-financial-replay.log` và receipt `runtime/automation-chat-quality-financial/receipt.json` ghi mode, run/export IDs mới.
+
+### I. Testing
+
+Source **573/573** trong 174,27 giây; image **573/573** trong 182,45 giây. Gồm unit, property, stateful, PostgreSQL, security, scoped publication và fault tests. Cảnh báo TestClient deprecation được giữ, không che bằng tắt warnings. TypeScript, ESLint, build, Ruff, Python format, mypy 46 modules, Markdown 13 tệp và source/history/known-secret/path checks đạt. Không có GitHub Actions workflow được thiết lập, không ghi CI PASS.
+
+Canary trình duyệt trên image **4/4**, 1,2 phút: danh mục thực hơn 200 nguồn, cursor UI mock và hai UAT manual. Bộ full trên chính image `9fb6200` đạt **141/141**, 12,8 phút, một worker và retries0; gồm cả 11 UAT manual với assertion đồng bộ thẻ mới. Log `runtime/automation-shared-review-full-browser.log`, screenshots/artifacts cùng tiền tố. Bốn hành trình viewport bổ sung đều **1/1** đạt, tổng năm chiều rộng390/768/1366/1440/1920. LIVE/mocks/local được phân biệt ở từng phần; không dùng số 141/141 của revision `65aed51` làm kết quả cho image này.
+
+### J. Data Integrity & Docker
+
+Đúng một Compose project Studio, cổng loopback `127.0.0.1:18180`, 4/4 dịch vụ healthy. Backend/worker image `sha256:f9ee4c853f328fb748e207bf8a588fdf2458ccb4213d12f099967e8679df052a`; frontend `sha256:400eafd292142e048b9c42ef08bcfecbb6d74bba629880e87118dad62c947f49`. Cùng label application revision `9fb62005744169e8f7b75c99479360b45dd07519`, source byte/HTTP identity ở `runtime/automation-shared-review-identity.json`.
+
+Backup trước triển khai `backup_cb77fa2c86a44b2cadd2f664353aa0d5`: 24 bảng, 8.745 tệp, SHA256 metadata `2ef99676ca6cdba6f133dcd9d48b089843a8fb304135c2e94696a70e75e75846`. Capture/restore 49,506/42,680 giây, schema UUID riêng được kiểm và dọn đúng phạm vi. Bản trên volume và bản host đều validate toàn bộ tệp. Không phải backup chỉ bằng Git.
+
+Sau triển khai, 23 workflow cũ được cập nhật qua 23 job idempotent thành công một attempt, 46 audit thẻ hết hiệu lực và 0 AI trace mới. Tất cả bản ghi nghiệp vụ cũ ngoài thay đổi workflow được phép cùng mọi checksum đã công bố giữ nguyên; draft, approvals và các blocks cũ được so nội dung đầy đủ. Không tuyên bố equality tuyệt đối của workflow vì đây chính là đối tượng sửa. Evidence `runtime/automation-shared-review-persistence-{before,after}.log`.
+
+Giữ tag rollback `65aed51` đã qua 141/141 browser và image tests, cùng các ảnh accepted-main cũ; không xóa image hoặc volume. Đã rollback về `65aed51`, kiểm equality toàn bộ metadata nghiệp vụ/checksums và hai run/export oracle, rồi trở lại `9fb6200`. Kiểm sau return đạt equality với cùng snapshot ở `runtime/completion-return-persistence.log`; 4/4 healthy và source/image/HTTP identity kiểm lại đạt. Snapshot có 842 projects, 1.854 datasets, 1.508 canonical, 692 runs, 1.279 exports, 1.173 workflows, 7.118 artifacts; mọi approval/draft và bytes giữ nguyên. Hai oracle tài chính cùng CSV/XLSX tồn kho đọc lại đạt. Sau restart Docker, proof local cũ bị từ chối đúng cơ chế; chạy `verify-local.ps1` khôi phục session, không tắt auth.
+
+Checkpoint sau return có backup `backup_0a81281a840c443d8898c8fb532511ae`, 24 bảng, SHA256 metadata `991df74cd9406edc5e3aac460c84bf8923fac472172543fd4ae2859b8fb6da8d`, capture/restore 47,527/54,401 giây, restore cô lập PASS và dữ liệu ứng dụng không đổi. Lượt backup trước dừng khi bảng sessions đổi do một kiểm API đăng nhập chạy cùng lúc; log giữ nguyên, không dùng lượt đó báo PASS. Lượt chạy lại không có hoạt động API đã đạt. Các project khác tiếp tục dừng như trước, không sửa dữ liệu hoặc cấu hình. Cache: **SKIPPED_BY_POLICY — NON_BLOCKING**, không thử lại thao tác đã bị chặn.
+
+### K. GitHub
+
+Nhánh duy nhất đang làm việc `codex/intelligent-automation-experience`, origin chính thức `https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git`. Các nhóm `1def51d`, `efad227`, `ba5f5c6`, `7eb4c85`, `65aed51`, `4f848cd`, `9fb6200` đã commit/push theo nhóm kiểm chứng. Remote feature đã xác minh `9fb62005744169e8f7b75c99479360b45dd07519`; main vẫn `3deac3f01a2d8e0da4b9ef3222e1d745e5cab52a`. Chưa merge do các cổng còn thiếu. Báo cáo checkpoint commit riêng, không thay source ứng dụng đã build; tiếp tục mapping/UX/ngôn ngữ và benchmark Qwen theo yêu cầu mới.
+
+### L. Các lỗi phát hiện và sửa
+
+| Mức | Tái hiện và nguyên nhân gốc | Source và cách sửa | Hồi quy |
+| --- | --- | --- | --- |
+| P2 | Duyệt/normalize ở trang dữ liệu rồi Chat vẫn giữ thẻ OPEN; normalize không phát tín hiệu cho workflow chờ review | `agent_workflows`, `agent_jobs`, `worker`: thông báo trong transaction, resume chỉ đọc approved canonical, khóa/kiểm quyền/audit, backfill idempotent | Trước sửa assertion OPEN/OPEN thất bại; sau sửa 6 ca quyền/trạng thái và 1 ca nguồn thêm về sau đạt, canary manual đạt |
+| P2 | Project hơn 200 canonical không chọn/validate được nguồn ở trang sau; mẫu quy tắc bị cắt 100 không có cursor | Repository/API truy vấn scoped ID trước giới hạn; cursor metadata và `apiPages` cho ba bộ chọn | PostgreSQL 201 nguồn lịch sử + 101 mẫu lịch sử; language workflow thực và cursor UI mock đạt |
+| P2 | Quyết định reuse mất khi đổi kỳ, đảo cột hoặc thêm note; signature vị trí quá cứng | Memory gắn cột theo approved labels/IDs một-một, so preflight toàn bảng và family theo kỳ có giới hạn | Các ca drift dương/âm, cấp/revoke quyền, scope và tháng dữ liệu thực |
+| P2 | Top-N/ordinal tiếng Việt thường đi model dù đủ snapshot; export không ghim đúng trang | Grammar kết hợp động từ/đối tượng/xếp hạng và context bảng, typed export dùng query/sort/page hiện hành | Holdout replay 23/32, sáu paraphrase/negative, browser đối chiếu CSV group ID với evidence |
+| P2 | Inference dài chiếm vòng Worker và chặn parse | Một executor inference trong Worker hiện có, deterministic lane và parse priority | 10 parse hoàn thành trong Qwen LIVE 90 giây, A–J và SIGKILL 75k |
+| Công cụ kiểm | Recovery assertion đếm artifact kind `parsed` bao gồm cả prepared | Helper kiểm đúng ID parsed gốc và ref của prepared, giữ dữ liệu thực tế | Fault injection chạy lại trên image chốt đạt |
+
+Không sửa expected financial oracle để đạt test, không bỏ test thất bại. Lượt image `4f848cd` 140/141 được giữ làm bằng chứng lỗi catalogue, không đổi nhãn thành PASS.
+
+### M. Giới hạn còn lại
+
+Qwen unknown delivery và Gemini503 là blocker provider có receipt. Không điều chỉnh budget, model, timeout, GPU hoặc gửi lại yêu cầu không xác định. LIVE multilingual mapping/Planner/read holdout chưa đầy đủ; mapping lexical holdout có giới hạn rõ, chín câu read còn cần model/làm rõ, 23 trường nghiệp vụ vẫn phải xác nhận ở nguồn mới. Không suy ra universal accuracy, WCAG toàn diện, hiệu năng ổn định hoặc nghiệm thu người dùng độc lập từ các phép đo đã chạy. Chưa ghi `READY_FOR_SEAMLESS_LOCAL_UAT` và chưa hợp nhất main khi các cổng quan trọng chưa đạt.
+
+### N. Chủ dự án tự kiểm thử
+
+Mở <http://127.0.0.1:18180>, tạo dự án thử và tải ba CSV/XLSX tổng hợp ngay trong Chat. Xem dữ liệu gốc/bản tự chuẩn bị, kiểm và xác nhận các quyết định còn thiếu trên thẻ. Gửi `Đối soát “tên tệp trái.csv” với “tên tệp phải.csv”`, xác nhận kỳ/timezone/cutoff/coverage và quy tắc. Mở kết quả/biểu đồ, hỏi `Tính tổng chênh lệch tuyệt đối`, `Chỉ ra hai giao dịch sai tiền nhiều nhất`, rồi `Khoản thứ một vì sao lệch?`. Gửi `Xuất danh sách trên CSV` hoặc `Xuất báo cáo Excel của lần đối soát này`. Reload và mở lại Lịch sử để kiểm kết quả được lưu. Khi báo lỗi provider, giữ thông báo và kết quả đã có.
+
+Hướng dẫn chi tiết theo từng nút và ví dụ ở [USER_TEST_GUIDE.md](USER_TEST_GUIDE.md); quy trình kiểm của người phát triển ở [TESTING_GUIDE.md](TESTING_GUIDE.md). Báo cáo và receipts runtime chỉ có dữ liệu thử, không được đưa vào Git hoặc dùng thay số liệu nghiệp vụ thật.
+
+## Lịch sử các lượt hoàn thiện tự động hóa trước báo cáo ứng viên
 
 Theo yêu cầu hoàn tất mới, tiếp tục trên cùng nhánh `codex/intelligent-automation-experience`. Đây là tiến độ thực thi, chưa là nghiệm thu hoặc quyền vượt các cổng còn thiếu. Matcher, Verifier, Decimal, oracle cũ, migrations và dependencies ứng dụng không đổi.
 
