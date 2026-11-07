@@ -1560,6 +1560,59 @@ def test_result_position_is_bound_to_same_run_and_displayed_rows(position):
         validate_intents(content, ["Giải thích giao dịch trong bảng vừa xem"], cat)
 
 
+@pytest.mark.parametrize(
+    "goal,fmt",
+    [
+        ("Gửi tôi tệp CSV chứa đúng phần bảng vừa hiển thị.", "csv"),
+        ("Mình muốn lưu các dòng trên thành một bảng Excel.", "xlsx"),
+        ("Xin xuất những nhóm vừa xem sang tệp CSV", "csv"),
+    ],
+)
+def test_displayed_export_composes_reference_and_format_on_same_run(goal, fmt):
+    from studio.agent_intents import resolve_displayed_export
+    from studio.contracts.data_query import DataQuery
+
+    cat = routing_catalogue()
+    cat.previous_query = DataQuery(
+        project_id="project", source_kind="VERIFIED_RUN", source_id="run"
+    )
+    result = resolve_displayed_export(goal, cat)
+    assert (
+        result.intent == "EXPORT_RESULT" and result.export_format == fmt and result.run_id == "run"
+    )
+    assert (
+        resolve_displayed_export(f"{goal.rstrip('.')} chỉ lấy phần sai tiền", cat).intent
+        == "CLARIFY"
+    )
+    cat.previous_query.source_id = "other-run"
+    assert resolve_displayed_export(goal, cat).intent == "CLARIFY"
+
+
+def test_model_cannot_replace_displayed_export_with_a_full_run_export():
+    cat = routing_catalogue()
+    intent = AgentIntent(intent="EXPORT_RESULT", run_id="run", export_format="csv")
+    content = json.dumps(dict(intents=[intent.model_dump(mode="json")]))
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        validate_intents(content, ["Bạn có thể tạo file CSV giữ đúng các dòng trên không?"], cat)
+    assert validate_intents(content, ["Tải báo cáo CSV của kết quả đang xem"], cat)[0] == intent
+
+
+@pytest.mark.parametrize(
+    "goal",
+    [
+        "Tìm các khoản thiếu đối ứng riêng tháng 9 năm 2026",
+        "Đếm các nhóm chênh lệch của tháng 12",
+        "Trong các giao dịch sai tiền, chỉ lấy trường hợp đã xử lý xong",
+        "Liệt kê nhóm lệch tiền đang giải quyết",
+    ],
+)
+def test_group_read_needing_different_period_or_exception_grain_clarifies(goal):
+    from studio.agent_intents import resolve_native_read
+
+    result = resolve_native_read(goal, routing_catalogue())
+    assert result.intent == "CLARIFY" and result.query is None and result.questions
+
+
 def test_chart_explicit_paid_and_unpaid_categories_keeps_the_entire_population():
     intent = dict(
         intent="CREATE_VISUALIZATION",

@@ -5,6 +5,7 @@ import re
 import unicodedata
 from collections.abc import Callable
 from copy import deepcopy
+from datetime import date
 from typing import Any
 
 from pydantic import ValidationError
@@ -18,7 +19,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-46"
+INTENT_REVISION = "agent-intent-47"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -227,6 +228,13 @@ def validate_intents(
             raise DomainError("AI_INVALID_SOURCE", "AI chọn nguồn không có trong context.")
         if intent.run_id and intent.run_id not in catalogue.run_ids:
             raise DomainError("AI_INVALID_SOURCE", "AI chọn run ngoài context.")
+        if intent.intent == "EXPORT_RESULT" and re.search(
+            DISPLAYED_ROWS, plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal))
+        ):
+            raise DomainError(
+                "QUERY_SEMANTICS_REQUIRED",
+                "Yêu cầu nhắc tới một bảng cụ thể. Hãy xác nhận bảng đang xem cần xuất.",
+            )
         if intent.result_position is not None and (
             intent.intent != "EXPLAIN_RESULT"
             or intent.key_value
@@ -789,6 +797,50 @@ def resolve_run_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | Non
     )
 
 
+def resolve_run_filter_clarification(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
+    """Keep filters that the current comparison-group view cannot represent."""
+    if catalogue.context.run_id not in catalogue.run_ids or explicit_read_layers([goal]):
+        return None
+    text = plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal))
+    if not (
+        re.search(r"\b(?:xem|liet ke|tim|loc|lay|dem|bao nhieu|tong)\b", text)
+        and re.search(r"\b(?:giao dich|nhom|khoan|don|ban ghi)\b", text)
+        and re.search(r"\b(?:doi ung|lech tien|sai tien|chenh lech)\b", text)
+    ):
+        return None
+    if re.search(r"\b(?:da|dang|chua) (?:xu ly|giai quyet)\b", text):
+        return AgentIntent(
+            intent="CLARIFY",
+            questions=[
+                "Bạn muốn xem nhóm giao dịch lệch/thiếu đối ứng hay hồ sơ ngoại lệ "
+                "theo trạng thái xử lý? Đây là hai danh sách khác nhau."
+            ],
+        )
+    months = re.findall(r"\bthang (0?[1-9]|1[0-2])(?: nam ((?:19|20)\d{2}))?\b", text)
+    if not months:
+        return None
+    plan = catalogue.confirmed_plan
+    if plan and len(months) == 1 and months[0][1]:
+        month, year = map(int, months[0])
+        start = date(year, month, 1)
+        end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+        if (start, end) == (plan.period_start, plan.period_end):
+            return None
+    return AgentIntent(
+        intent="CLARIFY",
+        questions=[
+            "Kết quả đã xác minh gắn với một kỳ đối soát. "
+            "Bạn muốn giữ kỳ đang xem hay chọn lần đối soát cho tháng và năm được yêu cầu?"
+        ],
+    )
+
+
+DISPLAYED_ROWS = (
+    r"(?:phan )?(?:cac |nhung )?(?:danh sach|bang|dong|nhom) "
+    r"(?:vua hien thi|vua xem|vua tra|dang xem|da loc|vua loc|tren|nay|do)\b"
+)
+
+
 def resolve_displayed_export(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
     """Require an explicit reference to the verified table currently in context."""
     normalized = " ".join(plain_question(goal).split()).rstrip("?.!")
@@ -803,12 +855,23 @@ def resolve_displayed_export(goal: str, catalogue: IntentCatalogue) -> AgentInte
             r"(?:cua |cho )(?:dung )?(?:cac )?(?:dong|ket qua|nhom) (?:da loc|vua loc)",
             normalized,
         )
+    export_action = r"(?:(?:hay|toi muon|minh muon|xin) )?(?:xuat|tai|luu|gui)(?: (?:cho )?toi)? "
+    output = r"(?:mot )?(?:ban |tep |file |bang )?(excel|xlsx|csv)"
+    if request is None:
+        request = re.fullmatch(
+            export_action + output + r" (?:chua|cua|cho) (?:dung )?" + DISPLAYED_ROWS, normalized
+        ) or re.fullmatch(
+            export_action + DISPLAYED_ROWS + r" (?:thanh|ra|sang) " + output, normalized
+        )
     if not request:
         export = re.search(
             r"\b(?:xuat|tai) (?:bao cao|bang|danh sach|excel|xlsx|csv)\b", normalized
         )
         subset = re.search(r"\b(?:chi (?!tieu\b)|rieng |da loc\b|vua loc\b)", normalized)
-        if export and subset:
+        displayed_export = re.match(export_action, normalized) and re.search(
+            DISPLAYED_ROWS, normalized
+        )
+        if (export and subset) or displayed_export:
             return AgentIntent(
                 intent="CLARIFY",
                 questions=["Hãy mở hoặc lọc bảng kết quả cần xuất, rồi chọn xuất bảng đang xem."],
@@ -1011,6 +1074,7 @@ def resolve_native_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | 
         )
     return (
         resolve_displayed_export(goal, catalogue)
+        or resolve_run_filter_clarification(goal, catalogue)
         or resolve_ranked_results(goal, catalogue)
         or resolve_run_read(goal, catalogue)
         or resolve_plain_listing(goal, catalogue)

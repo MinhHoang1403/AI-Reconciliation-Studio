@@ -18,6 +18,8 @@ Khi mọi mục tiêu đều nêu một tầng dữ liệu tường minh, schema
 
 Khi một yêu cầu Gemini có nhiều bảng hoặc kết hợp bảng với kết quả đối soát, schema provider dùng một cấu trúc query với danh sách source ref, trường và metric có giới hạn. Các yêu cầu trong một ngữ cảnh và Qwen giữ các nhánh riêng theo nguồn. Backend luôn kiểm trường và metric theo đúng ref được chọn. Prepared chỉ hỗ trợ xem/đếm và yêu cầu mảng trường, lọc, sắp xếp, nhóm rỗng. Lựa chọn cấu trúc diễn ra trước lượt gọi, dùng cùng policy và giới hạn một attempt.
 
+Yêu cầu lưu hoặc gửi đúng các dòng đang xem giữ query của bảng thuộc cùng run, với bộ lọc, thứ tự và phạm vi trang đã hiển thị. Nếu câu có thêm điều kiện chưa biểu diễn được hoặc ngữ cảnh bảng đã đổi, hệ thống hỏi lại. Validator chặn một đề xuất xuất toàn run khi yêu cầu chỉ tới một bảng cụ thể. Với nhóm giao dịch, kỳ khác run đang xem hoặc điều kiện trạng thái xử lý thuộc hồ sơ ngoại lệ cần được làm rõ trước khi truy vấn.
+
 UI cho phép người dùng nhập thông tin chung khi có ít nhất hai thẻ mapping, mỗi nguồn chỉ có một field tiền. Phạm vi gồm danh sách review/nonce/fingerprint cụ thể. Người dùng khai báo cùng loại dữ liệu, grain, timezone, basis và metric rồi xác nhận áp dụng. Chỉ điền chỗ thiếu; không đổi khóa hoặc giá trị đã có của từng nguồn. Bản nháp lưu theo actor/workflow/token trong session; payload duyệt gộp cũ bị xóa để chờ kiểm lại từng thẻ. Đây không là approval hoặc quyền reuse; nonce, fingerprint, authorization, preflight, idempotency và audit per-resource giữ nguyên.
 
 ## Parser giữ header và dòng vật lý — 06/11/2026
