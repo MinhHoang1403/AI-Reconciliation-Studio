@@ -1,5 +1,100 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Biên bản ứng viên `3313e24` — 08/11/2026
+
+### A. Trạng thái nền tảng
+
+Ứng viên ứng dụng `3313e24346519fff6e9b0fd10e7290f2a2618e61` chạy tại <http://127.0.0.1:18180> trên nhánh `codex/intelligent-automation-experience`. Đã kiểm khớp 46 module backend/worker, 7 assets frontend và byte qua HTTP. Snapshot trước/sau triển khai khớp metadata nghiệp vụ và 7.394 artifacts đã công bố, gồm raw, approval, canonical, run, export và lịch sử. Sau toàn bộ browser UAT và worker recovery, backup `backup_3e517c44ae8c49e1ad6386ff01ce08f4` khôi phục thử 24 bảng/9.852 tệp đạt và kiểm checksum bản host đạt. Rollback sang `65aed51` rồi quay về ứng viên giữ nguyên metadata và 7.743 artifacts lúc chụp, đồng thời đọc lại đúng hai oracle tài chính. Backup sau lượt đủ 20 câu là `backup_48360ffce0cb44d2b38975ab78bd1fbb`, khôi phục thử cùng 24 bảng/9.852 tệp đạt, giữ thêm hội thoại và ledger mới nhất.
+
+### B. Ma trận AP-01 đến AP-15
+
+| Gate | Trạng thái ứng viên | Source và bằng chứng |
+| --- | --- | --- |
+| AP-01 | PASS LOCAL | Upload Chat tạo pipeline thật. Ca inline upload chạy trên HTTP của image ứng viên. |
+| AP-02 | PASS LOCAL / MOCK | Raw và bằng chứng dòng vẫn đọc được. `agent.spec.ts` kiểm bytes/ID, `assistant-scroll.spec.ts` giả lập lỗi provider. |
+| AP-03 | PASS LOCAL | Prepared chưa duyệt tách canonical. Ca ngày lỗi chỉ trả ID `0002` và giữ ngày gốc. |
+| AP-04 | PASS LOCAL | `profiling.py`, `mapping_verification.py` và oracle độc lập kiểm đủ dòng, ngày, tiền tệ, checksum và provenance. |
+| AP-05 | PASS LOCAL | `mapping_reuse.py` giữ quyền, phạm vi, dấu vết và preflight theo định dạng. PostgreSQL bảo vệ đổi kỳ, đảo cột, ghi chú và từ chối drift quan trọng. |
+| AP-06 | PASS tập đã đo | `profiling.py`, `agent_preparation.py`, `mapping_verification.py`. Holdout Việt–Anh và replay tiếng Anh tại mục C. |
+| AP-07 | PASS ca đã đo | `AgentWorkflowPanel.tsx`/`ReviewCard.tsx`. Nhập chung chỉ điền phần thiếu sau xác nhận, từng approval giữ phạm vi riêng. |
+| AP-08 | PARTIAL | Gemini LIVE đạt cặp thanh toán–sao kê với coverage tường minh. Qwen Planner `OLLAMA_UNAVAILABLE`, delivery unknown. |
+| AP-09 | PASS LOCAL | PostgreSQL và Chat kiểm nonce, dấu vân tay bản nháp, quyền, preflight, audit và idempotency trước khi chạy. |
+| AP-10 | PASS phạm vi kiểm | `agent_intents.py` giữ tầng, run, điều kiện, thứ tự, ordinal và phạm vi export. Kết quả theo revision tại mục E. |
+| AP-11 | PASS LOCAL | Cả hai oracle và read-back CSV/XLSX dùng cùng snapshot, giữ signed/absolute variance và bằng chứng. |
+| AP-12 | PASS LOCAL | Full Playwright đạt layout/keyboard. Hai luồng CSV tiếng Việt đạt ở 390/768/1366/1440/1920 px. |
+| AP-13 | PASS ca chồng lấn | Hai upload 1.000/10.000 dòng hoàn tất trong khi Qwen vẫn chạy. Giới hạn tốc độ suy luận tại mục G. |
+| AP-14 | PASS LOCAL | Worker SIGKILL phục hồi 75.000 dòng với một canonical. Backup/restore 24 bảng/9.852 tệp, rollback/return và checksums đạt. |
+| AP-15 | PARTIAL | Push nhánh ứng viên và khớp source/image/HTTP. Cổng Qwen LIVE còn mở, `main` ở `3deac3f`. |
+
+### C. Mapping
+
+Holdout tên trường Việt–Anh gồm 52 trường dương và 70 trường negative trên bảy miền. Ứng viên đúng 49/49 đề xuất, recall 49/52, F1 0,9703, 0 gợi ý sai trên negative, 0 khóa bỏ lỡ và 73/122 abstention. Baseline `9fb6200` đúng 19/22, recall 19/52, F1 0,5135, 3 negative sai và 10 khóa bỏ lỡ. RapidFuzz cùng tập đạt 27/42, recall 27/52, F1 0,5745, 12 negative sai và 5 khóa bỏ lỡ. Đặc tả và SHA256 cố định ở mục mapping bên dưới.
+
+Replay tập tiếng Anh cũ trên cùng 80 cột so sánh baseline đúng 36/36 đề xuất, recall 36/52, F1 0,8182 với ứng viên đúng 43/43, recall 43/52, F1 0,9053. Hai bản có 0 false positive. Khóa bỏ lỡ giảm 5→3 và abstention 44→37. Receipt `runtime/completion-english-mapping-comparison.json`. Valentine/Pandera giữ ở thử nghiệm, các quyết định chọn từ vựng có giới hạn dựa vào độ chính xác, độ phủ, chi phí và khả năng từ chối. Mapping Memory vẫn yêu cầu mẫu đã duyệt và đúng phạm vi. Đây là kiểm tập tên cột tổng hợp, phạm vi đo tách khỏi chất lượng ngữ nghĩa trên dữ liệu người dùng.
+
+### D. UX Automation
+
+12 lượt trên `3313e24` đều giữ kết quả 23→14 trường với 26→30 click ghi nhận. Cả hai luồng dùng 2 lượt duyệt cho 4 tài nguyên. Nhập chung áp dụng cho loại dữ liệu, ý nghĩa mỗi dòng, múi giờ, cơ sở tiền và chỉ tiêu khi người dùng xác nhận cùng nghiệp vụ. Khóa từng nguồn, độ phủ, kỳ và thời điểm chốt vẫn cần xác nhận. Phép đo đếm click tin cậy từ browser automation, có thao tác mở lại bản nháp giữa luồng nhập chung. Kết quả chứng minh giảm trường nhập lặp trong ca thử.
+
+### E. Chat tiếng Việt
+
+Replay 32 câu cũ xử lý 30 qua tuyến xác định. R02/R09 còn tuyến hiểu ngôn ngữ. Bộ 20 câu regression xử lý 18 qua tuyến xác định và để V12/V19 cho typed routing. Bộ 20 câu validation mới trên `75e8029` đạt 16/20 sau đọc lại oracle. Trên `3313e24`, bốn ca từng sai đã đạt bằng xử lý xác định. H13/H14 xuất đúng hai group ID theo thứ tự và SHA256 khớp file tải. H16/H17 hỏi làm rõ, không tạo query hoặc export. H07 gọi Gemini LIVE trên chính ứng viên, trả đúng hai nhóm `UNMATCHED`, giữ VND, nguồn và giá trị tiền null.
+
+Sau rollback/return, một lượt đủ 20 câu trên chính image `3313e24` đạt **20/20**, gồm 15 Gemini LIVE và 5 xử lý xác định. Có 15 phản hồi trả dữ liệu/xuất/giải thích đúng, 4 câu hỏi làm rõ và 1 yêu cầu sửa nguồn bị từ chối. Các slot nguồn, run, filter, metric/currency, sort, limit, ordinal, snapshot, bằng chứng và file tải được kiểm theo ca. CSV/XLSX của bảng xuất được đọc lại và so group ID/thứ tự/checksum. p50/p95 submit tới kết quả của 15 ca model là 2.766/3.351,3 ms. Receipt `runtime/completion-release-language-quality.json`. Bộ này đã được dùng validation khi sửa các lỗi, phạm vi kết luận là các câu đã đo.
+
+Đọc lại PostgreSQL sau lượt này xác nhận 20 workflow có đúng trạng thái/intent đã trả, 15 trace Gemini HTTP 200 với một call mỗi trace. FactSet, snapshot và group ID của các câu giải thích/tổng hợp vẫn đúng kết quả đã chọn. Receipt `runtime/completion-release-language-durability.json`.
+
+### F. Gemini
+
+Credential mới đã được nạp theo cấu hình host và dùng với `gemini-3.5-flash-lite`. Các ca LIVE thành công gồm xem dòng ngày sai, đếm bản gốc, đọc thiếu đối ứng và lập phương án thanh toán–sao kê. HTTP 400 ở catalogue nhiều nguồn được tái hiện qua nhiều revision và hết trên các canary và lượt đủ 20 câu sau khi dùng một cấu trúc query giới hạn. HTTP 200 vẫn có thể trả ý định thiếu điều kiện. Các trường hợp schema sai và yêu cầu xác nhận coverage được lưu riêng. HTTP 503 cũ không có đủ bằng chứng quy cho credential hoặc kích thước yêu cầu. Ledger từ 384 trước nhiệm vụ lên 438 sau các lượt kiểm đã ghi. Model, quota, mặc định và policy giữ theo cấu hình người dùng.
+
+19 ca Gemini LIVE trong bộ validation `75e8029` có p50/p95 submit tới kết quả 2.765/3.454,5 ms, gồm các ca trả sai hoặc bị chặn. Trace H07 trên `3313e24` có HTTP 200, một attempt, 6.068 input và 264 output tokens, thời gian trace 2.604 ms. Provider không trả request ID trong response được ghi. Tổng đợt có 54 trace, 54 attempts, 50 HTTP 200 và 4 HTTP 400. Provider báo tổng 309.463 tokens. Receipt `runtime/completion-release-gemini-ledger-current.json`.
+
+### G. Qwen
+
+Ollama 0.40.9 chạy `qwen3:8b` Q4_K_M trên RTX 3050 Laptop 6 GB. Thiết lập hiện hành `think=false`, context 8192, temperature 0, giới hạn đầu ra 6000, keep-alive 90 giây và timeout 90 giây. Thử nghiệm 48 lượt với cấu trúc lựa chọn phẳng đạt JSON hợp lệ nhưng full-slot 0/24 ở cả context 8192 và 4096. p50/p95 lần lượt 3.828/5.296,5 ms và 3.335,5/5.611,65 ms. Lượt đầu 8192 tải 11,432 giây trong 14,812 giây. Lượt Planner sau khởi động Ollama mới dùng khoảng 4,19 GB VRAM, log ghi 24/37 layer đưa lên GPU. Chưa xác định một nguyên nhân duy nhất cho timeout. Trên ứng viên trước đó, Planner mới hết thời gian chờ 90.165 ms và chưa rõ delivery. Cấu hình production giữ nguyên và phương án Qwen-primary chưa đạt cổng chất lượng.
+
+Median decode của các câu tổng hợp ngắn là 9,24 token/giây ở context 8192 và 10,86 ở 4096. RAM khả dụng của host trong mẫu đo từ khoảng 0,004 đến 2,599 GiB. Chưa đo peak RSS riêng của tiến trình Ollama. Số đo latency của thí nghiệm bị loại vẫn được giữ để đối chiếu, phạm vi ứng dụng thật được đánh giá riêng.
+
+### H. Đối soát và oracle
+
+Gemini Planner LIVE `75e8029` cho cặp thanh toán–sao kê đúng slot, khóa, metric, coverage, kỳ và `MANY_TO_ONE` khi khai báo coverage riêng hai nguồn. Bản nháp chỉ chạy sau nút duyệt. Hai oracle tài chính giữ `PARTIAL_VERIFIED` theo dữ liệu lỗi và phạm vi. Cặp đơn hàng–thanh toán có 2.040 khớp, 200 lệch, 215 thiếu đối ứng, signed 7.867 VND và absolute 60.883 VND. Cặp thanh toán–sao kê có 323 khớp, 40 lệch, 31 thiếu, signed −8.306 VND và absolute 11.812 VND. Tổng 5.487 dòng, 5.458 hợp lệ, 29 lỗi. Oracle tồn kho với CSV header Việt giữ 1 khớp/1 lệch/2 thiếu, 50/50 VND, bằng chứng và cùng snapshot khi mở lại.
+
+### I. Kiểm thử đầy đủ
+
+Backend/PostgreSQL đạt 627/627 trên source và 627/627 trong image. Lượt image mất 206,44 giây và có một cảnh báo phụ thuộc TestClient. Playwright trên image ứng viên đạt **142/142**, 13,7 phút, retries 0, gồm contract giả lập, giao diện, bảo mật và hành trình thật với dữ liệu tổng hợp. Ruff, mypy, TypeScript, ESLint, build, Markdown và kiểm kho mã đạt. Property-based, kiểm trạng thái, quyền, CSRF, isolation, unknown delivery và export nằm trong các bộ test hiện có. Lượt browser của `c2f9114` có 139 PASS và 3 lỗi do cần xác minh phiên local sau PostgreSQL/Docker restart. Ba ca đó đã đạt trên `3313e24`. Các receipts LIVE, MOCK, REPLAY và oracle giữ tách biệt.
+
+Benchmark host tổng hợp 1.000/10.000/50.000 dòng có 3 mẫu mỗi cỡ, chạy trong lúc browser regression hoạt động. Ở 50.000 dòng, p50/p95 parse 62,44/64,44 ms, profile 891,95/940,12 ms, normalize và ghi 1.887,51/2.184,75 ms, peak tiến trình 174,88 MiB. Benchmark đối soát 50.000 dòng đầu vào hai phía có 25.000 nhóm exact, p50/p95 matching 2.252,66/2.317,51 ms, verification 1.725,89/1.853,98 ms, peak 318,87 MiB. Hai phép đo 0 cloud. Receipts đủ ba cỡ ở `runtime/completion-release-foundation-benchmark.json` và `runtime/completion-release-reconciliation-benchmark.json`.
+
+10 lượt CSV tiếng Việt ngoài full suite và 2 lượt tiếng Anh trong full suite tạo 108 workflow `COMPLETED`, 0 AI trace và 0 lượt model trên 12 dự án thử. Đọc lại CSV/XLSX khớp snapshot, số nhóm và 50/50 VND, giữ ID và không có ô công thức. Receipt `runtime/completion-release-inventory-readback.json` có cả 30 bộ file lịch sử và mới. Worker fault injection trên `3313e24` ngắt giữa chuẩn hóa 75.000 dòng, job tiếp tục ở attempt 2 và xuất đúng một canonical. Agent `COMPLETED` sau 16,578 giây toàn hành trình, 0 cloud. Receipt `runtime/completion-release-worker-recovery.json`.
+
+### J. Lỗi đã phát hiện và cách xử lý
+
+| Mức độ | Tái hiện và nguyên nhân | Sửa và kiểm chứng |
+| --- | --- | --- |
+| P2 | Header Việt `Đơn vị tiền tệ` bị bỏ qua ở preflight do danh sách tên riêng. | Dùng cùng từ vựng và đích `currency`, kiểm đơn/mixed/mã sai dạng, hai luồng CSV tiếng Việt PASS trên `f6f54af`. |
+| P1 | Hỏi ngày sai có thể mở toàn raw hoặc tự thêm count. Schema dùng chung trường và prompt Gemini thiếu vai trò findings. | Giới hạn ref, trường, lớp và phép đếm. Kiểm ngữ nghĩa giữ điều kiện lỗi ngày. Browser LIVE trả đúng một dòng và lineage. |
+| P2 | Đếm tệp gốc từng đổi tầng hoặc trả literal `null_policy` sai. | Giới hạn tầng tường minh và enum một phần tử. H02 LIVE đạt đúng nguồn và số đếm 2. |
+| P2 | Gemini từ chối schema nhiều bảng bằng HTTP 400. | Dùng một cấu trúc query giới hạn khi nhiều ngữ cảnh. H07 và Planner qua HTTP 200, backend vẫn chặn field sai ref. |
+| P1 | Hai cách hỏi xuất trang lại tạo báo cáo toàn run. | Ghim query cùng run và chặn mở rộng phạm vi. Replay CSV/XLSX đọc lại đúng hai group ID theo thứ tự. |
+| P2 | Lọc kỳ khác hoặc kết hợp nhóm giao dịch với trạng thái hồ sơ bị lỗi kỹ thuật. | Hỏi chọn kỳ hoặc danh sách hồ sơ. Replay H16/H17 đạt với 0 lượt model. |
+
+### K. Git, Docker và khôi phục
+
+Nhánh ứng viên đã push và khớp `origin` ở app revision `3313e24`. Backend/worker image `sha256:75ec4a9bf45c0213566840c8a26483be52254a21a5d4793ee84ff5d6f407537c`, frontend image `sha256:c5cf928e0b4bd84371bbe4eac087276e6b5c0f9c4dda92f34fbbb838575284b4`. Một Compose project có bốn dịch vụ healthy tại loopback. Không có migration mới. Snapshot triển khai và các phép đối chiếu nằm trong `runtime/completion-export-scope-*`. `main` chưa hợp nhất ứng viên.
+
+Rollback dự phòng `65aed51859ef8ae0d5d1a29ba7e86a1e0f894983` có backend image `sha256:5a33f5976956c106fe6b451c766f3d8c38d3faa958607f32648750be9548e434` và frontend `sha256:e80bf2601394111fd7d304d24c9bcc4b2a9b39e93c02245edd8c85e37485c5ab`. Guard kiểm đúng schema additive, không còn job hoạt động và cấu hình tương thích trước khi đổi. Cả rollback và return đạt persistence cùng hai oracle. Backup trước drill có metadata SHA256 `d05c074f69b623489da4b5bab492bac7e775a6561ec4bab014062fadc0a2a4da`, capture/restore 48,526/52,769 giây. Bản sao volume và host cùng validate. Bản sao sau lượt đủ 20 câu có metadata SHA256 `2c703212808c2f9dfd616f88f1a01da41b5b1119042e0fae6d39bf413a2aed51`, capture/restore 47,605/68,014 giây. Bản host validate đủ 9.852 tệp đạt. Kiểm persistence sau backup xác nhận metadata nghiệp vụ, approvals, canonical, run, export và artifact không đổi.
+
+Hai volumes `ai-reconciliation-studio_artifacts` và `ai-reconciliation-studio_postgres_data` vẫn được gắn trong cùng project. Host còn khoảng 111 GiB trống sau các bản sao lưu. Image ứng dụng được giữ ở app revision nêu trên. Các thay đổi chốt biên bản sau đó chỉ thuộc tài liệu kiến trúc, trạng thái và hướng dẫn sử dụng, đối chiếu bằng Git diff theo đường dẫn.
+
+### L. Giới hạn
+
+**PASS LIVE** cho những ca Gemini có oracle nêu tại mục F/H. **PARTIAL** cho Qwen Planner và chất lượng AI ngoài các tập đã kiểm. **BLOCKED EXTERNAL** từng ghi nhận với HTTP 503 của Gemini, hai lượt Qwen giữ delivery unknown. **FAIL** của các lượt cũ vẫn lưu với revision riêng. **NOT_RUN** cho nghiệm thu độc lập của chủ dự án. **SKIPPED_BY_POLICY — NON_BLOCKING** cho dọn cache từng bị bộ kiểm duyệt tự động chặn.
+
+### M. Trạng thái bàn giao
+
+**PARTIAL — Qwen Planner LIVE chưa đạt.** Các cổng ứng dụng, Gemini có đáp án kiểm chứng, browser, dữ liệu và rollback đã đạt trong phạm vi nêu trên. [Hướng dẫn tự kiểm thử](USER_TEST_GUIDE.md) có quy trình dùng ứng viên, đối chiếu từng số và chọn đường duyệt thủ công khi cần. Quyết định nghiệm thu độc lập thuộc chủ dự án. Nhánh ứng viên được giữ riêng trong lúc cổng Qwen còn mở.
+
 ## Hoàn thiện mapping, tiếng Việt và inference — đang kiểm chứng 08/11/2026
 
 Checkpoint tài liệu `d7eefa6f34f00b210216bacf5386ca7a0fae5b60` đã push, ứng dụng vẫn `9fb6200` trong lúc kiểm source mới. AP-14 sau rollback/return đạt equality metadata nghiệp vụ/checksums; backup `backup_0a81281a840c443d8898c8fb532511ae` có 24 bảng và **9.089 tệp**, restore cô lập và bản host đều validate. Không xóa backup cũ. Main chưa merge. Các số liệu dưới đây chưa thay kiểm chứng Docker ứng viên mới.

@@ -245,6 +245,8 @@ Với fixtures này, thông tin đã biết để trả lời bổ sung là:
 
 Không dùng mô tả này cho dữ liệu thật nếu bạn chưa xác nhận kỳ, độ đầy đủ và ý nghĩa số tiền.
 
+Nếu thẻ hỏi lại độ phủ hoặc thời điểm chốt, ghi riêng tên từng nguồn cùng ngày bắt đầu, mốc cuối không gồm, trạng thái đầy đủ và thời điểm chốt. Chỉ xác nhận nguồn đầy đủ khi bạn đã kiểm tra được dữ liệu của nguồn đó.
+
 Trên thẻ quy tắc, kiểm tra đúng hai tên nguồn, khóa, tiền tệ, sai số và kỳ. Mở **Kiểm tra phạm vi và chỉnh quy tắc** khi cần. Bấm nút **Duyệt quy tắc và đối soát** chỉ khi mọi lựa chọn đã đúng. Nếu không có đủ đề xuất hợp lệ, bổ sung thông tin hoặc dùng thiết lập thủ công.
 
 ### 6.2. Đường đối soát thủ công
@@ -301,6 +303,8 @@ Trước khi hỏi, bấm **Đổi ngữ cảnh phân tích**, chọn đúng k�
 
 Nếu cần hỏi bổ sung về nguồn/chỉ tiêu, trả lời đúng lựa chọn đang hiện. Không chọn nguồn gần giống tên hoặc tự dùng kết quả mới nhất của một dự án khác.
 
+Nếu câu hỏi nêu tháng khác kỳ của lần chạy đang mở, chọn đúng lần đối soát trong **Đổi ngữ cảnh phân tích** trước khi hỏi lại. Khi muốn xem tình trạng xử lý, chọn hồ sơ ngoại lệ theo trạng thái. Một nhóm giao dịch có thể liên quan đến nhiều hồ sơ.
+
 Trong bảng Chat, bấm tiêu đề cột để sắp xếp nếu cần. Bấm **Xem đầy đủ dữ liệu** để xem đầy đủ trang hiện hành, **Trước / Tiếp** để đổi trang. Tổng/đếm áp dụng toàn bộ dữ liệu thỏa điều kiện, không chỉ 10 dòng xem trước. Đóng bảng bằng Escape; vị trí đọc Chat được giữ khi bạn đang xem phần trước.
 
 Để kiểm chứng bằng chứng khi AI tạm thời không khả dụng:
@@ -312,6 +316,10 @@ Trong bảng Chat, bấm tiêu đề cột để sắp xếp nếu cần. Bấm 
 5. Nhấn Escape để đóng. Tìm tiếp `000010` để thấy trường hợp thiếu tiền, rồi xóa tìm kiếm để xem lại danh sách. Chỉ số tổng vẫn thuộc toàn bộ phạm vi của lần chạy, không phải riêng dòng đang tìm.
 
 ## 9. Xuất và mở lại báo cáo
+
+Để chỉ xuất trang kết quả trong Chat, hỏi ngay sau khi xem bảng, chẳng hạn “Lưu các dòng trên thành một bảng Excel” hoặc “Gửi tôi tệp CSV chứa đúng phần bảng vừa hiển thị”. Đối chiếu ID và thứ tự ở **Displayed results** với bảng đã xem. **Summary** giữ thông tin của cả lần chạy và ghi rõ phạm vi trang đã xuất.
+
+Để tải báo cáo của toàn bộ lần đối soát:
 
 1. Mở kết quả vừa đối soát, kiểm tra kỳ và trạng thái xác minh.
 2. Bấm **Xuất XLSX** hoặc **Xuất CSV**. Chờ tạo xong; không tải một liên kết cũ trước khi công việc hoàn tất.
