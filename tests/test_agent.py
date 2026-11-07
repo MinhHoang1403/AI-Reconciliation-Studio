@@ -1854,6 +1854,12 @@ def test_provider_query_grammar_binds_field_enums_to_each_source():
     ]
     cat.datasets[0].tables[0].prepared_artifact_id = "prepared"
     captured = {}
+    other = cat.datasets[0].model_copy(update={"id": "other-dataset"}, deep=True)
+    other.tables[0].table_id = "other-table"
+    other.tables[0].prepared_artifact_id = None
+    other.tables[0].canonical_id = None
+    other.tables[0].schema_definition = None
+    cat.datasets.append(other)
 
     class Capture:
         local = True
@@ -1866,25 +1872,38 @@ def test_provider_query_grammar_binds_field_enums_to_each_source():
     interpret_requests(Capture(), ["Đọc dữ liệu tổng hợp"], cat, WorkspacePolicy(), lambda: True)
     sources = routing_sources(cat)
     variants = captured["$defs"]["RoutingQuery"]["anyOf"]
-    for source, query in zip(sources, variants, strict=True):
+    raw_refs = [source["ref"] for source in sources if source["source_kind"] == "RAW_PREVIEW"]
+    assert len(raw_refs) == 2
+    assert any(query["properties"]["source_ref"]["enum"] == raw_refs for query in variants)
+    for source in sources:
+        query = next(v for v in variants if source["ref"] in v["properties"]["source_ref"]["enum"])
         props = query["properties"]
-        assert props["source_ref"]["enum"] == [source["ref"]]
+        assert source["ref"] in props["source_ref"]["enum"]
         if source["source_kind"] in {"PREPARED", "PREPARED_FINDINGS"}:
             assert props["filters"]["maxItems"] == props["select_fields"]["maxItems"] == 0
             assert props["aggregations"]["maxItems"] == 0
         else:
             allowed = sorted(field["id"] for field in source["fields"])
-            assert props["select_fields"]["items"]["enum"] == allowed == ["code"]
-            assert props["filters"]["items"]["properties"]["field_id"]["enum"] == allowed
-            assert props["sort"]["items"]["properties"]["field_id"]["enum"] == allowed
+
+            def enum_values(node):
+                return captured["$defs"][node["$ref"].rsplit("/", 1)[1]]["enum"]
+
+            assert enum_values(props["select_fields"]["items"]) == allowed == ["code"]
+            assert enum_values(props["filters"]["items"]["properties"]["field_id"]) == allowed
+            assert enum_values(props["sort"]["items"]["properties"]["field_id"]) == allowed
             assert (
-                props["aggregations"]["items"]["properties"]["field_id"]["anyOf"][0]["enum"]
+                enum_values(props["aggregations"]["items"]["properties"]["field_id"]["anyOf"][0])
                 == allowed
             )
     interpret_requests(
         Capture(), ["Số hàng sau chuẩn bị là bao nhiêu?"], cat, WorkspacePolicy(), lambda: True
     )
-    for source, query in zip(sources, captured["$defs"]["RoutingQuery"]["anyOf"], strict=True):
+    for source in sources:
+        query = next(
+            v
+            for v in captured["$defs"]["RoutingQuery"]["anyOf"]
+            if source["ref"] in v["properties"]["source_ref"]["enum"]
+        )
         if source["source_kind"] in {"PREPARED", "PREPARED_FINDINGS"}:
             assert query["properties"]["aggregations"]["maxItems"] == 1
 
@@ -1918,6 +1937,67 @@ def test_date_quality_guard_excludes_quoted_filenames_and_negated_condition():
 
     assert not invalid_date_condition_requested("Mở dữ liệu gốc của tệp “Lỗi ngày tháng.csv”")
     assert not invalid_date_condition_requested("Không lọc ngày sai, xem toàn bộ bảng")
+
+
+@pytest.mark.parametrize(
+    "goals,expected",
+    [
+        (["Tệp gốc đang mở có bao nhiêu bản ghi?"], {"RAW_PREVIEW"}),
+        (["Nhìn phần nguyên bản nhé"], {"RAW_PREVIEW"}),
+        (["Xem dữ liệu tự chuẩn bị"], {"PREPARED"}),
+        (["Đếm các dòng lỗi ngày trong bảng gốc"], {"PREPARED_FINDINGS"}),
+        (["Không dùng bản gốc, xem bản đã chuẩn hóa"], set()),
+        (["Đọc bản gốc rồi xem bản đã chuẩn hóa"], set()),
+        (["Tệp gốc có bao nhiêu hàng?", "Khám phá các cột"], set()),
+    ],
+)
+def test_explicit_layers_bound_capabilities_without_choosing_sources(goals, expected):
+    from studio.agent_intents import explicit_read_layers
+
+    assert explicit_read_layers(goals) == expected
+
+
+def test_raw_layer_request_cannot_be_bound_to_prepared_and_schema_offers_only_raw():
+    from studio.agent_intents import compile_routing, routing_sources
+
+    cat = catalogue()
+    cat.datasets[0].tables[0].prepared_artifact_id = "prepared"
+    goal = "Tệp gốc đang mở có bao nhiêu bản ghi?"
+    source = next(s for s in routing_sources(cat) if s["source_kind"] == "PREPARED")
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        compile_routing(
+            json.dumps(
+                dict(
+                    intents=[
+                        dict(
+                            intent="QUERY_DATA",
+                            query=dict(
+                                source_ref=source["ref"],
+                                filters=[],
+                                aggregations=[],
+                                group_by=[],
+                                currency_field=None,
+                            ),
+                        )
+                    ]
+                )
+            ),
+            [goal],
+            cat,
+        )
+
+    class Capture:
+        local = False
+        usage = {}
+
+        def request_typed(self, prompt, *args, **kwargs):
+            variants = kwargs["response_schema"]["$defs"]["RoutingQuery"]["anyOf"]
+            assert len(variants) == 1
+            assert variants[0]["properties"]["source_ref"]["enum"][0].startswith("raw_preview-")
+            assert '"$defs"' not in prompt[0]["content"]
+            return []
+
+    interpret_requests(Capture(), [goal], cat, WorkspacePolicy(), lambda: False)
 
 
 @pytest.mark.parametrize(

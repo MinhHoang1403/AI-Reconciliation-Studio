@@ -18,7 +18,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-43"
+INTENT_REVISION = "agent-intent-44"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -101,6 +101,33 @@ def count_requested(goal: str) -> bool:
             plain_question(goal),
         )
     )
+
+
+def explicit_read_layers(goals: list[str]) -> set[str]:
+    """Restrict query capabilities only when every goal states one clear layer.
+
+    This does not select a dataset or an action. Conflicting or unstated layers
+    keep the complete catalogue for typed interpretation and server validation.
+    """
+    selected = set()
+    for goal in goals:
+        text = plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal))
+        if re.search(r"\b(?:khong|dung|cam) (?:xem|mo|doc|dung)\b", text):
+            return set()
+        if invalid_date_condition_requested(goal):
+            selected.add("PREPARED_FINDINGS")
+            continue
+        kinds = {
+            kind
+            for term, kind in (
+                LAYER_TERMS | {"tep goc": "RAW_PREVIEW", "nguyen ban": "RAW_PREVIEW"}
+            ).items()
+            if re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text)
+        }
+        if len(kinds) != 1:
+            return set()
+        selected.update(kinds)
+    return selected
 
 
 def validate_prepared_read(goal: str, query: DataQuery, catalogue: IntentCatalogue) -> None:
@@ -307,6 +334,13 @@ def validate_intents(
             if q.project_id != catalogue.context.project_id:
                 raise DomainError("AI_INVALID_SOURCE", "Query sai project.")
             language = plain_question(goal)
+            layers = explicit_read_layers([goal])
+            if layers and q.source_kind not in layers:
+                raise DomainError(
+                    "QUERY_SEMANTICS_REQUIRED",
+                    "Truy vấn chưa giữ đúng tầng dữ liệu được yêu cầu. "
+                    "Bạn muốn xem bản gốc, tự chuẩn bị hay đã chuẩn hóa?",
+                )
             if invalid_date_condition_requested(goal) and q.source_kind != "PREPARED_FINDINGS":
                 raise DomainError(
                     "QUERY_SEMANTICS_REQUIRED",
@@ -1325,6 +1359,11 @@ def interpret_requests(
     schema["properties"]["intents"].pop("minItems", None)
     schema["properties"]["intents"].pop("maxItems", None)
     sources = routing_sources(catalogue)
+    layers = explicit_read_layers(goals)
+    query_sources = (
+        [source for source in sources if source["source_kind"] in layers] if layers else sources
+    )
+    query_sources = query_sources or sources
     if not catalogue.previous_groups:
         # Without a prior displayed result, an ordinal is not an admissible slot.
         # Keep the public DTO compatible while constraining this provider request.
@@ -1360,7 +1399,7 @@ def interpret_requests(
                         else dict(type="null"),
                     ),
                 )
-                for s in sources
+                for s in query_sources
             ]
         )
     canonical_ids = [s["source_id"] for s in sources if s["source_kind"] == "CANONICAL"]
@@ -1387,22 +1426,35 @@ def interpret_requests(
 
     provider_grammar(schema)
     if sources:
+        field_definitions: dict[tuple[str, ...], str] = {}
         for source, source_query in zip(
-            sources, schema["$defs"]["RoutingQuery"]["anyOf"], strict=True
+            query_sources, schema["$defs"]["RoutingQuery"]["anyOf"], strict=True
         ):
-            scoped_fields = sorted(field["id"] for field in source["fields"])
+            scoped_fields = (
+                []
+                if source["source_kind"] in {"PREPARED", "PREPARED_FINDINGS"}
+                else sorted(field["id"] for field in source["fields"])
+            )
+            field_ref: dict[str, Any] = dict(type="string")
+            if scoped_fields:
+                field_key = tuple(scoped_fields)
+                if field_key not in field_definitions:
+                    name = f"SourceFields{len(field_definitions)}"
+                    field_definitions[field_key] = name
+                    schema["$defs"][name] = dict(type="string", enum=scoped_fields)
+                field_ref = {"$ref": f"#/$defs/{field_definitions[field_key]}"}
             properties = source_query["properties"]
             if source.get("description"):
                 source_query["description"] = source["description"]
             for key in ("select_fields", "group_by"):
                 properties[key] = (
-                    dict(type="array", items=dict(type="string", enum=scoped_fields))
+                    dict(type="array", items=deepcopy(field_ref))
                     if scoped_fields
                     else dict(type="array", items=dict(type="string"), maxItems=0)
                 )
             for key, definition in (("filters", "QueryFilter"), ("sort", "QuerySort")):
                 item = deepcopy(schema["$defs"][definition])
-                item["properties"]["field_id"] = dict(type="string", enum=scoped_fields)
+                item["properties"]["field_id"] = deepcopy(field_ref)
                 properties[key] = (
                     dict(type="array", items=item)
                     if scoped_fields
@@ -1410,7 +1462,7 @@ def interpret_requests(
                 )
             aggregate = deepcopy(schema["$defs"]["QueryAggregation"])
             nullable = (
-                dict(anyOf=[dict(type="string", enum=scoped_fields), dict(type="null")])
+                dict(anyOf=[deepcopy(field_ref), dict(type="null")])
                 if scoped_fields
                 else dict(type="null")
             )
@@ -1442,6 +1494,21 @@ def interpret_requests(
                         required=["op", "field_id"],
                     ),
                 )
+        # Sources with identical field/metric capabilities share one grammar
+        # branch. Only the source_ref enum is combined; each ref still binds its
+        # original workspace/project/artifact and every server check is retained.
+        grouped: dict[str, dict[str, Any]] = {}
+        for variant in schema["$defs"]["RoutingQuery"]["anyOf"]:
+            signature = deepcopy(variant)
+            signature["properties"].pop("source_ref")
+            key = json.dumps(signature, sort_keys=True)
+            if key in grouped:
+                grouped[key]["properties"]["source_ref"]["enum"].extend(
+                    variant["properties"]["source_ref"]["enum"]
+                )
+            else:
+                grouped[key] = variant
+        schema["$defs"]["RoutingQuery"]["anyOf"] = list(grouped.values())
     # Chỉ cho properties thuộc tool đã chọn; model không thể kèm query vào
     # summary/explanation/export. Server kiểm tra cùng ranh giới ở compile_routing.
     properties = schema["$defs"]["RoutingIntent"]["properties"]
@@ -1604,6 +1671,8 @@ def interpret_requests(
                 "Khi tệp đã có bản CANONICAL, lọc/thống kê/vẽ theo schema đã duyệt dùng "
                 "ref canonical, không raw_preview. Raw chỉ khi yêu cầu xem dữ liệu gốc "
                 "hoặc chưa có bản chuẩn hóa, và chỉ dùng raw field IDs. "
+                "Nguyên bản/tệp gốc/bản gốc luôn là RAW_PREVIEW; tự chuẩn bị là PREPARED. "
+                "Hai bản có cùng số dòng không có nghĩa có thể đổi tầng người dùng yêu cầu. "
                 "không tự tạo source/field/metric IDs. Tên trùng hoặc thiếu nguồn cần hỏi/chọn rõ. "
                 "Mã nghiệp vụ cần giải thích đặt key_value nguyên văn, không group_id kỹ thuật. "
                 "Chỉ dùng group_id đã có trong group context. Không chọn newest run thay current "
@@ -1675,8 +1744,7 @@ def interpret_requests(
                 "Đang mở/đang xem gắn với kết quả là ngữ cảnh màn hình, không phải state OPEN "
                 "của case. Hai goal cùng cần CLARIFY vẫn phải có hai intents riêng theo đúng "
                 "thứ tự, không gộp thành một intent với hai questions. "
-                "Trả JSON đúng schema, không thêm văn bản. "
-                + ("" if provider.local else json.dumps(schema))
+                "Trả JSON đúng response schema được cung cấp, không thêm văn bản. "
             ),
         ),
         dict(
