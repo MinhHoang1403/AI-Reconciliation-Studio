@@ -58,6 +58,12 @@ Nếu một bước báo thiếu dữ kiện, bổ sung đúng câu hỏi trên 
 
 Nếu dùng phần kiểm tra thủ công để duyệt mapping và chuẩn hóa, khi trở về Chat, thẻ cũ của nguồn đó tự hết hiệu lực. Bản chuẩn hóa được liên kết vào cùng công việc. Nguồn khác chưa được xác nhận vẫn giữ thẻ riêng.
 
+### Nhập một lần cho các nguồn có cùng nghiệp vụ
+
+Khi có từ hai thẻ trở lên và mỗi nguồn có một khoản tiền, mở **Nhập một lần cho các nguồn có cùng nghiệp vụ**. Đọc danh sách nguồn và tên khoản tiền. Chỉ dùng nếu các nguồn có cùng loại dữ liệu, ý nghĩa mỗi dòng, khoản tiền và múi giờ. Nhập thông tin, đánh dấu xác nhận rồi bấm **Áp dụng thông tin chung vào bản nháp**. Hệ thống điền chỗ còn thiếu, giữ lựa chọn riêng đã có và kiểm lại từng nguồn. Chọn khóa riêng trong mỗi thẻ, xem kết quả kiểm tra rồi duyệt.
+
+Nếu các nguồn là đơn hàng, sự kiện thanh toán và lô sao kê với grain khác nhau, dùng từng thẻ riêng. Không áp dụng chung chỉ vì đều có cột tiền. Đổi nội dung hoặc reload yêu cầu xác nhận lại trước khi áp dụng; bản nháp đã nhập được giữ theo phạm vi nguồn.
+
 ## 2. Những từ cần hiểu
 
 | Từ trong tài liệu | Hiểu đơn giản |

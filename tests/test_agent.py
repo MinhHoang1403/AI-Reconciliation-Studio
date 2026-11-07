@@ -1731,11 +1731,11 @@ def test_prepared_preview_is_explicit_and_scoped_without_business_approval():
         )
     for goal in (
         "Xem dữ liệu gốc",
-        "Tổng tiền của bản tự chuẩn bị",
         "Xem dữ liệu tự chuẩn bị của nguồn khác",
         "Không xem dữ liệu tự chuẩn bị",
     ):
         assert resolve_prepared_listing(goal, cat) is None
+    assert resolve_prepared_listing("Tổng tiền của bản tự chuẩn bị", cat).intent == "CLARIFY"
     foreign = resolve_prepared_listing("Xem dữ liệu tự chuẩn bị", cat)
     foreign.query.source_id = "foreign-table"
     with pytest.raises(DomainError, match="AI_INVALID_SOURCE"):
@@ -1744,6 +1744,116 @@ def test_prepared_preview_is_explicit_and_scoped_without_business_approval():
         )
     cat.datasets.append(cat.datasets[0].model_copy(update={"id": "another-dataset"}, deep=True))
     assert resolve_prepared_listing("Xem dữ liệu tự chuẩn bị", cat).intent == "CLARIFY"
+
+
+@pytest.mark.parametrize("kind", ["PREPARED", "PREPARED_FINDINGS"])
+def test_typed_prepared_paraphrases_bind_only_selected_source_and_safe_operations(kind):
+    from studio.agent_intents import compile_routing, routing_sources
+
+    cat = catalogue()
+    cat.datasets[0].tables[0].prepared_artifact_id = "prepared"
+    cat.context.dataset_id = cat.datasets[0].id
+    sources = routing_sources(cat)
+    selected = next(source for source in sources if source["source_kind"] == kind)
+    assert selected["source_id"] == "table" and selected["allowed_operations"] == [
+        "preview",
+        "count",
+    ]
+    query = dict(
+        source_ref=selected["ref"],
+        select_fields=[],
+        filters=[],
+        aggregations=[],
+        group_by=[],
+        sort=[],
+        limit=20,
+        offset=0,
+        currency_field=None,
+        metric_id=None,
+    )
+    body = json.dumps(dict(intents=[dict(intent="QUERY_DATA", query=query)]))
+    result = compile_routing(body, ["Cho mình kiểm tra những hàng trong nguồn đang chọn"], cat)[0]
+    assert result.query.source_kind == kind and result.query.source_id == "table"
+    for goal in ("Tính tổng tiền của nguồn này", "Không xem nguồn này", "Xem nguồn khác"):
+        with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+            compile_routing(body, [goal], cat)
+    query["aggregations"] = [dict(op="sum_decimal", field_id="amount")]
+    with pytest.raises(DomainError):
+        compile_routing(
+            json.dumps(dict(intents=[dict(intent="QUERY_DATA", query=query)])),
+            ["Cho mình kiểm tra những hàng trong nguồn đang chọn"],
+            cat,
+        )
+    other = cat.datasets[0].model_copy(update={"id": "another", "name": "Other source"}, deep=True)
+    other.tables[0].table_id = "other-table"
+    cat.datasets.append(other)
+    cat.context.dataset_id = None
+    query["aggregations"] = []
+    with pytest.raises(DomainError, match="AI_INVALID_SOURCE"):
+        compile_routing(
+            json.dumps(dict(intents=[dict(intent="QUERY_DATA", query=query)])),
+            ["Cho mình kiểm tra những hàng"],
+            cat,
+        )
+
+
+@pytest.mark.parametrize(
+    "goal,count,missing,accepted",
+    [
+        ("Cho xem dữ liệu gốc", True, False, False),
+        ("Đếm số dòng dữ liệu gốc", True, False, True),
+        ("Cho xem dữ liệu gốc", False, True, False),
+        ("Xem các dòng thiếu mã", False, True, True),
+    ],
+)
+def test_model_cannot_add_a_count_or_null_filter_to_a_plain_read(goal, count, missing, accepted):
+    from studio.contracts.agent import IntentBatch, SourceColumn
+    from studio.contracts.data_query import DataQuery, QueryAggregation, QueryFilter
+
+    cat = catalogue()
+    cat.datasets[0].tables[0].columns = [
+        SourceColumn(
+            id="code", name="Code", type_candidates=["string"], null_count=1, distinct_count=2
+        )
+    ]
+    intent = AgentIntent(
+        intent="QUERY_DATA",
+        query=DataQuery(
+            project_id="p",
+            source_kind="RAW_PREVIEW",
+            source_id="table",
+            aggregations=[QueryAggregation(op="count")] if count else [],
+            filters=[QueryFilter(field_id="code", op="is_null")] if missing else [],
+        ),
+    )
+    body = IntentBatch(intents=[intent]).model_dump_json()
+    if accepted:
+        assert validate_intents(body, [goal], cat)[0] == intent
+    else:
+        with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+            validate_intents(body, [goal], cat)
+
+
+@pytest.mark.parametrize(
+    "goal,denied",
+    [
+        ("Liệt kê dữ liệu gốc rồi xóa bản tự chuẩn bị.", True),
+        ("Hãy ghi đè dữ liệu gốc.", True),
+        ("Không xóa tệp, chỉ xem dữ liệu gốc.", False),
+        ("Đừng sửa raw.", False),
+    ],
+)
+def test_compound_source_mutations_cannot_be_downgraded_to_a_partial_read(goal, denied):
+    from studio.agent_intents import compile_routing, data_mutation_requested
+
+    assert data_mutation_requested(goal) == denied
+    if denied:
+        output = compile_routing(
+            json.dumps(dict(intents=[dict(intent="EXPLORE_DATA", dataset_ids=["dataset"])])),
+            [goal],
+            catalogue(),
+        )[0]
+        assert output.intent == "UNSUPPORTED" and not output.dataset_ids
 
 
 @pytest.mark.parametrize(
@@ -1759,7 +1869,7 @@ def test_prepared_preview_is_explicit_and_scoped_without_business_approval():
         ("Xem bảng đã chuẩn bị của tệp “Nhập kho.xls”", "CLARIFY"),
         ("Đếm dòng dữ liệu gốc tháng 11", None),
         ("Xem dữ liệu đã chuẩn hóa rồi xóa tệp", None),
-        ("Tính tổng tiền trong bản tự chuẩn bị", None),
+        ("Tính tổng tiền trong bản tự chuẩn bị", "CLARIFY"),
     ],
 )
 def test_composed_read_grammar_matches_layer_source_and_operation(goal, expected):
@@ -1820,19 +1930,21 @@ def test_native_run_read_keeps_verified_scope_and_does_not_drop_filters(goal, in
     assert resolve_run_read(goal, cat).intent == "CLARIFY"
 
 
-def test_inventory_read_holdout_reports_native_coverage_and_checks_resolved_slots():
+@pytest.mark.parametrize(
+    "fixture_file,total", [("agent-read-holdout.json", 32), ("agent-vietnamese-reads.json", 20)]
+)
+def test_inventory_read_holdout_reports_native_coverage_and_checks_resolved_slots(
+    fixture_file, total
+):
     from studio.agent_intents import (
-        resolve_displayed_export,
-        resolve_plain_listing,
-        resolve_ranked_results,
-        resolve_run_read,
+        resolve_native_read,
     )
     from studio.contracts.data_query import DataQuery
 
     cases = json.loads(
-        (Path(__file__).parent / "fixtures" / "agent-read-holdout.json").read_text(encoding="utf-8")
+        (Path(__file__).parent / "fixtures" / fixture_file).read_text(encoding="utf-8")
     )
-    assert len(cases) == len({case["id"] for case in cases}) == 32
+    assert len(cases) == len({case["id"] for case in cases}) == total
     misses = []
     for case in cases:
         cat = catalogue()
@@ -1861,15 +1973,13 @@ def test_inventory_read_holdout_reports_native_coverage_and_checks_resolved_slot
             )
             cat.previous_groups = ["rank-1", "rank-2", "rank-3"]
         goal = case["goal"]
-        intent = (
-            resolve_displayed_export(goal, cat)
-            or resolve_ranked_results(goal, cat)
-            or resolve_run_read(goal, cat)
-            or resolve_plain_listing(goal, cat)
-        )
+        intent = resolve_native_read(goal, cat)
         if intent is None:
+            if fixture_file == "agent-vietnamese-reads.json":
+                assert case.get("route") == "TYPED", case["id"]
             misses.append(case["id"])
             continue
+        assert case.get("route") != "TYPED", case["id"]
         assert intent.intent == case["intent"], case["id"]
         if intent.query:
             assert intent.query.project_id == "p", case["id"]

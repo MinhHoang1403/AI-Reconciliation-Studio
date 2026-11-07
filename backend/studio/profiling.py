@@ -151,6 +151,113 @@ ALIASES = {
     "platform": {"platform", "san"},
 }
 
+# [D] A small bilingual role vocabulary, applied only to column-name proposals.
+# Longest phrases win before individual words: money basis and document roles
+# remain distinct. This never rewrites raw IDs, source signatures or approvals.
+FIELD_TERMS = {
+    "ma tien te": "currency",
+    "don vi tien te": "currency",
+    "don vi tien": "currency",
+    "loai tien": "currency",
+    "tien te": "currency",
+    "dong tien": "currency",
+    "truoc giam tru": "gross",
+    "truoc khau tru": "gross",
+    "truoc phi": "gross",
+    "sau giam tru": "net",
+    "sau khau tru": "net",
+    "sau phi": "net",
+    "thuc nhan": "net amount",
+    "gia tri gop": "gross amount",
+    "tien gop": "gross amount",
+    "da thanh toan": "paid",
+    "da chi tra": "paid",
+    "da tra": "paid",
+    "phai thu": "receivable",
+    "phai tra": "payable",
+    "du kien": "expected",
+    "don hang": "order",
+    "don mua": "order",
+    "khach hang": "customer",
+    "nguoi mua": "customer",
+    "khach mua": "customer",
+    "nha cung cap": "supplier",
+    "hoa don": "invoice",
+    "phieu thu": "receipt",
+    "bien lai thu": "receipt",
+    "van don": "tracking",
+    "thanh toan": "payment",
+    "chi tra": "payment",
+    "tra tien": "payment",
+    "nhan tien": "receipt",
+    "thu tien": "receipt",
+    "quyet toan": "settlement",
+    "doi soat": "settlement",
+    "ngan hang": "bank",
+    "tham chieu": "reference",
+    "giao dich": "transaction",
+    "dieu chinh": "adjustment",
+    "hoan tien": "refund",
+    "hoan lai": "refund",
+    "hoan tra": "refund",
+    "ban hang": "sale",
+    "tra hang": "return",
+    "hang tra": "return",
+    "san pham": "sku",
+    "hang hoa": "sku",
+    "ma hang": "sku id",
+    "so luong": "quantity",
+    "gia von": "unit cost",
+    "don gia": "unit cost",
+    "gia tri ton kho": "inventory value",
+    "gia tri hang ton": "inventory value",
+    "chot ton": "snapshot",
+    "chup ton": "snapshot",
+    "ton kho": "inventory",
+    "den han": "due",
+    "dao han": "due",
+    "phat sinh": "event",
+    "thoi diem": "date",
+    "so tien": "amount",
+    "gia tri": "amount",
+    "khoan": "amount",
+    "cong no": "amount",
+    "ma so": "id",
+    "so hoa don": "invoice id",
+    "so phieu thu": "receipt id",
+    "ma": "id",
+    "ngay": "date",
+    "tien": "amount",
+    "phi": "fee",
+    "lo": "batch",
+    "kho": "warehouse",
+    "goc": "original",
+    "mo ta": "description",
+    "code": "id",
+    "identifier": "id",
+    "number": "id",
+}
+FIELD_PATTERN = re.compile(
+    r"\b(?:"
+    + "|".join(
+        re.escape(phrase)
+        for phrase in sorted(FIELD_TERMS, key=lambda phrase: (-len(phrase.split()), -len(phrase)))
+    )
+    + r")\b"
+)
+
+
+def field_name_tokens(value: str) -> tuple[str, ...]:
+    """Bilingual lexical concepts for suggestions; not a semantic equivalence proof.
+
+    NFKD/accent folding is shared with the profiler. Phrase boundaries prevent
+    substring translation, and unrecognized qualifiers remain for abstention.
+    """
+    value = re.sub(r"([a-z])([A-Z])", r"\1 \2", value)
+    name = " ".join(re.findall(r"[a-z0-9]+", normalized_name(value)))
+    translated = FIELD_PATTERN.sub(lambda match: FIELD_TERMS[match[0]], name)
+    return tuple(translated.split())
+
 
 def find_mapping_candidates(
     profile: DatasetProfile, schema: SchemaDefinition
@@ -161,22 +268,50 @@ def find_mapping_candidates(
     O(source fields × target fields); generic labels never supply business roles.
     """
 
-    def tokens(name: str) -> tuple[str, ...]:
-        return tuple(re.findall(r"[a-z0-9]+", normalized_name(name)))
+    def concepts(tokens: tuple[str, ...]) -> frozenset[str]:
+        words = set(tokens)
+        if "currency" in words:
+            words -= {"id", "loai"}
+        if words & {
+            "gross",
+            "net",
+            "fee",
+            "paid",
+            "expected",
+            "receivable",
+            "payable",
+            "refund",
+            "return",
+            "adjustment",
+        }:
+            words.discard("amount")
+        return frozenset(words)
 
     target_names = {
-        field.id: {tokens(value) for value in {field.id, field.name} | ALIASES.get(field.id, set())}
+        field.id: {
+            concepts(field_name_tokens(value))
+            for value in {field.id, field.name} | ALIASES.get(field.id, set())
+        }
         for field in schema.fields
     }
     output: dict[str, list[str]] = {}
     for source in profile.columns:
-        name = tokens(source.name)
+        name = field_name_tokens(source.name)
+        words = set(name)
+        # Negation, alternatives and explicit uncertainty are not a role assertion.
+        if (
+            words & {"khong", "chua", "hoac", "hay", "not", "or", "unknown"}
+            or {"gross", "net"} <= words
+        ):
+            output[source.column_id] = []
+            continue
         compatible = [
             f
             for f in schema.fields
             if not (source.identifier_candidate and f.data_type == "decimal")
         ]
-        targets = [f.id for f in compatible if name in target_names[f.id]]
+        semantic = concepts(name)
+        targets = [f.id for f in compatible if semantic in target_names[f.id]]
         if not targets and name and set(name) not in ({"amount"}, {"total"}, {"date"}, {"code"}):
             partial = [
                 f.id
@@ -188,7 +323,32 @@ def find_mapping_candidates(
                     or f.data_type == "decimal"
                     and source.observations.get("numeric_locales")
                 )
-                and any(len(alias) >= 2 and set(alias) < set(name) for alias in target_names[f.id])
+                and not (
+                    words
+                    & {"gross", "net", "fee", "refund", "quantity", "receivable", "payable"}
+                    - set().union(*target_names[f.id])
+                )
+                and any(
+                    (
+                        len(alias) >= 2
+                        or bool(
+                            alias
+                            & {
+                                "gross",
+                                "net",
+                                "fee",
+                                "paid",
+                                "expected",
+                                "receivable",
+                                "payable",
+                                "currency",
+                                "quantity",
+                            }
+                        )
+                    )
+                    and alias < semantic
+                    for alias in target_names[f.id]
+                )
             ]
             targets = partial if len(partial) == 1 else []
         output[source.column_id] = targets[:5]

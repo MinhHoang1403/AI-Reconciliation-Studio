@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, apiPages } from "./api";
 import { Notice, Spinner } from "./components";
-import type { DraftField, NormalizationDraft, Review, Workflow, MappingAssessment } from "./agentTypes";
+import type { DraftField, NormalizationDraft, Review, Workflow, MappingAssessment, SharedMappingFacts } from "./agentTypes";
 import { label, type Plan, type Catalogue, type Slot } from "./reconciliationTypes";
 import { errorText as errors } from "./types";
 function proposedPlan(review: Review, catalogue: Catalogue[]): Plan | null {
@@ -165,7 +165,7 @@ function storedDraft(key: string, review: Review) {
     } catch { return null; }
 }
 
-export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onReply, onBatchDraft }: {
+export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onReply, onBatchDraft, sharedFacts }: {
     review: Review;
     workflow: Workflow;
     canEdit: boolean;
@@ -173,10 +173,30 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     refresh: () => Promise<void>;
     onReply?: (workflowId:string,review:Review)=>void;
     onBatchDraft?: (id: string, payload: string | null) => void;
+    sharedFacts?: SharedMappingFacts | null;
 }) {
     const storageKey = `studio.review-draft.${draftOwner}.${workflow.id}.${review.id}.${review.nonce}.${review.fingerprint}`;
     const cached = useRef(storedDraft(storageKey, review)).current;
     const [draft, setDraft] = useState(cached?.draft ?? review.normalization_draft ?? null);
+    const appliedSharedRevision=useRef(0);
+    useEffect(() => {
+        if (!sharedFacts || !canEdit || review.kind !== "MAPPING" || review.state !== "OPEN" ||
+            sharedFacts.revision<=appliedSharedRevision.current ||
+            !sharedFacts.reviewKeys.includes(`${review.id}:${review.nonce}:${review.fingerprint}`)) return;
+        appliedSharedRevision.current=sharedFacts.revision;
+        setDraft(previous => previous ? {
+            ...previous,
+            entity_kind: previous.entity_kind === "unknown" ? sharedFacts.entity_kind : previous.entity_kind,
+            grain: previous.grain === "unknown" ? sharedFacts.grain : previous.grain,
+            fields: previous.fields.map(field => ({...field,
+                ...(field.data_type === "date" && !field.timezone ? {timezone:sharedFacts.timezone} : {}),
+                ...(field.data_type === "decimal" ? {
+                    amount_basis: field.amount_basis || sharedFacts.amount_basis,
+                    semantic_metric: field.semantic_metric || sharedFacts.semantic_metric,
+                } : {}),
+            })),
+        } : previous);
+    }, [sharedFacts, canEdit, review.id, review.nonce, review.fingerprint, review.kind, review.state]);
     const [plan, setPlan] = useState(cached?.plan ?? review.plan ?? null);
     const [assessment,setAssessment]=useState<MappingAssessment|null>(null);
     const [checking,setChecking]=useState(false);

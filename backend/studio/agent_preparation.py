@@ -28,10 +28,10 @@ from studio.contracts.api import ApprovalInput
 from studio.contracts.assistant import Identifier
 from studio.contracts.reconciliation import PlanningRequest, PlanningSuggestions
 from studio.errors import DomainError
-from studio.profiling import normalized_name
+from studio.profiling import field_name_tokens, normalized_name
 
-PREPARATION_REVISION = "agent-normalization-6"
-LOCAL_PREPARATION_REVISION = "agent-mapping-semantics-1"
+PREPARATION_REVISION = "agent-normalization-7"
+LOCAL_PREPARATION_REVISION = "agent-mapping-semantics-2"
 REVIEW_REVISION = "agent-review-3"
 
 
@@ -289,16 +289,14 @@ def profiled_fields(profile: DatasetProfile) -> list[NormalizationField]:
 def profiled_type(column: ColumnProfile, name: str) -> Literal["string", "date", "decimal"]:
     if column.identifier_candidate:
         return "string"
-    words = set(re.findall(r"[a-z]+", name))
+    words = set(field_name_tokens(column.name))
     dates = column.observations.get("date_formats")
     if isinstance(dates, dict) and dates and words & {"date", "ngay", "timestamp", "time"}:
         return "date"
     # Tỷ lệ này chỉ gợi ý kiểu để review. Backend vẫn kiểm từng giá trị, kể cả lỗi thật.
     numbers = column.observations.get("numeric_locales")
     count = column.observations.get("nonempty_count")
-    money_name = bool(
-        words & {"amount", "gross", "net", "fee", "total"}
-    ) or "so tien" in name.replace("_", " ")
+    money_name = bool(words & {"amount", "gross", "net", "fee", "total"})
     if money_name and isinstance(numbers, dict) and isinstance(count, int) and count > 0:
         if 5 * max(numbers.values(), default=0) >= 4 * count:
             return "decimal"
@@ -414,7 +412,7 @@ def propose_local_normalization(
             meaning = money.get(field.source_field)
             # Header phải tự hỗ trợ ngữ nghĩa. Cột amount chung luôn chờ người dùng.
             if meaning and meaning != "unknown":
-                words = set(re.findall(r"[a-z]+", name))
+                words = set(field_name_tokens(field.name))
                 if meaning in words:
                     field.semantic_metric = field.target_id
                     if meaning in {"gross", "net"}:

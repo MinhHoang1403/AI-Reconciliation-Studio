@@ -1,5 +1,45 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Hoàn thiện mapping, tiếng Việt và inference — đang kiểm chứng 08/11/2026
+
+Checkpoint tài liệu `d7eefa6f34f00b210216bacf5386ca7a0fae5b60` đã push, ứng dụng vẫn `9fb6200` trong lúc kiểm source mới. AP-14 sau rollback/return đạt equality metadata nghiệp vụ/checksums; backup `backup_0a81281a840c443d8898c8fb532511ae` có 24 bảng và **9.089 tệp**, restore cô lập và bản host đều validate. Không xóa backup cũ. Main chưa merge. Các số liệu dưới đây chưa thay kiểm chứng Docker ứng viên mới.
+
+### Mapping đa ngôn ngữ
+
+Đặc tả `tests/fixtures/mapping-multilingual-specifications.json` chốt trước thay matcher, SHA256 `024dc99cee6e6e2f438c6a43047192240ea4c7186c8b086ec516ccd7e2287ec4`. Bảy miền giữ ground truth từ định nghĩa nghiệp vụ độc lập với dự đoán: mỗi split có 52 trường dương và 70 cột negative. Development dùng tiếng Việt đã quan sát; validation có tên trộn/đảo từ và được dùng điều chỉnh; final lexical holdout đánh giá một lần sau chốt heuristic. Đây là holdout cách đặt tên tổng hợp, không là nghiên cứu người dùng độc lập hoặc thước đo ngữ nghĩa tổng quát. Không phân tích ba cột miss của holdout để sửa heuristic.
+
+| Phương án, holdout | Precision@1 | Recall@1 | F1 | Negative sai | Khóa bỏ lỡ |
+| --- | --- | --- | --- | ---: | ---: |
+| Source `9fb6200` | 19/22 | 19/52 | 0,5135 | 3 | 10 |
+| RapidFuzz + profile | 27/42 | 27/52 | 0,5745 | 12 | 5 |
+| Vocabulary Việt–Anh + ràng buộc | 49/49 | 49/52 | 0,9703 | 0 | 0 |
+
+Ứng viên có 73 abstention/122 cột, gồm toàn bộ 70 negative. Recall@3/@5 vẫn 49/52 vì matcher chỉ trả một lựa chọn khi bằng chứng tên/kiểu đủ duy nhất. Validation từ 5/52 đúng lên 49/52, không đề xuất sai. Trên 21 bảng của ba split, matcher mới p50/p95 0,487/0,724 ms, peak tiến trình 60.686.336 bytes, CPU0,359 giây cho toàn phép đánh giá. Sample values tiền/IDs cố ý trùng phân bố để không dùng overlap làm nghĩa nghiệp vụ. Benchmark không gọi approval, không đề xuất currency value/grain; false auto-approval và quyền reuse được kiểm qua API/Worker riêng. Không thêm Valentine/Pandera/embeddings hoặc thay dependencies ứng dụng.
+
+Header được tách thành khái niệm có giới hạn, không có nhánh theo tên file hoặc tên câu holdout. Phủ định/lựa chọn và cơ sở tiền xung đột bị từ chối. `source_signature`, raw IDs, approval cũ giữ nguyên; Agent nhận diện được kiểu tiền/ngày trong tên tiếng Việt nhưng chưa tự điền grain/khóa/timezone/metric. Source mapping trước phần routing bổ sung đã qua **588/588** Backend/PostgreSQL, 189,02 giây. Source tích hợp mới đạt **600/600** Backend/PostgreSQL trong172,29giây; Ruff/mypy46modules, TypeScript/ESLint/build, Markdown13tệp và source/history/known-secret/path checks đạt. Kiểm image và browser đầy đủ còn tiếp theo, không dùng600source thay kết quả đó.
+
+### UX và câu hỏi tiếng Việt
+
+Đối chiếu 23 trường của hành trình ba nguồn mới: 6 trường entity/grain, 3 chọn khóa, 3 timezone, 3 basis, 3 metric và 5 phạm vi/coverage. Kiểu, locale, date format và currency đủ bằng chứng đã được Backend điền nên không nằm trong 23. Với nguồn mới chưa có grant, nhóm reuse B bằng0. Grain/khóa/timezone/phạm vi chưa có căn cứ vẫn do người dùng quyết định; nghĩa tiền từ header chỉ là đề xuất.
+
+Nhập chung là hành động người dùng khai báo phạm vi và facts, không suy từ uniqueness hoặc tự đồng nhất ba nguồn. UI mới chỉ điền phần thiếu, giữ quyết định riêng và yêu cầu duyệt sau preflight. Một hành trình browser dùng assets candidate với backend `9fb6200` đã đạt oracle 1/1/2, signed/absolute50 VND, CSV/XLSX/evidence/reload; 14 trường nhập thay23, 30 trusted clicks thay26, 2 lượt duyệt cho4 resources. Click tăng gồm mở nhóm, xác nhận áp dụng và kiểm reload; chưa kết luận UX tổng thể nhanh hơn. Đây là Codex browser automation, chưa independent human UAT. Log `runtime/completion-shared-review-checked-browser.log`; cần replay trên image mới.
+
+Bộ 32 câu cũ đạt 28 native trên replay; R02/R09/R29/R32 còn typed routing/làm rõ. Bộ `agent-vietnamese-reads.json` có20 câu/đáp án cố định:18 native, V12 (lọc kỳ cụ thể) và V19 (trùng giao dịch thiếu khóa) để tuyến typed. Không đổi oracle tiền hoặc bỏ điều kiện của người dùng để tăng số ca.
+
+Kiểm LIVE local phát hiện catalogue model thiếu prepared sources và prompt local nhầm preview với khám phá cấu trúc; cả hai đang được sửa ở module hiện có. Schema/validator giới hạn prepared xem/đếm và scope trực tiếp. Model từng thêm count/is_null không có trong câu; validator mới yêu cầu bằng chứng cho hai phép toán này thay vì công bố trả lời sai. Lượt source trước có một assertion còn mong `None` cho tổng tiền prepared; hành vi được giao nay là `CLARIFY`, assertion đã cập nhật rõ, không sửa expected kết quả tài chính. Chưa dùng một lượt source lỗi đó báo PASS.
+
+### Provider và Qwen
+
+Ollama thực tế0.40.9, `qwen3:8b`, 8,2B Q4_K_M, license Apache-2.0, có thinking boolean; ứng dụng vốn đã gửi `think=false`, temperature0, context8192, output cap6000, keep_alive90s và timeout90s. Không thay mặc định, model, driver hoặc budget. Read-only inventory ban đầu không có model được load. Model từng dùng khoảng4,19GB VRAM; không suy toàn bộ timeout cũ do RAM/GPU.
+
+Benchmark mới gồm8 tác vụ tổng hợp ×3lượt ×2context, 48 request thật, không cloud/DB execution. JSON hợp lệ48/48 nhưng hợp đồng output phẳng buộc các trường không liên quan, full-slot oracle đúng0/24 ở mỗi context. Vì thế **loại phương án này**, không dùng số thời gian để chọn cấu hình. Mixed-task p50/p95 ở8192 là3.828/5.296,5ms, ở4096 là3.335,5/5.611,65ms; n24 mỗi cấu hình, mỗi tác vụ n3. Lượt đầu8192 load11,432s trong14,812s; đổi sang4096 tải lại10,509s trong13,125s. Không gọi đây là chứng minh cold-start ổn định hoặc tốc độ ứng dụng thật. Giữ receipt `runtime/completion-qwen-benchmark.json` và kết quả sai để truy vết.
+
+Lượt adapter production trên catalogue tổng hợp cũng phát hiện chọn sai intent/nguồn/operation. Các lượt replay sau sửa vẫn cần kiểm đủ filter/count/sort, không chỉ tên intent/source. Không công bố chúng là PASS end-to-end. Chưa gửi lại request Qwen cũ có delivery unknown.
+
+Cấu hình Gemini host khác credential mà container đang nạp; chỉ so fingerprint, không ghi key hoặc fingerprint vào tài liệu công khai. Sẽ inject cấu hình đã có khi triển khai candidate và thử theo allowance hiện hành, không tăng quota, không tự tìm key khác; dừng khi429/503. Credential mới chưa có kết quả LIVE ở checkpoint source này.
+
+Nguồn đã đọc trực tiếp: [Python Unicode normalization](https://docs.python.org/3.12/library/unicodedata.html), [RapidFuzz preprocessing](https://rapidfuzz.github.io/RapidFuzz/Usage/utils.html), [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs), [thinking](https://docs.ollama.com/capabilities/thinking), [chat API và timing](https://docs.ollama.com/api/chat). NFKD và default_process không tự chứng minh hai khái niệm nghiệp vụ tương đương; vocabulary và abstention là heuristic dự án [D], được đo riêng.
+
 ## Báo cáo hoàn thiện ứng viên `9fb6200` — 07/11/2026
 
 ### A. Tổng quan

@@ -15,13 +15,12 @@ from studio.agent_intents import (
     INTENT_REVISION,
     approval_bypass_requested,
     currency_bypass_requested,
+    data_mutation_requested,
     interpret_requests,
     resolve_attached_normalization,
     resolve_displayed_export,
     resolve_named_reconciliation,
-    resolve_plain_listing,
-    resolve_ranked_results,
-    resolve_run_read,
+    resolve_native_read,
 )
 from studio.agent_preparation import (
     LOCAL_PREPARATION_REVISION,
@@ -311,12 +310,8 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
         command = parent.payload.get("command")
         goal = row.goal
         displayed_export = resolve_displayed_export(goal, catalogue)
-        plain_listing = (
-            displayed_export
-            or resolve_ranked_results(goal, catalogue)
-            or resolve_run_read(goal, catalogue)
-            or resolve_plain_listing(goal, catalogue)
-            or resolve_named_reconciliation(goal, catalogue)
+        plain_listing = resolve_native_read(goal, catalogue) or resolve_named_reconciliation(
+            goal, catalogue
         )
         if plain_listing is not None:
             if displayed_export and displayed_export.intent == "EXPORT_RESULT":
@@ -335,11 +330,17 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
             save(row, state)
             db.commit()
             return
-        if approval_bypass_requested(goal) or currency_bypass_requested(goal):
+        if (
+            approval_bypass_requested(goal)
+            or currency_bypass_requested(goal)
+            or data_mutation_requested(goal)
+        ):
             state.intent = AgentIntent(
                 intent="UNSUPPORTED",
                 questions=[
-                    "Tôi không thể bỏ qua tiền tệ để cộng gộp số tiền. "
+                    "Tôi không thể sửa hoặc xóa nguồn dữ liệu qua công cụ đọc."
+                    if data_mutation_requested(goal)
+                    else "Tôi không thể bỏ qua tiền tệ để cộng gộp số tiền. "
                     "Cần quy tắc quy đổi được duyệt."
                     if currency_bypass_requested(goal)
                     else "Tôi không thể tự phê duyệt ánh xạ hoặc quy tắc nghiệp vụ. "

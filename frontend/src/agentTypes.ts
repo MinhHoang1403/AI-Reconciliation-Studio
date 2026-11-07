@@ -21,6 +21,15 @@ export type NormalizationDraft = {
     grain: string;
     fields: DraftField[];
 };
+export type SharedMappingFacts = {
+    revision: number;
+    reviewKeys: string[];
+    entity_kind: string;
+    grain: string;
+    timezone: string;
+    amount_basis: string;
+    semantic_metric: string;
+};
 export type MappingAssessment = {
     draft: NormalizationDraft; source_rows: number; verified_fields: number; pending_fields: number;
     checks: {field_id:string;name:string;state:string;messages:string[];error_counts:Record<string,number>;affected_rows:number}[];

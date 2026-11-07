@@ -1,0 +1,543 @@
+{
+  "revision": "multilingual-business-mapping-1",
+  "purpose": "Business roles fixed independently of matcher predictions; development Vietnamese is previously observed. Validation mixes synonyms and languages. Holdout lexical paraphrases are sealed before implementation; no broad semantic or independent-human claim.",
+  "protocol": {
+    "splits": [
+      "development",
+      "validation",
+      "holdout"
+    ],
+    "seed": 671109,
+    "rows": 48,
+    "sample_limit": 48,
+    "top_k": [
+      1,
+      3,
+      5
+    ],
+    "rapidfuzz_cutoff": 65,
+    "valentine": "Coma(use_instances=True), max_n=5, default delta/threshold",
+    "hybrid": "existing exact aliases first, then equally weighted RapidFuzz and Coma candidates; no approval",
+    "ambiguous": "Gold null requires abstention. Value overlap alone does not establish a business meaning. All monetary columns deliberately share a distribution. All identifier columns deliberately share values.",
+    "limits": "Column matching only. Grain/timezone/coverage correctness and false auto-approval must be evaluated separately through the approval and reuse gates. This synthetic benchmark is not a production accuracy claim."
+  },
+  "domains": [
+    {
+      "id": "orders_payments",
+      "definition": "One order has a customer and expected gross value; a payment event has its own identifier and actual paid gross value. Customer/order/payment IDs are distinct roles even when samples coincide.",
+      "grain": "payment_event",
+      "columns": [
+        [
+          "order_id",
+          "Mã đơn hàng",
+          "Đơn mua / mã số",
+          "MA_DON_HANG_CUA_KHACH",
+          "string",
+          "key"
+        ],
+        [
+          "payment_id",
+          "Mã thanh toán",
+          "Payment mã",
+          "Mã thanh toán thực tế",
+          "string",
+          "key"
+        ],
+        [
+          "customer_id",
+          "Mã khách hàng",
+          "Khách mua ID",
+          "ID khách mua hàng",
+          "string",
+          "key"
+        ],
+        [
+          "expected_amount",
+          "Tiền dự kiến",
+          "Giá trị dự kiến",
+          "Tổng khoản dự kiến",
+          "decimal",
+          "expected"
+        ],
+        [
+          "paid_amount",
+          "Tiền đã trả",
+          "Khoản đã thanh toán",
+          "Giá trị đã chi trả",
+          "decimal",
+          "paid"
+        ],
+        [
+          "fee_amount",
+          "Tiền phí",
+          "Phí xử lý",
+          "Tổng phí xử lý",
+          "decimal",
+          "fee"
+        ],
+        [
+          "payment_date",
+          "Ngày trả tiền",
+          "Ngày chi trả",
+          "Thời điểm thanh toán",
+          "date",
+          "date"
+        ],
+        [
+          "currency",
+          "Tiền tệ",
+          "Mã loại tiền",
+          "Đơn vị tiền tệ",
+          "string",
+          "currency"
+        ]
+      ]
+    },
+    {
+      "id": "invoices_receipts",
+      "definition": "Invoice face value before deductions and received net cash are not interchangeable. Receipt and invoice identifiers refer to different documents.",
+      "grain": "receipt",
+      "columns": [
+        [
+          "invoice_id",
+          "Số hóa đơn",
+          "Invoice mã số",
+          "MÃ HÓA ĐƠN",
+          "string",
+          "key"
+        ],
+        [
+          "receipt_id",
+          "Số phiếu thu",
+          "Phiếu thu ID",
+          "Mã số biên lai thu",
+          "string",
+          "key"
+        ],
+        [
+          "gross_amount",
+          "Tiền trước giảm trừ",
+          "Giá trị trước phí",
+          "Tổng tiền trước giảm trừ",
+          "decimal",
+          "gross"
+        ],
+        [
+          "net_amount",
+          "Tiền sau giảm trừ",
+          "Giá trị sau phí",
+          "Số tiền thực nhận",
+          "decimal",
+          "net"
+        ],
+        [
+          "receipt_date",
+          "Ngày nhận tiền",
+          "Ngày nhận khoản thu",
+          "Thời điểm thu tiền",
+          "date",
+          "date"
+        ],
+        [
+          "currency",
+          "Đơn vị tiền",
+          "Currency mã",
+          "Ký hiệu loại tiền",
+          "string",
+          "currency"
+        ]
+      ]
+    },
+    {
+      "id": "receivables_payables",
+      "definition": "Open receivable due from a customer differs from payable due to a supplier. Paid cash does not replace the expected outstanding liability.",
+      "grain": "open_item",
+      "columns": [
+        [
+          "customer_id",
+          "Mã người mua",
+          "ID khách hàng",
+          "Mã số người mua",
+          "string",
+          "key"
+        ],
+        [
+          "supplier_id",
+          "Mã nhà cung cấp",
+          "Nhà cung cấp code",
+          "ID nhà cung cấp",
+          "string",
+          "key"
+        ],
+        [
+          "receivable_amount",
+          "Khoản phải thu",
+          "Công nợ phải thu",
+          "Giá trị khoản phải thu",
+          "decimal",
+          "receivable"
+        ],
+        [
+          "payable_amount",
+          "Khoản phải trả",
+          "Công nợ phải trả",
+          "Tổng khoản phải trả",
+          "decimal",
+          "payable"
+        ],
+        [
+          "paid_amount",
+          "Đã chi trả",
+          "Giá trị đã trả",
+          "Số tiền đã thanh toán",
+          "decimal",
+          "paid"
+        ],
+        [
+          "due_date",
+          "Ngày đến hạn",
+          "Ngày đáo hạn",
+          "Thời điểm đến hạn",
+          "date",
+          "date"
+        ],
+        [
+          "currency",
+          "Loại tiền",
+          "Loại currency",
+          "Ký hiệu tiền tệ",
+          "string",
+          "currency"
+        ]
+      ]
+    },
+    {
+      "id": "bank_settlements",
+      "definition": "Bank transaction, payment reference and payout batch identify different grains. Settlement date is distinct from payment date. Gross, net and fee must remain distinct despite equal distributions.",
+      "grain": "bank_transaction",
+      "columns": [
+        [
+          "transaction_id",
+          "Mã giao dịch ngân hàng",
+          "Giao dịch mã số",
+          "ID giao dịch ngân hàng",
+          "string",
+          "key"
+        ],
+        [
+          "reference_id",
+          "Tham chiếu thanh toán",
+          "Payment reference code",
+          "Mã tham chiếu thanh toán",
+          "string",
+          "key"
+        ],
+        [
+          "batch_id",
+          "Mã lô chi trả",
+          "Mã batch",
+          "ID lô quyết toán",
+          "string",
+          "key"
+        ],
+        [
+          "gross_amount",
+          "Giá trị gộp",
+          "Tiền gộp",
+          "Tổng giá trị trước phí",
+          "decimal",
+          "gross"
+        ],
+        [
+          "net_amount",
+          "Thực nhận sau phí",
+          "Thực nhận",
+          "Tổng giá trị sau phí",
+          "decimal",
+          "net"
+        ],
+        [
+          "fee_amount",
+          "Phí ngân hàng",
+          "Bank phí",
+          "Số phí ngân hàng",
+          "decimal",
+          "fee"
+        ],
+        [
+          "payment_date",
+          "Ngày thanh toán",
+          "Ngày payment",
+          "Thời điểm chi trả",
+          "date",
+          "date"
+        ],
+        [
+          "settlement_date",
+          "Ngày quyết toán",
+          "Ngày settlement",
+          "Thời điểm quyết toán",
+          "date",
+          "date"
+        ],
+        [
+          "currency",
+          "Đồng tiền",
+          "Tiền tệ code",
+          "Mã loại tiền giao dịch",
+          "string",
+          "currency"
+        ]
+      ]
+    },
+    {
+      "id": "refunds_adjustments",
+      "definition": "Refund and accounting adjustment retain their signed source amounts. A refund is not a fee or the original sale gross value. No absolute-value conversion is authorized.",
+      "grain": "adjustment_event",
+      "columns": [
+        [
+          "refund_id",
+          "Mã hoàn tiền",
+          "Hoàn tiền mã",
+          "Mã số hoàn tiền",
+          "string",
+          "key"
+        ],
+        [
+          "payment_id",
+          "Mã trả tiền gốc",
+          "Payment gốc ID",
+          "Mã thanh toán gốc",
+          "string",
+          "key"
+        ],
+        [
+          "refund_amount",
+          "Số tiền hoàn",
+          "Giá trị hoàn tiền",
+          "Tổng số tiền hoàn lại",
+          "decimal",
+          "refund"
+        ],
+        [
+          "adjustment_amount",
+          "Giá trị điều chỉnh",
+          "Số tiền điều chỉnh",
+          "Giá trị điều chỉnh có dấu",
+          "decimal",
+          "adjustment"
+        ],
+        [
+          "fee_amount",
+          "Phí hoàn trả",
+          "Phí hoàn tiền",
+          "Tổng phí hoàn trả",
+          "decimal",
+          "fee"
+        ],
+        [
+          "event_date",
+          "Ngày phát sinh",
+          "Ngày event",
+          "Thời điểm phát sinh",
+          "date",
+          "date"
+        ],
+        [
+          "currency",
+          "Mã tiền tệ",
+          "Currency code",
+          "Đồng tiền của giao dịch",
+          "string",
+          "currency"
+        ]
+      ]
+    },
+    {
+      "id": "inventory",
+      "definition": "An inventory snapshot is one SKU in one warehouse. Quantity is a count, unit cost is money per item and inventory value is money. These metrics have different units and cannot be substituted.",
+      "grain": "sku_warehouse_snapshot",
+      "columns": [
+        [
+          "sku_id",
+          "Mã hàng",
+          "Mã SKU",
+          "ID sản phẩm",
+          "string",
+          "key"
+        ],
+        [
+          "warehouse_id",
+          "Mã kho",
+          "Kho ID",
+          "Mã kho lưu trữ",
+          "string",
+          "key"
+        ],
+        [
+          "quantity",
+          "Số lượng tồn",
+          "Tồn số lượng",
+          "Số lượng hàng tồn",
+          "decimal",
+          "quantity"
+        ],
+        [
+          "unit_cost",
+          "Giá vốn đơn vị",
+          "Unit giá vốn",
+          "Đơn giá vốn",
+          "decimal",
+          "unit_cost"
+        ],
+        [
+          "inventory_value",
+          "Giá trị tồn kho",
+          "Giá trị hàng tồn",
+          "Tổng giá trị tồn kho",
+          "decimal",
+          "inventory_value"
+        ],
+        [
+          "snapshot_date",
+          "Ngày chốt tồn",
+          "Ngày chụp tồn",
+          "Thời điểm chốt tồn",
+          "date",
+          "date"
+        ],
+        [
+          "currency",
+          "Loại tiền định giá",
+          "Loại tiền định giá",
+          "Mã tiền tệ định giá",
+          "string",
+          "currency"
+        ]
+      ]
+    },
+    {
+      "id": "sales_returns",
+      "definition": "One return line refers to an original sale and a returned SKU. Sale gross and signed return amounts are different metrics. Return date does not mean sale date.",
+      "grain": "return_line",
+      "columns": [
+        [
+          "sale_id",
+          "Mã bán hàng",
+          "Bán hàng ID",
+          "Mã giao dịch bán hàng",
+          "string",
+          "key"
+        ],
+        [
+          "return_id",
+          "Mã trả hàng",
+          "Trả hàng ID",
+          "Mã phiếu trả hàng",
+          "string",
+          "key"
+        ],
+        [
+          "sku_id",
+          "Mã sản phẩm",
+          "SKU sản phẩm",
+          "Mã hàng hóa",
+          "string",
+          "key"
+        ],
+        [
+          "gross_amount",
+          "Tiền bán trước giảm",
+          "Giá trị gộp",
+          "Tiền gộp trước phí",
+          "decimal",
+          "gross"
+        ],
+        [
+          "return_amount",
+          "Tiền hàng trả lại",
+          "Số tiền hàng trả",
+          "Giá trị hàng trả có dấu",
+          "decimal",
+          "return"
+        ],
+        [
+          "sale_date",
+          "Ngày bán",
+          "Ngày bán",
+          "Thời điểm bán hàng",
+          "date",
+          "date"
+        ],
+        [
+          "return_date",
+          "Ngày trả hàng",
+          "Ngày trả hàng",
+          "Thời điểm nhận trả hàng",
+          "date",
+          "date"
+        ],
+        [
+          "currency",
+          "Đồng tiền giao dịch",
+          "Mã tiền",
+          "Loại tiền giao dịch",
+          "string",
+          "currency"
+        ]
+      ]
+    }
+  ],
+  "negative_columns": [
+    [
+      "Mã",
+      null,
+      "string"
+    ],
+    [
+      "Reference",
+      null,
+      "string"
+    ],
+    [
+      "Ngày",
+      null,
+      "date"
+    ],
+    [
+      "Tổng tiền",
+      null,
+      "decimal"
+    ],
+    [
+      "Ngày dự kiến chưa xác nhận",
+      null,
+      "date"
+    ],
+    [
+      "Tiền đã trả hay dự kiến",
+      null,
+      "decimal"
+    ],
+    [
+      "Giá trị gross hoặc net",
+      null,
+      "decimal"
+    ],
+    [
+      "Mã giao dịch hay khách hàng",
+      null,
+      "string"
+    ],
+    [
+      "Không phải tiền phí",
+      null,
+      "decimal"
+    ],
+    [
+      "Ngày giao dịch không rõ nghĩa",
+      null,
+      "date"
+    ]
+  ]
+}

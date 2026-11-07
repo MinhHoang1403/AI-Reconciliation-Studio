@@ -1,0 +1,22 @@
+[
+  {"id":"V01","goal":"Vui lòng đếm số hàng sau bước chuẩn bị.","context":"stock","intent":"QUERY_DATA","source":"PREPARED","ref":"stock","count":true},
+  {"id":"V02","goal":"Tôi muốn đếm số dòng của bản tự chuẩn bị.","context":"stock","intent":"QUERY_DATA","source":"PREPARED","ref":"stock","count":true},
+  {"id":"V03","goal":"Mình muốn mở dữ liệu gốc của nguồn đang chọn.","context":"stock","intent":"QUERY_DATA","source":"RAW_PREVIEW","ref":"stock"},
+  {"id":"V04","goal":"Lệch có dấu và tuyệt đối với bộ kết quả này?","context":"run","intent":"SUMMARIZE_RESULTS","ref":"run"},
+  {"id":"V05","goal":"Cho tôi xem chênh lệch có dấu.","context":"run","intent":"SUMMARIZE_RESULTS","ref":"run"},
+  {"id":"V06","goal":"Đếm các khoản thiếu đối ứng.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","ref":"run","filter":"UNMATCHED","count":true},
+  {"id":"V07","goal":"Top 5 khoản sai tiền cao nhất.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","ref":"run","filter":"AMOUNT_MISMATCH","limit":5},
+  {"id":"V08","goal":"Hãy liệt kê top 4 nhóm chênh lệch nhiều nhất.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","ref":"run","filter":"AMOUNT_MISMATCH","limit":4},
+  {"id":"V09","goal":"Giải thích khoản thứ ba trong bảng vừa gửi.","context":"ranked","intent":"EXPLAIN_RESULT","ref":"run","position":3},
+  {"id":"V10","goal":"Xuất bảng này Excel.","context":"ranked","intent":"EXPORT_RESULT","ref":"run","format":"xlsx"},
+  {"id":"V11","goal":"Xem dữ liệu tự chuẩn bị.","context":"project","intent":"CLARIFY"},
+  {"id":"V12","goal":"Xem năm giao dịch lệch nhiều nhất riêng tháng 10 năm 2026.","context":"run","route":"TYPED","intent":"CLARIFY"},
+  {"id":"V13","goal":"Chỉ ra 2 giao dịch sai tiền nhiều nhất.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","ref":"run","filter":"AMOUNT_MISMATCH","limit":2},
+  {"id":"V14","goal":"Tôi muốn đếm số hàng sau bước chuẩn bị của nguồn đang mở.","context":"stock","intent":"QUERY_DATA","source":"PREPARED","ref":"stock","count":true},
+  {"id":"V15","goal":"Tải danh sách vừa lọc CSV.","context":"ranked","intent":"EXPORT_RESULT","ref":"run","format":"csv"},
+  {"id":"V16","goal":"Tính tổng lệch có dấu.","context":"project","intent":"CLARIFY"},
+  {"id":"V17","goal":"Vui lòng đếm số hàng sau bước chuẩn bị.","context":"project","intent":"CLARIFY"},
+  {"id":"V18","goal":"Xem bản đã chuẩn hóa.","context":"stock","intent":"QUERY_DATA","source":"CANONICAL","ref":"stock-approved"},
+  {"id":"V19","goal":"Đếm số giao dịch trùng trong phiếu kho.","context":"stock","route":"TYPED","intent":"CLARIFY"},
+  {"id":"V20","goal":"Xem bản tự chuẩn bị của tệp “Nguồn ngoài dự án.csv”.","context":"project","intent":"CLARIFY"}
+]

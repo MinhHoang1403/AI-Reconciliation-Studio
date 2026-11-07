@@ -244,6 +244,137 @@ def test_T08_alias_candidates(profile, schema):
     assert candidates["c2"] == []
 
 
+@pytest.mark.parametrize(
+    "header,target,kind,values",
+    [
+        ("MA_DON_HANG", "order_id", "string", ["0001", "0002"]),
+        ("Mã khách hàng", "customer_id", "string", ["0001", "0002"]),
+        ("Nhà cung cấp code", "supplier_id", "string", ["0001", "0002"]),
+        ("Tiền trước phí", "gross_amount", "decimal", ["1.20", "-2.50"]),
+        ("Giá trị sau khấu trừ", "net_amount", "decimal", ["1.20", "-2.50"]),
+        ("Khoản đã thanh toán", "paid_amount", "decimal", ["1.20", "-2.50"]),
+        ("Công nợ phải trả", "payable_amount", "decimal", ["1.20", "-2.50"]),
+        ("Ngày chi trả", "payment_date", "date", ["2026-11-01", "2026-11-02"]),
+        ("Mã loại tiền", "currency", "string", ["USD", "VND"]),
+    ],
+)
+def test_multilingual_field_roles_preserve_unicode_forms_and_column_order(
+    header, target, kind, values
+):
+    import unicodedata
+
+    import polars as pl
+    from studio.contracts import SchemaDefinition, SchemaField, SourceColumn
+    from studio.profiling import find_mapping_candidates, profile_table
+
+    destination = SchemaDefinition(
+        id="semantic-target",
+        workspace_id="workspace",
+        name="Business specification",
+        revision=1,
+        entity_kind="unknown",
+        grain="unknown",
+        fields=[SchemaField(id=target, name=target, data_type=kind)],
+    )
+    for form in ("NFC", "NFD"):
+        name = unicodedata.normalize(form, header)
+        for columns in (["value", "note"], ["note", "value"]):
+            frame = pl.DataFrame({"value": values, "note": ["a", "b"]}).select(columns)
+            profile = profile_table(
+                frame,
+                [
+                    SourceColumn(id=key, name=name if key == "value" else "Ghi chú", source_index=i)
+                    for i, key in enumerate(columns)
+                ],
+                "table",
+                "workspace",
+                "parsed",
+            )
+            original = profile.model_dump_json()
+            assert find_mapping_candidates(profile, destination)["value"] == [target]
+            assert profile.model_dump_json() == original
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "Không phải tiền phí",
+        "Giá trị gross hoặc net",
+        "Ngày dự kiến chưa xác nhận",
+        "Mã giao dịch hay khách hàng",
+        "Tiền đã trả hay dự kiến",
+        "Not gross amount",
+    ],
+)
+def test_multilingual_proposals_abstain_on_negation_and_alternatives(header):
+    import polars as pl
+    from studio.contracts import SchemaDefinition, SchemaField, SourceColumn
+    from studio.profiling import find_mapping_candidates, profile_table
+
+    frame = pl.DataFrame({"value": ["10.20", "20.50"]})
+    profile = profile_table(
+        frame,
+        [SourceColumn(id="value", name=header, source_index=0)],
+        "table",
+        "workspace",
+        "parsed",
+    )
+    destination = SchemaDefinition(
+        id="semantic-target",
+        workspace_id="workspace",
+        name="Ambiguous",
+        revision=1,
+        entity_kind="unknown",
+        grain="unknown",
+        fields=[
+            SchemaField(id=name, name=name, data_type="decimal")
+            for name in (
+                "gross_amount",
+                "net_amount",
+                "fee_amount",
+                "paid_amount",
+                "expected_amount",
+            )
+        ],
+    )
+    assert find_mapping_candidates(profile, destination)["value"] == []
+
+
+def test_profile_only_draft_recognizes_vietnamese_types_without_business_approval():
+    import polars as pl
+    from studio.agent_preparation import profiled_fields
+    from studio.contracts import SourceColumn
+    from studio.profiling import profile_table
+
+    frame = pl.DataFrame(
+        {"key": ["0001", "0002"], "money": ["12.50", "-2.00"], "date": ["2026-11-01", "2026-11-02"]}
+    )
+    profile = profile_table(
+        frame,
+        [
+            SourceColumn(id=key, name=name, source_index=index)
+            for index, (key, name) in enumerate(
+                zip(
+                    frame.columns,
+                    ["Mã thanh toán", "Phí ngân hàng", "Ngày thanh toán"],
+                    strict=True,
+                )
+            )
+        ],
+        "table",
+        "workspace",
+        "parsed",
+    )
+    fields = profiled_fields(profile)
+    assert [field.data_type for field in fields] == ["string", "decimal", "date"]
+    assert all(not field.business_key for field in fields)
+    assert all(
+        field.amount_basis is None and field.semantic_metric is None and field.timezone is None
+        for field in fields
+    )
+    assert frame["key"].to_list() == ["0001", "0002"]
+
+
 def test_mapping_shortlist_abstains_for_generic_roles_and_competing_columns(profile, schema):
     from studio.ai_gateway import manual_proposal
     from studio.profiling import find_mapping_candidates

@@ -2,6 +2,16 @@
 
 Định nghĩa thực thi nằm trong `backend/studio/contracts/`. OpenAPI tại `/openapi.json` và `/docs` mô tả request/response; endpoint này không cấp quyền đọc dữ liệu. Error envelope: `code`, `message_vi`, `details` đã redacted, `retryable`, `correlation_id`.
 
+## Mapping tên trường và typed prepared reads — 08/11/2026
+
+`field_name_tokens` chỉ dùng cho đề xuất tên/kiểu, tách khỏi `normalized_name` dùng trong chữ ký nguồn. Nó phân rã Unicode, dấu/case, camelCase, gạch dưới và cụm từ nghiệp vụ Việt–Anh có giới hạn. Từ phủ định, lựa chọn hoặc gross/net xung đột giữ abstention. Tên/kiểu/value profile chỉ tạo shortlist cần review; không chứng minh grain, currency, metric hoặc cấp auto-approval. `profiled_fields` vẫn để khóa, cơ sở tiền, metric và timezone chưa được xác nhận. Không thay giá trị, raw ID, fingerprint hoặc approval lịch sử.
+
+Catalogue typed routing công bố cả `PREPARED` và `PREPARED_FINDINGS` khi có artifact tương ứng. Hai nguồn chỉ dùng xem/đếm dữ liệu chưa duyệt. Với câu chưa khớp grammar native, model chỉ được bind bảng đơn đang chọn, nguồn duy nhất, hoặc một tên tệp chính xác trong ngoặc kép, không dùng gần đúng. Bộ lọc, sort, grouping, metric, currency và phép tổng tiền đều bị chặn ở ranh giới này. Schema provider và validator cùng giới hạn; backend vẫn kiểm membership, project, artifact SHA256, row limit và lineage khi thực thi. Các truy vấn native đã xác định vẫn là chuẩn đối chiếu khi model đưa tham số khác.
+
+Native read resolver gom các phép đọc hiện có; yêu cầu đọc kèm xóa/sửa nguồn bị từ chối toàn bộ. Thiếu nguồn và tổng tiền trên bản chưa duyệt trả `CLARIFY`. Model không được tự thêm phép đếm thuần hoặc lọc `is_null` khi người dùng không yêu cầu; trả câu hỏi xác nhận qua `INPUT_AMBIGUOUS`, giữ trace của đề xuất không hợp lệ. Không sửa JSON sai thành phép tính được thực thi.
+
+UI cho phép người dùng nhập thông tin chung khi có ít nhất hai thẻ mapping, mỗi nguồn chỉ có một field tiền. Phạm vi gồm danh sách review/nonce/fingerprint cụ thể. Người dùng khai báo cùng loại dữ liệu, grain, timezone, basis và metric rồi xác nhận áp dụng. Chỉ điền chỗ thiếu; không đổi khóa hoặc giá trị đã có của từng nguồn. Bản nháp lưu theo actor/workflow/token trong session; payload duyệt gộp cũ bị xóa để chờ kiểm lại từng thẻ. Đây không là approval hoặc quyền reuse; nonce, fingerprint, authorization, preflight, idempotency và audit per-resource giữ nguyên.
+
 ## Parser giữ header và dòng vật lý — 06/11/2026
 
 `tabular-2` giữ header có nhãn trùng ở đúng vị trí, cảnh báo EMPTY_OR_DUPLICATE_HEADER và giữ từng cột c1/c2 riêng. Không chuyển dòng dữ liệu đầu thành header chỉ vì tên cột lặp. Với CSV, ParseConfig.header_row là dòng vật lý bắt đầu một bản ghi, cùng đơn vị với provenance; dòng nằm giữa một ô quoted nhiều dòng không phải header hợp lệ. Parser dừng ngay trong lúc đọc khi vượt số bản ghi/cột đã giới hạn; không tích lũy hết file trước khi từ chối. Raw/checksum, parser cũ và các artifact/revision lịch sử không bị viết lại. Parse signature mới tách kết quả mới khỏi cache của tabular-1.

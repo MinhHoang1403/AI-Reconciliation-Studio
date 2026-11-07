@@ -118,7 +118,7 @@ test('[LOCAL ORACLE] Date findings in Chat preserve raw values and source eviden
   expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used);
 });
 
-test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconciliation and export',async({page})=>{
+for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventory sources through Chat approval, reconciliation and export${sharedReview ? ' with shared business facts' : ''}`,async({page})=>{
   test.setTimeout(120000);
   const viewportWidth=Number(process.env.STUDIO_JOURNEY_WIDTH??1440);
   await page.setViewportSize({width:viewportWidth,height:900});
@@ -129,7 +129,7 @@ test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconcil
     [['0001','100.00'],['0002','200.00'],['0004','15.00']],
     [['0001','100.00'],['0002','200.00'],['0004','15.01']],
   ];
-  const receipts:Record<string,unknown>={names,viewportWidth,expected:{equal:1,mismatch:1,unmatched:2,signed:'50.00',absolute:'50.00'}};
+  const receipts:Record<string,unknown>={names,viewportWidth,sharedReview,expected:{equal:1,mismatch:1,unmatched:2,signed:'50.00',absolute:'50.00'}};
   const errors:string[]=[];
   let clicks=0,manualFields=0;
   await page.exposeFunction('recordJourneyClick',()=>{clicks++;});
@@ -167,6 +167,28 @@ test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconcil
   const cards=page.getByRole('region',{name:'Quyết định cần xác nhận',exact:true});
   await expect(cards).toHaveCount(3);
   receipts.upload_to_reviews_ms=Date.now()-start;
+  if(sharedReview){
+    await page.getByText('Nhập một lần cho các nguồn có cùng nghiệp vụ',{exact:true}).click();
+    const common=page.getByRole('region',{name:'Thông tin chung cho các nguồn',exact:true});
+    await common.getByLabel('Loại dữ liệu dùng chung',{exact:true}).fill('inventory');
+    await common.getByLabel('Mỗi dòng của các nguồn là gì?',{exact:true}).fill('stock_item');
+    await common.getByLabel('Múi giờ dùng chung',{exact:true}).selectOption('UTC');
+    await common.getByLabel('Cơ sở tiền dùng chung',{exact:true}).selectOption('gross');
+    await common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true}).fill('stock_value');
+    await expect(common.getByRole('button',{name:'Áp dụng thông tin chung vào bản nháp',exact:true})).toBeDisabled();
+    await page.reload();
+    await page.getByText('Nhập một lần cho các nguồn có cùng nghiệp vụ',{exact:true}).click();
+    await expect(common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true})).toHaveValue('stock_value');
+    await common.getByRole('checkbox').check();
+    await common.getByRole('button',{name:'Áp dụng thông tin chung vào bản nháp',exact:true}).click();
+    manualFields+=6;
+    for(const name of names){
+      const card=cards.filter({hasText:name});
+      await expect(card.getByRole('textbox',{name:'Loại giao dịch',exact:true})).toHaveValue('inventory');
+      await expect(card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true})).toHaveValue('stock_item');
+      await card.getByRole('checkbox',{name:'Stock ID',exact:true}).check();manualFields++;
+    }
+  }else{
   for(const name of names){
     const card=cards.filter({hasText:name});
     await card.getByRole('textbox',{name:'Loại giao dịch',exact:true}).fill('inventory');
@@ -177,6 +199,7 @@ test('[LOCAL ORACLE] Three new inventory sources through Chat approval, reconcil
     const meaning=card.getByRole('textbox',{name:'Khoản tiền này là gì?',exact:true});
     await meaning.fill('stock_value');await meaning.press('Tab');
     manualFields+=6;
+  }
   }
   await page.getByRole('button',{name:'Duyệt 3 nguồn và chuẩn hóa',exact:true}).click();
   await expect(cards).toHaveCount(0);

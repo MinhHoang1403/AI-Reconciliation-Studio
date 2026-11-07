@@ -224,6 +224,7 @@ def summarize(records):
         labelled_positive=len(expected),
         proposals=len(proposed),
         correct=correct,
+        f1=2 * correct / (len(proposed) + len(expected)) if proposed or expected else None,
         precision_at_1=correct / len(proposed) if proposed else None,
         recall_at_1=correct / len(expected) if expected else None,
         recall_at_3=sum(
@@ -254,6 +255,7 @@ def summarize(records):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--spec", type=Path, default=SPEC)
     parser.add_argument("--dependencies", type=Path)
     parser.add_argument("--method", choices=METHODS)
     parser.add_argument(
@@ -266,7 +268,7 @@ def main():
     sys.path.insert(0, str(ROOT / "backend"))
     if args.dependencies and args.method not in {"existing", "rapidfuzz_profile"}:
         sys.path.insert(0, str(args.dependencies.resolve()))
-    spec = json.loads(SPEC.read_text(encoding="utf-8"))
+    spec = json.loads(args.spec.read_text(encoding="utf-8"))
     splits = spec["protocol"]["splits"] if args.split == "all" else [args.split]
     if args.method:
         print(json.dumps(evaluate(args.method, spec, splits), ensure_ascii=False))
@@ -287,6 +289,8 @@ def main():
             method,
             "--split",
             args.split,
+            "--spec",
+            str(args.spec.resolve()),
         ]
         if args.dependencies:
             command += ["--dependencies", str(args.dependencies.resolve())]
@@ -310,7 +314,7 @@ def main():
             p95_ms=statistics.quantiles(timings.values(), n=100, method="inclusive")[94],
         )
     report = dict(
-        spec_sha256=hashlib.sha256(SPEC.read_bytes()).hexdigest(),
+        spec_sha256=hashlib.sha256(args.spec.read_bytes()).hexdigest(),
         protocol=spec["protocol"],
         source_revision=subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         benchmark_source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
