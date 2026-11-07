@@ -10,6 +10,8 @@ Catalogue typed routing công bố cả `PREPARED` và `PREPARED_FINDINGS` khi c
 
 Native read resolver gom các phép đọc hiện có; yêu cầu đọc kèm xóa/sửa nguồn bị từ chối toàn bộ. Thiếu nguồn và tổng tiền trên bản chưa duyệt trả `CLARIFY`. Model không được tự thêm phép đếm thuần hoặc lọc `is_null` khi người dùng không yêu cầu; trả câu hỏi xác nhận qua `INPUT_AMBIGUOUS`, giữ trace của đề xuất không hợp lệ. Không sửa JSON sai thành phép tính được thực thi.
 
+Schema truy vấn giới hạn field IDs theo từng source, bao gồm select/filter/sort/group/aggregate/currency; enum chung không cấp quyền dùng field của nguồn khác. Với điều kiện chất lượng ngày được nhận diện, validator từ chối đề xuất đọc toàn bộ raw/canonical thay cho `PREPARED_FINDINGS`; ngược lại, không tự giới hạn một yêu cầu xem toàn bảng thành chỉ dòng lỗi. Guard chỉ nhận diện các khái niệm ngày/lỗi có giới hạn để chặn mất điều kiện, không chọn nguồn hoặc thay thế tuyến hiểu ngôn ngữ. Phủ định và tên tệp được đặt trong ngoặc kép được kiểm riêng. Câu chưa đủ bằng chứng tiếp tục làm rõ, không công bố bảng khác phạm vi như kết quả đúng.
+
 UI cho phép người dùng nhập thông tin chung khi có ít nhất hai thẻ mapping, mỗi nguồn chỉ có một field tiền. Phạm vi gồm danh sách review/nonce/fingerprint cụ thể. Người dùng khai báo cùng loại dữ liệu, grain, timezone, basis và metric rồi xác nhận áp dụng. Chỉ điền chỗ thiếu; không đổi khóa hoặc giá trị đã có của từng nguồn. Bản nháp lưu theo actor/workflow/token trong session; payload duyệt gộp cũ bị xóa để chờ kiểm lại từng thẻ. Đây không là approval hoặc quyền reuse; nonce, fingerprint, authorization, preflight, idempotency và audit per-resource giữ nguyên.
 
 ## Parser giữ header và dòng vật lý — 06/11/2026

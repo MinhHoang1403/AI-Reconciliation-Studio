@@ -1772,8 +1772,16 @@ def test_typed_prepared_paraphrases_bind_only_selected_source_and_safe_operation
         metric_id=None,
     )
     body = json.dumps(dict(intents=[dict(intent="QUERY_DATA", query=query)]))
-    result = compile_routing(body, ["Cho mình kiểm tra những hàng trong nguồn đang chọn"], cat)[0]
+    goal = (
+        "Cho mình kiểm tra những hàng có ngày bị ghi sai trong nguồn đang chọn"
+        if kind == "PREPARED_FINDINGS"
+        else "Cho mình kiểm tra những hàng trong nguồn đang chọn"
+    )
+    result = compile_routing(body, [goal], cat)[0]
     assert result.query.source_kind == kind and result.query.source_id == "table"
+    if kind == "PREPARED_FINDINGS":
+        with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+            compile_routing(body, ["Cho mình xem toàn bộ bảng"], cat)
     for goal in ("Tính tổng tiền của nguồn này", "Không xem nguồn này", "Xem nguồn khác"):
         with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
             compile_routing(body, [goal], cat)
@@ -1872,6 +1880,37 @@ def test_provider_query_grammar_binds_field_enums_to_each_source():
                 props["aggregations"]["items"]["properties"]["field_id"]["anyOf"][0]["enum"]
                 == allowed
             )
+
+
+@pytest.mark.parametrize(
+    "goal",
+    [
+        "Hãy kiểm tra giúp mình: trong tệp này, những hàng nào chứa ngày bị ghi sai?",
+        "Cho tôi các bản ghi có lỗi ở định dạng ngày tháng",
+        "List rows with incorrect dates in this source",
+        "Ngày không tồn tại nằm ở bản ghi nào?",
+        "Đếm các dòng có ngày không hợp lệ",
+    ],
+)
+def test_date_quality_predicate_cannot_be_replaced_by_an_unfiltered_raw_preview(goal):
+    from studio.contracts.agent import IntentBatch
+    from studio.contracts.data_query import DataQuery
+
+    cat = catalogue()
+    cat.datasets[0].tables[0].prepared_artifact_id = "prepared"
+    intent = AgentIntent(
+        intent="QUERY_DATA",
+        query=DataQuery(project_id="p", source_kind="RAW_PREVIEW", source_id="table"),
+    )
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        validate_intents(IntentBatch(intents=[intent]).model_dump_json(), [goal], cat)
+
+
+def test_date_quality_guard_excludes_quoted_filenames_and_negated_condition():
+    from studio.agent_intents import invalid_date_condition_requested
+
+    assert not invalid_date_condition_requested("Mở dữ liệu gốc của tệp “Lỗi ngày tháng.csv”")
+    assert not invalid_date_condition_requested("Không lọc ngày sai, xem toàn bộ bảng")
 
 
 @pytest.mark.parametrize(

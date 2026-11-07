@@ -1,0 +1,22 @@
+[
+  {"id":"H01","goal":"Bạn lấy giúp tôi phần dữ liệu nguyên bản của tệp đang chọn nhé.","context":"date","intent":"QUERY_DATA","source":"RAW_PREVIEW","count":false,"rows":2},
+  {"id":"H02","goal":"Tệp gốc đang mở có tất cả bao nhiêu bản ghi vậy?","context":"date","intent":"QUERY_DATA","source":"RAW_PREVIEW","count":true,"rows":2},
+  {"id":"H03","goal":"Mình cần nhìn thử bảng sau bước tự chuẩn bị của nguồn này.","context":"date","intent":"QUERY_DATA","source":"PREPARED","count":false,"rows":2},
+  {"id":"H04","goal":"Bạn cho biết số hàng trong bản tự chuẩn bị của tệp này được không?","context":"date","intent":"QUERY_DATA","source":"PREPARED","count":true,"rows":2},
+  {"id":"H05","goal":"Nhờ bạn chỉ ra các bản ghi có ngày không tồn tại trong lịch.","context":"date","intent":"QUERY_DATA","source":"PREPARED_FINDINGS","count":false,"rows":1},
+  {"id":"H06","goal":"Có bao nhiêu hàng chứa ngày không hợp lệ ở nguồn đang chọn?","context":"date","intent":"QUERY_DATA","source":"PREPARED_FINDINGS","count":true,"rows":1},
+  {"id":"H07","goal":"Đưa ra các giao dịch mà bên kia chưa có bản ghi đối ứng.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","filter":"UNMATCHED","count":false},
+  {"id":"H08","goal":"Ở kết quả này, số giao dịch không tìm được đối ứng là bao nhiêu?","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","filter":"UNMATCHED","count":true},
+  {"id":"H09","goal":"Tôi cần danh sách các cặp đã ghép nhưng số tiền hai phía khác nhau.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","filter":"AMOUNT_MISMATCH","count":false},
+  {"id":"H10","goal":"Xếp hai giao dịch lệch tiền nhiều nhất lên đầu cho mình xem.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","filter":"AMOUNT_MISMATCH","count":false,"limit":2},
+  {"id":"H11","goal":"Giúp mình tổng hợp mức lệch có dấu cùng tổng độ lệch tuyệt đối của kết quả này.","context":"run","intent":"SUMMARIZE_RESULTS"},
+  {"id":"H12","goal":"Tóm tắt những con số chính trong lần đối soát đang mở nhé.","context":"run","intent":"SUMMARIZE_RESULTS"},
+  {"id":"H13","goal":"Gửi tôi tệp CSV chứa đúng phần bảng vừa hiển thị.","context":"ranked","intent":"EXPORT_RESULT","format":"csv"},
+  {"id":"H14","goal":"Mình muốn lưu các dòng trên thành một bảng Excel.","context":"ranked","intent":"EXPORT_RESULT","format":"xlsx"},
+  {"id":"H15","goal":"Giải thích giúp mình giao dịch đứng ở vị trí thứ hai trong bảng đó.","context":"ranked","intent":"EXPLAIN_RESULT","position":2},
+  {"id":"H16","goal":"Tìm khoản thiếu đối ứng trong tháng 9 năm 2026 thôi.","context":"run","intent":"CLARIFY"},
+  {"id":"H17","goal":"Trong các giao dịch sai tiền, chỉ lấy trường hợp đã xử lý xong.","context":"run","intent":"CLARIFY"},
+  {"id":"H18","goal":"Cộng tiền của bản tự chuẩn bị trước khi tôi duyệt ý nghĩa các cột.","context":"date","intent":"CLARIFY"},
+  {"id":"H19","goal":"Tìm các dòng bị trùng giao dịch trong tệp này; tôi chưa xác định khóa nghiệp vụ.","context":"date","intent":"CLARIFY"},
+  {"id":"H20","goal":"Mở các hàng của nguồn hiện tại rồi ghi đè dữ liệu gốc bằng số khác.","context":"date","intent":"UNSUPPORTED"}
+]

@@ -18,7 +18,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-41"
+INTENT_REVISION = "agent-intent-42"
 
 
 def _explicit_request(goal: str, pattern: str) -> bool:
@@ -70,6 +70,28 @@ def data_mutation_requested(goal: str) -> bool:
     )
 
 
+def invalid_date_condition_requested(goal: str) -> bool:
+    """Protect a date-quality predicate from being dropped by a typed proposal.
+
+    This guard never chooses a source or executes a query. It recognizes bounded
+    date/error concepts in either order, excluding quoted filenames. Unrecognized
+    language still belongs to the typed router; this is not a complete parser.
+    """
+    text = re.sub(r'"[^\"]+"|“[^”]+”', "", unicodedata.normalize("NFC", goal))
+    date = r"\b(?:ngay(?: thang)?|dates?)\b"
+    invalid = r"\b(?:loi|sai|khong hop le|khong ton tai|invalid|incorrect|malformed)\b"
+    normalized = plain_question(re.sub(r"\bđừng\b", "không", text, flags=re.IGNORECASE))
+    return any(
+        not re.search(
+            r"\b(?:khong|cam|not|without|don't)(?: (?:loc|kiem tra|xem|filter|check|show))?\s*$",
+            normalized[: match.start()],
+        )
+        for match in re.finditer(
+            date + r".{0,24}" + invalid + "|" + invalid + r".{0,24}" + date, normalized
+        )
+    )
+
+
 def validate_prepared_read(goal: str, query: DataQuery, catalogue: IntentCatalogue) -> None:
     """Permit typed preview/count only for a directly bound unapproved source.
 
@@ -116,6 +138,7 @@ def validate_prepared_read(goal: str, query: DataQuery, catalogue: IntentCatalog
     text = plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal))
     if (
         data_mutation_requested(goal)
+        or (query.source_kind == "PREPARED_FINDINGS" and not invalid_date_condition_requested(goal))
         or re.search(r"\b(?:khong|dung|cam) (?:xem|mo|dem|liet ke)\b", text)
         or re.search(
             r"\b(?:tong|sum|trung binh|so tien|nguon khac|tep khac|nguon chua chon)\b", text
@@ -273,6 +296,12 @@ def validate_intents(
             if q.project_id != catalogue.context.project_id:
                 raise DomainError("AI_INVALID_SOURCE", "Query sai project.")
             language = plain_question(goal)
+            if invalid_date_condition_requested(goal) and q.source_kind != "PREPARED_FINDINGS":
+                raise DomainError(
+                    "QUERY_SEMANTICS_REQUIRED",
+                    "Truy vấn chưa giữ điều kiện ngày không hợp lệ. "
+                    "Bạn muốn xem các dòng có cảnh báo ngày của nguồn nào?",
+                )
             if (
                 intent.intent == "QUERY_DATA"
                 and q.aggregations
@@ -1356,6 +1385,8 @@ def interpret_requests(
         ):
             scoped_fields = sorted(field["id"] for field in source["fields"])
             properties = source_query["properties"]
+            if source.get("description"):
+                source_query["description"] = source["description"]
             for key in ("select_fields", "group_by"):
                 properties[key] = (
                     dict(type="array", items=dict(type="string", enum=scoped_fields))
@@ -1550,6 +1581,13 @@ def interpret_requests(
                 "CHECK_DATASET_STATUS, không SUMMARIZE_RESULTS và không chạy chuẩn hóa. "
                 "Trạng thái nguồn không chứng minh readiness của một quy tắc đối soát. "
                 "Chọn source_ref đúng tên/loại từ sources cho query; "
+                "PREPARED là bản tự chuẩn bị chưa duyệt; PREPARED_FINDINGS đã được Backend "
+                "lọc riêng các dòng có ngày không hợp lệ. Câu hỏi xem/đếm hàng sai ngày dùng "
+                "QUERY_DATA với PREPARED_FINDINGS, không mở toàn bộ RAW_PREVIEW và không "
+                "tạo lại bộ lọc ngày. Với hai nguồn prepared này chỉ xem hoặc count: "
+                "select_fields=[], filters=[], sort=[], group_by=[], currency_field=null, "
+                "metric_id=null, aggregations=[] hoặc count(field_id=null). Không có bản "
+                "findings hoặc chưa rõ nguồn thì CLARIFY, không bỏ điều kiện người dùng. "
                 "Đối soát chọn left_canonical_id/right_canonical_id bằng source_id của hai "
                 "mục source_kind=CANONICAL trong sources, không dùng ref, dataset_id hoặc "
                 "source_id của RAW_PREVIEW. Hai nguồn phải khác nhau. "
