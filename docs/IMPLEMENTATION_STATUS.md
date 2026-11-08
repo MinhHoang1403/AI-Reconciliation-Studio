@@ -1,5 +1,27 @@
 # Trạng thái triển khai và nghiệm thu
 
+**Bàn giao ngày 08/11/2026.** Mã ứng dụng đã nghiệm thu là commit `1d7f4909a3aa5d6c0a79cdddb88cb4303119e701`, tích hợp fast-forward vào `main` và push lên `origin` chính thức. Trạng thái trong phạm vi MVP local là `READY_FOR_RELEASE` và `READY_FOR_LOCAL_USER_ACCEPTANCE`. Commit cập nhật biên bản bàn giao chỉ thay tài liệu. Manifest local `runtime/audit-release-manifest.json` ghi revision image được triển khai, SHA image, fingerprint source ứng viên và backup. Lần nghiệm thu này dùng browser automation và dữ liệu tổng hợp. Nghiệm thu trực tiếp của chủ dự án còn `NOT_RUN`.
+
+Các cổng AP-01–AP-15 của mã ứng dụng đã đạt trong phạm vi và giới hạn của bảng bên dưới. Release từ `main` đã qua đối chiếu source, image, bảy tài nguyên frontend qua HTTP, smoke trên trình duyệt, đọc lại tệp Chat và cả hai oracle tài chính. Snapshot 847 run, 1.566 báo cáo và 9.719 artifact khớp trước và sau triển khai. Cùng một Compose giữ bốn dịch vụ healthy trên `127.0.0.1:18180`. Bằng chứng sau triển khai nằm trong `runtime/audit-release-*.log`.
+
+| Lỗi đã xử lý | Nguyên nhân và thay đổi | Bằng chứng kiểm lại |
+| --- | --- | --- |
+| P2, câu đọc tiếng Việt bị chuyển sang lập quy tắc hoặc hỏi lại | `agent_intents.py` nhận thao tác đọc, tầng dữ liệu, trạng thái xác minh và ngữ cảnh đang chọn. Bộ lọc, sort, vị trí, tiền tệ và metric được kiểm trước thực thi | Qwen và Gemini đều đạt N20 và U10, trong đó mỗi bộ 30 câu gồm 10 lượt model và 20 lượt Backend |
+| P2, xuất bảng đang xem có thể bị hiểu thành xuất toàn run | Intent phân biệt phạm vi xuất. `agent_jobs.py` và workflow ghim query đã lưu, kiểm dự án, run, bộ lọc, thứ tự và trang | CSV/XLSX tải qua Chat khớp group ID, thứ tự, SHA và byte sau reload và rollback |
+| P2, yêu cầu đọc rồi xuất trong cùng câu bị thực thi thiếu một vế | Backend chuyển câu ghép sang hỏi làm rõ và giữ context của câu trả lời tiếp theo | U09 và hành trình browser giữ trạng thái chờ, sau câu trả lời chỉ thực hiện phạm vi người dùng đã chọn |
+| P2, Chat đọc dữ liệu chờ sau job Qwen dài | Worker nhận diện job đọc đủ điều kiện trong cùng hàng đợi, khóa đúng job bằng `SKIP LOCKED` và kiểm scope lại trước thực thi | PostgreSQL kiểm stale context và concurrency. Hai upload 1.000/10.000 dòng hoàn tất khi Qwen LIVE vẫn chạy |
+| P2, Planner chọn sai nguồn, facts hoặc thứ tự khóa | `reconciliation_planner.py` kiểm facts riêng từng nguồn và revision, ràng buộc literal được người dùng khai báo, từ chối model đổi ID, chiều quan hệ hoặc thứ tự khóa | Hai Planner LIVE C/B qua UI và 6/6 ca R, với review và oracle độc lập |
+| P2, Gemini từ chối schema lớn bằng HTTP 400 | Schema query gửi provider dùng cấu trúc giới hạn, Backend vẫn kiểm field theo nguồn và quyền | Gemini LIVE truy vấn ngày sai, Planner C/B, N20 và U10 đều đạt trên ứng viên |
+| P2, Qwen chịu áp lực bộ nhớ khi prefill | Request local dùng batch 128 và hợp đồng Planner nhỏ hơn. Giữ model và giới hạn thời gian đã cấu hình | Năm ca Planner R dùng Qwen hoàn tất 30,391–43,828 giây, không timeout hoặc OOM trong lượt kiểm |
+| P2, trường intent mới làm DTO rollback cũ không đọc được workflow | Lưu phạm vi xuất bằng biểu diễn tương thích, giữ query và kiểm lại khi đọc. Các workflow TEST đã sửa trước đó có biên bản riêng | Bản `3313e24` đọc đủ 2.567 workflow, giữ snapshot và hai tệp Chat trùng byte |
+| Lỗi kiểm thử, đếm thẻ khi lịch sử đã sang trang | Test browser từng chờ tổng số thẻ tăng quá cửa sổ 20 tin nhắn. Test nay chờ phản hồi gắn với đúng tin nhắn vừa gửi | Hai hành trình chạy lại và full Playwright 142/142 trên cùng source |
+
+Image Studio cũ đã được xóa sau kiểm ownership, revision và toàn bộ container tham chiếu. Hai cặp image ứng dụng còn lại là release hiện hành và rollback `3313e24`; nhiều tag có thể trỏ cùng một image ID. Ba nhánh `codex/foundation-reliability-hardening`, `codex/intelligent-automation-experience` và `codex/product-polish` đã được xóa ở local và remote sau khi kiểm không có commit ngoài `main`, không có PR mở và các SHA remote khớp. Tags nghiệm thu và lịch sử commit vẫn truy được. Hai volume và 27 container ngoài Studio khớp inventory trước và sau dọn. Receipt `runtime/audit-release-cleanup-receipt.json` ghi từng image đã xóa và được giữ, còn `runtime/audit-release-branches-reviewed.json` ghi SHA các nhánh đã kiểm.
+
+Giới hạn còn lại gồm Qwen Planner C/B mất khoảng 62 giây trên máy local, RAM khả dụng có lúc dưới 0,5 GiB trong cửa sổ lấy mẫu, và mapping bỏ lỡ một khóa trong bộ độc lập. Các tập câu dùng để sửa đã được phân loại thành hồi quy, kết quả 20/20 hoặc 10/10 chỉ áp dụng bộ đã đo. Một cảnh báo deprecation Starlette TestClient còn trong test. Phạm vi Internet, độ ổn định tải dài và nghiệm thu người dùng độc lập còn `NOT_RUN`. Mâu thuẫn sidebar giữa `Rules.md` §9.1 và bổ sung ngày 06/11/2026 tại `PROJECT_PLAN.md` đã ghi vị trí và tác động trong báo cáo giao diện.
+
+Đợt giao diện hoàn tất phần phân tích trong `docs/INTERFACE_REDESIGN_AUDIT.md`, gồm 30 màn hình, kiểm kê sáu bề mặt, đề xuất tổ chức thông tin và phương án ưu tiên. Việc triển khai bố cục mới thuộc đợt tiếp theo cần được giao rõ.
+
 ## Nghiệm thu ứng viên `c66f` — 08/11/2026
 
 `worktree-c66fafda2b68d7b0` khớp source, backend/worker và tài nguyên frontend qua HTTP. Bốn dịch vụ healthy trên cùng Compose và hai volume. Snapshot trước và sau khi đổi image khớp 810 run, 1.497 báo cáo và 9.235 artifact. Receipt `runtime/audit-verified-status-identity.log` và `runtime/audit-verified-status-after.log`.
@@ -36,9 +58,9 @@ Backup `883e53c7…` khôi phục đủ 24 bảng trong schema thử nghiệm. B
 | AP-12 | Full Playwright 142/142 và ma trận 14/14 ở 5 chiều rộng và 2 workspace | PASS LOCAL |
 | AP-13 | Tải 1.000 và 10.000 dòng khi Qwen LIVE, cùng test nhường tuyến đọc trong PostgreSQL | PASS phạm vi kiểm |
 | AP-14 | Worker phục hồi, backup 24 bảng, 12.132 tệp, rollback và quay lại với dữ liệu khớp | PASS LOCAL |
-| AP-15 | Khớp source, image và HTTP, qua các cổng ứng viên. Commit và triển khai chính thức đối chiếu bằng manifest phát hành | PASS ứng viên |
+| AP-15 | `main` đã push, source/image/HTTP khớp, smoke và kiểm dữ liệu sau triển khai đạt, giữ một bộ rollback đã kiểm | PASS LOCAL RELEASE |
 
-Các kết quả trên là kiểm tra tự động trên ứng viên local. `READY_FOR_RELEASE` của bản triển khai còn phụ thuộc vào đối chiếu đúng commit `main`, smoke và kiểm dữ liệu sau triển khai. Manifest phát hành local ghi riêng commit, image, backup và kết quả này.
+Các kết quả trên là kiểm tra tự động trên ứng viên local. Release từ `main` đã đạt đối chiếu commit, smoke và kiểm dữ liệu sau triển khai. Manifest local ghi riêng commit, image, backup và kết quả này.
 
 ## Biên bản ứng viên `4184` — 08/11/2026
 
