@@ -76,7 +76,7 @@ function sameRequestExceptModel(previous: string, next: string, reuseUploadedSco
 }
 
 function MessageInfo({createdAt, model}: {createdAt: string; model?: string}) {
-  return <details className="message-metadata" onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.currentTarget.open=false;event.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="Thông tin tin nhắn"><MoreHorizontal size={16} aria-hidden="true"/></summary><small>{new Date(createdAt).toLocaleString("vi-VN")}{model && ` · Model đã chọn: ${model}`}</small></details>;
+  return <details className="message-metadata" onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.currentTarget.open=false;event.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="Thông tin tin nhắn"><MoreHorizontal size={16} aria-hidden="true"/></summary><small>{new Date(createdAt).toLocaleString("vi-VN")}{model && ` · Mô hình đã chọn: ${model}`}</small></details>;
 }
 
 /** Chỉ lưu chữ ký, không lưu bytes; hash tuần tự để giới hạn bộ nhớ khi nhiều tệp. */
@@ -103,7 +103,7 @@ export function AssistantStudio({
   onUploadProject,
   agentEnabled = false,
   historyOpen, setHistoryOpen, historyReturnFocus, aiRequestsRemaining,
-  uploadLimits, projectSelector,
+  uploadLimits, projectSelector, onScopeDenied,
 }: {
   projectSelector?: ReactNode;
   initialContext: AssistantContext;
@@ -116,6 +116,7 @@ export function AssistantStudio({
   initialConversationId?: string;
   onContextChange: (context: AssistantContext) => void;
   onUploadProject: (id: string) => Promise<void>;
+  onScopeDenied: () => void;
   agentEnabled?: boolean;
   aiRequestsRemaining?: number | null;
   uploadLimits?: { maxBytes: number; maxFiles: number; extensions: string[] };
@@ -206,6 +207,19 @@ export function AssistantStudio({
   const composerInput=useRef<HTMLTextAreaElement>(null);
   const transcript=useRef<HTMLDivElement>(null);
   const transcriptContent=useRef<HTMLDivElement>(null);
+  const layout = useRef<HTMLDivElement>(null);
+  const [canDock, setCanDock] = useState(false);
+  useLayoutEffect(() => {
+    const element = layout.current;
+    if (!element) return;
+    // Chừa khoảng đọc, ngăn chi tiết và khoảng cách theo vùng thực sau zoom.
+    const measure = () => setCanDock(element.clientWidth >= 1184);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const docked = canDock && !!(dataContext || resultContext || evidence);
   const followTail=useRef(true);
   const forceTail=useRef(false);
   const prependAnchor=useRef<{height:number;top:number}|null>(null);
@@ -330,7 +344,14 @@ export function AssistantStudio({
     setHistory((old) => (append ? [...old, ...page.items] : page.items));
     setMoreHistory(page.has_more);
     } catch(err) {
-      if(alive.current && request===historySequence.current)setHistoryError(errorText(err));
+      if (alive.current && request === historySequence.current) {
+        if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+          setHistory([]);
+          setMoreHistory(false);
+          onScopeDenied();
+        }
+        setHistoryError(errorText(err));
+      }
     } finally {
       if(alive.current && request===historySequence.current)setHistoryLoading(false);
     }
@@ -395,6 +416,8 @@ export function AssistantStudio({
     const request = ++sequence.current;
     evidenceSequence.current++;
     setEvidence(null);
+    setDataContext(null);
+    setResultContext(null);
     setRule(null);
     setMessages([]);
     setActiveWorkflowContext(null);
@@ -491,6 +514,8 @@ export function AssistantStudio({
     sequence.current++;
     evidenceSequence.current++;
     setEvidence(null);
+    setDataContext(null);
+    setResultContext(null);
     setRule(null);
     setContext(next);
     setConversation(null);
@@ -682,20 +707,7 @@ export function AssistantStudio({
       openDetail("OPEN_REPORT", answer.fact_set.context);
       return;
     }
-    const request = ++evidenceSequence.current;
-    citationTrigger.current = document.activeElement as HTMLElement;
-    setError("");
-    try {
-      const result = await api<SourceEvidence>(
-        `/runs/${reference.run_id}/groups/${reference.group_id}/evidence`,
-        getOptions(),
-      );
-      if (alive.current && request === evidenceSequence.current)
-        setEvidence(result);
-    } catch (err) {
-      if (alive.current && request === evidenceSequence.current)
-        setError(errorText(err));
-    }
+    await openEvidence(reference.run_id, reference.group_id);
   }
   async function suggestion(target: Suggestion, answer: AssistantAnswer) {
     if (target === "OPEN_EVIDENCE") {
@@ -743,12 +755,31 @@ export function AssistantStudio({
   const selectedRun = runs.find((r) => r.id === displayContext.run_id);
   async function agentNavigate(target:Suggestion,next:AssistantContext){
     if(target!=="OPEN_EVIDENCE"||!next.run_id||!next.group_id){openDetail(target,next);return;}
-    const request=++evidenceSequence.current;citationTrigger.current=document.activeElement as HTMLElement;
-    try{const result=await api<SourceEvidence>(`/runs/${next.run_id}/groups/${next.group_id}/evidence`,getOptions());
-      if(alive.current&&request===evidenceSequence.current)setEvidence(result);
-    }catch(err){if(alive.current&&request===evidenceSequence.current)setError(errorText(err));}
+    if (next.project_id === context.project_id) await openEvidence(next.run_id, next.group_id);
+  }
+  async function openEvidence(runId: string, groupId: string) {
+    setDataContext(null);
+    setResultContext(null);
+    setError("");
+    const request = ++evidenceSequence.current;
+    const trigger = document.activeElement as HTMLElement | null;
+    try {
+      const result = await api<SourceEvidence>(
+        `/runs/${runId}/groups/${groupId}/evidence`, getOptions(),
+      );
+      if (alive.current && request === evidenceSequence.current) {
+        citationTrigger.current = trigger;
+        setEvidence(result);
+      }
+    } catch (err) {
+      if (alive.current && request === evidenceSequence.current) setError(errorText(err));
+    }
   }
   function openDetail(target:Suggestion,next:AssistantContext){
+    evidenceSequence.current++;
+    setEvidence(null);
+    setDataContext(null);
+    setResultContext(null);
     if(next.project_id!==context.project_id)return;
     detailTrigger.current=document.activeElement as HTMLElement;
     if(target==="OPEN_DATA")setDataContext(next);
@@ -788,7 +819,7 @@ export function AssistantStudio({
           </details>
         </div>
       </div>
-      <div className="assistant-layout">
+      <div ref={layout} className={`assistant-layout${docked ? " has-context" : ""}`}>
 
         <div className="assistant-conversation">
           <div className="assistant-scroll" ref={transcript} onScroll={()=>{
@@ -833,7 +864,7 @@ export function AssistantStudio({
                 </button>
               )}
               {!loading && !messages.length && (
-                <div className="agent-empty"><Sparkles size={25} aria-hidden="true"/><h2>Bạn muốn xử lý dữ liệu gì?</h2><p>Tải file lên hoặc giao việc cho AI bằng tiếng Việt.</p></div>
+                <div className="agent-empty"><Sparkles size={25} aria-hidden="true"/><h2>Bạn muốn xử lý dữ liệu gì?</h2><p>Đính kèm CSV hoặc Excel, hoặc hỏi về dữ liệu trong dự án.</p></div>
               )}
               {messages.filter((message,index)=>message.role!=="assistant"||!message.workflow_id||!messages.slice(index+1).some(next=>next.role==="assistant"&&next.workflow_id===message.workflow_id)).map((message) => (
                 <article
@@ -961,9 +992,9 @@ export function AssistantStudio({
               ))}
             </div>
             {rule && (
-              <section className="card" aria-label="Rule được viện dẫn">
+              <section className="card" aria-label="Quy tắc áp dụng">
                 <h3>{rule.plan.name}</h3>
-                <p>Rule của run {rule.run_id.slice(0, 8)}</p>
+                <p>Lượt đối soát {rule.run_id.slice(0, 8)}</p>
                 <p>
                   Revision {rule.revision} · {rule.plan.period_start} →{" "}
                   {rule.plan.period_end} · {rule.plan.timezone}
@@ -996,8 +1027,7 @@ export function AssistantStudio({
             )}
             {pendingJob && (
               <Notice>
-                Đang xử lý câu hỏi trong queue. Rời trang rồi quay lại vẫn xem
-                được kết quả.
+                Đang xử lý yêu cầu. Bạn có thể mở lại kết quả từ Lịch sử.
                 <button
                   className="text-button"
                   disabled={busy || loading}
@@ -1090,11 +1120,27 @@ export function AssistantStudio({
           </form>
           {!messages.length&&<div className="agent-prompts">{[["Chuẩn hóa dữ liệu","PREPARE_NORMALIZATION"],["Đối soát các file",null],["Tra cứu thông tin",null],["Phân tích kết quả","SUMMARIZE_RESULTS"]].map(([title,action])=><button className="text-button" key={title} onClick={()=>{setText(title!);setCommand(action);composerInput.current?.focus();}}>{title}</button>)}</div>}
         </div>
+        {dataContext && <Suspense fallback={<Spinner />}>
+          <AssistantDataDrawer key={`${dataContext.project_id}:${dataContext.dataset_id || ""}`}
+            context={dataContext} docked={docked} onClose={() => setDataContext(null)}
+            returnFocus={detailTrigger} onManual={next => {
+              setDataContext(null);
+              onNavigate("OPEN_DATA", next);
+            }} />
+        </Suspense>}
+        {resultContext && <Suspense fallback={<Spinner />}>
+            <ReconciliationStudio key={`${resultContext.context.run_id}:${resultContext.mode}`}
+              projectId={context.project_id} canEdit={canEdit} mode={resultContext.mode}
+              requestedPlan={null} requestedRun={{ id: resultContext.context.run_id!, caseId: resultContext.context.case_id, request: 1 }}
+              panel={{ docked, onClose: () => setResultContext(null), returnFocus: detailTrigger }}
+              onRunSelected={() => {}}
+              onAsk={next => { setResultContext(null); newConversation(next); }}
+              onSetup={() => { setResultContext(null); onNavigate("OPEN_RECONCILIATION", resultContext.context); }} />
+          </Suspense>}
+        {evidence && <ReconciliationEvidence key={evidence.group.id} evidence={evidence} currentCase={null}
+          canEdit={false} docked={docked} returnFocus={citationTrigger}
+          onClose={() => { evidenceSequence.current++; setEvidence(null); }} onReviewed={async () => {}} />}
       </div>
-      {dataContext&&<Suspense fallback={<Spinner/>}><AssistantDataDrawer key={`${dataContext.project_id}:${dataContext.dataset_id||""}`} context={dataContext} onClose={()=>setDataContext(null)} returnFocus={detailTrigger} onManual={next=>{setDataContext(null);onNavigate("OPEN_DATA",next);}}/></Suspense>}
-      <Modal title="Chi tiết kết quả đã xác minh" wide open={!!resultContext} onOpenChange={open=>{if(!open)setResultContext(null);}} returnFocus={detailTrigger}>
-        {resultContext&&<Suspense fallback={<Spinner/>}><ReconciliationStudio key={`${resultContext.context.run_id}:${resultContext.mode}`} projectId={context.project_id} canEdit={canEdit} mode={resultContext.mode} requestedPlan={null} requestedRun={{id:resultContext.context.run_id!,caseId:resultContext.context.case_id,request:1}} onRunSelected={()=>{}} onAsk={next=>{setResultContext(null);newConversation(next);}} onSetup={()=>{setResultContext(null);onNavigate("OPEN_RECONCILIATION",context);}}/></Suspense>}
-      </Modal>
       <Modal title="Xác nhận xóa hội thoại" open={confirmDelete} onOpenChange={setConfirmDelete} returnFocus={deleteTrigger}>
         <p>Xóa nội dung hội thoại này? Lượt đối soát, quy tắc, nguồn dữ liệu và báo cáo được giữ nguyên.</p>
         <div className="modal-actions"><button className="button secondary" disabled={busy} onClick={()=>setConfirmDelete(false)}>Hủy</button><button className="button primary" disabled={busy} onClick={()=>void deleteConversation()}>Xác nhận xóa hội thoại</button></div>
@@ -1105,7 +1151,7 @@ export function AssistantStudio({
           className="assistant-history"
           aria-label="Lịch sử hội thoại"
         >
-          <p>Lịch sử trong dự án: <strong>{projectName}</strong>. Đổi dự án để xem hội thoại ở nơi khác.</p>
+          <p className="muted"><strong>{projectName}</strong></p>
           <label>Tìm trong hội thoại đã tải<input value={historySearch} onChange={e=>setHistorySearch(e.target.value)}/></label>
           <button className="button secondary" disabled={busy||!context.project_id} onClick={()=>{newConversation();setHistoryOpen(false);}}>Hội thoại mới</button>
           <h3>
@@ -1124,8 +1170,8 @@ export function AssistantStudio({
               disabled={busy}
               onClick={() => void openConversation(item.id)}
             >
-              {item.title} · {new Date(item.created_at).toLocaleString("vi-VN")}{" "}
-              · {item.context.run_id ? "Đối soát" : "Chuẩn bị dữ liệu"}
+              <strong>{item.title}</strong>
+              <small>{new Date(item.created_at).toLocaleString("vi-VN")} · {item.context.run_id ? "Đối soát" : "Chuẩn bị dữ liệu"}</small>
             </button>
           ))}
           {moreHistory && (
@@ -1205,16 +1251,6 @@ export function AssistantStudio({
               <button className="button secondary" disabled={busy||!!pendingJob||loading} onClick={()=>{newConversation({project_id:context.project_id});setContextOpen(false);}}>Dùng dữ liệu của dự án</button>
             </>}
       </Modal>
-      {evidence && (
-        <ReconciliationEvidence
-          evidence={evidence}
-          currentCase={null}
-          canEdit={false}
-          returnFocus={citationTrigger}
-          onClose={() => setEvidence(null)}
-          onReviewed={async () => {}}
-        />
-      )}
     </section>
   );
 }

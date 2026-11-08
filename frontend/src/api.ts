@@ -2,6 +2,7 @@ export class ApiError extends Error {
   constructor(
     public code: string,
     message: string,
+    public status?: number,
   ) {
     super(message);
   }
@@ -44,6 +45,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(
       body.code || "HTTP_ERROR",
       body.message_vi || "Không thể tải dữ liệu.",
+      response.status,
     );
   return body as T;
 }

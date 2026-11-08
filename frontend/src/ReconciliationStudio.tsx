@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import {
   ArrowDownToLine,
   CheckCheck,
@@ -8,15 +8,11 @@ import {
 } from "lucide-react";
 import * as echarts from "echarts/core";
 import { PieChart } from "echarts/charts";
-import {
-  TooltipComponent,
-  LegendComponent,
-  AriaComponent,
-} from "echarts/components";
+import { TooltipComponent } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
-import { api, apiPages } from "./api";
+import { api, apiPages, ApiError } from "./api";
 import { ReconciliationEvidence } from "./ReconciliationEvidence";
-import { Badge, Notice, Spinner } from "./components";
+import { Badge, ContextPanel, Notice, Spinner } from "./components";
 import {
   label,
   type Catalogue,
@@ -37,8 +33,6 @@ import type { AssistantContext } from "./assistantTypes";
 echarts.use([
   PieChart,
   TooltipComponent,
-  LegendComponent,
-  AriaComponent,
   SVGRenderer,
 ]);
 type Mode = "home" | "reconcile" | "exceptions" | "reports";
@@ -62,21 +56,20 @@ const waitForJob = async (jobId: string, signal: AbortSignal) => {
   );
 };
 
+const statusChartColors = ["#2563EB", "#64748B", "#B45309", "#BE123C", "#94A3B8", "#047857"];
+
 function StatusChart({ counts }: { counts: Record<string, number> }) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!root.current) return;
     const chart = echarts.init(root.current, undefined, { renderer: "svg" });
     chart.setOption({
-      aria: { enabled: true },
       tooltip: { trigger: "item" },
-      legend: { bottom: 0 },
-      color: ["#2563EB", "#60A5FA", "#F59E0B", "#EF4444", "#94A3B8", "#10B981"],
+      color: statusChartColors,
       series: [
         {
           type: "pie",
           radius: ["48%", "72%"],
-          center: ["50%", "42%"],
           label: { show: false },
           data: Object.entries(counts).map(([name, value]) => ({
             name: label(name),
@@ -93,8 +86,16 @@ function StatusChart({ counts }: { counts: Record<string, number> }) {
     };
   }, [counts]);
   return (
-    <div role="img" aria-label="Phân bố trạng thái đối soát">
-      <div className="result-chart" ref={root} />
+    <div className="status-distribution">
+      <div role="img" aria-label="Phân bố trạng thái đối soát">
+        <div className="result-chart" ref={root} aria-hidden="true" />
+      </div>
+      <dl aria-label="Số nhóm theo trạng thái liên kết">
+        {Object.entries(counts).map(([name, count], index) => <div key={name}>
+          <dt><i aria-hidden="true" style={{ backgroundColor: statusChartColors[index % statusChartColors.length] }} />{label(name)}</dt>
+          <dd>{count.toLocaleString("vi-VN")}</dd>
+        </div>)}
+      </dl>
     </div>
   );
 }
@@ -108,6 +109,8 @@ export function ReconciliationStudio({
   requestedPlan,
   onSetup,
   onRunSelected,
+  onOpenExceptions,
+  panel,
 }: {
   projectId: string;
   mode: Mode;
@@ -117,6 +120,8 @@ export function ReconciliationStudio({
   requestedRun: { id: string; request: number; caseId?: string | null } | null;
   onSetup: () => void;
   onRunSelected: (id: string, caseId?: string) => void;
+  onOpenExceptions?: (id: string) => void;
+  panel?: { docked: boolean; onClose: () => void; returnFocus: RefObject<HTMLElement | null> };
 }) {
   const [catalogue, setCatalogue] = useState<Catalogue[]>([]),
     [runs, setRuns] = useState<Run[]>([]);
@@ -161,21 +166,24 @@ export function ReconciliationStudio({
   const [fromPeriod, setFromPeriod] = useState(""),
     [toPeriod, setToPeriod] = useState(""),
     [sourceFilter, setSourceFilter] = useState("");
+  const requestedRunId = requestedRun?.id;
+  const requestedCaseId = requestedRun?.caseId;
+  const requestedRunVersion = requestedRun?.request;
   useEffect(() => {
-    if (!requestedRun) return;
-    setSelectedCaseId(requestedRun.caseId || "");
-    if (requestedRun.caseId) {
+    if (!requestedRunId) return;
+    setSelectedCaseId(requestedCaseId || "");
+    if (requestedCaseId) {
       setOffset(0);
       setSearch("");
       setFilter("");
       setIssueFilter("");
     }
-    setRunId(requestedRun.id);
+    setRunId(requestedRunId);
     setRunOffset(0);
     setFromPeriod("");
     setToPeriod("");
     setSourceFilter("");
-  }, [requestedRun]);
+  }, [requestedRunId, requestedCaseId, requestedRunVersion]);
   const alive = useRef(true);
   useEffect(() => {
     if (runId) onRunSelected(runId, selectedCaseId || undefined);
@@ -261,7 +269,20 @@ export function ReconciliationStudio({
       // A bounded/filtered history page is not the authority for an explicitly selected run.
       setRunId((old) => old || r.items[0]?.id || "");
     } catch (err) {
-      if (alive.current && sequence === refreshSequence.current) throw err;
+      if (!alive.current || sequence !== refreshSequence.current) return;
+      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+        setCatalogue([]);
+        setTemplates([]);
+        setRuns([]);
+        setRunId("");
+        setRun(null);
+        setEvidence(null);
+        setDownload("");
+        setDraft(null);
+        setProposal(null);
+        setReadiness(null);
+      }
+      throw err;
     } finally {
       if (alive.current && sequence === refreshSequence.current)
         setListLoading(false);
@@ -569,11 +590,10 @@ export function ReconciliationStudio({
     );
   if (mode === "home" && !snapshot)
     return error ? <Notice tone="error">{error}</Notice> : null;
-  return (
+  const content = (
     <section className="reconciliation-studio">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">KẾT QUẢ CÓ BẰNG CHỨNG</span>
           <h2>
             {mode === "reconcile"
               ? "Thiết lập đối soát"
@@ -593,15 +613,6 @@ export function ReconciliationStudio({
       </div>
       {error && <Notice tone="error">{error}</Notice>}
       {message && <Notice tone="success">{message}</Notice>}
-      {run?.id === runId && run.metric_snapshot && (
-        <button
-          className="text-button"
-          onClick={() => onAsk({ project_id: projectId, run_id: runId })}
-        >
-          <Sparkles size={16} />
-          Hỏi AI Assistant về run này
-        </button>
-      )}
       {!canEdit && (
         <Notice>
           Bạn có quyền xem dữ liệu và bằng chứng. Cần quyền chỉnh sửa để tạo,
@@ -615,10 +626,10 @@ export function ReconciliationStudio({
           disabled={!canEdit}
           aria-label="Thiết lập quy tắc"
         >
-          <h3>
-            1. Chọn nguồn → 2. Quy tắc → 3. Kiểm tra và duyệt → 4. Chạy → 5. Kết
-            quả
-          </h3>
+          <h3>Phạm vi và quy tắc đối soát</h3>
+          <ol className="reconciliation-steps" aria-label="Trình tự thiết lập đối soát">
+            {["Chọn nguồn", "Đặt quy tắc", "Kiểm tra và duyệt", "Chạy", "Xem kết quả"].map(step => <li key={step}>{step}</li>)}
+          </ol>
           <p className="muted">
             Chọn hai nguồn đã chuẩn hóa. AI có thể tìm cặp khóa khác tên; bạn
             xác nhận phạm vi và quy tắc trước khi chạy.
@@ -1417,7 +1428,7 @@ export function ReconciliationStudio({
           <GitCompareArrows size={28} />
           <h3>Chưa có lần đối soát trong bộ lọc</h3>
           <p>
-            Chọn hai nguồn canonical, xác nhận quy tắc rồi chạy để có kết quả đã
+            Chọn hai nguồn đã chuẩn hóa, xác nhận quy tắc rồi chạy để có kết quả đã
             kiểm chứng.
           </p>
           {mode !== "reconcile" && (
@@ -1428,6 +1439,7 @@ export function ReconciliationStudio({
         </div>
       ) : (
         <>
+          <section className="card run-overview" aria-label="Phạm vi lần đối soát">
           <div className="run-toolbar">
             <label>
               Lần đối soát
@@ -1453,8 +1465,18 @@ export function ReconciliationStudio({
               </select>
             </label>
             {run && <Badge status={run.status} />}
-            {snapshot && (
-              <div className="rule-actions">
+          </div>
+            {snapshot && <>
+              <p className="run-period">
+                <strong>Kỳ đối soát</strong> {snapshot.period_start} đến trước {snapshot.period_end} · {snapshot.timezone}
+              </p>
+              {run?.status === "PARTIAL_VERIFIED" && <Notice tone="warning">
+                Kết quả đã xác minh một phần. Xem phạm vi và các nhóm bị loại trước khi sử dụng số liệu.
+              </Notice>}
+              <div className="run-actions">
+                <div className="run-export" aria-label="Xuất báo cáo">
+                  <p>Phạm vi xuất gồm toàn bộ lần đối soát đang chọn. Bộ lọc bên dưới chỉ áp dụng khi xem trên màn hình.</p>
+                  <div className="rule-actions">
                 <button
                   className="button secondary"
                   disabled={busy || !canEdit}
@@ -1475,15 +1497,19 @@ export function ReconciliationStudio({
                     Tải báo cáo
                   </a>
                 )}
+                  </div>
+                </div>
+                <div className="run-links">
+                  {mode !== "exceptions" && onOpenExceptions && <button className="text-button" onClick={() => onOpenExceptions(runId)}>
+                    Xem ngoại lệ của lần này
+                  </button>}
+                  <button className="text-button" onClick={() => onAsk({ project_id: projectId, run_id: runId })}>
+                    <Sparkles size={16} /> Hỏi AI Assistant về run này
+                  </button>
+                </div>
               </div>
-            )}
-            {snapshot && (
-              <p className="muted">
-                {snapshot.period_start} → {snapshot.period_end} (không gồm) ·{" "}
-                {snapshot.timezone}
-              </p>
-            )}
-          </div>
+            </>}
+          </section>
           {runId && !run && !error && <Spinner />}
           {run?.id === runId && !snapshot && (
             <Notice tone="warning">
@@ -1513,7 +1539,7 @@ export function ReconciliationStudio({
                       [
                         "Cần kiểm tra",
                         openCount === null ? "Đang tải…" : String(openCount),
-                        "case đang mở hiện tại",
+                        "Ngoại lệ đang mở hiện tại",
                       ],
                       [
                         "Giá trị lệch tuyệt đối",
@@ -1525,7 +1551,7 @@ export function ReconciliationStudio({
                         snapshot.automation_coverage.percent === null
                           ? "N/A"
                           : `${snapshot.automation_coverage.percent}%`,
-                        `${snapshot.automation_coverage.numerator}/${snapshot.automation_coverage.denominator} đơn vị đủ điều kiện; gồm thiếu đối ứng/lệch đã xác minh, không phải ngoại lệ đã xử lý`,
+                        `${snapshot.automation_coverage.numerator}/${snapshot.automation_coverage.denominator} đơn vị đủ điều kiện, gồm nhóm lệch và thiếu đối ứng đã xác minh`,
                       ],
                     ].map(([name, value, detail]) => (
                       <article className="card" key={name}>
@@ -1576,7 +1602,7 @@ export function ReconciliationStudio({
                       )}
                       {snapshot.monetary.map((m) => (
                         <p key={m.metric_id}>
-                          {m.metric_id} ({m.currency}): chênh lệch signed{" "}
+                          {m.metric_id} ({m.currency}): chênh lệch có dấu{" "}
                           {m.signed_variance}, tuyệt đối {m.absolute_variance};{" "}
                           {m.comparable_groups} nhóm so sánh được.
                         </p>
@@ -1697,7 +1723,7 @@ export function ReconciliationStudio({
                 </div>
                 {exportNotice && <Notice>{exportNotice}</Notice>}
                 {detailLoading && <Spinner />}
-                <div className="table-scroll">
+                <div className="table-scroll" tabIndex={0} aria-label="Bảng kết quả có thể cuộn">
                   <table
                     className="result-table"
                     aria-label={
@@ -1725,7 +1751,7 @@ export function ReconciliationStudio({
                               "Bằng chứng",
                             ]
                         ).map((c) => (
-                          <th key={c}>{c}</th>
+                          <th key={c} scope="col">{c}</th>
                         ))}
                       </tr>
                     </thead>
@@ -1739,7 +1765,7 @@ export function ReconciliationStudio({
                                   ?.key.join(" / ") || "Mở bằng chứng"}
                               </td>
                               <td>{label(c.type)}</td>
-                              <td>
+                              <td className="numeric-cell">
                                 {caseGroups
                                   .find((g) => g.id === c.match_group_id)
                                   ?.comparisons.map((m) => (
@@ -1750,7 +1776,7 @@ export function ReconciliationStudio({
                                     </div>
                                   )) || "Chưa tải được"}
                               </td>
-                              <td>{label(c.workflow_state)}</td>
+                              <td><Badge status={c.workflow_state} label={label(c.workflow_state)} /></td>
                               <td>{c.notes || "Chưa có ghi chú"}</td>
                               <td>
                                 <button
@@ -1782,7 +1808,7 @@ export function ReconciliationStudio({
                               <td>{g.key.join(" / ")}</td>
                               <td>{label(g.linkage_state)}</td>
                               <td>{label(g.comparison_state)}</td>
-                              <td>
+                              <td className="numeric-cell">
                                 {g.comparisons.map((c) => (
                                   <div key={c.metric_id}>
                                     {c.delta ?? "N/A"} {c.currency}
@@ -1855,7 +1881,11 @@ export function ReconciliationStudio({
           )}
         </>
       )}
-      {evidence && evidenceRunId === runId && (
+    </section>
+  );
+  return <>
+    {panel ? <ContextPanel title="Chi tiết kết quả đã xác minh" {...panel}>{content}</ContextPanel> : content}
+    {evidence && evidenceRunId === runId && (
         <ReconciliationEvidence
           key={`${runId}:${evidence.group.id}`}
           evidence={evidence}
@@ -1871,7 +1901,6 @@ export function ReconciliationStudio({
             );
           }}
         />
-      )}
-    </section>
-  );
+    )}
+  </>;
 }

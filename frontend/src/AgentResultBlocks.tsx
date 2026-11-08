@@ -14,6 +14,7 @@ echarts.use([BarChart, AriaComponent, GridComponent, TooltipComponent, SVGRender
 type SourceRef = {source_table_id:string;row:number;sheet:string};
 const transformLabels:Record<string,string>={cast_string_preserve:"Giữ nguyên văn bản và mã",parse_decimal:"Đọc số tiền theo định dạng đã duyệt",parse_date:"Đọc ngày theo định dạng và múi giờ đã duyệt",trim_if_approved:"Bỏ khoảng trắng theo quy tắc đã duyệt",normalize_enum:"Chuẩn hóa trạng thái theo quy tắc đã duyệt",coalesce_with_rule:"Chọn giá trị theo quy tắc đã duyệt",add_fields:"Cộng trường theo quy tắc đã duyệt",subtract_fields:"Trừ trường theo quy tắc đã duyệt",aggregate_by:"Gom nhóm theo quy tắc đã duyệt"};
 const queryLabels:Record<string,string>={linkage_state:"Liên kết",comparison_state:"Kết quả so sánh",left_member_count:"Số dòng nguồn A",right_member_count:"Số dòng nguồn B",left_amount:"Số tiền nguồn A",right_amount:"Số tiền nguồn B",delta:"Chênh lệch có dấu",absolute_variance:"Chênh lệch tuyệt đối",tolerance:"Sai số cho phép",currency:"Tiền tệ",unit:"Đơn vị",type:"Loại ngoại lệ",state:"Xử lý ngoại lệ",notes:"Ghi chú"};
+const numericQueryFields = new Set(["left_member_count", "right_member_count", "left_amount", "right_amount", "delta", "absolute_variance", "tolerance"]);
 function QueryTable({ initial, workflowId, selection }: {
     initial: QueryResult;
     workflowId?: string;
@@ -22,6 +23,8 @@ function QueryTable({ initial, workflowId, selection }: {
     const [data, setData] = useState(initial);
     const [busy, setBusy] = useState(false);
     const [expanded, setExpanded] = useState(false);
+    const expandTrigger = useRef<HTMLButtonElement>(null);
+    const evidenceTrigger = useRef<HTMLElement | null>(null);
     const [error, setError] = useState("");
     const [source, setSource] = useState<Record<string, unknown>[] | null>(null);
     const [sourceRefs,setSourceRefs]=useState<SourceRef[]>([]);
@@ -91,7 +94,7 @@ function QueryTable({ initial, workflowId, selection }: {
         header: () => <button className="text-button" disabled={busy} onClick={() => void page(0, [{ field_id: field, descending: !data.query.sort.find(s => s.field_id === field)?.descending }])}>{data.field_labels?.[field]||queryLabels[field]||field} ↕</button>,
         cell: info => info.getValue() == null ? "—" :
           ['VERIFIED_RUN','EXCEPTIONS'].includes(data.query.source_kind)&&['linkage_state','comparison_state','state','type'].includes(field)?label(String(info.getValue())):String(info.getValue()) })), {
-        id: "evidence", header: () => <span>Nguồn</span>, cell: info => <button className="text-button" disabled={busy || !Array.isArray(info.row.original.source_provenance)} onClick={() => void evidence(info.row.original)}>Xem dòng gốc</button>,
+        id: "evidence", header: () => <span>Nguồn</span>, cell: info => <button className="text-button" disabled={busy || !Array.isArray(info.row.original.source_provenance)} onClick={event => { evidenceTrigger.current = event.currentTarget; void evidence(info.row.original); }}>Xem dòng gốc</button>,
     }];
     const pagination = <div className="agent-pagination"><button className="button secondary" disabled={busy || !data.offset} onClick={() => void page(Math.max(0, data.offset - data.limit))}>Trước</button>
       <span>Trang {Math.floor(data.offset / data.limit) + 1} · {data.rows.length} dòng trong trang</span>
@@ -107,16 +110,16 @@ function QueryTable({ initial, workflowId, selection }: {
     {data.warnings.map(w => <p className="muted" key={w}>{w}</p>)}
     {!data.evidence_complete && <Notice tone="warning">Chỉ hiển thị một phần bằng chứng; thông tin nguồn đầy đủ vẫn được lưu.</Notice>}
     {error && <Notice tone="error">{error}</Notice>}
-    <DataTable rows={previewRows} columns={columns}/>
+    <DataTable rows={previewRows} columns={columns} numericColumns={numericQueryFields}/>
     {pagination}
-    {data.rows.length > 0 && <button className="text-button" onClick={()=>setExpanded(true)}>Xem đầy đủ dữ liệu</button>}
-    <Modal title="Dữ liệu chi tiết" wide open={expanded} onOpenChange={setExpanded}>
+    {data.rows.length > 0 && <button ref={expandTrigger} className="text-button" onClick={()=>setExpanded(true)}>Xem đầy đủ dữ liệu</button>}
+    <Modal title="Dữ liệu chi tiết" wide open={expanded} onOpenChange={setExpanded} returnFocus={expandTrigger}>
       <p>{data.total_count.toLocaleString("vi-VN")} {grouped ? "nhóm kết quả" : "dòng dữ liệu"} phù hợp. Mỗi trang tối đa {data.limit} dòng; số liệu tổng hợp tính trên toàn bộ dữ liệu phù hợp.</p>
       {error && <Notice tone="error">{error}</Notice>}
-      <DataTable rows={data.rows} columns={columns}/>{pagination}
+      <DataTable rows={data.rows} columns={columns} numericColumns={numericQueryFields}/>{pagination}
     </Modal>
     <details><summary>Điều kiện và nguồn</summary><p>{data.query.filters.map(f => `${f.field_id} ${f.op} ${JSON.stringify(f.value)}`).join("; ") || "Toàn bộ nguồn"}</p><p>{data.input_count.toLocaleString("vi-VN")} dòng được dùng trước khi phân nhóm và phân trang. <Badge status={data.verification_status}/></p><small>{data.source_refs.join(" · ")}</small></details>
-    <Modal title="Dòng dữ liệu nguồn" open={source !== null} onOpenChange={open => {if(!open){scope.current++;setBusy(false);setSource(null);}}}>
+    <Modal title="Dòng dữ liệu nguồn" returnFocus={evidenceTrigger} open={source !== null} onOpenChange={open => {if(!open){scope.current++;setBusy(false);setSource(null);}}}>
       <p>{sourceRefs.length} dòng nguồn trong bằng chứng hiển thị. Chọn từng dòng để xem chính xác.</p>
       <div className="agent-pagination">{sourceRefs.map((ref,i)=><button className="button secondary" key={`${ref.source_table_id}:${ref.row}:${i}`} disabled={busy||i===sourceIndex} onClick={()=>void evidence({source_provenance:sourceRefs},i)}>{ref.sheet} · dòng {ref.row}</button>)}</div>
       {source && <DataTable rows={source} columns={Object.keys(source[0] || {}).map(k => ({ accessorKey: k, header: k, cell: i => String(i.getValue() ?? "—") }))}/>}</Modal>
@@ -126,7 +129,8 @@ function ResultChart({ data }: {
     data: Chart;
 }) {
     const root = useRef<HTMLDivElement>(null);
-    const horizontal = data.points.length > 5 || data.points.some(p => label(p.label).length > 18);
+    const [narrow, setNarrow] = useState(false);
+    const horizontal = narrow || data.points.length > 5 || data.points.some(p => label(p.label).length > 18);
     // Nhãn dài được xuống dòng, mỗi nhóm đủ chỗ; chỉ đổi cách vẽ, không tính lại số liệu.
     const rowHeight = Math.max(48, ...data.points.map(p => Math.ceil(label(p.label).length / 16) * 16 + 20));
     const height = horizontal ? Math.max(285, data.points.length * rowHeight + 50) : 285;
@@ -141,12 +145,15 @@ function ResultChart({ data }: {
                     }[])[0];
                     const point = data.points[first?.dataIndex];
                     return point ? `${label(point.label)}: ${point.value} ${data.unit}` : "";
-                } }, xAxis: horizontal ? { type: "value" } : { type: "category", data: data.points.map(p => label(p.label)), axisLabel: { interval: 0 } },
+                } }, xAxis: horizontal ? { type: "value", splitNumber: narrow ? 3 : 5, axisLabel: { hideOverlap: true } } : { type: "category", data: data.points.map(p => label(p.label)), axisLabel: { hideOverlap: true } },
             yAxis: horizontal ? { type: "category", inverse: true, data: data.points.map(p => label(p.label)), axisLabel: { interval: 0, width: 120, overflow: "break", lineHeight: 16 } } : { type: "value" }, series: [{ type: "bar", color: "#2563eb", data: data.points.map(p => ({ value: Number(p.value), name: p.value })) }] });
-        const observer = new ResizeObserver(() => chart.resize());
+        const observer = new ResizeObserver(entries => {
+            setNarrow(entries[0].contentRect.width < 520);
+            chart.resize();
+        });
         observer.observe(root.current);
         return () => { observer.disconnect(); chart.dispose(); };
-    }, [data]);
+    }, [data, horizontal, narrow]);
     return <section className="agent-chart"><h4>{data.title}</h4><p>{data.unit} · {data.population_definition} ({data.population}) · {statusText[data.verification_status]||label(data.verification_status)}</p>
     {data.period_start && <p>{data.period_start} → {data.period_end} · {data.timezone}</p>}
     {data.completeness !== "COMPLETE" && <Notice tone="warning">Biểu đồ chỉ hiển thị các nhóm đã tải.</Notice>}
@@ -171,7 +178,12 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
             if (block.type === "chart")
                 return <ResultChart key={i} data={block}/>;
             if (block.type === "download")
-                return <a className="button secondary" key={i} href={`/api/exports/${block.export_id}/download`}>Tải {block.displayed_query ? "bảng đang xem " : ""}{block.format.toUpperCase()}</a>;
+                return <div className="agent-download" key={i}>
+                  {typeof block.displayed_query === "boolean" && <p className="muted">{block.displayed_query
+                    ? "Tệp chứa đúng trang kết quả đã được chọn khi yêu cầu xuất."
+                    : "Tệp chứa toàn bộ lần đối soát được yêu cầu."}</p>}
+                  <a className="button secondary" href={`/api/exports/${block.export_id}/download`}>Tải {block.displayed_query ? "bảng đang xem " : ""}{block.format.toUpperCase()}</a>
+                </div>;
             if (block.type === "dataset_summary")
                 return <section className="agent-dataset" key={i}><h4>{block.name}</h4><Badge status={block.status}/><p>{block.status === "READY" ? "Đã chuẩn hóa" : "Đã xử lý"} {block.rows.toLocaleString("vi-VN")} dòng. {block.invalid_rows > 0 ? `${block.invalid_rows.toLocaleString("vi-VN")} dòng cần bạn kiểm tra; chưa thể dùng như dữ liệu đầy đủ.` : "Bạn có thể xem dữ liệu trước và sau khi chuẩn hóa."}</p><details><summary>Phép biến đổi đã duyệt</summary><p>{Array.from(new Set(block.transformations)).map(t=>transformLabels[t]||t).join("; ")}</p></details><button className="text-button" onClick={() => onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}>Kiểm tra dữ liệu trước/sau</button></section>;
             const snapshot = block.result.snapshot || block.result.run?.metric_snapshot;

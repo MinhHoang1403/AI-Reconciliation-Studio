@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { api } from "./api";
-import { Modal, Notice, Spinner } from "./components";
+import { ContextPanel, Modal, Notice, Spinner } from "./components";
 import {
   label,
   type Case,
@@ -16,9 +16,11 @@ export function ReconciliationEvidence({
   onReviewed,
   returnFocus,
   canEdit,
+  docked,
 }: {
   evidence: SourceEvidence;
   canEdit: boolean;
+  docked?: boolean;
   currentCase: Case | null;
   onClose: () => void;
   onReviewed: () => Promise<void>;
@@ -94,23 +96,17 @@ export function ReconciliationEvidence({
           limited: refs.length > 20,
         });
     });
-  return (
-    <Modal
-      title={currentCase ? "Xem xét ngoại lệ" : "Bằng chứng đối soát"}
-      open={!!evidence}
-      onOpenChange={(open) => !open && onClose()}
-      wide
-      returnFocus={returnFocus}
-    >
+  const title = currentCase ? "Xem xét ngoại lệ" : "Bằng chứng đối soát";
+  const content = <>
       {error && <Notice tone="error">{error}</Notice>}
       {busy && <Spinner />}
       {evidence && (
         <>
-          <p>
-            {evidence.group.key.join(" / ")} ·{" "}
-            {label(evidence.group.linkage_state)} ·{" "}
-            {label(evidence.group.comparison_state)}
-          </p>
+          <dl className="decision-facts evidence-facts">
+            <div><dt>Khóa giao dịch</dt><dd>{evidence.group.key.join(" / ")}</dd></div>
+            <div><dt>Liên kết</dt><dd>{label(evidence.group.linkage_state)}</dd></div>
+            <div><dt>Kết quả so sánh</dt><dd>{label(evidence.group.comparison_state)}</dd></div>
+          </dl>
           {evidence.group.comparisons.map((c) => (
             <Notice key={c.metric_id}>
               {c.metric_id}: {c.left_amount ?? "N/A"} −{" "}
@@ -123,10 +119,10 @@ export function ReconciliationEvidence({
                 <h3>
                   Nguồn {i === 0 ? "trái" : "phải"} · {source.filename}
                 </h3>
-                <p>{source.member_count} thành viên nguồn</p>
+                <p>Đang hiển thị {source.records.length} / {source.member_count} bản ghi nguồn.</p>
                 <details>
                   <summary>Phiên bản dữ liệu dùng so sánh</summary>
-                  <p>Canonical: {source.canonical.id}</p>
+                  <p>Bản chuẩn hóa {source.canonical.id}</p>
                   <p>
                     Ánh xạ:{" "}
                     {source.canonical.mapping_revision_id ||
@@ -301,6 +297,14 @@ export function ReconciliationEvidence({
           )}
         </>
       )}
+    </>;
+  return docked !== undefined ? (
+    <ContextPanel title={title} docked={docked} onClose={onClose} returnFocus={returnFocus}>
+      {content}
+    </ContextPanel>
+  ) : (
+    <Modal title={title} open onOpenChange={open => { if (!open) onClose(); }} wide returnFocus={returnFocus}>
+      {content}
     </Modal>
   );
 }

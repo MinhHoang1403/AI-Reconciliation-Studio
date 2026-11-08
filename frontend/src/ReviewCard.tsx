@@ -391,7 +391,7 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
         return () => onBatchDraft?.(review.id, null);
     }, [batchPayload, onBatchDraft, review.id]);
     if (review.kind === "CLARIFICATION") return <section className="agent-clarification" aria-label="Câu hỏi bổ sung">
-      <p>{review.question}</p>
+      <div className="review-heading"><span>Thông tin cần bổ sung</span><h4>{review.question}</h4></div>
       {error && <Notice tone="error">{error}</Notice>}
       {review.reply_questions.filter(q=>q!==review.question).map(q=><p key={q}>{q}</p>)}
       <div className="clarification-options">{review.options?.map(option=><button className="button secondary" key={option.id} disabled={disabled} onClick={()=>void action(option.intent)}>{option.label}</button>)}</div>
@@ -400,10 +400,20 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
       <button className="text-button" disabled={replyDisabled} onClick={()=>void requestReply()}>Trả lời bằng tiếng Việt</button>
       {review.pending_reply_job_id && <p role="status"><Spinner/> Đang đọc câu trả lời của bạn…</p>}
     </section>;
-    return <section className="agent-review" aria-label="Quyết định cần xác nhận">{review.resource_label&&<strong>{review.resource_label}</strong>}<h4>{review.question}</h4><p>{review.reason}</p>
+    return <section className="agent-review" aria-label="Quyết định cần xác nhận">
+    <header className="review-heading">
+      <span>{expired ? "Đã hết thời hạn" : review.pending_reply_job_id ? "Đang đọc câu trả lời" : "Chờ bạn xác nhận"}</span>
+      <h4>{review.question}</h4>
+      {review.resource_label && <p>{review.resource_label}</p>}
+    </header>
+    <p>{review.reason}</p>
     {error && <Notice tone="error">{error}</Notice>}{review.reply_questions.map(q => <Notice key={q}>{q}</Notice>)}
     {draft && <>
-      <p>Tôi đã phân tích dữ liệu và chuẩn bị đề xuất chuẩn hóa.</p>
+      <dl className="decision-facts">
+        <div><dt>Loại dữ liệu</dt><dd>{draft.entity_kind || "Chưa xác định"}</dd></div>
+        <div><dt>Mỗi dòng đại diện cho</dt><dd>{draft.grain || "Chưa xác định"}</dd></div>
+        <div><dt>Khóa đề xuất</dt><dd>{draft.fields.filter(f => f.business_key).map(f => f.name).join(", ") || "Chưa chọn"}</dd></div>
+      </dl>
       {checking && <p role="status"><Spinner/> Đang kiểm tra toàn bộ dữ liệu…</p>}
       {assessment && <>
         <p>{draft.fields.length} cột · {assessment.source_rows} dòng. {assessment.verified_fields} trường đã kiểm tra kỹ thuật; {assessment.pending_fields} trường cần xác nhận.</p>
@@ -427,7 +437,6 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
           <option value="">Chọn cách ghi</option><option value="en-US">1,234.56</option><option value="vi-VN">1.234,56</option>
         </select></label>}
       </fieldset>)}
-      <p>Loại dữ liệu: {draft.entity_kind}. Mỗi dòng: {draft.grain}. Khóa đề xuất: {draft.fields.filter(f=>f.business_key).map(f=>f.name).join(', ')||'chưa chọn; cần kiểm tra grain và quan hệ nguồn'}.</p>
       {workflow.detail.prepare_upload && <ul>{draft.fields.filter(f=>f.data_type==='decimal'&&f.semantic_metric&&f.amount_basis&&f.currency).map(f=><li key={f.source_field}>{f.name} · {f.semantic_metric} · {f.amount_basis} · {f.currency}</li>)}</ul>}
       <details className="agent-review-editor"><summary>Xem và chỉnh các lựa chọn</summary><p>Chỉnh sửa chi tiết chỉ khi đề xuất chưa đúng. Các thay đổi được kiểm tra lại trước khi duyệt.</p><MappingReview draft={draft} disabled={disabled} onChange={v=>setDraft(v)}/></details>
     </>}
@@ -442,11 +451,23 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
       </label>)}
     </fieldset>}
     {plan && <>
-      <p>Nguồn A: {sourceName(plan.left.canonical_id)} · Nguồn B: {sourceName(plan.right.canonical_id)}</p>
-      <p>Kỳ {plan.period_start||"chưa chọn"} → {plan.period_end||"chưa chọn"} · {plan.timezone||"chưa rõ múi giờ"}</p>
-      <p>Quy tắc có hiệu lực từ {plan.effective_from || "ngày chưa chọn"}{plan.effective_to ? ` đến trước ${plan.effective_to}` : " · chưa đặt ngày kết thúc"}.</p>
-      <p>Khóa: {plan.join_keys.map(k=>`${fieldName(plan.left.canonical_id,k.left)} ↔ ${fieldName(plan.right.canonical_id,k.right)}`).join(", ")}. {label(plan.cardinality)} · {label(plan.aggregation)}</p>
-      {plan.comparison_metrics.map(m=><p key={m.metric_id}>{fieldName(plan.left.canonical_id,m.left)} · {m.amount_basis} · {m.currency} · sai số {m.absolute_tolerance}</p>)}
+      <dl className="decision-facts">
+        <div><dt>Nguồn A</dt><dd>{sourceName(plan.left.canonical_id)}</dd></div>
+        <div><dt>Nguồn B</dt><dd>{sourceName(plan.right.canonical_id)}</dd></div>
+        <div><dt>Kỳ đối soát</dt><dd>{plan.period_start || "Chưa chọn"} đến trước {plan.period_end || "ngày chưa chọn"} · {plan.timezone || "chưa rõ múi giờ"}</dd></div>
+        <div><dt>Hiệu lực của quy tắc</dt><dd>{plan.effective_from || "Chưa chọn"}{plan.effective_to ? ` đến trước ${plan.effective_to}` : " · chưa đặt ngày kết thúc"}</dd></div>
+        <div><dt>Đơn vị so sánh</dt><dd>{plan.comparison_grain} · {label(plan.cardinality)} · {label(plan.aggregation)}</dd></div>
+        <div><dt>Khóa liên kết</dt><dd>{plan.join_keys.map(k => `${fieldName(plan.left.canonical_id, k.left)} ↔ ${fieldName(plan.right.canonical_id, k.right)}`).join(", ")}</dd></div>
+      </dl>
+      <div className="review-metrics"><strong>Chỉ tiêu so sánh</strong>
+        {plan.comparison_metrics.map(m => <p key={m.metric_id}>{fieldName(plan.left.canonical_id, m.left)} ↔ {fieldName(plan.right.canonical_id, m.right)} · {m.amount_basis} · {m.currency} · sai số {m.absolute_tolerance}</p>)}
+      </div>
+      <details><summary>Phiên bản và độ phủ dữ liệu</summary>
+        {([plan.left, plan.right] as const).map((slot, index) => <p key={index}>
+          Nguồn {index === 0 ? "A" : "B"} · {slot.coverage_start || "Chưa xác định"} đến trước {slot.coverage_end || "ngày chưa xác định"} · {slot.completeness ? label(slot.completeness) : "Chưa xác định độ phủ"}<br />
+          Bản chuẩn hóa {slot.canonical_id}
+        </p>)}
+      </details>
       <details className="agent-review-editor"><summary>Kiểm tra phạm vi và chỉnh quy tắc</summary><PlanReview plan={plan} disabled={disabled} onChange={setPlan}/></details>
     </>}
     {review.kind === "RECONCILIATION" && !plan && scope && needsScope && <ScopeConfirmation
@@ -464,11 +485,13 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     {review.pending_reply_job_id && <Spinner />}<p className="muted">Câu trả lời được diễn giải để bạn kiểm tra; hệ thống chưa phê duyệt thay bạn.</p>
     {draft && review.extraction_review_required!==false && <label><input type="checkbox" checked={extraction} disabled={disabled} onChange={e => setExtraction(e.target.checked)}/>Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.</label>}
     {!ready && <p className="muted">Mở phần chỉnh sửa hoặc bổ sung bằng tiếng Việt để hoàn tất các điều kiện còn thiếu.</p>}
-    <p className="muted">{review.kind === "MAPPING" ? "Khi duyệt, hệ thống sẽ lưu cách ghép cột và chuẩn hóa theo các lựa chọn này." : "Khi duyệt, hệ thống sẽ lưu quy tắc và bắt đầu đối soát trong phạm vi trên."}</p>
     {partialSources.length > 0 && <Notice>
       <p>Dòng lỗi chuẩn hóa đã được tách riêng trong {partialSources.map(source => `${source?.name} (${source?.canonical.invalid_count} dòng)`).join(", ")}.</p>
       <label><input type="checkbox" checked={invalidRowsReviewed} disabled={disabled} onChange={event => setInvalidRowsReviewed(event.target.checked)}/>Tôi đã kiểm tra dòng lỗi và xác nhận đối soát phần dữ liệu hợp lệ.</label>
     </Notice>}
-    <button className="button primary" disabled={disabled || !ready || (partialSources.length > 0 && !invalidRowsReviewed)} onClick={() => void action()}>{review.kind === "MAPPING" ? "Duyệt cách ghép cột và chuẩn hóa" : "Duyệt quy tắc và đối soát"}</button>
+    <footer className="review-approval">
+      <p>{review.kind === "MAPPING" ? "Khi duyệt, hệ thống lưu cách ghép cột và tạo bản chuẩn hóa. Tệp gốc được giữ nguyên." : "Khi duyệt, hệ thống lưu quy tắc và bắt đầu đối soát trong phạm vi trên."}</p>
+      <button className="button primary" disabled={disabled || !ready || (partialSources.length > 0 && !invalidRowsReviewed)} onClick={() => void action()}>{review.kind === "MAPPING" ? "Duyệt cách ghép cột và chuẩn hóa" : "Duyệt quy tắc và đối soát"}</button>
+    </footer>
   </section>;
 }

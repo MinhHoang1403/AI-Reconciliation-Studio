@@ -126,6 +126,27 @@ async function fixture(page: Page, items: Project[], saved?: string) {
   });
 }
 
+test("[MOCK CONTRACT] explicit project denial clears visible data and allows recovery", async ({ page }) => {
+  await fixture(page, projects(1), "project-000");
+  let denied = false;
+  const source = { id: "private-source", project_id: "project-000", name: "Dữ liệu từng được cấp quyền.csv", status: "PARSED", created_at: "2026-10-01" };
+  await page.route("**/api/datasets?**", route => route.fulfill({ json: { items: [source], total: 1 } }));
+  await page.route("**/api/projects/project-000/summary", route => {
+    if (!denied) return route.fallback();
+    return route.fulfill({ status: 403, json: { code: "FORBIDDEN", message_vi: "Quyền đã thu hồi." } });
+  });
+  await page.goto("/#page=data&project=project-000");
+  const sourceRow = page.getByRole("button", { name: /Dữ liệu từng được cấp quyền/ });
+  await expect(sourceRow).toBeVisible();
+  denied = true;
+  await page.getByRole("button", { name: "Cập nhật dự án", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Bạn không còn quyền xem dự án này");
+  await expect(sourceRow).toHaveCount(0);
+  denied = false;
+  await page.getByRole("button", { name: "Thử tải lại dự án", exact: true }).click();
+  await expect(sourceRow).toBeVisible();
+});
+
 for (const count of [5, 30, 80]) {
   test(`recent datasets stay newest after list pagination: ${count} sources`, async ({
     page,
@@ -897,7 +918,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
         name: "Điều hướng",
         exact: true,
       });
-      await expect(navigation.getByRole("link")).toBeFocused();
+      await expect(navigation.getByRole("button", { name: "Đóng điều hướng", exact: true })).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(
         navigation.getByRole("button", { name: "Cài đặt", exact: true }),
@@ -1171,9 +1192,10 @@ test("[MOCK CONTRACT] local proof recovery preserves draft and reloads project a
   await expect(status).toHaveText("Chưa kết nối");
   await expect(page.getByText("Ứng dụng cần xác minh lại môi trường local sau khi khởi động. Dữ liệu của bạn vẫn được giữ nguyên.")).toBeVisible();
   await expect(page.getByRole("button", {name:"AI Assistant",exact:true})).toBeDisabled();
-  await expect(page.locator("code", {hasText:"tools/start.ps1 -SkipBuild"})).not.toBeVisible();
+  const operatorCommand = page.locator("code", { hasText: "tools/verify-local.ps1" });
+  await expect(operatorCommand).not.toBeVisible();
   await page.getByText("Hướng dẫn cho người vận hành local", {exact:true}).click();
-  await expect(page.locator("code", {hasText:"tools/start.ps1 -SkipBuild"})).toBeVisible();
+  await expect(operatorCommand).toBeVisible();
   expect(await status.locator("span").evaluate(el=>getComputedStyle(el).backgroundColor)).not.toBe("rgb(22, 163, 74)");
   verified = true;
   await page.getByRole("button", {name:"Thử kết nối lại",exact:true}).click();

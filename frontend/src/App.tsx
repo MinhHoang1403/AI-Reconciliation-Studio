@@ -18,6 +18,8 @@ import {
   Layers3,
   History,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Search,
   Settings2,
@@ -137,10 +139,12 @@ export function App() {
   }>({ projectId: "", items: [], loading: true, error: "" });
   const [recentRetry, setRecentRetry] = useState(0);
   const [datasetOffset, setDatasetOffset] = useState(0);
+  const [sourceListOpen, setSourceListOpen] = useState(() => !location.context?.dataset_id);
   const [datasetTotal, setDatasetTotal] = useState(0);
   const [summary, setSummary] = useState<ProjectSummary | null>(null);
   const [projectLoading, setProjectLoading] = useState(false);
   const [projectError, setProjectError] = useState("");
+  const [projectAccessDenied, setProjectAccessDenied] = useState(false);
   const [runNavigation, setRunNavigation] = useState<{
     id: string;
     request: number;
@@ -178,6 +182,14 @@ export function App() {
   } | null>(null);
   const [focusMode, setFocusMode] = useState<"pointer" | "keyboard">("pointer");
   const [actorRole, setActorRole] = useState("");
+  const [tableDensity, setTableDensity] = useState<"comfortable" | "compact">(
+    () => localStorage.getItem("studio.table-density") === "compact" ? "compact" : "comfortable",
+  );
+  useEffect(() => {
+    document.documentElement.dataset.tableDensity = tableDensity;
+    localStorage.setItem("studio.table-density", tableDensity);
+    return () => { delete document.documentElement.dataset.tableDensity; };
+  }, [tableDensity]);
   const [draftOwner, setDraftOwner] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -192,6 +204,14 @@ export function App() {
   const [headerRow, setHeaderRow] = useState("");
   const [requestAiMapping, setRequestAiMapping] = useState(true);
   const [sidebar, setSidebar] = useState(false);
+  const [compactNavigation, setCompactNavigation] = useState(
+    () => localStorage.getItem("studio.navigation-compact") === "true",
+  );
+  function toggleNavigation() {
+    const next = !compactNavigation;
+    setCompactNavigation(next);
+    localStorage.setItem("studio.navigation-compact", String(next));
+  }
   const [evidenceId, setEvidenceId] = useState("");
   const [evidenceRow, setEvidenceRow] = useState<number | undefined>();
   const [evidence, setEvidence] = useState<Record<string, unknown> | null>(
@@ -421,11 +441,24 @@ export function App() {
       setDatasetTotal(d.total);
       setJobs(j.items);
       setSummary(s);
+      setProjectAccessDenied(false);
     } catch (err) {
-      if (!controller.signal.aborted && sequence === projectSequence.current)
+      if (!controller.signal.aborted && sequence === projectSequence.current) {
+        if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+          setProjectAccessDenied(true);
+          setSummary(null);
+          setDatasets([]);
+          setJobs([]);
+          setSelectedSource(null);
+          setPreview(null);
+          setEvidenceId("");
+          setEvidence(null);
+          setAssistantHistoryOpen(false);
+        }
         setProjectError(
           err instanceof Error ? err.message : "Không tải được dữ liệu dự án.",
         );
+      }
     } finally {
       if (!controller.signal.aborted && sequence === projectSequence.current)
         setProjectLoading(false);
@@ -695,6 +728,7 @@ export function App() {
     refreshController.current?.abort();
     setProjectLoading(false);
     setProjectError("");
+    setProjectAccessDenied(false);
     setRunNavigation(null);
     setSelectedSource(null);
     setPendingTarget(null);
@@ -704,6 +738,7 @@ export function App() {
     setRecent({ projectId: selected.id, items: [], loading: true, error: "" });
     setDatasetTotal(0);
     setDatasetOffset(0);
+    setSourceListOpen(true);
     setJobs([]);
     setSummary(null);
     setDatasetId("");
@@ -983,7 +1018,7 @@ export function App() {
 
   return (
     <div
-      className="app-shell"
+      className={`app-shell${compactNavigation ? " is-navigation-compact" : ""}`}
       data-focus-mode={focusMode}
       onPointerDownCapture={() => setFocusMode("pointer")}
       onKeyDownCapture={event => {
@@ -1004,32 +1039,17 @@ export function App() {
         aria-modal={sidebar || undefined}
         aria-label={sidebar ? "Điều hướng" : undefined}
       >
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            setPage("assistant");
-          }}
-        >
-          <span className="brand-symbol">
-            <Layers3 size={23} />
-          </span>
-          <span>
-            Reconciliation<span className="brand-sub">STUDIO</span>
-          </span>
-        </a>
-        <div className="workspace-switch">
-          <span className="workspace-icon">LS</span>
-          <div>
-            <strong>Không gian làm việc</strong>
-            <small>Dữ liệu của bạn · lưu bền vững</small>
-          </div>
-          <ShieldCheck size={16} />
+        <div className="brand" aria-label="AI Reconciliation Studio">
+          <span className="brand-symbol"><Layers3 size={19} aria-hidden="true" /></span>
+          <span className="brand-label">Reconciliation Studio</span>
+          {sidebar && <button className="icon-button sidebar-close" aria-label="Đóng điều hướng" onClick={() => setSidebar(false)}>
+            <X size={20} aria-hidden="true" />
+          </button>}
         </div>
-        <span className="nav-caption">KHÔNG GIAN LÀM VIỆC</span>
         <nav aria-label="Điều hướng chính">
           <button
+            aria-label="AI Assistant"
+            title="AI Assistant"
             className={page === "assistant" ? "active" : ""}
             aria-current={page === "assistant" ? "page" : undefined}
             disabled={!ready}
@@ -1056,8 +1076,10 @@ export function App() {
           ] as const).map(([target, label, Icon]) => (
             <button
               key={target}
-              className={page === target ? "active" : ""}
-              aria-current={page === target ? "page" : undefined}
+              aria-label={label}
+              title={label}
+              className={page === target || (target === "reconcile" && page === "exceptions") ? "active" : ""}
+              aria-current={page === target || (target === "reconcile" && page === "exceptions") ? "page" : undefined}
               disabled={!ready}
               onClick={() => {
                 setPage(target);
@@ -1068,38 +1090,35 @@ export function App() {
               <span>{label}</span>
             </button>
           ))}
-          <button disabled={!ready} aria-expanded={assistantHistoryOpen} onClick={event => {
+          <button disabled={!ready} aria-label="Lịch sử" title="Lịch sử" aria-expanded={assistantHistoryOpen} onClick={event => {
             assistantHistoryTrigger.current = window.matchMedia("(max-width: 900px)").matches
               ? document.querySelector<HTMLElement>(".menu-button") : event.currentTarget;
             if (page !== "assistant") openAssistant({project_id:projectId});
             setSidebar(false);
             setAssistantHistoryOpen(true);
           }}><History size={19}/><span>Lịch sử</span></button>
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="system-mini"><ShieldCheck size={14}/><span>{workspace?.policy.allow_external_ai?"Cloud theo chính sách":"Xử lý local"}</span></div>
           <button
             className={`settings-nav ${page === "settings" ? "active" : ""}`}
+            aria-label="Cài đặt"
+            title="Cài đặt"
+            aria-current={page === "settings" ? "page" : undefined}
             onClick={() => {
               setPage("settings");
               setSidebar(false);
             }}
           >
-            <Settings2 size={18} />
-            Cài đặt
+            <Settings2 size={18} aria-hidden="true" />
+            <span>Cài đặt</span>
           </button>
+        </nav>
+        <div className="sidebar-bottom">
           <div className="profile">
-            <span>LC</span>
-            <div>
+            <span aria-hidden="true">LC</span>
+            <div className="profile-label">
               <strong>Người dùng local</strong>
               <small>
-                {(
-                  {
-                    owner: "Chủ không gian",
-                    editor: "Có quyền chỉnh sửa",
-                    viewer: "Chỉ xem",
-                  } as Record<string, string>
-                )[actorRole] || (bootstrapError ? "Chưa xác minh phiên" : "Đang xác minh quyền")}
+                {actorRole === "viewer" ? "Chỉ xem" : actorRole === "editor" ? "Có quyền chỉnh sửa" :
+                  actorRole === "owner" ? "Chủ không gian" : bootstrapError ? "Chưa xác minh phiên" : "Đang xác minh quyền"}
               </small>
             </div>
           </div>
@@ -1111,34 +1130,29 @@ export function App() {
             <button
               className="icon-button menu-button"
               aria-label="Mở điều hướng"
+              aria-expanded={sidebar}
               onClick={() => setSidebar(true)}
             >
-              <Menu size={22} />
+              <Menu size={20} aria-hidden="true" />
             </button>
-            <span>Không gian làm việc</span>
-            <ChevronRight size={14} />
-            <strong role={page==="assistant"?"heading":undefined} aria-level={page==="assistant"?1:undefined}>
-              {page === "home"
-                ? "Tổng quan"
-                : page === "data"
-                  ? "Dữ liệu"
-                  : page === "reconcile"
-                    ? "Đối soát"
-                    : page === "exceptions"
-                      ? "Ngoại lệ"
-                      : page === "reports"
-                        ? "Báo cáo"
-                        : page === "assistant"
-                          ? "AI Assistant"
-                          : "Cài đặt"}
-            </strong>
+            <button
+              className="icon-button navigation-toggle"
+              aria-label={compactNavigation ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
+              title={compactNavigation ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
+              aria-expanded={!compactNavigation}
+              onClick={toggleNavigation}
+            >
+              {compactNavigation ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
+            </button>
+            {page === "assistant" ? <h1 className="shell-title">AI Assistant</h1> :
+              <span className="shell-context">{project && !projectAccessDenied && page !== "settings" ? project.name : "Reconciliation Studio"}</span>}
           </div>
           <div className="topbar-end">
             <span className={`connection ${ready ? "connected" : bootstrapError ? "disconnected" : "connecting"}`} role="status" aria-label="Trạng thái kết nối">
               <span />
               {ready ? "Hệ thống đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}
             </span>
-            <span className="avatar">LC</span>
+            <span className="avatar" aria-hidden="true">LC</span>
           </div>
         </header>
         <main
@@ -1148,7 +1162,6 @@ export function App() {
         >
           {page!=="assistant"&&<div className="page-heading">
             <div>
-              <span className="eyebrow">AI RECONCILIATION STUDIO</span>
               <h1>
                 {page === "home"
                   ? "Nền tảng dữ liệu của bạn"
@@ -1162,15 +1175,6 @@ export function App() {
                           ? "Báo cáo đối soát"
                           : "Cài đặt không gian làm việc"}
               </h1>
-              <p>
-                {page === "home"
-                  ? "Từ tệp nguồn đến dữ liệu chuẩn hóa — rõ ràng ở từng bước."
-                  : page === "data"
-                    ? "Khám phá nguồn, kiểm tra đề xuất và chuẩn bị dữ liệu đáng tin cậy."
-                    : page === "settings"
-                        ? "Tài khoản, quyền riêng tư và giới hạn sử dụng của bạn."
-                        : "Quy tắc được duyệt, kết quả bất biến và bằng chứng từ dữ liệu nguồn."}
-              </p>
             </div>
             <div className="heading-actions">
               {(page === "home" || page === "data") && (
@@ -1193,7 +1197,7 @@ export function App() {
                   {bootstrapError.code === "LOCAL_DEMO_NOT_VERIFIED" && (
                     <details>
                       <summary>Hướng dẫn cho người vận hành local</summary>
-                      <p>Chạy <code>tools/start.ps1 -SkipBuild</code> trong PowerShell, sau đó thử lại.</p>
+                      <p>Chạy <code>tools/verify-local.ps1</code> nếu các dịch vụ đang chạy. Sau đó thử kết nối lại.</p>
                     </details>
                   )}
                 </div>
@@ -1220,10 +1224,10 @@ export function App() {
           )}
           {success && <Notice tone="success">{success}</Notice>}
           {!ready && !bootstrapError && <Spinner />}
-          {ready && !["settings","assistant"].includes(page) && (
+          {ready && page !== "settings" && (page !== "assistant" || projectAccessDenied) && (
             <div className="project-bar">
               <ProjectSelector
-                project={project}
+                project={projectAccessDenied ? null : project}
                 onSelect={chooseProject}
                 disabled={busy}
                 canClassify={actorRole === "owner"}
@@ -1265,7 +1269,7 @@ export function App() {
           )}
           {ready && projectId && projectError && (
             <Notice tone="error">
-              {projectError} Dữ liệu chưa cập nhật.
+              {projectAccessDenied ? "Bạn không còn quyền xem dự án này. Chọn dự án khác hoặc thử lại nếu quyền đã được khôi phục." : `${projectError} Dữ liệu chưa cập nhật.`}
               <button
                 className="text-button"
                 onClick={() => void refreshProject()}
@@ -1281,6 +1285,7 @@ export function App() {
           )}
           {ready &&
             projectId &&
+            !projectAccessDenied &&
             [
               "home",
               "reconcile",
@@ -1318,6 +1323,10 @@ export function App() {
                         | "reports"
                     }
                     onSetup={() => setPage("reconcile")}
+                    onOpenExceptions={id => {
+                      setRunNavigation({ id, request: Date.now() });
+                      navigate("exceptions", { project_id: projectId, run_id: id });
+                    }}
                     onRunSelected={(id, caseId) => {
                       const current = locationRef.current;
                       const actual = readLocation();
@@ -1340,6 +1349,7 @@ export function App() {
             )}
           {ready &&
             page === "assistant" &&
+            !projectAccessDenied &&
             (!projectId || !assistantContext || assistantContext.project_id === projectId) && (
               <section className="assistant-page" aria-label="AI Assistant">
                 {projectId && ["data","exceptions","reports"].includes(location.origin) && <button
@@ -1392,6 +1402,7 @@ export function App() {
                     setHistoryOpen={setAssistantHistoryOpen}
                     historyReturnFocus={assistantHistoryTrigger}
                     onUploadProject={async id=>{const selected=await api<Project>(`/projects/${id}`);chooseProject(selected);}}
+                    onScopeDenied={() => { void refreshProject(); }}
                     canEdit={canEdit}
                     onReview={(id) => {
                       setPlanNavigation({ id, projectId, request: Date.now() });
@@ -1473,14 +1484,20 @@ export function App() {
                   </p>
                 </section>
               ) : (
-                <>
+                <div className="data-workspace">
                   <section className="panel dataset-panel">
                     <div className="panel-heading">
                       <h2>
                         Nguồn trong dự án{" "}
                         <span className="count">{datasetTotal}</span>
                       </h2>
+                      {selectedDataset && <button type="button" className="text-button source-list-toggle"
+                        aria-controls="project-sources" aria-expanded={sourceListOpen}
+                        onClick={() => setSourceListOpen(open => !open)}>
+                        {sourceListOpen ? "Thu gọn" : "Đổi nguồn"}
+                      </button>}
                     </div>
+                    <div id="project-sources" className={selectedDataset && !sourceListOpen ? "sources-collapsed" : ""}>
                     <DatasetList
                       items={datasets}
                       onSelect={chooseDataset}
@@ -1515,12 +1532,12 @@ export function App() {
                         </div>
                       </div>
                     )}
+                    </div>
                   </section>
                   {selectedDataset && (
                     <section className="panel detail-panel">
                       <div className="panel-heading">
                         <div>
-                          <span className="eyebrow">NGUỒN ĐANG CHỌN</span>
                           <h2>{selectedDataset.name}</h2>
                         </div>
                         <Badge status={selectedDataset.status} />
@@ -1740,16 +1757,19 @@ export function App() {
                                     {(
                                       [
                                         ["raw", "Giá trị gốc"],
-                                        [table?.prepared ? "prepared" : "canonical", table?.prepared ? "Tự chuẩn bị" : "Chuẩn hóa"],
+                                        ["prepared", "Tự chuẩn bị"],
+                                        ["canonical", "Chuẩn hóa"],
                                         ["errors", "Cảnh báo / lỗi"],
                                       ] as const
                                     ).map(([key, label]) => (
                                       <button
                                         key={key}
-                                        disabled={key === "canonical" && !canonicalId ||
+                                        disabled={key === "prepared" && !table?.prepared ||
+                                          key === "canonical" && !canonicalId ||
                                           key === "errors" && !canonicalId && !table?.prepared}
+                                        aria-pressed={view === key ||
+                                          (key === "errors" && view === "prepared_findings")}
                                         className={view === key ||
-                                          (key === "prepared" && view === "canonical") ||
                                           (key === "errors" && view === "prepared_findings") ? "chosen" : ""}
                                         onClick={() => {
                                           setView(key === "errors" && !canonicalId ? "prepared_findings" : key);
@@ -1773,14 +1793,6 @@ export function App() {
                                     />
                                   </label>
                                 </div>
-                                {table?.prepared && canonicalId && ["prepared", "canonical"].includes(view) && (
-                                  <button className="button secondary compact" onClick={() => {
-                                    setView(view === "prepared" ? "canonical" : "prepared");
-                                    setOffset(0);
-                                  }}>
-                                    {view === "prepared" ? "Xem bản chuẩn hóa đã duyệt" : "Xem bản tự chuẩn bị"}
-                                  </button>
-                                )}
                                 {["canonical", "errors"].includes(view) && (
                                   <label className="canonical-select">
                                     Phiên bản kết quả
@@ -1815,9 +1827,8 @@ export function App() {
                                   )}
                                 {view === "raw" && (
                                   <Notice>
-                                    Giá trị đọc trực tiếp từ ô nguồn; tệp bytes
-                                    gốc được giữ bất biến. Không chạy công thức
-                                    Excel.
+                                    Các giá trị được đọc từ ô nguồn. Tệp gốc được giữ nguyên
+                                    và công thức Excel không được thực thi.
                                   </Notice>
                                 )}
                                 {["prepared", "prepared_findings"].includes(view) && table?.prepared && (
@@ -1926,12 +1937,13 @@ export function App() {
                       )}
                     </section>
                   )}
-                </>
+                </div>
               )}
             </>
           )}
           {ready && page === "settings" && workspace && (
-            <WorkspaceSettingsPanel settings={workspace} role={actorRole} />
+            <WorkspaceSettingsPanel settings={workspace} role={actorRole}
+              tableDensity={tableDensity} onDensityChange={setTableDensity} />
           )}
           {ready &&
             jobs.length > 0 &&

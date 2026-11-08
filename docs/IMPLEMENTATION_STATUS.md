@@ -1,5 +1,9 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Đại tu UX trên nhánh ứng viên — 09/11/2026
+
+W1–W5 được triển khai trực tiếp trên Frontend theo D01–D10. Chủ dự án miễn prototype W0 riêng và chuyển các phép đo sang bản ứng viên. Theo dõi thay đổi, kết quả kiểm thử và giới hạn trong [biên bản kiểm toán ứng viên](INTERFACE_REDESIGN_AUDIT.md#w1w5). Đây là cổng kỹ thuật trước nghiệm thu của chủ dự án. Nhánh triển khai tách khỏi `main`.
+
 ## Khôi phục local, release Docker và chốt hướng UX — 09/11/2026
 
 **Bản hiện hành.** Application source `1d7f4909a3aa5d6c0a79cdddb88cb4303119e701`. Bản này dùng đúng đầu vào đã nghiệm thu; các lớp filesystem của hai image build lại khớp bản ngay trước đó. Build dùng ba digest base đã ghi trong bản build trước, lockfiles hiện hành và không đổi dependency. Nhãn revision image chỉ mã ứng dụng. SHA tài liệu được xác minh riêng bằng Git; không yêu cầu nhãn Docker đổi theo commit Markdown.
@@ -16,7 +20,7 @@
 - **Backup và dữ liệu.** Backup mới `backup_b84b0314f6254887876b40109192066f`, thử restore 24 bảng trong schema UUID cùng PostgreSQL, kiểm 12,154 tệp. Bản sao ngoài container đã đối chiếu manifest, metadata và toàn bộ tệp. SHA-256 metadata `51fc471cbc5c8f6740caa50a65994898a644121770ff6a51d3fe2d204346a7f1`. Snapshot nghiệp vụ trước/sau release, rollback và cleanup khớp gồm 2,573 workflow, 847 run, 1,566 bản xuất, 9,741 artifact và 1,862 mapping đã duyệt. Các phiên local mới dùng cho phép kiểm là metadata xác thực hợp lệ; không nằm trong hash so sánh nghiệp vụ.
 - **Rollback và số liệu.** Đã chạy `./tools/rollback.ps1 -ReleaseRevision c477745` trên stack hiện có, xác minh phiên và đọc lại TEST, rồi quay lại bằng `./tools/start.ps1 -SkipBuild`. Đối chiếu 46 tệp nguồn ở Backend/Worker và 7 tài nguyên frontend qua HTTP. Cả hai oracle đã lưu đạt, gồm 5.487 dòng gốc, 5.458 hợp lệ, 29 lỗi, đúng số nhóm và chênh lệch Decimal. CSV/XLSX từ lịch sử Chat và XLSX hai oracle đọc lại đúng byte/snapshot. Không tạo run mới trong bước đọc lại.
 - **Cleanup.** Đã xóa hai image Studio revision `3313e24` sau khi kiểm nhãn nguồn, digest, toàn bộ refs kể cả container stopped và xác minh bộ rollback thay thế. Giữ hai cặp trong bảng trên. 27 container ngoài Studio và 42 volume toàn host khớp inventory. Số liệu Docker trước/sau và refs cụ thể có trong receipt local; không cộng kích thước logic của lớp chia sẻ để suy dung lượng vật lý.
-- **UX.** [D01–D10 phương án A](ui-redesign/OPEN_DECISIONS.md) là **OWNER_APPROVED** ngày 09/11/2026. D03 giữ trục Chat ổn định, khoảng 760 CSS px làm mốc đọc; nội dung rộng có vùng phù hợp. D08 dựa trên diện tích còn lại, zoom và dữ liệu, mọi mốc phải thử. Quyết định ba mục đã được thay thế. Prototype **PENDING_VALIDATION**, UX implementation **NOT_STARTED**. Các ảnh/ca MOCK vòng nghiên cứu giữ nguyên phạm vi bằng chứng.
+- **UX tại mốc khôi phục.** [D01–D10 phương án A](ui-redesign/OPEN_DECISIONS.md) là **OWNER_APPROVED** ngày 09/11/2026. D03 giữ trục Chat ổn định, khoảng 760 CSS px làm mốc đọc; nội dung rộng có vùng phù hợp. D08 dựa trên diện tích còn lại, zoom và dữ liệu. Trạng thái tại mốc này là chưa triển khai UX. Chủ dự án sau đó miễn prototype riêng cho nhiệm vụ W1–W5.
 
 Biên bản local ngoài Git ở `runtime/secure-local-recovery-20261109/`: `release-manifest.json`, receipt backup, hash build inputs, kiểm source/assets, bảo mật, Chromium, rollback và cleanup. Bản sao backup ở `runtime/backups/`. Kiểm phục hồi là trên cùng máy/server; nghiệm thu độc lập người dùng, accessibility đầy đủ và triển khai Internet giữ phạm vi chưa kiểm của các mốc trước.
 

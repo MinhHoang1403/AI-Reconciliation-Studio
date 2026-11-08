@@ -26,7 +26,7 @@ test('[MOCK CONTRACT] sparse Planner facts remain editable and submit valid revi
   await card.getByLabel('Bắt đầu kỳ',{exact:true}).fill('2026-10-01');await card.getByLabel('Kết thúc kỳ (không bao gồm)',{exact:true}).fill('2026-11-01');await card.getByLabel('Quy tắc có hiệu lực từ',{exact:true}).fill('2026-10-01');await card.getByLabel('Múi giờ',{exact:true}).fill('UTC');
   const effectiveEnd=card.getByLabel('Quy tắc có hiệu lực đến (không bao gồm)',{exact:true});
   await effectiveEnd.fill('2026-12-01');
-  await expect(card.getByText('Quy tắc có hiệu lực từ 2026-10-01 đến trước 2026-12-01.',{exact:true})).toBeVisible();
+  await expect(card.locator('.decision-facts').getByText('2026-10-01 đến trước 2026-12-01',{exact:true})).toBeVisible();
   await effectiveEnd.fill('');
   await expect(card.getByText(/chưa đặt ngày kết thúc/)).toBeVisible();
   for(let i=0;i<2;i++){const scope=card.locator('fieldset').nth(i);await scope.getByLabel('Trường ngày',{exact:true}).fill('event_date');await scope.getByLabel('Ý nghĩa ngày',{exact:true}).fill('Ngày phát sinh');await scope.getByLabel('Dữ liệu đầy đủ từ (ISO và timezone)',{exact:true}).fill('2026-10-01');await scope.getByLabel('Dữ liệu đầy đủ đến (không bao gồm)',{exact:true}).fill('2026-11-01');await scope.getByLabel('Thời điểm chốt dữ liệu',{exact:true}).fill('2026-11-02T00:00:00Z');await scope.getByRole('combobox',{name:'Độ đầy đủ',exact:true}).selectOption('CONFIRMED');}

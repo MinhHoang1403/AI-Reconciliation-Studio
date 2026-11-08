@@ -335,7 +335,7 @@ for (const name of ["shopee", "tiktok", "delivery"]) {
       .getByRole("button", { name: "Xem rule đã duyệt", exact: true })
       .click();
     await expect(
-      dialog.getByRole("region", { name: "Rule được viện dẫn" }),
+      dialog.getByRole("region", { name: "Quy tắc áp dụng" }),
     ).toContainText(runId.slice(0, 8));
     await page.reload();
     const reopened = await openAssistant(page, s.project_id);

@@ -238,10 +238,9 @@ function ManualMappingStudio({
     <div className="mapping-studio">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">AI SMART SETUP</span>
           <h2>Hiểu dữ liệu, xác nhận ý nghĩa</h2>
           <p>
-            Gợi ý được kiểm tra bởi backend. Bạn xác nhận trước khi chuẩn hóa.
+            Kiểm tra loại dữ liệu, ý nghĩa từng dòng và các cột trước khi duyệt.
           </p>
         </div>
         <button
@@ -299,7 +298,9 @@ function ManualMappingStudio({
           </button>
         </details>
       )}
-      <div className="form-grid">
+      <fieldset className="mapping-facts">
+        <legend>Ý nghĩa của bảng</legend>
+        <div className="form-grid">
         <label>
           Loại dữ liệu
           <input
@@ -316,7 +317,8 @@ function ManualMappingStudio({
             onChange={(e) => setGrain(e.target.value)}
           />
         </label>
-      </div>
+        </div>
+      </fieldset>
       {mapping.proposal.unresolved_questions.map((q, i) => (
         <Notice key={i} tone="warning">
           {q}

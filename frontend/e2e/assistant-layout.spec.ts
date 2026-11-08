@@ -76,7 +76,8 @@ for(const width of [390,768,1366,1440,1920]){
       }
       if(name==="sidebar"){
         const menu=page.getByRole("button",{name:"Mở điều hướng",exact:true});if(await menu.isVisible())await menu.click();
-        await expect(page.locator('.sidebar').getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử','Cài đặt']);
+        await expect(page.locator('.sidebar nav').getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử']);
+        await expect(page.locator('.sidebar').getByRole('button',{name:'Cài đặt',exact:true})).toHaveCount(1);
         await page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true}).focus();
         await expect(page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true})).toBeFocused();
       }
@@ -120,6 +121,92 @@ for(const width of [390,768,1366,1440,1920]){
     expect(errors).toEqual([]);
   });
 }
+
+test("[MOCK CONTRACT] context panel changes placement while composer and draft remain usable", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.addInitScript(() => localStorage.setItem("studio.project", "visual-project"));
+  await page.route("**/api/**", route => {
+    const path = new URL(route.request().url()).pathname;
+    if (route.request().method() !== "GET") throw new Error(`Unexpected write: ${path}`);
+    if (path === "/api/session") return route.fulfill({ json: { workspace_id: "visual", role: "owner" } });
+    if (path === "/api/settings") return route.fulfill({ json: { policy: { allow_external_ai: false } } });
+    if (path === "/api/projects/visual-project") return route.fulfill({ json: { id: "visual-project", name: "Visual project", workspace_id: "visual" } });
+    return route.fulfill({ json: { items: [], total: 0 } });
+  });
+  await page.goto("/");
+  const input = page.getByLabel("Câu hỏi cho AI Assistant", { exact: true });
+  await input.fill("Giữ bản nháp của dự án này");
+  const sources = page.getByRole("button", { name: "Tệp đã tải", exact: true });
+  const composer = page.locator(".assistant-composer");
+  const before = (await composer.boundingBox())!.width;
+  await sources.click();
+  const dock = page.locator(".context-panel");
+  await expect(dock).toBeVisible();
+  await expect(dock.getByRole("button", { name: "Đóng", exact: true })).toBeFocused();
+  expect(Math.abs((await composer.boundingBox())!.width - before)).toBeLessThan(2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const overlay = page.getByRole("dialog");
+  await expect(dock).toHaveCount(0);
+  await expect(overlay).toBeVisible();
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect(dock.getByRole("button", { name: "Đóng", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCount(0);
+  await expect(dock).toHaveCount(0);
+  await expect(sources).toBeFocused();
+  await expect(input).toHaveValue("Giữ bản nháp của dự án này");
+});
+
+test("[MOCK CONTRACT] result panel retains the selected run and filter across its placements", async ({ page }) => {
+  const runContext = { ...context, run_id: "run-first" };
+  const rate = { percent: "100", numerator: 1, denominator: 1 };
+  const snapshot = {
+    full_match_rate: rate, automation_coverage: rate, monetary: [],
+    period_start: "2026-10-01", period_end: "2026-11-01", timezone: "UTC",
+    linkage_counts: { LINKED: 1 }, comparison_counts: { EQUAL: 1 },
+    eligible_units: 1, unresolved_cases_at_run: 0, excluded_counts: {},
+  };
+  const runs = ["run-first", "run-other"].map(id => ({
+    id, project_id: context.project_id, status: "VERIFIED", metric_snapshot: snapshot,
+  }));
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.addInitScript(() => localStorage.setItem("studio.project", "visual-project"));
+  await page.route("**/api/**", route => {
+    const path = new URL(route.request().url()).pathname;
+    if (route.request().method() !== "GET") throw new Error(`Unexpected write: ${path}`);
+    if (path === "/api/session") return route.fulfill({ json: { workspace_id: "visual", role: "owner" } });
+    if (path === "/api/settings") return route.fulfill({ json: { policy: { allow_external_ai: false } } });
+    if (path === "/api/projects/visual-project") return route.fulfill({ json: { id: "visual-project", name: "Visual project", workspace_id: "visual" } });
+    if (path === "/api/conversations/visual-conversation") return route.fulfill({ json: {
+      conversation: { ...conversation, context: runContext },
+      items: [{ id: "run-message", role: "assistant", text: "", workflow_id: "run-workflow", created_at: conversation.created_at }],
+    } });
+    if (path === "/api/agent/workflows/run-workflow") return route.fulfill({ json: {
+      id: "run-workflow", state: "COMPLETED", context: runContext,
+      detail: { intent: { intent: "SUMMARIZE_RESULTS" }, steps: [], reviews: [], blocks: [{ type: "verified_facts", result: { snapshot } }] },
+    } });
+    if (path === "/api/runs") return route.fulfill({ json: { items: runs, total: runs.length } });
+    const run = runs.find(row => path === `/api/runs/${row.id}`);
+    return route.fulfill({ json: run || { items: [], total: 0, current_open_count: 0 } });
+  });
+  await page.goto("/#page=assistant&project=visual-project&run_id=run-first&conversation=visual-conversation");
+  const open = page.getByRole("button", { name: "Mở kết quả và bằng chứng", exact: true });
+  await open.click();
+  const dock = page.locator(".context-panel");
+  await dock.getByLabel("Lần đối soát", { exact: true }).selectOption("run-other");
+  await dock.getByLabel("Tìm kiếm", { exact: true }).fill("000701");
+  await page.setViewportSize({ width: 768, height: 1024 });
+  const overlay = page.getByRole("dialog", { name: "Chi tiết kết quả đã xác minh", exact: true });
+  await expect(overlay.getByLabel("Lần đối soát", { exact: true })).toHaveValue("run-other");
+  await expect(overlay.getByLabel("Tìm kiếm", { exact: true })).toHaveValue("000701");
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect(dock.getByRole("button", { name: "Đóng", exact: true })).toBeFocused();
+  await expect(dock.getByLabel("Lần đối soát", { exact: true })).toHaveValue("run-other");
+  await expect(dock.getByLabel("Tìm kiếm", { exact: true })).toHaveValue("000701");
+  await page.keyboard.press("Escape");
+  await expect(dock).toHaveCount(0);
+  await expect(open).toBeFocused();
+});
 
 
 for (const width of [390, 768, 1366, 1440, 1920]) {

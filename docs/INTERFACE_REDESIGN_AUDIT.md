@@ -1,5 +1,32 @@
 # Phân tích giao diện trước đợt thiết kế lại
 
+## W1–W5
+
+**09/11/2026 · Nhánh `codex/full-interface-redesign`.** Chủ dự án miễn W0 riêng. Các phép kiểm bố cục và thao tác chạy trực tiếp trên bản build Frontend với API local. Nghiên cứu ở các phần dưới ghi lại trạng thái trước triển khai.
+
+| Gói | Thay đổi chính | Bất biến kiểm chứng |
+| --- | --- | --- |
+| W1 | Sáu mục điều hướng, rail lưu theo trình duyệt, drawer trên màn hình hẹp và font hệ thống. Ngoại lệ đi cùng Đối soát. | Bảy route hash, quyền và picker dự án hiện hành. |
+| W2 | Composer và văn bản theo cùng trục đọc. Panel dữ liệu, kết quả và bằng chứng mở theo tác vụ; dock khi còn đủ diện tích. Biểu đồ đổi hướng và giảm nhãn trục ở chiều rộng hẹp. | Ngữ cảnh, scroll, bản nháp, phân trang lịch sử và focus. Giữ giá trị chính xác bên cạnh biểu đồ. |
+| W3 | Thẻ quyết định tách nguồn, kỳ, hiệu lực, khóa, đơn vị, chỉ tiêu và tác động. Workspace chia danh sách nguồn với phần đọc, cho chọn từng lớp. | Mapping preflight, nonce, expiry, quyền, revision, file gốc và fallback thủ công. |
+| W4 | Thứ tự thiết lập rõ hơn. Phạm vi và tình trạng xác minh hiện trước KPI và hành động xuất. Bảng có căn số, danh sách số đếm thay thế biểu đồ và số bản ghi nguồn thực sự hiển thị. | Snapshot và Decimal từ Backend. Báo cáo toàn run khác với trang truy vấn đã ghim. Trạng thái liên kết, so sánh và xử lý ngoại lệ tách riêng. |
+| W5 | Cài đặt theo vai trò và chính sách, mật độ bảng lưu trong trình duyệt, dừng hiển thị dữ liệu dự án khi API từ chối. | Tên và quyền chọn mô hình, API phân quyền và giới hạn tải hiện hành. |
+
+### Kiểm toán thiết kế
+
+- **Impeccable 4.8.1.** Hai lượt rà độc lập phát hiện trục composer đổi bề rộng, nhãn biểu đồ chồng trên mobile và panel mất lượt đã chọn khi chuyển bố cục. Đã sửa theo kích thước vùng và vòng đời state. Probe Chromium 1920 → 768 → 1920 giữ run, bộ lọc, Escape và focus về nút mở, có receipt trước/sau. Detector trả về mảng rỗng.
+- **UI UX Pro Max 2.15.0.** Tra cứu cục bộ theo nhóm điều hướng, Chat, review, bảng, biểu đồ và cài đặt. Áp dụng phân cấp bằng chữ, căn phải số, nhãn trạng thái đi kèm màu, bảng cuộn riêng và quyền riêng tư theo ngữ cảnh. Bỏ gợi ý animation đếm, định dạng làm tròn cố định và palette riêng vì không phù hợp với hệ thống đã duyệt. Kết quả tra cứu ở các tệp `search-*.json` trong thư mục chứng cứ local.
+- **Live TEST.** Vòng đầu có 54 ảnh trên bảy route, năm viewport chính và 320 CSS px/390×520. Không quan sát thấy tràn ngang toàn trang, lỗi JavaScript hoặc request ghi. Composer rộng 358, 736 và 760 CSS px theo chiều rộng khả dụng. Welcome và hội thoại cùng 760 px ở 1440. Ảnh Mapping lúc còn spinner chỉ minh họa trạng thái tải. Bằng chứng thẻ duyệt đầy đủ dùng fixture Playwright riêng.
+- **Mock contract.** Chromium zoom trình duyệt thực 200% ở 1440×900 cho CSS 720×450. Chat, Dữ liệu và Báo cáo đều có doc/client width 720/720. Giả lập sự kiện IME và chiều cao thấp chỉ bao phủ xử lý phía ứng dụng.
+
+### Cổng hồi quy và bàn giao
+
+Source Backend/PostgreSQL qua 782 ca trong 205,79 giây, có một cảnh báo deprecation. TypeScript, ESLint, production build, Ruff và mypy được kiểm riêng. Nhật ký Chromium lưu theo từng vòng để phân biệt lỗi quan sát ở ứng viên trước sửa với bản phát hành. Chứng cứ local nằm trong `runtime/ui-redesign-20261109/`, gồm `implementation-matrix.json`, ảnh và phép đo, log kiểm thử và receipt của hai lượt critique. Runtime và dữ liệu TEST không vào Git.
+
+Môi trường thử là Chromium trên Windows. Kiểm nhập tiếng Việt qua bộ gõ hệ điều hành, bàn phím vật lý trên mobile, iOS Safari/Android Chrome, screen reader thực và phóng riêng cỡ chữ 200% còn cần thiết bị hoặc UAT. Các bằng chứng hình ảnh chỉ áp dụng các trạng thái đã chụp. Chủ dự án thực hiện bước nghiệm thu sau khi ứng viên vượt qua các cổng kỹ thuật.
+
+---
+
 **Cập nhật quyết định ngày 09/11/2026.** Chủ dự án duyệt A cho [D01–D10](ui-redesign/OPEN_DECISIONS.md). Sáu mục và Chat-first là hướng hiện hành; phương án ba mục trong phần 3.C đã được thay thế. D03 dùng khoảng 760 CSS px làm mốc đọc, giữ trục composer ổn định, cho phép nội dung rộng dùng vùng phù hợp. D08 chọn breakpoint theo diện tích thật và kết quả prototype, không ép dock. Prototype **PENDING_VALIDATION**, triển khai **NOT_STARTED**. Phiên demo đã khôi phục trong [vòng vận hành](IMPLEMENTATION_STATUS.md). Số đo, ảnh và cổng bị chặn ở vòng nghiên cứu bên dưới là bằng chứng lịch sử.
 
 Ngày kiểm tra: 08/11/2026. Phạm vi: AI Reconciliation Studio trong repository hiện tại. Đây là **phân tích và đề xuất**, không phải đặc tả đã được duyệt hoặc bằng chứng đã triển khai giao diện mới. Trạng thái phát hành được ghi riêng tại [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).

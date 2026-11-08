@@ -13,7 +13,7 @@ import {
   LoaderCircle,
   X,
 } from "lucide-react";
-import type { ReactNode, RefObject } from "react";
+import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { statusText, type Dataset } from "./types";
 
 /** Chỉ định dạng chuỗi Decimal để đọc; không qua float hoặc tính lại tiền. */
@@ -23,10 +23,10 @@ export function formatDecimal(value: string): string {
   return `${match[1]}${match[2].replace(/\B(?=(\d{3})+(?!\d))/g, ".")}${match[3] ? `,${match[3]}` : ""}`;
 }
 
-export function Badge({ status }: { status: string }) {
+export function Badge({ status, label }: { status: string; label?: string }) {
   return (
     <span className={`badge badge-${status.toLowerCase()}`}>
-      {statusText[status] || status}
+      {label ?? statusText[status] ?? status}
     </span>
   );
 }
@@ -61,26 +61,34 @@ export function Modal({
   open,
   onOpenChange,
   wide = false,
+  placement = "center",
   returnFocus,
+  shouldRestoreFocus,
 }: {
   title: string;
   children: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   wide?: boolean;
+  placement?: "center" | "context";
   returnFocus?: RefObject<HTMLElement | null>;
+  shouldRestoreFocus?: () => boolean;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="modal-overlay" />
         <Dialog.Content
-          className={`modal ${wide ? "modal-wide" : ""}`}
+          className={`modal${wide ? " modal-wide" : ""}${placement === "context" ? " modal-context" : ""}`}
           aria-describedby={undefined}
           onCloseAutoFocus={(event) => {
-            if (returnFocus?.current) {
+            if (shouldRestoreFocus && !shouldRestoreFocus()) {
               event.preventDefault();
-              returnFocus.current.focus();
+              return;
+            }
+            if (returnFocus?.current?.isConnected) {
+              event.preventDefault();
+              returnFocus.current.focus({ preventScroll: true });
             }
           }}
         >
@@ -96,12 +104,58 @@ export function Modal({
     </Dialog.Root>
   );
 }
+/** Vùng đọc phụ mở theo tác vụ. Radix tiếp tục quản lý focus khi vùng này phủ lên Chat. */
+export function ContextPanel({ title, children, docked, onClose, returnFocus }: {
+  title: string;
+  children: ReactNode;
+  docked: boolean;
+  onClose: () => void;
+  returnFocus?: RefObject<HTMLElement | null>;
+}) {
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const dockedNow = useRef(docked);
+  useLayoutEffect(() => {
+    dockedNow.current = docked;
+    if (docked) closeButton.current?.focus({ preventScroll: true });
+  }, [docked]);
+
+  if (!docked) {
+    return <Modal title={title} open placement="context" wide
+      onOpenChange={open => { if (!open) onClose(); }} returnFocus={returnFocus}
+      shouldRestoreFocus={() => !dockedNow.current}>
+      {children}
+    </Modal>;
+  }
+
+  function close() {
+    onClose();
+    if (returnFocus?.current?.isConnected) returnFocus.current.focus({ preventScroll: true });
+  }
+  return (
+    <aside className="context-panel" aria-label={title} onKeyDown={event => {
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        event.preventDefault();
+        close();
+      }
+    }}>
+      <div className="modal-heading">
+        <h2>{title}</h2>
+        <button ref={closeButton} className="icon-button" aria-label="Đóng" onClick={close}>
+          <X size={20} aria-hidden="true" />
+        </button>
+      </div>
+      {children}
+    </aside>
+  );
+}
 export function DataTable({
   rows,
   columns,
+  numericColumns,
 }: {
   rows: Record<string, unknown>[];
   columns: ColumnDef<Record<string, unknown>>[];
+  numericColumns?: ReadonlySet<string>;
 }) {
   const table = useReactTable({
     data: rows,
@@ -119,7 +173,7 @@ export function DataTable({
           {table.getHeaderGroups().map((g) => (
             <tr key={g.id}>
               {g.headers.map((h) => (
-                <th key={h.id}>
+                <th key={h.id} scope="col" className={numericColumns?.has(h.column.id) ? "numeric-cell" : undefined}>
                   {flexRender(h.column.columnDef.header, h.getContext())}
                 </th>
               ))}
@@ -130,7 +184,7 @@ export function DataTable({
           {table.getRowModel().rows.map((r) => (
             <tr key={r.id}>
               {r.getVisibleCells().map((c) => (
-                <td key={c.id}>
+                <td key={c.id} className={numericColumns?.has(c.column.id) ? "numeric-cell" : undefined}>
                   {flexRender(c.column.columnDef.cell, c.getContext())}
                 </td>
               ))}
@@ -165,6 +219,7 @@ export function DatasetList({
         <button
           className={`dataset-item ${selected === d.id ? "dataset-selected" : ""}`}
           key={d.id}
+          aria-pressed={selected === d.id}
           onClick={() => onSelect(d)}
         >
           <span className="file-type">
