@@ -100,9 +100,11 @@ Worker giữ một executor có một luồng cho job có thể chờ provider. 
 
 ## Truy cập local
 
+Giao diện hiện hành mở AI Assistant và có sáu lối vào; router hash vẫn nhận các trang nghiệp vụ và kiểm scope qua API. [D01–D10](ui-redesign/OPEN_DECISIONS.md) quy định hướng redesign đã được duyệt. Rail, Context Panel mới và kích thước prototype chưa được triển khai. Xem [biên bản release](IMPLEMENTATION_STATUS.md) để phân biệt SHA mã ứng dụng, image và commit tài liệu.
+
 Host chỉ publish `127.0.0.1:18180`; backend/PostgreSQL không có host port. `tools/verify-local.ps1` lấy Docker inspection thực trên host và gửi metadata không chứa env vào backend qua `docker compose exec`. Backend kiểm tra đủ bốn service, đúng project và mọi published port là loopback trước khi tạo proof trong tmpfs. Không mount Docker socket.
 
-Proof gắn với nonce của lần backend khởi động và ID frontend. Mỗi lần xác thực demo kiểm tra thêm identity frontend qua `/health` nội bộ. Recreate backend hoặc frontend làm proof cũ mất hiệu lực. Xác minh cấu hình bị từ chối cũng xóa proof cũ. Chạy `tools/start.ps1` hoặc `tools/verify-local.ps1` sau restart/recreate trước khi mở lại Dashboard.
+Proof gắn với nonce của lần backend khởi động và ID frontend. Mỗi lần xác thực demo kiểm tra thêm identity frontend qua `/health` nội bộ. Mỗi lần backend khởi động, startup tạo nonce mới và xóa proof cũ trong tmpfs. Recreate frontend làm thay đổi ID; proof cũng mất hiệu lực. Xác minh cấu hình bị từ chối cũng xóa proof cũ. Nếu bốn service đang healthy, chạy `tools/verify-local.ps1` để xác minh lại, không cần recreate. Nếu cần đưa stack lên, dùng `tools/start.ps1 -SkipBuild`.
 
 Bootstrap Frontend có giới hạn tổng30giây cho session/settings/khôi phục project, hủy request khi unmount hoặc thử lại. Lỗi bootstrap kết thúc trạng thái chờ: header và quyền chưa xác minh; thông báo proof local khác thông báo mất kết nối. Retry đọc lại bootstrap, không reload toàn trang hoặc phát lại mutation. Draft theo actor/context và history persisted giữ nguyên. Host verifier kiểm tra HTTP cùng origin/cookie và identity; so lại IDs/StartedAt/health của bốn containers để không báo thành công khi deployment thay đổi trong lúc kiểm tra.
 

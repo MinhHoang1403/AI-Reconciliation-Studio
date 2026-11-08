@@ -241,13 +241,15 @@ Nếu provider không hỗ trợ Structured Outputs theo contract thật, hỗ t
 
 ### 9.1. Trải nghiệm thống nhất
 
-Giữ giao diện sáng, xanh dương chủ đạo (`#2563EB`), nền `#F8FAFC`, sidebar trái sáng; lấy cảm hứng thiết kế, không copy pixel/assets/branding. Theo quyết định Assistant-only và yêu cầu hoàn thiện ngày 02/11/2026, landing là **AI Assistant**, sidebar chính chỉ **AI Assistant, Lịch sử, Cài đặt**. Dữ liệu/Đối soát/Ngoại lệ/Báo cáo mở từ hội thoại, manual fallback hoặc deep links; bảo toàn chức năng và hợp đồng. Bố cục Dashboard/sidebar nhiều trang tại kế hoạch §28 là thiết kế lịch sử, đã được các bổ sung đầu kế hoạch thay thế.
+AI Assistant là trang mặc định. Thanh điều hướng có sáu mục **AI Assistant, Dữ liệu, Đối soát, Báo cáo, Lịch sử, Cài đặt**. Ngoại lệ đi từ Kết quả Đối soát và giữ deep link hiện hành. Giữ đường thủ công khi AI không khả dụng, sidebar thu gọn trên desktop và drawer ở màn hình hẹp. Giữ giao diện sáng, xanh dương chủ đạo (`#2563EB`), nền trung tính sáng (`#F8FAFC`); không sao chép branding, assets hoặc bố cục theo pixel.
 
 - Dashboard trực quan, tối đa một hành động chính mỗi màn hình; AI-assisted workflow thật, người dùng không cần biết code. Advanced settings chỉ mở khi cần, không bắt sửa JSON/config kỹ thuật ngay từ đầu.
 - Bảng dễ tìm/lọc/kiểm tra, pagination, evidence drawer và truy ngược nguồn. Có loading/error/empty/success, progress và disabled thực; không file/run thì hướng dẫn bước tiếp, không hiện KPI 0% giả.
 - Phân biệt gợi ý AI, đã xác nhận, không xác định và pending/missing; không badge “95% đúng” từ confidence. Không chatbot, nút, biểu đồ hoặc KPI giả khi Backend chưa hỗ trợ.
-- Responsive tại desktop 1366/1440/1920, tablet 768, mobile 390; sidebar thành drawer, bảng scroll nội bộ. Keyboard focus, contrast và accessibility đối chiếu WCAG 2.2 AA; kiểm tra chứ không chỉ tuyên bố tuân thủ.
+- Kiểm responsive tại 390/768/1366/1440/1920 px; sidebar dùng drawer khi hẹp, bảng cuộn nội bộ. Keyboard focus, contrast và accessibility đối chiếu WCAG 2.2 AA; kiểm tra chứ không chỉ tuyên bố tuân thủ.
 - Next action từ status là logic xác định, không gọi AI mỗi render. Tiền và trạng thái do Backend cung cấp, theo mục 6.
+- ReviewCard luôn nêu dữ kiện và hệ quả quyết định có liên quan, như hai nguồn, kỳ, khóa, grain, định nghĩa tiền, tiền tệ, tolerance và coverage. Làm rõ và phê duyệt là hai hành động riêng. Context Panel mở theo tác vụ, giữ đúng project/run/source.
+- D01–D10 đã được chủ dự án duyệt ngày 09/11/2026. Trục đọc Chat/composer khoảng 760 CSS px là mốc thử, giữ ổn định khi có kết quả. Bảng, review và bằng chứng có thể dùng vùng rộng hơn. Dock và breakpoint theo diện tích còn lại sau zoom, nội dung dài và sidebar. Xem [quyết định UX](docs/ui-redesign/OPEN_DECISIONS.md) và [kế hoạch nghiệm thu](docs/ui-redesign/IMPLEMENTATION_AND_ACCEPTANCE_PLAN.md). Prototype và triển khai là các nhiệm vụ riêng.
 
 ### 9.2. Truy cập thẳng Dashboard an toàn
 

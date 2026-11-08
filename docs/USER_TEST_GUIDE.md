@@ -338,13 +338,13 @@ Nếu yêu cầu vừa lọc một bảng mới vừa xuất tệp trong cùng c
 2. Bấm **Lịch sử**, chọn hội thoại vừa dùng. Kiểm tra câu hỏi, câu trả lời, quyết định và kết quả còn đúng.
 3. Mở bảng, bằng chứng và báo cáo cũ; kiểm tra mã và chênh lệch không thay đổi.
 4. Khi mở lại hội thoại, mặc định xem phần mới nhất. Khi cần đọc trước đó, cuộn lên hoặc bấm **Xem tin nhắn cũ hơn**.
-5. Nếu dịch vụ/máy vừa khởi động và trang báo cần kiểm tra local, người vận hành mở PowerShell tại thư mục dự án và chạy:
+5. Nếu trang báo cần xác minh local và bốn dịch vụ đang healthy, người vận hành mở PowerShell tại thư mục dự án và chạy:
 
    ```powershell
-   ./tools/start.ps1 -SkipBuild
+   ./tools/verify-local.ps1
    ```
 
-6. Chờ xác minh xong rồi bấm **Thử kết nối lại** trên web. Khi source thay đổi cần build, người vận hành dùng `./tools/start.ps1`.
+6. Chờ xác minh xong rồi bấm **Thử kết nối lại**. Nếu stack đang dừng, dùng `./tools/start.ps1 -SkipBuild`. Khi cần build từ source đã xác minh, theo [hướng dẫn vận hành](TESTING_GUIDE.md#quy-trình-kiểm-thử-và-khôi-phục-hiện-hành).
 
 Không xóa database, cookies, tệp gốc hoặc Docker volumes để sửa kết nối. Không gửi lại câu đang xử lý chỉ vì reload hoặc chưa thấy trả lời ngay.
 

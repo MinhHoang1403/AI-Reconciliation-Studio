@@ -2,6 +2,8 @@
 
 **SOURCE_VERIFIED → PROPOSED**, baseline `c477745d6c4426c663089251f75182aa1e2c375c`. Cột hiện hành trích chuỗi hoặc đoạn định danh đúng vị trí trong source. Các dấu ngoặc nhọn trong cột đề xuất là giá trị từ DTO hoặc biến UI tương ứng. Điều kiện hiển thị ở cột nguồn mô tả khi chuỗi được dùng trong code, không chứng minh mọi nhánh đã được tái hiện trên ứng dụng chạy. Xem [báo cáo kiểm toán](../INTERFACE_REDESIGN_AUDIT.md) cho chứng cứ quan sát.
 
+Câu chữ trong cột đề xuất dùng để thử ở prototype. D01–D10 đã **OWNER_APPROVED**. Quyền, trạng thái và dữ kiện review vẫn theo hợp đồng; câu chữ cụ thể còn **PENDING_VALIDATION**. Xem [biên bản quyết định](OPEN_DECISIONS.md).
+
 Phương pháp **Impeccable 4.8.1 Clarify và Distill**. Giữ chữ giải quyết một câu hỏi hoặc chỉ dẫn một thao tác. Tách thông tin cần đọc trước quyết định khỏi mô tả cách hệ thống làm việc. Dùng cùng tên cho cùng đối tượng, cùng động từ cho cùng hậu quả. Kiểm lại với lỗi, quyền, thiếu dữ liệu và tác vụ tài chính. Đề xuất chỉ thay cách diễn đạt và vị trí, không đổi giá trị enum, phạm vi dữ liệu, mã lỗi hoặc điều kiện có quyền.
 
 | Nhãn quyết định | Khi dùng |

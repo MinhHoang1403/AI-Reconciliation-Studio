@@ -1,5 +1,50 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Khôi phục local, release Docker và chốt hướng UX — 09/11/2026
+
+**Bản hiện hành.** Application source `1d7f4909a3aa5d6c0a79cdddb88cb4303119e701`. Bản này dùng đúng đầu vào đã nghiệm thu; các lớp filesystem của hai image build lại khớp bản ngay trước đó. Build dùng ba digest base đã ghi trong bản build trước, lockfiles hiện hành và không đổi dependency. Nhãn revision image chỉ mã ứng dụng. SHA tài liệu được xác minh riêng bằng Git; không yêu cầu nhãn Docker đổi theo commit Markdown.
+
+| Bộ image | OCI revision | Backend / Worker | Frontend |
+| --- | --- | --- | --- |
+| Release hiện hành | `1d7f4909a3aa5d6c0a79cdddb88cb4303119e701` | `sha256:f01c2838644c3d9e92b063b9a6fa99a9f1d232c4a66b8948eeb9ba5f4a2a447e` | `sha256:c92db9ce467b05bf1b1d40c8c588327f91447d1bd5e0f62b7f17e11ed18c2be8` |
+| Rollback đã kiểm | `c477745d6c4426c663089251f75182aa1e2c375c` | `sha256:0ed63896f1052032de010bdecd7192b10648ae5cd36e7adea02e742cdce6f271` | `sha256:97bbcefaa2ce81c27b8af68af452181bbd8fc9fe59343e4f95c731f7f45305f9` |
+
+Đây là ID/digest local đã đối chiếu với RepoDigests trong manifest, không phải tuyên bố push image lên registry. Backend và Worker dùng chung image. Một Compose, bốn service healthy, PostgreSQL giữ nguyên container, image và volume.
+
+- **Local demo.** Trước xử lý, `/api/session` trả HTTP 403 `LOCAL_DEMO_NOT_VERIFIED`. Tệp proof trong tmpfs không tồn tại sau lần backend khởi động lại. Chính sách bật demo, origin và binding loopback đúng, health frontend trả identity khớp. Dùng `tools/verify-local.ps1` để xác minh trên bốn service đang chạy. Sau recreate, kiểm ba ca fail-closed (phiên mới, cookie cũ ở session và ở settings) rồi xác minh lại. HTTP 200 ở trang chính, health, live, ready, session, settings và projects. Chromium đọc đủ sáu khu vực trên TEST, không lỗi JS hoặc gửi ghi nghiệp vụ. Cookie HttpOnly/SameSite Strict/path `/api`, scope demo/owner.
+- **Bảo mật và hồi quy.** Chín probe HTTP âm tính từ loopback chặn Host/Origin ngoài allowlist, forwarded headers, cross-site, ghi thiếu Origin, thiếu session và cookie giả. Bộ Backend/PostgreSQL trên image đạt **782 ca** trong 168.60 giây, 1 cảnh báo. Ca hết hạn phiên, proof bị đổi và quyền chéo workspace dùng fixture/schema cô lập. Không cấp quyền bằng token trên UI hoặc gọi model live để kiểm release.
+- **Backup và dữ liệu.** Backup mới `backup_b84b0314f6254887876b40109192066f`, thử restore 24 bảng trong schema UUID cùng PostgreSQL, kiểm 12,154 tệp. Bản sao ngoài container đã đối chiếu manifest, metadata và toàn bộ tệp. SHA-256 metadata `51fc471cbc5c8f6740caa50a65994898a644121770ff6a51d3fe2d204346a7f1`. Snapshot nghiệp vụ trước/sau release, rollback và cleanup khớp gồm 2,573 workflow, 847 run, 1,566 bản xuất, 9,741 artifact và 1,862 mapping đã duyệt. Các phiên local mới dùng cho phép kiểm là metadata xác thực hợp lệ; không nằm trong hash so sánh nghiệp vụ.
+- **Rollback và số liệu.** Đã chạy `./tools/rollback.ps1 -ReleaseRevision c477745` trên stack hiện có, xác minh phiên và đọc lại TEST, rồi quay lại bằng `./tools/start.ps1 -SkipBuild`. Đối chiếu 46 tệp nguồn ở Backend/Worker và 7 tài nguyên frontend qua HTTP. Cả hai oracle đã lưu đạt, gồm 5.487 dòng gốc, 5.458 hợp lệ, 29 lỗi, đúng số nhóm và chênh lệch Decimal. CSV/XLSX từ lịch sử Chat và XLSX hai oracle đọc lại đúng byte/snapshot. Không tạo run mới trong bước đọc lại.
+- **Cleanup.** Đã xóa hai image Studio revision `3313e24` sau khi kiểm nhãn nguồn, digest, toàn bộ refs kể cả container stopped và xác minh bộ rollback thay thế. Giữ hai cặp trong bảng trên. 27 container ngoài Studio và 42 volume toàn host khớp inventory. Số liệu Docker trước/sau và refs cụ thể có trong receipt local; không cộng kích thước logic của lớp chia sẻ để suy dung lượng vật lý.
+- **UX.** [D01–D10 phương án A](ui-redesign/OPEN_DECISIONS.md) là **OWNER_APPROVED** ngày 09/11/2026. D03 giữ trục Chat ổn định, khoảng 760 CSS px làm mốc đọc; nội dung rộng có vùng phù hợp. D08 dựa trên diện tích còn lại, zoom và dữ liệu, mọi mốc phải thử. Quyết định ba mục đã được thay thế. Prototype **PENDING_VALIDATION**, UX implementation **NOT_STARTED**. Các ảnh/ca MOCK vòng nghiên cứu giữ nguyên phạm vi bằng chứng.
+
+Biên bản local ngoài Git ở `runtime/secure-local-recovery-20261109/`: `release-manifest.json`, receipt backup, hash build inputs, kiểm source/assets, bảo mật, Chromium, rollback và cleanup. Bản sao backup ở `runtime/backups/`. Kiểm phục hồi là trên cùng máy/server; nghiệm thu độc lập người dùng, accessibility đầy đủ và triển khai Internet giữ phạm vi chưa kiểm của các mốc trước.
+
+### Đối chiếu tài liệu
+
+| Tài liệu | Trước → sau | Nguồn xác minh / kết quả |
+| --- | --- | --- |
+| [Rules](../Rules.md#giao-dien) | Sidebar ba mục → sáu mục, Chat-first và manual fallback | D01/D04/D08, giữ các quy tắc ngoài UX |
+| [AGENTS](../AGENTS.md) | Chỉ dẫn đọc chung → thêm biên bản quyết định và acceptance plan | Link và phạm vi làm việc |
+| [README](../README.md) | Chủ yếu hướng dẫn startup → xác minh lại proof trên stack healthy và link trạng thái | Quy trình `verify-local.ps1` |
+| [PROJECT_PLAN](PROJECT_PLAN.md) | Mốc lịch sử lẫn hướng hiện hành → bổ sung trạng thái MVP và D01–D10 | Chỉ thị 09/11, giữ lịch sử |
+| [AUTOMATION_PRODUCT_PLAN](AUTOMATION_PRODUCT_PLAN.md) | Lịch sử có thể gộp → lối riêng, dùng chung state của Assistant | D01 và `App.tsx` |
+| [ARCHITECTURE](ARCHITECTURE.md) | Proof và bố cục các mốc → tách startup, identity và hướng UX đã duyệt | `startup.py`, `access.py`, manifest |
+| [TESTING_GUIDE](TESTING_GUIDE.md) | Startup/recreate → thêm gate fail-closed và verify-only khi healthy | HTTP trước/sau và rollback |
+| [USER_TEST_GUIDE](USER_TEST_GUIDE.md) | Khôi phục bằng startup → ưu tiên verify-only khi stack khỏe | Chromium và HTTP trên TEST |
+| IMPLEMENTATION_STATUS | Release cũ là mốc gần nhất → biên bản release, backup, rollback, kiểm thử vòng này | Receipt local, mốc cũ giữ nguyên |
+| [INTERFACE_REDESIGN_AUDIT](INTERFACE_REDESIGN_AUDIT.md) | Đề xuất ba mục và 403 lịch sử → ghi quyết định mới và biên bản recovery | D01, không thay số đo/mock cũ |
+| [OPEN_DECISIONS](ui-redesign/OPEN_DECISIONS.md) | Chờ duyệt → cả mười mục OWNER_APPROVED | D03/D08 chờ số đo, giữ phương án B |
+| [UX_INFORMATION_ARCHITECTURE](ui-redesign/UX_INFORMATION_ARCHITECTURE.md) | So sánh phương án → A sáu mục, B lịch sử | D01/D02 và scope manual |
+| [DESIGN_SYSTEM_BLUEPRINT](ui-redesign/DESIGN_SYSTEM_BLUEPRINT.md) | Trần và breakpoint ứng viên → mốc tham khảo theo nội dung | D03/D05–D08, prototype còn chờ |
+| [SCREEN_AND_COMPONENT_SPECS](ui-redesign/SCREEN_AND_COMPONENT_SPECS.md) | Hướng chờ duyệt → hướng đã duyệt, đặc tả chưa triển khai | D03/D04/D08/D10, giữ DTO |
+| [MICROCOPY_AUDIT](ui-redesign/MICROCOPY_AUDIT.md) | Đề xuất câu chữ → giữ inventory và phân biệt với hướng đã duyệt | Chuỗi source, cảnh báo và quyền giữ nguyên |
+| [IMPLEMENTATION_AND_ACCEPTANCE_PLAN](ui-redesign/IMPLEMENTATION_AND_ACCEPTANCE_PLAN.md) | W0 chờ duyệt hướng → đã chốt hướng, W0 còn kiểm prototype | W1–W5 chưa bắt đầu |
+
+Đã kiểm kê 20 tài liệu Markdown có phiên bản. Quy tắc, kế hoạch sản phẩm hiện hành và hợp đồng dữ liệu là nguồn có thẩm quyền trong phạm vi tương ứng. Hướng dẫn và báo cáo là tài liệu hỗ trợ, các mốc cũ và phương án ba mục giữ làm lịch sử hoặc đã bị thay thế. [AI_INTEGRATION](AI_INTEGRATION.md) giữ chính sách provider đã nghiệm thu. [AI_MODEL_ROUTING_RESEARCH](AI_MODEL_ROUTING_RESEARCH.md) là nghiên cứu đề xuất, không thay model đang chạy. [AI_AGENT_MVP_IMPLEMENTATION_PLAN](AI_AGENT_MVP_IMPLEMENTATION_PLAN.md) giữ mục tiêu và kế hoạch lịch sử. [DATA_CONTRACTS](DATA_CONTRACTS.md) giữ nguyên vì không phát hiện lệch hợp đồng cần sửa trong vòng này. Backup, ảnh, logs và manifest máy là RUNTIME_ONLY.
+
+## Biên bản bàn giao ngày 08/11/2026 — lịch sử
+
 **Bàn giao ngày 08/11/2026.** Mã ứng dụng đã nghiệm thu là commit `1d7f4909a3aa5d6c0a79cdddb88cb4303119e701`, tích hợp fast-forward vào `main` và push lên `origin` chính thức. Trạng thái trong phạm vi MVP local là `READY_FOR_RELEASE` và `READY_FOR_LOCAL_USER_ACCEPTANCE`. Commit cập nhật biên bản bàn giao chỉ thay tài liệu. Manifest local `runtime/audit-release-manifest.json` ghi revision image được triển khai, SHA image, fingerprint source ứng viên và backup. Lần nghiệm thu này dùng browser automation và dữ liệu tổng hợp. Nghiệm thu trực tiếp của chủ dự án còn `NOT_RUN`.
 
 Các cổng AP-01–AP-15 của mã ứng dụng đã đạt trong phạm vi và giới hạn của bảng bên dưới. Release từ `main` đã qua đối chiếu source, image, bảy tài nguyên frontend qua HTTP, smoke trên trình duyệt, đọc lại tệp Chat và cả hai oracle tài chính. Snapshot 847 run, 1.566 báo cáo và 9.719 artifact khớp trước và sau triển khai. Cùng một Compose giữ bốn dịch vụ healthy trên `127.0.0.1:18180`. Bằng chứng sau triển khai nằm trong `runtime/audit-release-*.log`.

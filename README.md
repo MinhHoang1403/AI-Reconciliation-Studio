@@ -65,7 +65,7 @@ Lệnh build thường yêu cầu các tệp đầu vào của ứng dụng đã
 
 Sau đó mở [AI Reconciliation Studio](http://127.0.0.1:18180). Không cần nhập token trên giao diện.
 
-Lệnh khởi động đợi bốn dịch vụ khỏe, xác minh cổng loopback và kiểm tra phiên làm việc qua chính địa chỉ web. Sau khi máy/Docker/Backend khởi động lại hoặc recreate Frontend, dùng lại lệnh `-SkipBuild`; nếu trang đang mở, bấm **Thử kết nối lại**. Không xóa cookies hoặc dữ liệu để khôi phục kết nối.
+Lệnh khởi động đợi bốn dịch vụ healthy rồi xác minh loopback và phiên qua địa chỉ web. Nếu thấy `LOCAL_DEMO_NOT_VERIFIED` khi các dịch vụ vẫn healthy sau restart hoặc recreate, chạy `./tools/verify-local.ps1` tại repository root rồi bấm **Thử kết nối lại**. Khi stack đang dừng, chạy `./tools/start.ps1 -SkipBuild`. Kiểm revision, digest release/rollback và kết quả kiểm tra tại [báo cáo triển khai](docs/IMPLEMENTATION_STATUS.md).
 
 ## Quyền riêng tư và độ tin cậy
 
@@ -87,5 +87,5 @@ Chưa nghiệm thu triển khai Internet hoặc nhiều người dùng đồng t
 - [Tích hợp và quyền AI](docs/AI_INTEGRATION.md).
 - [Kiểm thử, backup và khôi phục](docs/TESTING_GUIDE.md#quy-trình-kiểm-thử-và-khôi-phục-hiện-hành).
 - [Báo cáo triển khai và nghiệm thu](docs/IMPLEMENTATION_STATUS.md).
-- [Phân tích giao diện trước đợt thiết kế lại](docs/INTERFACE_REDESIGN_AUDIT.md).
+- [Kiểm toán giao diện](docs/INTERFACE_REDESIGN_AUDIT.md), [hướng UX D01–D10 đã phê duyệt](docs/ui-redesign/OPEN_DECISIONS.md) và [kế hoạch nghiệm thu](docs/ui-redesign/IMPLEMENTATION_AND_ACCEPTANCE_PLAN.md). Prototype và giao diện mới chưa triển khai.
 - [Kế hoạch sản phẩm](docs/PROJECT_PLAN.md), [kế hoạch Agent](docs/AI_AGENT_MVP_IMPLEMENTATION_PLAN.md) và [quy tắc đóng góp](Rules.md).

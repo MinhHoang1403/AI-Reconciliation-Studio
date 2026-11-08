@@ -1,5 +1,7 @@
 # Hướng dẫn Codex — AI Reconciliation Studio
 
+Khi làm việc về UX, đọc [D01–D10 đã phê duyệt](docs/ui-redesign/OPEN_DECISIONS.md) và [kế hoạch nghiệm thu](docs/ui-redesign/IMPLEMENTATION_AND_ACCEPTANCE_PLAN.md). Kiểm trạng thái prototype/triển khai trong [báo cáo hiện hành](docs/IMPLEMENTATION_STATUS.md).
+
 1. **Trước mỗi nhiệm vụ, đọc toàn bộ [Rules.md](Rules.md)** và tuân thủ đầy đủ. Đọc lại khi bắt đầu phiên mới hoặc ngữ cảnh bị đặt lại; không chỉ dựa vào tóm tắt cũ.
 2. Đọc [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md), đặc biệt các phần, hợp đồng dữ liệu/nghiệp vụ và điều kiện nghiệm thu liên quan. Kế hoạch xác định sản phẩm/kiến trúc; `Rules.md` là nguồn quy tắc làm việc duy nhất.
 3. Kiểm tra hiện trạng thật: repository root, Git status/branch/diff/remote, files, dependencies, dữ liệu và tests; Docker/services khi công việc liên quan môi trường chạy. Bảo toàn thay đổi sẵn có của người dùng.

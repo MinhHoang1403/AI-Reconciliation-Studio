@@ -1,6 +1,6 @@
 # Quy chuẩn thiết kế Calm Financial Workspace
 
-Trạng thái **PROPOSED · PENDING_OWNER_REVIEW**. Đặc tả này dùng để duyệt hướng thiết kế và làm chuẩn cho đợt triển khai sau. Mọi kích thước, token và tiêu chí sản phẩm mới dưới đây là đề xuất, trừ khi ghi rõ chuẩn tham chiếu hoặc hiện trạng đã xác minh.
+Trạng thái **OWNER_APPROVED · PENDING_VALIDATION**. D01–D10 chọn phương án A, với D03 và D08 điều chỉnh theo [biên bản quyết định](OPEN_DECISIONS.md). Light theme, xanh chính, font hệ thống hỗ trợ tiếng Việt và cách tái sử dụng đã được duyệt. Token chi tiết, kích thước, mật độ và breakpoint cần đo bằng prototype. UX implementation **NOT_STARTED**.
 
 Phạm vi sử dụng là một ứng dụng làm việc tài chính, với AI Assistant là điểm bắt đầu, Dữ liệu là nơi kiểm tra nguồn, Đối soát là nơi xác nhận phạm vi và theo dõi lượt chạy, Báo cáo là nơi xem kết quả đã xác minh. Điều hướng, giao diện theo trạng thái và câu chữ có đặc tả riêng. [Kiến trúc trải nghiệm](UX_INFORMATION_ARCHITECTURE.md) · [Đặc tả màn hình](SCREEN_AND_COMPONENT_SPECS.md) · [Kiểm kê câu chữ](MICROCOPY_AUDIT.md) · [Quyết định cần duyệt](OPEN_DECISIONS.md).
 
@@ -77,14 +77,14 @@ Các token là tên vai trò đề xuất. Một màu có thể phục vụ nhi�
 
 ## 5. Bố cục, responsive và hành vi tương tác
 
-| Điều kiện | App Shell | Hội thoại và vùng chi tiết |
+| Kịch bản thử, chưa khóa breakpoint | App Shell | Hội thoại và vùng chi tiết |
 | --- | --- | --- |
 | Dưới 768 CSS px, gồm 390 | Điều hướng drawer. Padding 16 px. Một cột. Header cao tối thiểu 56 px và giãn khi chữ xuống dòng. | Transcript cuộn, composer gọn, bằng chứng mở toàn màn hình. Menu và thanh điều khiển chia hàng. Tôn trọng safe-area và bàn phím ảo. |
 | 768–1023, gồm 768 | Rail 64 px mặc định khi nội dung đủ chỗ, menu mở rộng dạng overlay. Padding 24 px. | Context mở drawer bên phải khi giữ được lối đọc. Form hai cột chỉ khi nhãn và trường đủ chỗ. |
-| 1024–1439, gồm 1366 | Sidebar 240 px mặc định, rail 64 px khi thu gọn. Header tối thiểu 56 px. Padding 24 px. | Transcript và composer cùng trục, mỗi vùng tối đa khoảng 760 px. Panel overlay có chiều rộng mục tiêu 400 px. |
-| Từ 1440, gồm 1440 và 1920 | Sidebar 240/64 px, padding 32 px tùy chiều rộng khả dụng. | Cho dock panel khoảng 400 px khi cột hội thoại còn tối thiểu 640 px sau khi tính gutter/rail. Có thể thu sidebar hoặc dùng overlay. Transcript tối đa khoảng 760 px, đoạn chữ tối đa 72ch. |
+| 1024–1439, gồm 1366 | Sidebar 240 px mặc định, rail 64 px khi thu gọn. Header tối thiểu 56 px. Padding 24 px. | Trục văn bản/composer lấy khoảng 760 CSS px làm mốc, không đổi chiều rộng đột ngột khi có kết quả. Panel overlay có chiều rộng mục tiêu 400 px. |
+| Từ 1440, gồm 1440 và 1920 | Sidebar 240/64 px, padding 32 px tùy chiều rộng khả dụng. | Cho dock panel khoảng 400 px khi cột hội thoại còn tối thiểu 640 px sau khi tính gutter/rail. Có thể thu sidebar hoặc dùng overlay. Đo trục văn bản khoảng 760 CSS px và chiều dài đọc; bảng, review, bằng chứng có thể dùng vùng rộng/panel. |
 
-- Các kích thước là đầu vào thử nghiệm, cần xác nhận qua các quyết định mở. Xác định breakpoint theo **CSS viewport sau zoom** và chiều rộng container. Ưu tiên đơn cột khi nhãn hoặc thao tác không còn chỗ. Giao diện chính không cuộn ngang ở 320 CSS px trừ vùng nội dung hai chiều thực sự cần thiết, ví dụ bảng đối chiếu.
+- Các kích thước là đầu vào thử nghiệm **PENDING_VALIDATION**. Dock không bắt buộc ở 1440 px nếu diện tích thật không đủ. Xác định breakpoint theo **CSS viewport sau zoom** và chiều rộng container. Ưu tiên đơn cột khi nhãn hoặc thao tác không còn chỗ. Giao diện chính không cuộn ngang ở 320 CSS px trừ vùng nội dung hai chiều thực sự cần thiết, ví dụ bảng đối chiếu.
 - Trang nghiệp vụ dùng lưới 12 cột trên desktop nếu có nhiều vùng, 8 ở tablet, 4 ở mobile. Một header và một vùng chính. Bề mặt bảng có thể dùng toàn chiều rộng khả dụng. Dòng dài ưu tiên vùng trong bảng, không kéo thân trang.
 - Giữ vùng transcript và composer có biên dưới rõ. Dùng `100dvh` có fallback, safe-area và kiểm hành vi visual viewport trên thiết bị thật. Vùng cuộn có padding cuối bằng chiều cao composer thực, kể cả đính kèm và review reply.
 - Modal, drawer và popover dùng một lớp tương tác tại một thời điểm. Dock panel desktop là vùng bổ trợ không trap focus. Overlay modal và drawer quản lý focus, Esc, trả focus về trigger có thực, làm nền inert và khôi phục vị trí cuộn. Không mở modal lồng chỉ để xem một dòng.

@@ -1,24 +1,24 @@
 # Kiến trúc trải nghiệm AI Reconciliation Studio
 
-Ngày 09/11/2026. Trạng thái **PROPOSED · PENDING_OWNER_REVIEW**.
+Ngày 09/11/2026. Trạng thái **OWNER_APPROVED · PENDING_VALIDATION**.
 
 Định hướng **Calm Financial Workspace**. Người dùng bắt đầu bằng câu hỏi, nhìn thấy dự án và dữ liệu mà câu hỏi đang dùng, rồi đọc câu trả lời hoặc quyết định tiếp theo ngay tại chỗ. Công việc cần lọc nhiều dòng, so hai nguồn hoặc rà nhiều bằng chứng có vùng làm việc riêng và lối vào trực tiếp. Một quyết định tài chính luôn nêu rõ phạm vi, căn cứ, phần chưa chắc chắn và hệ quả.
 
-Bản này chốt *đề xuất* về đường đi và phân vai bề mặt. Số đo hiện trạng và giới hạn của phép thử nằm trong [kiểm toán giao diện](../INTERFACE_REDESIGN_AUDIT.md). Bố cục và hành vi triển khai tham chiếu [đặc tả màn hình](SCREEN_AND_COMPONENT_SPECS.md), [design system](DESIGN_SYSTEM_BLUEPRINT.md) và [các quyết định mở](OPEN_DECISIONS.md).
+Bản này ghi hướng đã phê duyệt về đường đi và phân vai bề mặt. Số đo đề xuất còn chờ prototype. Số đo hiện trạng và giới hạn của phép thử nằm trong [kiểm toán giao diện](../INTERFACE_REDESIGN_AUDIT.md). Bố cục và hành vi triển khai tham chiếu [đặc tả màn hình](SCREEN_AND_COMPONENT_SPECS.md), [design system](DESIGN_SYSTEM_BLUEPRINT.md) và [các quyết định mở](OPEN_DECISIONS.md).
 
 ## 1. Đọc đúng hiện trạng và lịch sử
 
 | Phân loại | Bằng chứng | Hàm ý |
 | --- | --- | --- |
-| DOCUMENTED · 02/11/2026 | [Rules §9.1](../../Rules.md#giao-dien) và [nghiệm thu mục U](../IMPLEMENTATION_STATUS.md) mô tả Assistant-only. Dữ liệu, đối soát, ngoại lệ, báo cáo mở qua hội thoại hoặc đường thủ công. | Giữ ý đồ Assistant là điểm bắt đầu và bảo toàn manual fallback. Đây là quyết định của mốc 02/11. |
-| DOCUMENTED · 06/11/2026 | Đoạn mở đầu [kế hoạch sản phẩm](../PROJECT_PLAN.md) xác định các mục Dữ liệu, Đối soát và Báo cáo thay yêu cầu Assistant-only ở mốc lịch sử. [Kế hoạch tự động hóa §6](../AUTOMATION_PRODUCT_PLAN.md#6-giao-diện-và-hành-trình-ux) cho phép tích hợp Lịch sử trong Assistant để tránh menu trùng. | Truy cập nghiệp vụ trực tiếp phù hợp chỉ dẫn triển khai mới hơn. Cách tổ chức đợt thiết kế lại vẫn là quyết định của chủ dự án. |
-| DOCUMENTED · kiểm toán trước | [Báo cáo trước §3.C](../INTERFACE_REDESIGN_AUDIT.md) ghi nhận sidebar nhiều mục và từng đề xuất quay về ba mục. | Giữ đề xuất lịch sử như phương án A bên dưới, đặt cạnh bằng chứng mới. |
+| DOCUMENTED · 02/11/2026 | [Nghiệm thu mục U](../IMPLEMENTATION_STATUS.md) lưu quyết định Assistant-only. [Rules §9.1 hiện hành](../../Rules.md#giao-dien) đã đồng bộ theo quyết định 09/11. Dữ liệu, đối soát, ngoại lệ, báo cáo mở qua hội thoại hoặc đường thủ công. | Giữ ý đồ Assistant là điểm bắt đầu và bảo toàn manual fallback. Đây là quyết định của mốc 02/11. |
+| DOCUMENTED · 06/11/2026 | Đoạn mở đầu [kế hoạch sản phẩm](../PROJECT_PLAN.md) xác định các mục Dữ liệu, Đối soát và Báo cáo thay yêu cầu Assistant-only ở mốc lịch sử. [Kế hoạch tự động hóa §6](../AUTOMATION_PRODUCT_PLAN.md#6-giao-diện-và-hành-trình-ux) cho phép tích hợp Lịch sử trong Assistant để tránh menu trùng. | Truy cập nghiệp vụ trực tiếp phù hợp chỉ dẫn triển khai mới hơn. Phương án sáu lối vào được chủ dự án phê duyệt ngày 09/11. |
+| DOCUMENTED · kiểm toán trước | [Báo cáo trước §3.C](../INTERFACE_REDESIGN_AUDIT.md) ghi nhận sidebar nhiều mục và từng đề xuất quay về ba mục. | Giữ đề xuất lịch sử như phương án B bên dưới, đặt cạnh bằng chứng mới. |
 | SOURCE_VERIFIED · baseline | [App](../../frontend/src/App.tsx) dựng AI Assistant, Dữ liệu, Đối soát, Báo cáo, Lịch sử, Cài đặt. Nút Lịch sử vào Assistant nếu cần rồi mở modal. Ngoại lệ không có nút ngang cấp. [Điều hướng](../../frontend/src/navigation.ts) vẫn nhận `home/data/reconcile/exceptions/reports/settings/assistant`. | Giữ các URL cũ, một Lịch sử và đường mở Ngoại lệ chính xác. `home` là route tương thích, mặc định đi vào Assistant. |
 | SOURCE_VERIFIED · trạng thái | [Assistant](../../frontend/src/AssistantStudio.tsx) giữ nháp theo scope trong session storage, phân trang lịch sử và tìm trong các hội thoại đã tải. [Data Drawer](../../frontend/src/AssistantDataDrawer.tsx) hiện là modal chỉ đọc với lối sang thủ công, phân trang nguồn và chọn revision. | Nâng cách trình bày từ các bề mặt hiện có. Tìm toàn bộ lịch sử cần chứng minh có hợp đồng API phù hợp. |
 | SOURCE_VERIFIED · phiên bản | Baseline Git/release `c477745d6c4426c663089251f75182aa1e2c375c`. So sánh `frontend` và `backend` giữa commit ứng dụng `1d7f4909a3aa5d6c0a79cdddb88cb4303119e701` và baseline không có thay đổi. | Đọc source ở baseline để giải thích phép đo runtime cùng revision. |
-| OBSERVED · giới hạn phiên live | Release hiện tại chặn phiên demo tại bootstrap với `LOCAL_DEMO_NOT_VERIFIED`. Xem [bằng chứng đợt này](../INTERFACE_REDESIGN_AUDIT.md). | Các phép đo giao diện sau bootstrap phải ghi rõ fixture tổng hợp và API mô phỏng nếu dùng. Chưa xác nhận lại quy trình nghiệp vụ live hay hiệu năng từ trạng thái này. |
+| OBSERVED · giới hạn phiên live | Trong vòng nghiên cứu, release chặn phiên demo tại bootstrap với `LOCAL_DEMO_NOT_VERIFIED`. Xem [bằng chứng đợt này](../INTERFACE_REDESIGN_AUDIT.md). | Các phép đo giao diện sau bootstrap phải ghi rõ fixture tổng hợp và API mô phỏng nếu dùng. Chưa xác nhận lại quy trình nghiệp vụ live hay hiệu năng từ trạng thái này. |
 
-Mâu thuẫn giữa Rules §9.1 và quyết định 06/11 được chuyển sang [OPEN_DECISIONS](OPEN_DECISIONS.md). Bản thiết kế giữ khả năng tiếp cận nghiệp vụ và trình bày rõ lựa chọn cần chốt. Các tài liệu quy tắc và kế hoạch giữ nguyên trong nhánh nghiên cứu.
+Mâu thuẫn giữa quy tắc sidebar cũ và quyết định 06/11 đã được giải quyết theo D01 ngày 09/11. Sáu lối vào, Chat mặc định, Ngoại lệ trong Kết quả và manual fallback là hướng đã duyệt. Phiên demo đã khôi phục ở vòng vận hành riêng, xem [báo cáo triển khai](../IMPLEMENTATION_STATUS.md).
 
 ## 2. Người dùng, nhiệm vụ và quyền
 
@@ -53,13 +53,13 @@ Ghi mỗi lượt bằng route, viewport, vai trò, revision, fixture, thiết b
 
 ## 4. So sánh điều hướng
 
-| Phương án | Cấu trúc | Lợi | Đổi lại | Thử trước khi duyệt |
+| Phương án | Cấu trúc | Lợi | Đổi lại | Kịch bản kiểm chứng |
 | --- | --- | --- | --- | --- |
-| A · Assistant-only | AI Assistant, Lịch sử, Cài đặt. Vào Dữ liệu/Đối soát/Báo cáo từ Chat, trợ giúp thao tác hoặc deep link. | Menu ngắn, gần quyết định 02/11. Người mới tập trung vào một điểm bắt đầu. | Người dùng lặp lại phải đoán chỗ mở manual fallback. Tính sẵn có của Chat ảnh hưởng khả năng tìm công việc. Có nguy cơ người dùng nghĩ chỉ thao tác được qua AI. | Với Chat chưa có hội thoại và provider lỗi, tìm được nguồn, bảng đối soát và xuất đúng run bằng đường nhìn thấy. |
-| B · Assistant trung tâm với sáu lối vào | AI Assistant · Dữ liệu · Đối soát · Báo cáo · Lịch sử · Cài đặt. Ngoại lệ là phần của Kết quả trong Đối soát. | Bảo toàn lối vào hiện có, ít đổi mô hình người dùng, mỗi bề mặt có một trách nhiệm. Mở nghiệp vụ từ nav độc lập với provider. | Đối soát và Báo cáo có thể bị hiểu là hai nơi có kết quả khác nhau. Cần tách nhãn “xử lý/chọn lần chạy” và “tổng hợp/tải xuống”, cùng một run và dữ kiện. | Người mới biết bắt đầu ở Assistant, kế toán tìm Ngoại lệ trong Đối soát, biết khi nào dùng Báo cáo và không chọn nhầm run. |
+| A · Assistant trung tâm với sáu lối vào (đã duyệt) | AI Assistant · Dữ liệu · Đối soát · Báo cáo · Lịch sử · Cài đặt. Ngoại lệ là phần của Kết quả trong Đối soát. | Bảo toàn lối vào hiện có, ít đổi mô hình người dùng, mỗi bề mặt có một trách nhiệm. Mở nghiệp vụ từ nav độc lập với provider. | Đối soát và Báo cáo có thể bị hiểu là hai nơi có kết quả khác nhau. Cần tách nhãn “xử lý/chọn lần chạy” và “tổng hợp/tải xuống”, cùng một run và dữ kiện. | Người mới biết bắt đầu ở Assistant, kế toán tìm Ngoại lệ trong Đối soát, biết khi nào dùng Báo cáo và không chọn nhầm run. |
+| B · Assistant-only (lịch sử) | AI Assistant, Lịch sử, Cài đặt. Vào Dữ liệu/Đối soát/Báo cáo từ Chat, trợ giúp thao tác hoặc deep link. | Menu ngắn, gần quyết định 02/11. Người mới tập trung vào một điểm bắt đầu. | Người dùng lặp lại phải đoán chỗ mở manual fallback. Tính sẵn có của Chat ảnh hưởng khả năng tìm công việc. Có nguy cơ người dùng nghĩ chỉ thao tác được qua AI. | Với Chat chưa có hội thoại và provider lỗi, tìm được nguồn, bảng đối soát và xuất đúng run bằng đường nhìn thấy. |
 | C · Điều hướng theo tác vụ | AI Assistant · Chuẩn bị dữ liệu · Đối soát và kết quả · Cài đặt. Lịch sử ở Assistant, Báo cáo ở Kết quả. | Bốn mục, có thể gần mô hình “chuẩn bị → đối soát → xuất”. | Đổi tên, thêm độ sâu truy cập Báo cáo và Lịch sử. Phải chứng minh người dùng tìm đúng tác vụ trước khi đổi vị trí. | Thử tìm một cuộc trò chuyện và xuất lại báo cáo cũ khi chưa mở run nào. |
 
-**Khuyến nghị B, chờ phê duyệt.** Trải nghiệm duyệt, làm việc với bảng lớn và phục hồi lỗi dựa trên cùng các API ở cả hai lối vào. Hai tên Đối soát và Báo cáo thể hiện hai công việc. Đối soát là nơi chọn quy tắc, theo dõi lần chạy và xử lý chênh lệch. Báo cáo trình bày tổng hợp của một lần chạy cụ thể, lọc nếu được hỗ trợ và tạo bản xuất. Không nhân bản state hoặc kết quả giữa hai vùng. Nếu UAT chỉ ra kế toán chủ yếu vào Ngoại lệ từ mọi màn hình, thử link phụ trong Đối soát trước khi tăng cấp nav.
+**Phương án A được duyệt theo D01 ngày 09/11/2026.** Trải nghiệm duyệt, làm việc với bảng lớn và phục hồi lỗi dựa trên cùng các API ở cả hai lối vào. Hai tên Đối soát và Báo cáo thể hiện hai công việc. Đối soát là nơi chọn quy tắc, theo dõi lần chạy và xử lý chênh lệch. Báo cáo trình bày tổng hợp của một lần chạy cụ thể, lọc nếu được hỗ trợ và tạo bản xuất. Không nhân bản state hoặc kết quả giữa hai vùng. Nếu UAT chỉ ra kế toán chủ yếu vào Ngoại lệ từ mọi màn hình, thử link phụ trong Đối soát trước khi tăng cấp nav.
 
 ## 5. Sơ đồ bề mặt đề xuất
 
@@ -92,7 +92,7 @@ Tabs hoặc disclosure trong sơ đồ là nhóm nội dung. Tên và trạng th
 | Header tác vụ | Tên nguồn hoặc lần chạy, kỳ/currency/revision khi có tác động, một CTA | Chỉ có breadcrumb ở đường sâu có cha thực, như Đối soát → lần chạy → nhóm. Nếu đã có heading “Nguồn B”, nhãn đầu trang không nhắc lại. Scope quan trọng nằm cạnh hành động hoặc ở dòng tóm tắt, không giấu trong tooltip. |
 | Thông báo và policy | Kết nối, trạng thái provider, lỗi, thiếu quyền | Không dùng badge policy thường trực như chỉ báo provider khỏe. Ở composer/notice, giữ provider đang chọn, job đã gửi dùng provider nào và lỗi thực tế. Cài đặt hiển thị policy, hạn mức theo quyền. Trạng thái kết nối hiện khi ảnh hưởng công việc. |
 
-Ở 390 px và dưới 768 px, nav là drawer có scrim và nhãn. Escape hoặc nút Đóng trả focus về nút mở. Ở 768 px, mặc định rail hoặc drawer nếu vùng chính không đủ bề rộng, mỗi lần chỉ mở một overlay. Ở 1366 px dùng rail hoặc sidebar theo preference. Context mở drawer. Ở 1440/1920 px dock context khoảng 400 px *khi* vùng Chat vẫn đủ rộng, mục tiêu tối thiểu 640 px vùng đọc sau gutters và thanh cuộn. Ví dụ 1440 − 240 − 400 − 2×32 = 736 px trước các phần cố định khác. Khi triển khai, kiểm bằng kích thước thực. Mặc định panel đóng, khi không đủ bề rộng thì chuyển drawer hoặc mobile fullscreen. Không đặt min-width cưỡng ép làm cả trang tràn ngang. Chiều rộng transcript, composer và mật độ bảng xem các token đề xuất và quyết định mở.
+D08 ưu tiên một cột ở mobile, overlay/drawer ở tablet và sidebar có thể thu trên desktop. Mỗi lần chỉ mở một overlay. Escape hoặc nút Đóng trả focus. Dock chỉ khi chiều rộng Chat còn đủ sau khi tính sidebar, padding, thanh cuộn, zoom và dữ liệu dài. Thử 390/768/1366/1440/1920 px và các mốc sidebar 240/64, panel 400 px, vùng đọc 640 px như giả thuyết, không ép dock ở 1440 px. D03 lấy khoảng 760 CSS px cho trục văn bản/composer ổn định. Bảng, review và bằng chứng có thể dùng vùng rộng hoặc panel/workspace. Kiểm bằng prototype trước khi khóa số đo.
 
 ### Chat và Context Panel
 

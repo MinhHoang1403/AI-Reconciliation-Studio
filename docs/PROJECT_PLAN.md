@@ -16,6 +16,10 @@ Kết quả kiểm tra theo từng ứng viên và các cổng AP-01–AP-15 n�
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT
 
+### Trạng thái sản phẩm và hướng UX hiện hành — 09/11/2026
+
+MVP local đã phát hành. Bộ nghiên cứu đã được tích hợp, [D01–D10 phương án A](ui-redesign/OPEN_DECISIONS.md) được chủ dự án duyệt với hai điều chỉnh D03/D08. AI Assistant mở đầu, sáu lối vào và manual fallback được bảo toàn. Hướng Assistant-only 02/11 trong phần lịch sử đã được thay thế. Prototype **PENDING_VALIDATION** và UX implementation **NOT_STARTED**. [Biên bản release](IMPLEMENTATION_STATUS.md) ghi riêng revision ứng dụng, kiểm chứng local và giới hạn UAT.
+
 ### Kiểm toán nền tảng và hardening — 06/11/2026
 
 Chủ dự án giao Foundation Reliability Audit trên nhánh `codex/foundation-reliability-hardening`, xuất phát từ baseline bất biến `2eecb068b0a866a538cda95a218ac9e375b10eb0` của `codex/product-polish`. Phạm vi là các hợp đồng, state/review/draft, sự nhất quán Chat–Data Manager, dữ liệu, truy vấn, persistence, security, Docker và hồi quy toàn hệ thống; không mở giai đoạn sản phẩm mới. Cho phép sửa cách cập nhật từng phần có kiểm chứng trong review, giữ các câu hỏi chưa rõ và approval riêng. Không thay công thức hoặc Matcher/Verifier nếu chưa có lỗi thực chứng. Nghiệm thu gồm full Backend/PostgreSQL, full browser, property/stateful/fault, nhiều bộ có oracle và hành trình người dùng thật. Chỉ FOUNDATION_ACCEPTED khi các gate bắt buộc đạt; giới hạn provider phải báo riêng.

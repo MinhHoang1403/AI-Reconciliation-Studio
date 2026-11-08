@@ -6,6 +6,8 @@ Chạy từ repository root. Các lệnh bên dưới không tạo Compose proje
 
 Số liệu nghiệm thu mới nhất nằm ở đầu [IMPLEMENTATION_STATUS](IMPLEMENTATION_STATUS.md). Các mục có ngày phía dưới giữ bằng chứng lịch sử, không phải kết quả của lần chạy hiện tại.
 
+Khi stack healthy nhưng bootstrap trả `LOCAL_DEMO_NOT_VERIFIED`, ưu tiên `./tools/verify-local.ps1`. Khi cần đưa stack lên, dùng `./tools/start.ps1 -SkipBuild`. Sau đổi image, kiểm fail-closed trước xác minh, rồi HTTP/session qua Nginx, Chromium và snapshot. Kiểm image digest/OCI revision với manifest local và [biên bản release](IMPLEMENTATION_STATUS.md). Nếu commit cuối chỉ tài liệu, không build để đổi nhãn image theo commit đó.
+
 1. Chạy Ruff, mypy, TypeScript, ESLint và production build; kiểm bí mật và liên kết bằng `python tools/check_repository.py` trong môi trường Python của dự án.
 2. Chạy `./tools/test-postgres.ps1 -All -Source` trước triển khai, hoặc `-All` để kiểm image đang chạy. Các ca PostgreSQL dùng schema cô lập trên server hiện có; không chạy trên dữ liệu nghiệp vụ.
 3. Chạy `npm --prefix frontend run test:e2e` tuần tự, một runner, retries 0. Chờ tác vụ AI kết thúc trước khi chạy. Kiểm candidate dùng `STUDIO_FRONTEND_DIST=1`; nghiệm thu Docker bỏ biến này.

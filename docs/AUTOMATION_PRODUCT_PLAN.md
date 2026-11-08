@@ -301,10 +301,12 @@ Sidebar tối giản:
 - **Dữ liệu** — danh sách nguồn, upload, raw, prepared, canonical, quality, revisions.
 - **Đối soát** — danh sách các lần đối soát, cách ghép đã duyệt, kết quả, ngoại lệ.
 - **Báo cáo** — bảng tổng hợp, biểu đồ, evidence, download.
-- **Lịch sử** (có thể tích hợp trong AI Assistant để tránh menu trùng).
+- **Lịch sử** — lối vào riêng mở lịch sử hội thoại của Assistant, dùng chung dữ liệu và bộ điều khiển lịch sử.
 - **Cài đặt** — tài khoản, quyền, quyền riêng tư; không nhồi các cấu hình nhà phát triển trong luồng chính.
 
 Chỉ một bộ điều hướng theo source of truth. Không dựng hai Data Manager hoặc hai ReviewCard độc lập.
+
+D01–D10 đã được duyệt ngày 09/11 theo [hồ sơ UX](ui-redesign/OPEN_DECISIONS.md). Chat là trang mặc định. Giữ lối thủ công và deep link Ngoại lệ từ Kết quả Đối soát. Dữ liệu và Kết quả là nơi làm việc sâu với cùng hợp đồng Backend. Panel chỉ mở theo tác vụ, không đổi scope. Trục đọc khoảng 760 CSS px là mốc thử, nội dung rộng được tách vùng. Breakpoint và dock cần đo theo không gian thật, kể cả zoom. Review làm rõ và duyệt vẫn riêng; prototype và triển khai chưa bắt đầu.
 
 ### 6.2. Mục Dữ liệu là điểm xuất phát
 

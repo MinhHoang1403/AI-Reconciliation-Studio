@@ -1,5 +1,7 @@
 # Phân tích giao diện trước đợt thiết kế lại
 
+**Cập nhật quyết định ngày 09/11/2026.** Chủ dự án duyệt A cho [D01–D10](ui-redesign/OPEN_DECISIONS.md). Sáu mục và Chat-first là hướng hiện hành; phương án ba mục trong phần 3.C đã được thay thế. D03 dùng khoảng 760 CSS px làm mốc đọc, giữ trục composer ổn định, cho phép nội dung rộng dùng vùng phù hợp. D08 chọn breakpoint theo diện tích thật và kết quả prototype, không ép dock. Prototype **PENDING_VALIDATION**, triển khai **NOT_STARTED**. Phiên demo đã khôi phục trong [vòng vận hành](IMPLEMENTATION_STATUS.md). Số đo, ảnh và cổng bị chặn ở vòng nghiên cứu bên dưới là bằng chứng lịch sử.
+
 Ngày kiểm tra: 08/11/2026. Phạm vi: AI Reconciliation Studio trong repository hiện tại. Đây là **phân tích và đề xuất**, không phải đặc tả đã được duyệt hoặc bằng chứng đã triển khai giao diện mới. Trạng thái phát hành được ghi riêng tại [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 
 ## 1. Cơ sở đánh giá và giới hạn
@@ -58,7 +60,7 @@ API nền đang có đủ phần lớn dữ liệu cần trình bày. Việc g�
 
 [P] Dùng cùng trục canh cho header/transcript/composer. Transcript văn bản có giới hạn chiều dài đọc; bảng/review được mở rộng vào vùng làm việc cạnh Chat. Cần kiểm soát thứ tự đọc và trả focus khi mở panel. Composer không che dòng cuối hoặc quyết định đang duyệt; mobile kiểm với bàn phím ảo và chiều cao nhỏ.
 
-### C. Sidebar
+### C. Sidebar · đề xuất ba mục đã được thay thế
 
 [D] CSS hiện hành ẩn sidebar ở breakpoint hẹp và dùng nút mở drawer; desktop chưa có thao tác thu gọn. Điều hướng hiện tại có nhiều mục nghiệp vụ. Có mâu thuẫn tài liệu: `Rules.md` §9.1 yêu cầu Assistant/Lịch sử/Cài đặt; các bổ sung và nghiệm thu sau mở thêm truy cập nghiệp vụ. Tác động là chưa có một sơ đồ sidebar đã chốt duy nhất cho đợt đại tu. Báo cáo này **không tự sửa Rules/kế hoạch hoặc xóa route**.
 
@@ -232,7 +234,7 @@ Giữ những phần đã hoạt động trong phạm vi kiểm gồm điều h�
 
 Số lần bấm trên là đoạn đo bằng Playwright sau khi fixture đã đặt đúng điểm bắt đầu. Các con số end-to-end về thời gian, thao tác nhập, chuyển trang và số lần xác nhận do người dùng cần một vòng baseline UAT. [Kiến trúc trải nghiệm](ui-redesign/UX_INFORMATION_ARCHITECTURE.md#3-hành-trình-điểm-rút-gọn-và-phép-đo) và [kế hoạch nghiệm thu](ui-redesign/IMPLEMENTATION_AND_ACCEPTANCE_PLAN.md#5-đo-hành-trình-và-cửa-nghiệm-thu) định nghĩa cách thu cùng dữ liệu và tránh đếm hộ tác vụ người dùng.
 
-### 8.6. Quyết định thiết kế và kiểm lại tính nhất quán
+### 8.6. Các phương án tại thời điểm nghiên cứu
 
 **NEEDS_DECISION.** `Rules.md` §9.1 giữ quyết định ngày 02/11 về sidebar ba mục. Bổ sung 06/11 đầu `PROJECT_PLAN.md` và §6.1 `AUTOMATION_PRODUCT_PLAN.md` mở các lối nghiệp vụ, tương ứng source. Phương án ba mục trong phần 3.C là đề xuất lịch sử. Đề xuất mới giữ sáu mục, Chat là mặc định, Ngoại lệ nằm trong Kết quả của Đối soát và deep links giữ nguyên. [D01](ui-redesign/OPEN_DECISIONS.md) so ưu/nhược điểm và chờ chủ dự án chốt.
 
