@@ -105,7 +105,35 @@ def view(row: AgentWorkflowRow) -> WorkflowView:
 
 
 def save(row: AgentWorkflowRow, state: WorkflowState) -> None:
-    row.detail = state.model_dump(mode="json")
+    """Persist an export scope using existing query fields, readable by rollback images.
+
+    The typed API/wire scope is transient metadata. DISPLAYED_QUERY is encoded by
+    the pinned DataQuery on the intent and existing state.export_query. Never
+    discard an unpinned scope or apply this exclusion to untrusted result rows.
+    """
+    intents = [state.intent]
+    for review in state.reviews:
+        intents.extend([review.reply_intent, *(option.intent for option in review.options)])
+    for intent in intents:
+        if intent and intent.intent == "EXPORT_RESULT" and intent.export_scope == "DISPLAYED_QUERY":
+            if state.export_query is None or (
+                intent.query is not None and intent.query != state.export_query
+            ):
+                raise DomainError("QUERY_SEMANTICS_REQUIRED", "Bảng cần xuất chưa được ghim.")
+            if intent.query is None:
+                intent.query = state.export_query.model_copy(deep=True)
+    row.detail = state.model_dump(
+        mode="json",
+        exclude={
+            "intent": {"export_scope"},
+            "reviews": {
+                "__all__": {
+                    "reply_intent": {"export_scope"},
+                    "options": {"__all__": {"intent": {"export_scope"}}},
+                }
+            },
+        },
+    )
     row.updated_at = now()
 
 

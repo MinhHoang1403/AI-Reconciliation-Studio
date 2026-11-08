@@ -7,6 +7,7 @@ from datetime import timedelta
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -16,9 +17,10 @@ from studio.agent_intents import (
     approval_bypass_requested,
     currency_bypass_requested,
     data_mutation_requested,
+    export_query_for_intent,
     interpret_requests,
     resolve_attached_normalization,
-    resolve_displayed_export,
+    resolve_deferred_export_read,
     resolve_named_reconciliation,
     resolve_native_read,
 )
@@ -74,6 +76,86 @@ from studio.repository import get_scoped, project_for_table, reserve_gemini_requ
 
 Fence = Callable[[Session, str, str], JobRow]
 Finish = Callable[[Session, JobRow, dict[str, Any]], None]
+
+
+def effective_request_context(
+    db: Session, actor: Actor, conversation_id: str, context: AssistantContext
+) -> AssistantContext:
+    """Use the same conversation-scoped run inheritance for dispatch and execution."""
+    if context.dataset_id is not None or context.run_id is not None:
+        return context
+    previous = db.scalar(
+        select(AgentWorkflowRow)
+        .where(
+            AgentWorkflowRow.conversation_id == conversation_id,
+            AgentWorkflowRow.actor_id == actor.id,
+            AgentWorkflowRow.state.in_(
+                ["COMPLETED", "PARTIAL", "BLOCKED", "FAILED", "WAITING_REVIEW"]
+            ),
+            AgentWorkflowRow.context["run_id"].astext.is_not(None),
+        )
+        .order_by(AgentWorkflowRow.created_at.desc(), AgentWorkflowRow.id.desc())
+        .limit(1)
+    )
+    return AssistantContext.model_validate(previous.context) if previous else context
+
+
+def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
+    """Read-only eligibility hint; never mutate payload/idempotency or call a provider.
+
+    Actual execution rechecks scope and is forbidden from falling back to AI on
+    the native lane. Stale/malformed hints remain on the ordinary inference lane.
+    """
+    try:
+        if job.kind == "agent":
+            member = db.get(MembershipRow, (job.workspace_id, job.payload["actor_id"]))
+            if member is None or member.role not in {"owner", "editor"}:
+                return False
+            actor = Actor(member.actor_id, member.workspace_id, member.role)
+            conversation = own_conversation(db, actor, job.payload["conversation_id"])
+            message = db.get(MessageRow, job.payload["message_id"])
+            if (
+                not message
+                or message.job_id != job.id
+                or message.conversation_id != conversation.id
+            ):
+                return False
+            context = effective_request_context(
+                db, actor, conversation.id, AssistantContext.model_validate(message.context)
+            )
+            catalogue = agent_catalogue(db, actor, context, job.payload.get("dataset_ids", []))
+            return bool(
+                resolve_native_read(message.text, catalogue)
+                or resolve_named_reconciliation(message.text, catalogue)
+            )
+        if job.kind == "agent_review":
+            row = db.get(AgentWorkflowRow, job.payload["workflow_id"])
+            if row is None or row.workspace_id != job.workspace_id:
+                return False
+            member = db.get(MembershipRow, (job.workspace_id, row.actor_id))
+            if member is None or member.role not in {"owner", "editor"}:
+                return False
+            actor = Actor(member.actor_id, member.workspace_id, member.role)
+            own_conversation(db, actor, row.conversation_id)
+            state = WorkflowState.model_validate(row.detail)
+            reply = ReviewReply.model_validate(job.payload["reply"])
+            review = next((r for r in state.reviews if r.id == reply.review_id), None)
+            if review is None or review.kind != "CLARIFICATION" or review.state != "OPEN":
+                return False
+            catalogue = agent_catalogue(
+                db,
+                actor,
+                AssistantContext.model_validate(row.context),
+                state.dataset_ids,
+                workflow_id=row.id,
+            )
+            catalogue = catalogue.model_copy(
+                update={"previous_goal": row.goal, "pending_question": review.question}
+            )
+            return resolve_deferred_export_read(reply.text, catalogue) is not None
+    except (DomainError, ValidationError, KeyError, TypeError):
+        return False
+    return False
 
 
 def persist_request_failure(db: Session, job: JobRow) -> None:
@@ -257,7 +339,9 @@ def model_call(
             db.commit()
 
 
-def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) -> None:
+def interpret(
+    job_id: str, token: str, row_id: str, factory: Any, fence: Fence, *, native_only: bool = False
+) -> None:
     with factory() as db:
         fence(db, job_id, token)
         row = db.get(AgentWorkflowRow, row_id, with_for_update=True)
@@ -309,13 +393,11 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
         parent = get_scoped(db, JobRow, row.parent_job_id, actor)
         command = parent.payload.get("command")
         goal = row.goal
-        displayed_export = resolve_displayed_export(goal, catalogue)
         plain_listing = resolve_native_read(goal, catalogue) or resolve_named_reconciliation(
             goal, catalogue
         )
         if plain_listing is not None:
-            if displayed_export and displayed_export.intent == "EXPORT_RESULT":
-                state.export_query = catalogue.previous_query
+            state.export_query = export_query_for_intent(plain_listing, catalogue)
             if plain_listing.intent == "SUMMARIZE_RESULTS":
                 context.group_id = context.case_id = None
                 row.context = context.model_dump(mode="json")
@@ -372,6 +454,10 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
                 save(row, state)
                 db.commit()
                 return
+    if native_only:
+        raise DomainError(
+            "STALE_CONTEXT", "Ngữ cảnh đọc đã đổi; hãy kiểm tra lại trước khi gửi.", 409
+        )
     try:
         intents = model_call(
             job_id,
@@ -411,11 +497,20 @@ def interpret(job_id: str, token: str, row_id: str, factory: Any, fence: Fence) 
                     409,
                 )
             state.intent = intents[0]
+            state.export_query = export_query_for_intent(state.intent, current_catalogue)
             save(row, state)
             db.commit()
 
 
-def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: Finish) -> None:
+def execute_agent(
+    job_id: str,
+    token: str,
+    factory: Any,
+    fence: Fence,
+    finish: Finish,
+    *,
+    native_only: bool = False,
+) -> None:
     with factory() as db:
         job = fence(db, job_id, token)
         approved_refresh = (
@@ -437,23 +532,9 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             row_id = str(uuid5(NAMESPACE_URL, f"agent-workflow:{job.id}"))
             row = db.get(AgentWorkflowRow, row_id)
             if row is None:
-                effective_context = AssistantContext.model_validate(message.context)
-                if effective_context.dataset_id is None and effective_context.run_id is None:
-                    previous = db.scalar(
-                        select(AgentWorkflowRow)
-                        .where(
-                            AgentWorkflowRow.conversation_id == conversation.id,
-                            AgentWorkflowRow.actor_id == actor.id,
-                            AgentWorkflowRow.state.in_(
-                                ["COMPLETED", "PARTIAL", "BLOCKED", "FAILED", "WAITING_REVIEW"]
-                            ),
-                            AgentWorkflowRow.context["run_id"].astext.is_not(None),
-                        )
-                        .order_by(AgentWorkflowRow.created_at.desc(), AgentWorkflowRow.id.desc())
-                        .limit(1)
-                    )
-                    if previous:
-                        effective_context = AssistantContext.model_validate(previous.context)
+                effective_context = effective_request_context(
+                    db, actor, conversation.id, AssistantContext.model_validate(message.context)
+                )
                 row = AgentWorkflowRow(
                     id=row_id,
                     workspace_id=actor.workspace_id,
@@ -529,23 +610,36 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 )
         # Clarification uses the real scoped source catalogue. Mapping/rule edits
         # remain previews and can never be applied by this branch.
-        output = model_call(
-            job_id,
-            token,
-            row_id,
-            "interpret_user_request"
+        native_reply = (
+            resolve_deferred_export_read(reply.text, catalogue)
             if review.kind == "CLARIFICATION"
-            else "interpret_review_reply",
-            INTENT_REVISION if review.kind == "CLARIFICATION" else REVIEW_REVISION,
-            factory,
-            fence,
-            lambda provider, policy, reserve: (
-                ReviewInterpretation(
-                    intent=interpret_requests(provider, [reply.text], catalogue, policy, reserve)[0]
-                )
+            else None
+        )
+        if native_only and native_reply is None:
+            raise DomainError("STALE_CONTEXT", "Ngữ cảnh trả lời đã đổi; hãy kiểm tra lại.", 409)
+        output = (
+            ReviewInterpretation(intent=native_reply)
+            if native_reply is not None
+            else model_call(
+                job_id,
+                token,
+                row_id,
+                "interpret_user_request"
                 if review.kind == "CLARIFICATION"
-                else interpret_review_reply(provider, review, reply.text, policy, reserve)
-            ),
+                else "interpret_review_reply",
+                INTENT_REVISION if review.kind == "CLARIFICATION" else REVIEW_REVISION,
+                factory,
+                fence,
+                lambda provider, policy, reserve: (
+                    ReviewInterpretation(
+                        intent=interpret_requests(
+                            provider, [reply.text], catalogue, policy, reserve
+                        )[0]
+                    )
+                    if review.kind == "CLARIFICATION"
+                    else interpret_review_reply(provider, review, reply.text, policy, reserve)
+                ),
+            )
         )
         with factory() as db:
             job = fence(db, job_id, token)
@@ -699,9 +793,13 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
                 # new-period and reconciliation-contract review gate.
                 current.state = "DECIDED"
                 current.decision_sha256 = digest(
-                    dict(type="CLARIFICATION", intent=output.intent.model_dump(mode="json"))
+                    dict(
+                        type="CLARIFICATION",
+                        intent=output.intent.model_dump(mode="json", exclude={"export_scope"}),
+                    )
                 )
                 state.intent = output.intent
+                state.export_query = export_query_for_intent(state.intent, catalogue)
                 if reply.model_choice is not None:
                     state.model_choice = reply.model_choice
                 state.error_code = None
@@ -893,7 +991,7 @@ def execute_agent(job_id: str, token: str, factory: Any, fence: Fence, finish: F
             db.commit()
         return
     if not approved_refresh:
-        interpret(job_id, token, row_id, factory, fence)
+        interpret(job_id, token, row_id, factory, fence, native_only=native_only)
     with factory() as db:
         job = fence(db, job_id, token)
         row = db.get(AgentWorkflowRow, row_id, with_for_update=True)

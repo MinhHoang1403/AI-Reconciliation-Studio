@@ -1,0 +1,4709 @@
+[
+  {
+    "id": "M01",
+    "description": "Bảo trì thiết bị",
+    "request": {
+      "left": {
+        "canonical_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+        "role": "reference",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-06-01",
+        "coverage_end": "2032-07-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-07-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+        "role": "counterpart",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-06-01",
+        "coverage_end": "2032-07-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-07-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "period_start": "2032-06-01",
+      "period_end": "2032-07-01",
+      "timezone": "UTC",
+      "effective_from": "2032-06-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đây là kiểm tra công nợ bảo dưỡng, cần bản nháp và chờ tôi duyệt. Đề xuất quy tắc để tôi kiểm tra và duyệt. Khóa ghép document_ref; quan hệ ONE_TO_ONE; khoản tiền declared_gross, giữ dấu, không cộng gộp. Sai số tuyệt đối 0."
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Bảo trì thiết bị - chứng từ.csv",
+          "canonical": {
+            "id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+            "source_table_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+            "schema_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+            "workspace_id": "planner-evaluation",
+            "name": "Bảo trì thiết bị - chứng từ.csv",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M01-0-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-06-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+                "source_table_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M01-0-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-06-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+                "source_table_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Bảo trì thiết bị - đối ứng.xlsx",
+          "canonical": {
+            "id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+            "source_table_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+            "schema_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+            "workspace_id": "planner-evaluation",
+            "name": "Bảo trì thiết bị - đối ứng.xlsx",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M01-1-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-06-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+                "source_table_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M01-1-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-06-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+                "source_table_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "PROPOSED",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "9b126abf-b1ec-50aa-938b-c90a7fe006bb",
+          "role": "reference",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-06-01",
+          "coverage_end": "2032-07-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-07-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "5a7ea01d-dbbb-5340-b8c2-775a5f76b8f2",
+          "role": "counterpart",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-06-01",
+          "coverage_end": "2032-07-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-07-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "join_keys": [
+          {
+            "left": "document_ref",
+            "right": "document_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "amount_reported",
+            "right": "amount_reported",
+            "metric_id": "declared_gross",
+            "currency": "VND",
+            "unit": "VND",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_ONE",
+        "aggregation": "NONE",
+        "comparison_grain": "business_document",
+        "period_start": "2032-06-01",
+        "period_end": "2032-07-01",
+        "timezone": "UTC",
+        "effective_from": "2032-06-01",
+        "effective_to": null
+      }
+    }
+  },
+  {
+    "id": "M02",
+    "description": "Thuê container",
+    "request": {
+      "left": {
+        "canonical_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+        "role": "reference",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-07-01",
+        "coverage_end": "2032-08-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-08-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+        "role": "counterpart",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-07-01",
+        "coverage_end": "2032-08-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-08-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "period_start": "2032-07-01",
+      "period_end": "2032-08-01",
+      "timezone": "UTC",
+      "effective_from": "2032-07-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đây là kiểm tra công nợ bảo dưỡng, cần bản nháp và chờ tôi duyệt. Đề xuất quy tắc để tôi kiểm tra và duyệt. Khóa ghép document_ref; quan hệ ONE_TO_MANY; khoản tiền declared_gross, giữ dấu, SUM_SIGNED phía nhiều. Sai số tuyệt đối 0."
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Thuê container - chứng từ.csv",
+          "canonical": {
+            "id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+            "source_table_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+            "schema_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "5939b62a-34e1-5e64-95d2-6977fe37a71e-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+            "workspace_id": "planner-evaluation",
+            "name": "Thuê container - chứng từ.csv",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M02-0-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-07-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+                "source_table_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M02-0-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-07-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+                "source_table_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Thuê container - đối ứng.xlsx",
+          "canonical": {
+            "id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+            "source_table_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+            "schema_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+            "schema_revision": 1,
+            "grain": "cash_posting",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 3,
+            "valid_count": 3,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "5d3667df-4bc4-5c34-aa21-e1332a255191-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+            "workspace_id": "planner-evaluation",
+            "name": "Thuê container - đối ứng.xlsx",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "cash_posting",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              },
+              {
+                "id": "collection_event",
+                "name": "Mã của từng lần thu, không phải mã đối tượng",
+                "data_type": "string",
+                "required": true
+              }
+            ],
+            "business_key_fields": [
+              "collection_event"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref",
+            "collection_event"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M02-1-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-07-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "30.00",
+              "collection_event": "RC-M02-1-0001"
+            },
+            "provenance": [
+              {
+                "file_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+                "source_table_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M02-1-1",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-07-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "40.00",
+              "collection_event": "RC-M02-1-0002"
+            },
+            "provenance": [
+              {
+                "file_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+                "source_table_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M02-1-2",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-07-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00",
+              "collection_event": "RC-M02-1-0003"
+            },
+            "provenance": [
+              {
+                "file_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+                "source_table_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+                "source_row_id": "2",
+                "sheet": "Sheet1",
+                "row": 4
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "PROPOSED",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "5939b62a-34e1-5e64-95d2-6977fe37a71e",
+          "role": "reference",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-07-01",
+          "coverage_end": "2032-08-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-08-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "5d3667df-4bc4-5c34-aa21-e1332a255191",
+          "role": "counterpart",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-07-01",
+          "coverage_end": "2032-08-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-08-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "join_keys": [
+          {
+            "left": "document_ref",
+            "right": "document_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "amount_reported",
+            "right": "amount_reported",
+            "metric_id": "declared_gross",
+            "currency": "VND",
+            "unit": "VND",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_MANY",
+        "aggregation": "SUM_SIGNED",
+        "comparison_grain": "business_document",
+        "period_start": "2032-07-01",
+        "period_end": "2032-08-01",
+        "timezone": "UTC",
+        "effective_from": "2032-07-01",
+        "effective_to": null
+      }
+    }
+  },
+  {
+    "id": "M03",
+    "description": "Vận tải lạnh",
+    "request": {
+      "left": {
+        "canonical_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+        "role": "reference",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-08-01",
+        "coverage_end": "2032-09-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-09-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+        "role": "counterpart",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-08-01",
+        "coverage_end": "2032-09-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-09-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "period_start": "2032-08-01",
+      "period_end": "2032-09-01",
+      "timezone": "UTC",
+      "effective_from": "2032-08-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đề xuất N:1 để tôi duyệt; nối bằng khóa ghép region và document_ref ở hai bên; khoản tiền declared_gross, cộng SUM_SIGNED phía nhiều; sai số 0."
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Vận tải lạnh - chứng từ.csv",
+          "canonical": {
+            "id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+            "source_table_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+            "schema_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+            "schema_revision": 1,
+            "grain": "cash_posting",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 3,
+            "valid_count": 3,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+            "workspace_id": "planner-evaluation",
+            "name": "Vận tải lạnh - chứng từ.csv",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "cash_posting",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              },
+              {
+                "id": "collection_event",
+                "name": "Mã của từng lần thu, không phải mã đối tượng",
+                "data_type": "string",
+                "required": true
+              }
+            ],
+            "business_key_fields": [
+              "collection_event"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref",
+            "collection_event"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M03-0-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-08-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "50.00",
+              "collection_event": "RC-M03-0-0001"
+            },
+            "provenance": [
+              {
+                "file_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+                "source_table_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M03-0-1",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-08-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "20.00",
+              "collection_event": "RC-M03-0-0002"
+            },
+            "provenance": [
+              {
+                "file_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+                "source_table_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M03-0-2",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-08-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00",
+              "collection_event": "RC-M03-0-0003"
+            },
+            "provenance": [
+              {
+                "file_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+                "source_table_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+                "source_row_id": "2",
+                "sheet": "Sheet1",
+                "row": 4
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Vận tải lạnh - đối ứng.xlsx",
+          "canonical": {
+            "id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+            "source_table_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+            "schema_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "eb587d96-8315-5fdd-a6d9-20055905cde0-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+            "workspace_id": "planner-evaluation",
+            "name": "Vận tải lạnh - đối ứng.xlsx",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "region",
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M03-1-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-08-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+                "source_table_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M03-1-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-08-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+                "source_table_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "PROPOSED",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "f0c725d7-ff55-5c78-8516-a789bdf0fbb7",
+          "role": "reference",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-08-01",
+          "coverage_end": "2032-09-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-09-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "eb587d96-8315-5fdd-a6d9-20055905cde0",
+          "role": "counterpart",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-08-01",
+          "coverage_end": "2032-09-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-09-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "join_keys": [
+          {
+            "left": "region",
+            "right": "region"
+          },
+          {
+            "left": "document_ref",
+            "right": "document_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "amount_reported",
+            "right": "amount_reported",
+            "metric_id": "declared_gross",
+            "currency": "VND",
+            "unit": "VND",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "MANY_TO_ONE",
+        "aggregation": "SUM_SIGNED",
+        "comparison_grain": "business_document",
+        "period_start": "2032-08-01",
+        "period_end": "2032-09-01",
+        "timezone": "UTC",
+        "effective_from": "2032-08-01",
+        "effective_to": null
+      }
+    }
+  },
+  {
+    "id": "M04",
+    "description": "Hoàn trả dịch vụ",
+    "request": {
+      "left": {
+        "canonical_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+        "role": "reference",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-09-01",
+        "coverage_end": "2032-10-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-10-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+        "role": "counterpart",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-09-01",
+        "coverage_end": "2032-10-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-10-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "period_start": "2032-09-01",
+      "period_end": "2032-10-01",
+      "timezone": "UTC",
+      "effective_from": "2032-09-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đây là kiểm tra công nợ bảo dưỡng, cần bản nháp và chờ tôi duyệt. Đề xuất quy tắc để tôi kiểm tra và duyệt. Khóa ghép document_ref; quan hệ ONE_TO_MANY; khoản tiền declared_gross, giữ dấu, SUM_SIGNED phía nhiều. Sai số tuyệt đối 0."
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Hoàn trả dịch vụ - chứng từ.csv",
+          "canonical": {
+            "id": "f98c9409-6608-58bb-b49c-e7c821020266",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+            "source_table_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+            "schema_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "f98c9409-6608-58bb-b49c-e7c821020266",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "f98c9409-6608-58bb-b49c-e7c821020266-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "f98c9409-6608-58bb-b49c-e7c821020266",
+            "workspace_id": "planner-evaluation",
+            "name": "Hoàn trả dịch vụ - chứng từ.csv",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M04-0-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-09-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+                "source_table_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M04-0-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-09-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+                "source_table_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Hoàn trả dịch vụ - đối ứng.xlsx",
+          "canonical": {
+            "id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+            "source_table_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+            "schema_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+            "schema_revision": 1,
+            "grain": "cash_posting",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 3,
+            "valid_count": 3,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "e24da5ab-dc0a-561a-812f-47ef9dabb115-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+            "workspace_id": "planner-evaluation",
+            "name": "Hoàn trả dịch vụ - đối ứng.xlsx",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "cash_posting",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              },
+              {
+                "id": "collection_event",
+                "name": "Mã của từng lần thu, không phải mã đối tượng",
+                "data_type": "string",
+                "required": true
+              }
+            ],
+            "business_key_fields": [
+              "collection_event"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref",
+            "collection_event"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M04-1-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-09-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "100.00",
+              "collection_event": "RC-M04-1-0001"
+            },
+            "provenance": [
+              {
+                "file_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+                "source_table_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M04-1-1",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-09-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-30.00",
+              "collection_event": "RC-M04-1-0002"
+            },
+            "provenance": [
+              {
+                "file_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+                "source_table_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M04-1-2",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-09-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00",
+              "collection_event": "RC-M04-1-0003"
+            },
+            "provenance": [
+              {
+                "file_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+                "source_table_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+                "source_row_id": "2",
+                "sheet": "Sheet1",
+                "row": 4
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "PROPOSED",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "f98c9409-6608-58bb-b49c-e7c821020266",
+          "role": "reference",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-09-01",
+          "coverage_end": "2032-10-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-10-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "e24da5ab-dc0a-561a-812f-47ef9dabb115",
+          "role": "counterpart",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-09-01",
+          "coverage_end": "2032-10-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-10-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "join_keys": [
+          {
+            "left": "document_ref",
+            "right": "document_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "amount_reported",
+            "right": "amount_reported",
+            "metric_id": "declared_gross",
+            "currency": "VND",
+            "unit": "VND",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_MANY",
+        "aggregation": "SUM_SIGNED",
+        "comparison_grain": "business_document",
+        "period_start": "2032-09-01",
+        "period_end": "2032-10-01",
+        "timezone": "UTC",
+        "effective_from": "2032-09-01",
+        "effective_to": null
+      }
+    }
+  },
+  {
+    "id": "M05",
+    "description": "Kho liên chi nhánh",
+    "request": {
+      "left": {
+        "canonical_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+        "role": "reference",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {},
+        "coverage_start": "2032-10-01",
+        "coverage_end": "2032-11-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-11-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+        "role": "counterpart",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {},
+        "coverage_start": "2032-10-01",
+        "coverage_end": "2032-11-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-11-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "period_start": "2032-10-01",
+      "period_end": "2032-11-01",
+      "timezone": "UTC",
+      "effective_from": "2032-10-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đây là kiểm tra công nợ bảo dưỡng, cần bản nháp và chờ tôi duyệt. Đề xuất quy tắc để tôi kiểm tra và duyệt. Khóa ghép region, document_ref; quan hệ ONE_TO_ONE; khoản tiền declared_gross, giữ dấu, không cộng gộp. Sai số tuyệt đối 0."
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Kho liên chi nhánh - chứng từ.csv",
+          "canonical": {
+            "id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+            "source_table_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+            "schema_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+            "workspace_id": "planner-evaluation",
+            "name": "Kho liên chi nhánh - chứng từ.csv",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "region",
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "region",
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M05-0-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-10-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+                "source_table_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M05-0-1",
+            "payload": {
+              "document_ref": "001",
+              "region": "SG",
+              "business_day": "2032-10-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+                "source_table_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Kho liên chi nhánh - đối ứng.xlsx",
+          "canonical": {
+            "id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+            "source_table_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+            "schema_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "c894c335-188f-5f20-885a-c7cbac68d9c2-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+            "workspace_id": "planner-evaluation",
+            "name": "Kho liên chi nhánh - đối ứng.xlsx",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "region",
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "region",
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M05-1-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-10-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+                "source_table_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M05-1-1",
+            "payload": {
+              "document_ref": "001",
+              "region": "SG",
+              "business_day": "2032-10-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+                "source_table_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "PROPOSED",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "c6e22166-ef2d-53b3-9870-56a1ec02ce73",
+          "role": "reference",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {},
+          "coverage_start": "2032-10-01",
+          "coverage_end": "2032-11-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-11-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "c894c335-188f-5f20-885a-c7cbac68d9c2",
+          "role": "counterpart",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {},
+          "coverage_start": "2032-10-01",
+          "coverage_end": "2032-11-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-11-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "join_keys": [
+          {
+            "left": "region",
+            "right": "region"
+          },
+          {
+            "left": "document_ref",
+            "right": "document_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "amount_reported",
+            "right": "amount_reported",
+            "metric_id": "declared_gross",
+            "currency": "VND",
+            "unit": "VND",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_ONE",
+        "aggregation": "NONE",
+        "comparison_grain": "business_document",
+        "period_start": "2032-10-01",
+        "period_end": "2032-11-01",
+        "timezone": "UTC",
+        "effective_from": "2032-10-01",
+        "effective_to": null
+      }
+    }
+  },
+  {
+    "id": "M06",
+    "description": "Thu học phí",
+    "request": {
+      "left": {
+        "canonical_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+        "role": "reference",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-11-01",
+        "coverage_end": "2032-12-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-12-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+        "role": "counterpart",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-11-01",
+        "coverage_end": "2032-12-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2032-12-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "period_start": "2032-11-01",
+      "period_end": "2032-12-01",
+      "timezone": "UTC",
+      "effective_from": "2032-11-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đây là kiểm tra công nợ bảo dưỡng, cần bản nháp và chờ tôi duyệt. Đề xuất quy tắc để tôi kiểm tra và duyệt. Khóa ghép document_ref; quan hệ ONE_TO_ONE; khoản tiền declared_gross, giữ dấu, không cộng gộp. Sai số tuyệt đối 0."
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Thu học phí - chứng từ.csv",
+          "canonical": {
+            "id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+            "source_table_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+            "schema_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+            "workspace_id": "planner-evaluation",
+            "name": "Thu học phí - chứng từ.csv",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M06-0-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-11-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+                "source_table_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M06-0-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-11-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+                "source_table_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Thu học phí - đối ứng.xlsx",
+          "canonical": {
+            "id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+            "source_table_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+            "schema_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+            "workspace_id": "planner-evaluation",
+            "name": "Thu học phí - đối ứng.xlsx",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M06-1-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-11-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+                "source_table_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M06-1-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-11-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+                "source_table_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "PROPOSED",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "4d1cf7e9-d6ba-5e35-8cb9-4dc9ed0582d8",
+          "role": "reference",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-11-01",
+          "coverage_end": "2032-12-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-12-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "0b6ae1fd-68b3-5bcb-bf6a-312054f19b94",
+          "role": "counterpart",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-11-01",
+          "coverage_end": "2032-12-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2032-12-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "join_keys": [
+          {
+            "left": "document_ref",
+            "right": "document_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "amount_reported",
+            "right": "amount_reported",
+            "metric_id": "declared_gross",
+            "currency": "VND",
+            "unit": "VND",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_ONE",
+        "aggregation": "NONE",
+        "comparison_grain": "business_document",
+        "period_start": "2032-11-01",
+        "period_end": "2032-12-01",
+        "timezone": "UTC",
+        "effective_from": "2032-11-01",
+        "effective_to": null
+      }
+    }
+  },
+  {
+    "id": "M07",
+    "description": "Phí tư vấn USD",
+    "request": {
+      "left": {
+        "canonical_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+        "role": "reference",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-12-01",
+        "coverage_end": "2033-01-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2033-01-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+        "role": "counterpart",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2032-12-01",
+        "coverage_end": "2033-01-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2033-01-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "period_start": "2032-12-01",
+      "period_end": "2033-01-01",
+      "timezone": "UTC",
+      "effective_from": "2032-12-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đây là kiểm tra công nợ bảo dưỡng, cần bản nháp và chờ tôi duyệt. Đề xuất quy tắc để tôi kiểm tra và duyệt. Khóa ghép document_ref; quan hệ ONE_TO_ONE; khoản tiền declared_gross, giữ dấu, không cộng gộp. Sai số tuyệt đối 0."
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Phí tư vấn USD - chứng từ.csv",
+          "canonical": {
+            "id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+            "source_table_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+            "schema_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+            "workspace_id": "planner-evaluation",
+            "name": "Phí tư vấn USD - chứng từ.csv",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "USD",
+                "unit": "USD"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M07-0-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-12-15T00:00:00Z",
+              "currency": "USD",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+                "source_table_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M07-0-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-12-15T00:00:00Z",
+              "currency": "USD",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+                "source_table_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Phí tư vấn USD - đối ứng.xlsx",
+          "canonical": {
+            "id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+            "source_table_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+            "schema_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+            "workspace_id": "planner-evaluation",
+            "name": "Phí tư vấn USD - đối ứng.xlsx",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "USD",
+                "unit": "USD"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M07-1-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2032-12-15T00:00:00Z",
+              "currency": "USD",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+                "source_table_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M07-1-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2032-12-15T00:00:00Z",
+              "currency": "USD",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+                "source_table_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "PROPOSED",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "f82fb652-b441-5aeb-8fb2-b817fcec67fd",
+          "role": "reference",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-12-01",
+          "coverage_end": "2033-01-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2033-01-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "dfa0966f-69ed-5e63-adc1-8cebdf7d7c44",
+          "role": "counterpart",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2032-12-01",
+          "coverage_end": "2033-01-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2033-01-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "join_keys": [
+          {
+            "left": "document_ref",
+            "right": "document_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "amount_reported",
+            "right": "amount_reported",
+            "metric_id": "declared_gross",
+            "currency": "USD",
+            "unit": "USD",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_ONE",
+        "aggregation": "NONE",
+        "comparison_grain": "business_document",
+        "period_start": "2032-12-01",
+        "period_end": "2033-01-01",
+        "timezone": "UTC",
+        "effective_from": "2032-12-01",
+        "effective_to": null
+      }
+    }
+  },
+  {
+    "id": "M08",
+    "description": "Trước và sau phí",
+    "request": {
+      "left": {
+        "canonical_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+        "role": "reference",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2033-01-01",
+        "coverage_end": "2033-02-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2033-02-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+        "role": "counterpart",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2033-01-01",
+        "coverage_end": "2033-02-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2033-02-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "period_start": "2033-01-01",
+      "period_end": "2033-02-01",
+      "timezone": "UTC",
+      "effective_from": "2033-01-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đây là kiểm tra công nợ bảo dưỡng, cần bản nháp và chờ tôi duyệt. Đề xuất quy tắc để tôi kiểm tra và duyệt. Khóa ghép document_ref; quan hệ ONE_TO_ONE; khoản tiền declared_gross, giữ dấu, không cộng gộp. Sai số tuyệt đối 0."
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Trước và sau phí - chứng từ.csv",
+          "canonical": {
+            "id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+            "source_table_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+            "schema_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+            "workspace_id": "planner-evaluation",
+            "name": "Trước và sau phí - chứng từ.csv",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M08-0-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2033-01-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+                "source_table_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M08-0-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2033-01-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+                "source_table_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Trước và sau phí - đối ứng.xlsx",
+          "canonical": {
+            "id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+            "source_table_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+            "schema_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+            "workspace_id": "planner-evaluation",
+            "name": "Trước và sau phí - đối ứng.xlsx",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền sau phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_net",
+                "amount_basis": "net",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M08-1-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2033-01-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+                "source_table_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M08-1-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2033-01-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+                "source_table_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "NEEDS_REVIEW",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "a2f7719b-cbff-5385-b8c0-b02b9ab7dc1d",
+          "role": "reference",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2033-01-01",
+          "coverage_end": "2033-02-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2033-02-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "0beb74b1-30cb-5441-a5e9-bf95ba716e79",
+          "role": "counterpart",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2033-01-01",
+          "coverage_end": "2033-02-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2033-02-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "join_keys": [
+          {
+            "left": "document_ref",
+            "right": "document_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "amount_reported",
+            "right": "amount_reported",
+            "metric_id": "declared_gross",
+            "currency": "VND",
+            "unit": "VND",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_ONE",
+        "aggregation": "NONE",
+        "comparison_grain": "business_document",
+        "period_start": "2033-01-01",
+        "period_end": "2033-02-01",
+        "timezone": "UTC",
+        "effective_from": "2033-01-01",
+        "effective_to": null
+      }
+    }
+  },
+  {
+    "id": "M09",
+    "description": "Khác tiền tệ",
+    "request": {
+      "left": {
+        "canonical_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+        "role": "reference",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2033-02-01",
+        "coverage_end": "2033-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2033-03-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+        "role": "counterpart",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2033-02-01",
+        "coverage_end": "2033-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2033-03-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "period_start": "2033-02-01",
+      "period_end": "2033-03-01",
+      "timezone": "UTC",
+      "effective_from": "2033-02-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đây là kiểm tra công nợ bảo dưỡng, cần bản nháp và chờ tôi duyệt. Đề xuất quy tắc để tôi kiểm tra và duyệt. Khóa ghép document_ref; quan hệ ONE_TO_ONE; khoản tiền declared_gross, giữ dấu, không cộng gộp. Sai số tuyệt đối 0."
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Khác tiền tệ - chứng từ.csv",
+          "canonical": {
+            "id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+            "source_table_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+            "schema_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "ee8fde50-3658-5fdc-ad81-394069d2eee9-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+            "workspace_id": "planner-evaluation",
+            "name": "Khác tiền tệ - chứng từ.csv",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M09-0-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2033-02-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+                "source_table_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M09-0-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2033-02-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+                "source_table_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Khác tiền tệ - đối ứng.xlsx",
+          "canonical": {
+            "id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+            "source_table_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+            "schema_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+            "workspace_id": "planner-evaluation",
+            "name": "Khác tiền tệ - đối ứng.xlsx",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "USD",
+                "unit": "USD"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M09-1-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2033-02-15T00:00:00Z",
+              "currency": "USD",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+                "source_table_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M09-1-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2033-02-15T00:00:00Z",
+              "currency": "USD",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+                "source_table_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "NEEDS_REVIEW",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "ee8fde50-3658-5fdc-ad81-394069d2eee9",
+          "role": "reference",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2033-02-01",
+          "coverage_end": "2033-03-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2033-03-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "d5532ef5-135c-57f7-a65c-9c01e8f8aaba",
+          "role": "counterpart",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2033-02-01",
+          "coverage_end": "2033-03-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2033-03-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "join_keys": [
+          {
+            "left": "document_ref",
+            "right": "document_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "amount_reported",
+            "right": "amount_reported",
+            "metric_id": "declared_gross",
+            "currency": "VND",
+            "unit": "VND",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_ONE",
+        "aggregation": "NONE",
+        "comparison_grain": "business_document",
+        "period_start": "2033-02-01",
+        "period_end": "2033-03-01",
+        "timezone": "UTC",
+        "effective_from": "2033-02-01",
+        "effective_to": null
+      }
+    }
+  },
+  {
+    "id": "M10",
+    "description": "Thiếu độ phủ",
+    "request": {
+      "left": {
+        "canonical_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+        "role": "reference",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": null,
+        "coverage_end": null,
+        "completeness": null,
+        "snapshot_at": null,
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+        "role": "counterpart",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": null,
+        "coverage_end": null,
+        "completeness": null,
+        "snapshot_at": null,
+        "settlement_due_at": null
+      },
+      "period_start": "2033-03-01",
+      "period_end": "2033-04-01",
+      "timezone": "UTC",
+      "effective_from": "2033-03-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đây là kiểm tra công nợ bảo dưỡng, cần bản nháp và chờ tôi duyệt. Đề xuất quy tắc để tôi kiểm tra và duyệt. Khóa ghép document_ref; quan hệ ONE_TO_ONE; khoản tiền declared_gross, giữ dấu, không cộng gộp. Sai số tuyệt đối 0."
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Thiếu độ phủ - chứng từ.csv",
+          "canonical": {
+            "id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+            "source_table_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+            "schema_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+            "workspace_id": "planner-evaluation",
+            "name": "Thiếu độ phủ - chứng từ.csv",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M10-0-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2033-03-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+                "source_table_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M10-0-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2033-03-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+                "source_table_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Thiếu độ phủ - đối ứng.xlsx",
+          "canonical": {
+            "id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+            "source_table_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+            "schema_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "7def2836-ab01-5374-8ba7-e0fa885075d4-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+            "workspace_id": "planner-evaluation",
+            "name": "Thiếu độ phủ - đối ứng.xlsx",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": true,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "document_ref"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M10-1-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2033-03-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00"
+            },
+            "provenance": [
+              {
+                "file_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+                "source_table_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M10-1-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2033-03-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00"
+            },
+            "provenance": [
+              {
+                "file_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+                "source_table_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "NEEDS_REVIEW",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "7499325e-3936-5fd9-97ce-14ee8f3a78cf",
+          "role": "reference",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": null,
+          "coverage_end": null,
+          "completeness": null,
+          "snapshot_at": null,
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "7def2836-ab01-5374-8ba7-e0fa885075d4",
+          "role": "counterpart",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": null,
+          "coverage_end": null,
+          "completeness": null,
+          "snapshot_at": null,
+          "settlement_due_at": null
+        },
+        "join_keys": [
+          {
+            "left": "document_ref",
+            "right": "document_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "amount_reported",
+            "right": "amount_reported",
+            "metric_id": "declared_gross",
+            "currency": "VND",
+            "unit": "VND",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_ONE",
+        "aggregation": "NONE",
+        "comparison_grain": "business_document",
+        "period_start": "2033-03-01",
+        "period_end": "2033-04-01",
+        "timezone": "UTC",
+        "effective_from": "2033-03-01",
+        "effective_to": null
+      }
+    }
+  },
+  {
+    "id": "M11",
+    "description": "Hai khóa ngang bằng",
+    "request": {
+      "left": {
+        "canonical_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+        "role": "reference",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2033-04-01",
+        "coverage_end": "2033-05-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2033-05-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+        "role": "counterpart",
+        "date_field": "business_day",
+        "time_basis": "business_day",
+        "currency_field": "currency",
+        "filters": {
+          "region": "HN"
+        },
+        "coverage_start": "2033-04-01",
+        "coverage_end": "2033-05-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2033-05-03T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "period_start": "2033-04-01",
+      "period_end": "2033-05-01",
+      "timezone": "UTC",
+      "effective_from": "2033-04-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đây là kiểm tra công nợ bảo dưỡng, cần bản nháp và chờ tôi duyệt. Hai khóa document_ref và alternate là hai quan hệ có thể chọn, hiện chưa xác nhận khóa nào đúng nghiệp vụ. Không tự chọn; hãy hỏi thông tin còn thiếu."
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Hai khóa ngang bằng - chứng từ.csv",
+          "canonical": {
+            "id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+            "source_table_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+            "schema_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "4d622de1-429d-5324-acd6-f1bf567c1bf1-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+            "workspace_id": "planner-evaluation",
+            "name": "Hai khóa ngang bằng - chứng từ.csv",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              },
+              {
+                "id": "alternate",
+                "name": "Mã thay thế",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "source_row_key",
+                "name": "Mã chứng từ nội bộ của nguồn",
+                "data_type": "string",
+                "required": true
+              }
+            ],
+            "business_key_fields": [
+              "source_row_key"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref",
+            "alternate",
+            "source_row_key"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M11-0-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2033-04-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00",
+              "alternate": "A0",
+              "source_row_key": "0-M11-00001"
+            },
+            "provenance": [
+              {
+                "file_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+                "source_table_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M11-0-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2033-04-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00",
+              "alternate": "A1",
+              "source_row_key": "0-M11-00002"
+            },
+            "provenance": [
+              {
+                "file_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+                "source_table_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Hai khóa ngang bằng - đối ứng.xlsx",
+          "canonical": {
+            "id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+            "source_table_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+            "schema_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+            "schema_revision": 1,
+            "grain": "business_document",
+            "entity_kind": "business_document",
+            "mapping_revision_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "e82b905a-654e-5230-a4f7-619fd3ca60f5-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+            "workspace_id": "planner-evaluation",
+            "name": "Hai khóa ngang bằng - đối ứng.xlsx",
+            "revision": 1,
+            "entity_kind": "business_document",
+            "grain": "business_document",
+            "fields": [
+              {
+                "id": "document_ref",
+                "name": "Mã tham chiếu của đối tượng dùng đối chiếu",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "region",
+                "name": "Khu vực nghiệp vụ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "business_day",
+                "name": "Ngày nghiệp vụ",
+                "data_type": "date",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "currency",
+                "name": "Tiền tệ",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "amount_reported",
+                "name": "Tiền trước phí",
+                "data_type": "decimal",
+                "required": false,
+                "semantic_metric": "declared_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              },
+              {
+                "id": "alternate",
+                "name": "Mã thay thế",
+                "data_type": "string",
+                "required": false,
+                "semantic_metric": null,
+                "amount_basis": null,
+                "currency": null,
+                "unit": null
+              },
+              {
+                "id": "source_row_key",
+                "name": "Mã chứng từ nội bộ của nguồn",
+                "data_type": "string",
+                "required": true
+              }
+            ],
+            "business_key_fields": [
+              "source_row_key"
+            ]
+          },
+          "identifier_fields": [
+            "document_ref",
+            "alternate",
+            "source_row_key"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "M11-1-0",
+            "payload": {
+              "document_ref": "001",
+              "region": "HN",
+              "business_day": "2033-04-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "70.00",
+              "alternate": "A0",
+              "source_row_key": "1-M11-00001"
+            },
+            "provenance": [
+              {
+                "file_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+                "source_table_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+                "source_row_id": "0",
+                "sheet": "Sheet1",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "M11-1-1",
+            "payload": {
+              "document_ref": "002",
+              "region": "HN",
+              "business_day": "2033-04-15T00:00:00Z",
+              "currency": "VND",
+              "amount_reported": "-20.00",
+              "alternate": "A1",
+              "source_row_key": "1-M11-00002"
+            },
+            "provenance": [
+              {
+                "file_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+                "source_table_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+                "source_row_id": "1",
+                "sheet": "Sheet1",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "NEEDS_REVIEW",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "4d622de1-429d-5324-acd6-f1bf567c1bf1",
+          "role": "reference",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2033-04-01",
+          "coverage_end": "2033-05-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2033-05-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "e82b905a-654e-5230-a4f7-619fd3ca60f5",
+          "role": "counterpart",
+          "date_field": "business_day",
+          "time_basis": "business_day",
+          "currency_field": "currency",
+          "filters": {
+            "region": "HN"
+          },
+          "coverage_start": "2033-04-01",
+          "coverage_end": "2033-05-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2033-05-03T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "join_keys": [
+          {
+            "left": "document_ref",
+            "right": "document_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "amount_reported",
+            "right": "amount_reported",
+            "metric_id": "declared_gross",
+            "currency": "VND",
+            "unit": "VND",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_ONE",
+        "aggregation": "NONE",
+        "comparison_grain": "business_document",
+        "period_start": "2033-04-01",
+        "period_end": "2033-05-01",
+        "timezone": "UTC",
+        "effective_from": "2033-04-01",
+        "effective_to": null
+      }
+    }
+  }
+]

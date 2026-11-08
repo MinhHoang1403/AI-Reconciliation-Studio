@@ -10,6 +10,8 @@
 
 Chỉ dẫn triển khai tự động hóa ngày 06/11/2026 áp dụng [kế hoạch tự động hóa](AUTOMATION_PRODUCT_PLAN.md) trên nhánh từ main đã hợp nhất. AI Assistant tiếp tục là trang mở đầu. Sidebar bổ sung Dữ liệu, Đối soát và Báo cáo bên cạnh Lịch sử và Cài đặt, thay yêu cầu Assistant-only của các mốc lịch sử. Tải CSV/XLSX bắt đầu chuẩn bị dữ liệu theo quy tắc kỹ thuật. Bản tự chuẩn bị phục vụ khám phá, còn chuẩn hóa nghiệp vụ dùng mapping đã duyệt.
 
+Kết quả kiểm tra theo từng ứng viên và các cổng AP-01–AP-15 nằm trong [báo cáo nghiệm thu](IMPLEMENTATION_STATUS.md). Các quan sát và đề xuất cho đợt thiết kế lại giao diện nằm trong [báo cáo phân tích giao diện](INTERFACE_REDESIGN_AUDIT.md).
+
 ---
 
 ## 0. CÁCH ĐỌC VÀ NGUYÊN TẮC KHÔNG XUNG ĐỘT

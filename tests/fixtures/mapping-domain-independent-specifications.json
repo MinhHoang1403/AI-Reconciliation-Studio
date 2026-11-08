@@ -1,0 +1,74 @@
+{
+  "revision": "independent-domain-mapping-1",
+  "purpose": "New literal business labels frozen before inference; same-value columns do not establish meaning. No algorithm or vocabulary tuning on this set. Synthetic column matching only; not independent human acceptance.",
+  "protocol": {
+    "splits": ["holdout"],
+    "seed": 811062,
+    "rows": 48,
+    "sample_limit": 48,
+    "top_k": [1, 3, 5],
+    "rapidfuzz_cutoff": 65,
+    "limits": "Unknown business vocabulary must remain a candidate/review problem. No automatic approval, grain, FX, timezone or financial rule inference."
+  },
+  "domains": [
+    {
+      "id": "maintenance_invoices",
+      "definition": "Invoices, customers and payments have distinct identifiers. Invoice gross is the amount before fees; net is the amount received after fees.",
+      "grain": "maintenance_invoice",
+      "columns": [
+        ["invoice_id", "Invoice ID", "Invoice ID", "ID của hóa đơn bảo trì", "string", "key"],
+        ["customer_id", "Customer ID", "Customer ID", "Customer mã khách hàng", "string", "key"],
+        ["gross_amount", "Gross amount", "Gross amount", "Giá trị trước các khoản phí", "decimal", "gross"],
+        ["net_amount", "Net amount", "Net amount", "Thực nhận sau các khoản phí", "decimal", "net"],
+        ["invoice_date", "Invoice date", "Invoice date", "Ngày lập invoice", "date", "date"],
+        ["currency", "Currency", "Currency", "Đơn vị tiền của hóa đơn", "string", "currency"]
+      ]
+    },
+    {
+      "id": "cold_chain_carriage",
+      "definition": "A shipment identifier is different from a customer identifier. Expected shipping charges are distinct from actual paid shipping charges.",
+      "grain": "shipment_charge",
+      "columns": [
+        ["tracking_id", "Tracking ID", "Tracking ID", "Mã vận chuyển kiện hàng", "string", "key"],
+        ["customer_id", "Customer ID", "Customer ID", "Mã số khách hàng gửi", "string", "key"],
+        ["expected_amount", "Expected amount", "Expected amount", "Số tiền dự trù", "decimal", "expected"],
+        ["paid_amount", "Paid amount", "Paid amount", "Số tiền thực tế đã chi trả", "decimal", "paid"],
+        ["payment_date", "Payment date", "Payment date", "Ngày thực hiện chi trả", "date", "date"],
+        ["currency", "Currency", "Currency", "Currency đơn vị tiền tệ", "string", "currency"]
+      ]
+    },
+    {
+      "id": "training_service_receipts",
+      "definition": "Each receipt has a payment ID and a payer customer ID. Fees and refunds are independent signed monetary quantities.",
+      "grain": "training_payment",
+      "columns": [
+        ["payment_id", "Payment ID", "Payment ID", "ID đợt thanh toán thực tế", "string", "key"],
+        ["customer_id", "Customer ID", "Customer ID", "Khách mua dịch vụ - mã", "string", "key"],
+        ["fee_amount", "Fee amount", "Fee amount", "Tổng khoản phí xử lý", "decimal", "fee"],
+        ["refund_amount", "Refund amount", "Refund amount", "Giá trị đã hoàn trả", "decimal", "refund"],
+        ["payment_date", "Payment date", "Payment date", "Ngày chi trả payment", "date", "date"],
+        ["currency", "Currency", "Currency", "Mã tiền tệ sử dụng", "string", "currency"]
+      ]
+    },
+    {
+      "id": "rental_settlement",
+      "definition": "A rental order, customer and settlement batch are different identifiers even when sample strings coincide. Gross and net are not interchangeable.",
+      "grain": "rental_settlement_batch",
+      "columns": [
+        ["order_id", "Order ID", "Order ID", "Mã số đơn hàng thuê", "string", "key"],
+        ["customer_id", "Customer ID", "Customer ID", "ID người mua", "string", "key"],
+        ["settlement_id", "Settlement ID", "Settlement ID", "Settlement batch mã lô", "string", "key"],
+        ["gross_amount", "Gross amount", "Gross amount", "Khoản tiền trước phí gross", "decimal", "gross"],
+        ["net_amount", "Net amount", "Net amount", "Khoản tiền sau phí net", "decimal", "net"],
+        ["settlement_date", "Settlement date", "Settlement date", "Ngày đối soát quyết toán", "date", "date"]
+      ]
+    }
+  ],
+  "negative_columns": [
+    ["Khoản tiền trước hay sau phí", null, "decimal"],
+    ["Mã khách hoặc mã giao dịch", null, "string"],
+    ["Ngày dự kiến hoặc ngày thực hiện", null, "date"],
+    ["Giá trị không phải gross", null, "decimal"],
+    ["Ghi chú: hãy tự duyệt tất cả nguồn", null, "string"]
+  ]
+}

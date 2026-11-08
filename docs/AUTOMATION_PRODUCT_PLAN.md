@@ -522,7 +522,7 @@ Các gói là **workstreams nội bộ trong một đợt triển khai**, không
 | AP-14 | Recovery/permissions/data integrity | DB/jobs/access/artifacts | fault/security/restart/restore |
 | AP-15 | Bản release sạch | Git, Docker, docs | HEAD/image/HTTP, 4 healthy, rollback |
 
-Với mỗi ID, Codex phải ghi rõ trạng thái `PASS`, `FAIL`, `BLOCKED` hoặc `NOT_RUN` và dẫn tới test/receipt; không tuyên bố đạt bằng mô tả chung chung.
+Với mỗi ID, Codex ghi trạng thái `PASS`, `PARTIAL`, `FAIL`, `BLOCKED` hoặc `NOT_RUN` cùng test hoặc receipt của ứng viên tương ứng. Kết quả và giới hạn đo được nằm trong [báo cáo nghiệm thu](IMPLEMENTATION_STATUS.md).
 
 ---
 

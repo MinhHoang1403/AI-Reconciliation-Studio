@@ -85,6 +85,8 @@ export type AgentIntent = {
     key_value?: string | null;
     query?: Query | null;
     questions?: string[];
+    export_format?: "csv" | "xlsx";
+    export_scope?: "FULL_RUN" | "DISPLAYED_QUERY" | null;
 };
 export type Review = {
     resource_label?: string | null;

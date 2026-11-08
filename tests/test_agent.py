@@ -265,6 +265,10 @@ def test_routing_provider_grammar_excludes_tools_that_do_not_belong_to_intent(
             assert bounds["minItems"] == bounds["maxItems"] == 1
         else:
             assert "maxItems" not in bounds
+        # A catalogue without an approved current run cannot offer a generated
+        # run ID as a planning capability, even if historical run_ids exist.
+        run_key = "run" if provider_name == "ollama" else "confirmed_run_id"
+        assert schema["$defs"]["ReconciliationSelection"]["properties"][run_key] == {"type": "null"}
         if provider_name == "ollama":
             return httpx.Response(
                 200,
@@ -688,6 +692,222 @@ def test_query_deadline_cancels_native_handle_and_never_returns_partial(monkeypa
     assert cancelled == [True]
 
 
+@pytest.mark.parametrize(
+    "goal,compound",
+    [
+        ("Lọc hai nhóm lệch tiền lớn nhất rồi xuất chúng ra CSV trong cùng yêu cầu này.", True),
+        ("Cho tôi xem các nhóm lệch tiền rồi xuất kết quả đó ra CSV.", True),
+        ("Tóm tắt kết quả và tải báo cáo Excel.", True),
+        ("Mình muốn lọc ba khoản lệch lớn nhất và tải kết quả lọc mới đó ra CSV.", True),
+        ("Xuất CSV rồi liệt kê các nhóm thiếu đối ứng.", True),
+        ("Trước tiên hãy liệt kê các nhóm lệch tiền, chưa xuất tệp.", False),
+        ("Liệt kê các nhóm thiếu đối ứng; đừng xuất CSV.", False),
+        ("Mình muốn lọc nhóm thiếu đối ứng, chưa xuất CSV.", False),
+        ("Xuất CSV của bảng đang xem và bộ lọc hiện tại.", False),
+        ("Xuất bảng vừa hiển thị ra Excel cho mình nhé.", False),
+        ("Chuẩn hóa nguồn để đối soát và trình tôi duyệt.", False),
+        ('Xem tệp "Lọc và xuất CSV.csv".', False),
+    ],
+)
+def test_read_and_export_sequence_does_not_execute_only_one_clause(goal, compound):
+    from studio.agent_intents import resolve_read_export_sequence
+
+    actual = resolve_read_export_sequence(goal)
+    assert bool(actual) is compound
+    if actual:
+        assert actual.intent == "CLARIFY" and actual.questions
+        assert actual.query is None and actual.run_id is None
+
+
+@pytest.mark.parametrize(
+    "goal,read_only",
+    [
+        ("Bản tự chuẩn bị của tệp này có bao nhiêu hàng?", True),
+        ("Lọc các chứng từ thiếu đối ứng.", True),
+        ("Cho biết số nhóm thiếu đối ứng trong lần chạy hiện tại.", True),
+        ("Nêu tổng quan kết quả đã xác minh.", True),
+        ("Khoản ở vị trí thứ hai trong bảng đó vì sao chưa ghép được?", True),
+        ("Chuẩn hóa nguồn rồi đếm số dòng.", False),
+        ("Lấy hai tệp để đối soát.", False),
+        ("Lập bản đề xuất quy tắc để tôi kiểm tra và duyệt.", False),
+    ],
+)
+def test_explicit_read_capability_never_authorizes_new_preparation_or_planning(goal, read_only):
+    from studio.agent_intents import explicit_read_request
+
+    assert explicit_read_request(goal) is read_only
+
+
+@pytest.mark.parametrize(
+    "goal,unselected",
+    [
+        ("Bản tự chuẩn bị của tệp này có bao nhiêu hàng?", False),
+        ("Bản tự chuẩn bị có bao nhiêu hàng trong tệp này?", False),
+        ("Bản tự chuẩn bị của tệp chưa chọn có bao nhiêu hàng?", True),
+    ],
+)
+def test_prepared_count_keeps_source_selector_before_or_after_operation(goal, unselected):
+    from studio.agent_intents import resolve_layer_listing
+
+    cat = catalogue()
+    cat.context.dataset_id = "dataset"
+    cat.datasets[0].tables[0].prepared_artifact_id = "prepared"
+    result = resolve_layer_listing(goal, cat)
+    if unselected:
+        assert result.intent == "CLARIFY" and result.query is None
+    else:
+        assert result.intent == "QUERY_DATA" and result.query.source_kind == "PREPARED"
+        assert result.query.source_id == "table" and result.query.aggregations[0].op == "count"
+
+
+@pytest.mark.parametrize("action", ["PREPARE_NORMALIZATION", "CONTINUE_REVIEW"])
+def test_read_question_cannot_become_a_model_write_action(action):
+    from studio.agent_intents import compile_routing
+
+    result = compile_routing(
+        json.dumps({"intents": [{"intent": action}]}),
+        ["Đếm các hàng trong bản tự chuẩn bị"],
+        catalogue(),
+    )[0]
+    assert result.intent == "CLARIFY" and result.query is None
+
+
+@pytest.mark.parametrize("local", [False, True])
+def test_read_routing_omits_historical_plan_and_has_no_write_capabilities(local):
+    from studio.agent_intents import routing_sources
+
+    cat = routing_catalogue()
+    cat.verified_run_fields.append("linkage_state")
+    source = next(s for s in routing_sources(cat) if s["source_kind"] == "VERIFIED_RUN")
+
+    class Provider:
+        usage = {}
+
+        def request_typed(self, prompt, policy, reserve, validator, **kwargs):
+            schema = kwargs["response_schema"]
+            actions = {
+                b["properties"]["intent"]["enum"][0]
+                for b in schema["$defs"]["RoutingIntent"]["anyOf"]
+            }
+            assert not actions & {"PREPARE_NORMALIZATION", "RECONCILE_DATASETS", "CONTINUE_REVIEW"}
+            data = json.loads(prompt[1]["content"])
+            assert not data.get("confirmed_scope")
+            assert {s["source_kind"] for s in data["sources"]} <= {"VERIFIED_RUN", "EXCEPTIONS"}
+            return validator(
+                json.dumps(
+                    {
+                        "intents": [
+                            {
+                                "intent": "QUERY_DATA",
+                                "query": {
+                                    "source_ref": source["ref"],
+                                    "filters": [
+                                        {
+                                            "field_id": "linkage_state",
+                                            "op": "eq",
+                                            "value": "UNMATCHED",
+                                        }
+                                    ],
+                                    "aggregations": [{"op": "count"}],
+                                    "group_by": [],
+                                    "currency_field": None,
+                                },
+                            }
+                        ]
+                    }
+                )
+            )
+
+    provider = Provider()
+    provider.local = local
+    intent = interpret_requests(
+        provider,
+        ["Cho biết số nhóm thiếu đối ứng trong lần chạy hiện tại."],
+        cat,
+        WorkspacePolicy(),
+        lambda: True,
+    )[0]
+    assert intent.intent == "QUERY_DATA" and intent.query.source_id == cat.context.run_id
+    assert intent.query.aggregations[0].op == "count"
+
+
+def test_single_partial_model_query_cannot_drop_the_export_clause():
+    from studio.agent_intents import compile_routing, routing_sources
+
+    cat = catalogue()
+    cat.context.run_id = "run"
+    cat.verified_run_fields = ["group_id", "linkage_state", "comparison_state"]
+    source = next(s for s in routing_sources(cat) if s["source_kind"] == "VERIFIED_RUN")
+    content = json.dumps(
+        {
+            "intents": [
+                {
+                    "intent": "QUERY_DATA",
+                    "query": {
+                        "source_ref": source["ref"],
+                        "filters": [],
+                        "aggregations": [],
+                        "group_by": [],
+                        "currency_field": None,
+                    },
+                }
+            ]
+        }
+    )
+    result = compile_routing(
+        content, ["Lọc hai nhóm lệch tiền lớn nhất rồi xuất chúng ra CSV."], cat
+    )[0]
+    assert result.intent == "CLARIFY" and result.query is None and result.questions
+
+    # The subsequent answer chooses one action. Historical affirmative export
+    # must not override the current explicit prohibition on exporting.
+    cat.previous_goal = "Lọc nhóm lệch rồi xuất CSV."
+    cat.pending_question = "Bạn muốn làm tác vụ nào trước?"
+    partial = json.loads(content)
+    partial["intents"][0]["query"]["filters"] = [
+        {"field_id": "comparison_state", "op": "eq", "value": "AMOUNT_MISMATCH"}
+    ]
+    result = compile_routing(
+        json.dumps(partial), ["Trước tiên hãy liệt kê các nhóm lệch tiền, chưa xuất tệp."], cat
+    )[0]
+    assert result.intent == "QUERY_DATA" and result.query.filters[0].value == "AMOUNT_MISMATCH"
+    from studio.agent_intents import resolve_deferred_export_read
+
+    reply = "Trước tiên hãy liệt kê các nhóm lệch tiền, chưa xuất tệp."
+    resolved = resolve_deferred_export_read(reply, cat)
+    assert resolved.intent == "QUERY_DATA" and resolved.query.filters[0].value == "AMOUNT_MISMATCH"
+    assert (
+        resolve_deferred_export_read("Liệt kê nhóm lệch tiền trong tháng 7, chưa xuất tệp", cat)
+        is None
+    )
+    cat.pending_question = None
+    assert resolve_deferred_export_read(reply, cat) is None
+
+
+def test_distinct_actions_for_one_goal_require_sequence_without_executing_a_partial_request():
+    from studio.agent_intents import compile_routing
+
+    content = json.dumps(
+        {
+            "intents": [
+                {"intent": "SUMMARIZE_RESULTS", "run_id": "run"},
+                {"intent": "EXPORT_RESULT", "run_id": "run", "export_format": "csv"},
+            ]
+        }
+    )
+    diagnostics = {}
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        compile_routing(content, ["Tóm tắt kết quả rồi xuất báo cáo CSV"], catalogue(), diagnostics)
+    assert diagnostics["routing_error"] == {
+        "stage": "multiple_distinct_actions",
+        "intent_count": 2,
+        "expected_intent_count": 1,
+    }
+    # A true batch of two goals still has two typed results in order.
+    result = compile_routing(content, ["Tóm tắt kết quả", "Xuất báo cáo CSV"], catalogue())
+    assert [intent.intent for intent in result] == ["SUMMARIZE_RESULTS", "EXPORT_RESULT"]
+
+
 def test_multi_source_single_goal_requires_one_intent_without_provider_retry():
     received = []
 
@@ -1035,6 +1255,289 @@ def routing_catalogue():
             for i, t in enumerate(tables)
         ],
     )
+
+
+@pytest.mark.parametrize("local", [False, True])
+@pytest.mark.parametrize("missing", [False, True])
+@pytest.mark.parametrize("roles", [False, True])
+def test_named_pair_wire_cannot_substitute_a_third_canonical(local, missing, roles):
+    """Schema inspection only, no provider inference or business approval."""
+    from types import SimpleNamespace
+
+    from studio.agent_intents import interpret_requests, routing_sources
+
+    cat = routing_catalogue()
+    for i, dataset in enumerate(cat.datasets):
+        dataset.name = f"Ledger-{i}.csv"
+    third = cat.datasets[0].model_copy(deep=True)
+    third.id, third.name = "dataset-third", "Receipts-external.csv"
+    third.tables[0].table_id, third.tables[0].canonical_id = "table-third", "canonical-third"
+    cat.datasets.append(third)
+    for dataset in cat.datasets:
+        dataset.tables[0].prepared_artifact_id = "prepared-" + dataset.id
+    second_name = "Not-uploaded.xlsx" if missing else cat.datasets[1].name
+    goal = f"Lập đề xuất đối soát tệp “{third.name}” với tệp “{second_name}”, chờ tôi duyệt."
+    if roles:
+        goal = (
+            f"Nguồn tham chiếu (role=reference) là tệp “{third.name}”; "
+            f"nguồn đối ứng (role=counterpart) là tệp “{second_name}”."
+        )
+
+    def inspect(*args, response_schema, **kwargs):
+        payload_sources = json.loads(args[0][1]["content"])["sources"]
+        for source in payload_sources:
+            if local and source["source_kind"] in {"PREPARED", "PREPARED_FINDINGS"}:
+                assert "fields" not in source
+        variants = response_schema["$defs"]["RoutingIntent"]["anyOf"]
+        planning = [
+            v for v in variants if v["properties"]["intent"]["enum"] == ["RECONCILE_DATASETS"]
+        ]
+        if missing:
+            assert planning == []
+        else:
+            assert len(planning) == 1
+            allowed = {third.tables[0].canonical_id, cat.datasets[1].tables[0].canonical_id}
+            if local:
+                allowed = {
+                    s["ref"]
+                    for s in routing_sources(cat)
+                    if s["source_kind"] == "CANONICAL" and s["source_id"] in allowed
+                }
+            properties = response_schema["$defs"]["ReconciliationSelection"]["properties"]
+            for side in ["left", "right"]:
+                expected = allowed
+                if roles:
+                    selected = (
+                        third.tables[0].canonical_id
+                        if side == "left"
+                        else cat.datasets[1].tables[0].canonical_id
+                    )
+                    expected = {
+                        s["ref"] if local else s["source_id"]
+                        for s in routing_sources(cat)
+                        if s["source_kind"] == "CANONICAL" and s["source_id"] == selected
+                    }
+                assert (
+                    set(properties[side if local else side + "_canonical_id"]["enum"]) == expected
+                )
+        return []
+
+    interpret_requests(
+        SimpleNamespace(local=local, usage={}, request_typed=inspect),
+        [goal],
+        cat,
+        WorkspacePolicy(),
+        lambda: True,
+    )
+
+
+@pytest.mark.parametrize("wrong", ["source_order", "role"])
+def test_explicit_filename_roles_are_checked_after_model_decoding(wrong):
+    from studio.contracts.reconciliation import PlanningRequest
+
+    cat = routing_catalogue()
+    cat.datasets[0].name, cat.datasets[1].name = "Reference.csv", "Counterpart.csv"
+    request = PlanningRequest.from_plan(cat.confirmed_plan)
+    goal = (
+        "Nguồn tham chiếu là tệp “Reference.csv”; nguồn đối ứng là tệp “Counterpart.csv”. "
+        "Hai nguồn đầy đủ. Dữ kiện đã xác nhận: " + request.model_dump_json()
+    )
+
+    def payload():
+        return json.dumps(
+            dict(
+                intents=[
+                    dict(
+                        intent="RECONCILE_DATASETS",
+                        planning_request=request.model_dump(mode="json"),
+                    )
+                ]
+            )
+        )
+
+    assert validate_intents(payload(), [goal], cat)[0].intent == "RECONCILE_DATASETS"
+    if wrong == "source_order":
+        request.left.canonical_id, request.right.canonical_id = (
+            request.right.canonical_id,
+            request.left.canonical_id,
+        )
+    else:
+        request.left.role, request.right.role = "counterpart", "reference"
+    result = validate_intents(payload(), [goal], cat)[0]
+    assert result.intent == "CLARIFY" and result.planning_request is None
+
+
+@pytest.mark.parametrize(
+    "goal,expected",
+    [
+        (
+            "Nguồn đối ứng là tệp “B.csv”; nguồn tham chiếu là tệp “A.csv”.",
+            {"left": "a.csv", "right": "b.csv"},
+        ),
+        (
+            "Reference source file A.csv; counterpart source file B.csv",
+            {"left": "a.csv", "right": "b.csv"},
+        ),
+        ("Nguồn trái là file A.csv; nguồn phải là file B.csv", {"left": "a.csv", "right": "b.csv"}),
+        ("Đối soát “B.csv” với “A.csv”", {}),
+        ("Không phải nguồn tham chiếu là tệp “A.csv”", {}),
+        ("Chưa chọn nguồn tham chiếu là tệp “A.csv”", {}),
+        ("Nguồn tham chiếu hoặc nguồn đối ứng là tệp “A.csv”", {}),
+        ("Nguồn tham chiếu là tệp “A.csv”; nguồn tham chiếu là tệp “B.csv”", {}),
+    ],
+)
+def test_filename_role_binding_does_not_infer_order_or_negated_roles(goal, expected):
+    from studio.agent_intents import explicit_filename_roles
+
+    assert explicit_filename_roles(goal) == expected
+
+
+@pytest.mark.parametrize("fact", ["timezone", "coverage_start", "snapshot_at", "completeness"])
+def test_new_source_cannot_inherit_confirmation_from_another_runs_source(fact):
+    """A same-valued fact in a different canonical scope is not user confirmation."""
+    from studio.contracts.reconciliation import PlanningRequest
+
+    cat = routing_catalogue()
+    cat.confirmed_plan.left.coverage_start = cat.confirmed_plan.left.coverage_start.replace(
+        day=28, month=9
+    )
+    cat.confirmed_plan.left.snapshot_at = cat.confirmed_plan.left.snapshot_at.replace(day=3)
+    cat.confirmed_plan.right.completeness = "INCOMPLETE"
+    request = PlanningRequest.from_plan(cat.confirmed_plan)
+    cat.datasets[0].tables[0].canonical_id = "another-canonical-revision"
+    request.left.canonical_id = "another-canonical-revision"
+    # All facts except the one under test are explicitly supplied. The omitted
+    # fact exactly equals the historical plan, exposing the scope confusion.
+    payload = request.model_dump(mode="json", exclude={"intent"})
+    if fact == "timezone":
+        payload.pop(fact)
+    else:
+        payload["left"].pop(fact)
+    goal = "Đề xuất quy tắc mới cho hai nguồn này, dữ kiện tôi xác nhận: " + json.dumps(payload)
+    # The explicit technical value is confirmation; do not need the natural
+    # language completeness synonym for fields unrelated to this probe.
+    if fact != "completeness":
+        goal += " Nguồn trái và phải đầy đủ."
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        validate_intents(
+            json.dumps(
+                {
+                    "intents": [
+                        {
+                            "intent": "RECONCILE_DATASETS",
+                            "planning_request": request.model_dump(mode="json"),
+                        }
+                    ]
+                }
+            ),
+            [goal],
+            cat,
+        )
+
+
+@pytest.mark.parametrize(
+    "variant", ["both", "missing-left", "incomplete-left", "negated", "duplicate", "foreign"]
+)
+def test_explicit_structured_source_completeness_is_scoped_and_never_inherited(variant):
+    from studio.contracts.reconciliation import PlanningRequest
+
+    cat = routing_catalogue()
+    request = PlanningRequest.from_plan(cat.confirmed_plan)
+    cat.confirmed_plan = None
+    facts = {side: getattr(request, side).model_dump(mode="json") for side in ("left", "right")}
+    if variant == "missing-left":
+        facts["left"].pop("completeness")
+    elif variant == "incomplete-left":
+        facts["left"]["completeness"] = "INCOMPLETE"
+    elif variant == "foreign":
+        facts["left"]["canonical_id"] = "another-canonical"
+    left = json.dumps(facts["left"])
+    if variant == "duplicate":
+        left = left[:-1] + ', "completeness": "CONFIRMED"}'
+    prefix = "Không dùng " if variant == "negated" else ""
+    goal = "Đề xuất đối soát. " + json.dumps(
+        request.model_dump(mode="json", exclude={"left", "right"})
+    )
+    goal += f". {prefix}Facts nguồn trái: {left}; Facts nguồn phải: {json.dumps(facts['right'])}."
+    content = json.dumps(
+        {
+            "intents": [
+                {
+                    "intent": "RECONCILE_DATASETS",
+                    "planning_request": request.model_dump(mode="json"),
+                }
+            ]
+        }
+    )
+    if variant == "both":
+        actual = validate_intents(content, [goal], cat)[0]
+        assert actual.planning_request.left.completeness == "CONFIRMED"
+        assert actual.planning_request.right.completeness == "CONFIRMED"
+    else:
+        with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+            validate_intents(content, [goal], cat)
+
+
+@pytest.mark.parametrize("selector", ["tệp Missing.xlsx", "“Missing.xlsx”", '"Receipts.xlsx"'])
+def test_planner_cannot_substitute_approved_sources_for_explicitly_requested_file(selector):
+    """An approved scope never authorizes ignoring a new explicit file selector."""
+    from studio.contracts.reconciliation import PlanningRequest
+
+    cat = routing_catalogue()
+    cat.datasets[0].name = "Ledger.csv"
+    cat.datasets[1].name = "Other.xlsx"
+    if "Receipts" in selector:
+        extra = cat.datasets[1].model_copy(deep=True)
+        extra.id, extra.name = "another-dataset", "Receipts.xlsx"
+        extra.tables[0].table_id, extra.tables[0].canonical_id = (
+            "another-table",
+            "another-canonical",
+        )
+        cat.datasets.append(extra)
+    request = PlanningRequest.from_plan(cat.confirmed_plan)
+    result = validate_intents(
+        json.dumps(
+            {
+                "intents": [
+                    {
+                        "intent": "RECONCILE_DATASETS",
+                        "planning_request": request.model_dump(mode="json"),
+                    }
+                ]
+            }
+        ),
+        [f"Đối soát “Ledger.csv” với {selector} theo kỳ và các điều kiện đã duyệt."],
+        cat,
+    )[0]
+    assert result.intent == "CLARIFY" and result.questions
+    assert result.planning_request is None and result.query is None
+
+
+def test_explicit_planner_filenames_preserve_approved_pair_across_case_and_unicode():
+    import unicodedata
+
+    from studio.contracts.reconciliation import PlanningRequest
+
+    cat = routing_catalogue()
+    cat.datasets[0].name, cat.datasets[1].name = "Sổ chứng từ.csv", "Biên nhận.xlsx"
+    request = PlanningRequest.from_plan(cat.confirmed_plan)
+    left_name = unicodedata.normalize("NFD", cat.datasets[0].name).upper()
+    result = validate_intents(
+        json.dumps(
+            {
+                "intents": [
+                    {
+                        "intent": "RECONCILE_DATASETS",
+                        "planning_request": request.model_dump(mode="json"),
+                    }
+                ]
+            }
+        ),
+        [f"Đối soát “{left_name}” với tệp “Biên nhận.xlsx” theo phạm vi đã duyệt."],
+        cat,
+    )[0]
+    assert result.intent == "RECONCILE_DATASETS"
+    assert result.planning_request == request
 
 
 def test_routing_scope_reference_preserves_every_confirmed_fact_and_never_mutates_history():
@@ -1501,6 +2004,26 @@ def test_explicit_currency_bypass_is_denied_without_treating_missing_fx_as_appro
     assert currency_bypass_requested("Không bỏ qua tiền tệ lúc đầu, sau đó bỏ qua tiền tệ")
 
 
+@pytest.mark.parametrize("negation", ["chưa", "chưa được", "không được", "không được phép"])
+@pytest.mark.parametrize("action", ["tự phê duyệt", "bỏ qua tiền tệ", "xóa dữ liệu gốc"])
+def test_authority_guards_respect_preverbal_negation_and_later_affirmative_request(
+    negation, action
+):
+    from studio.agent_intents import (
+        approval_bypass_requested,
+        currency_bypass_requested,
+        data_mutation_requested,
+    )
+
+    guard = {
+        "tự phê duyệt": approval_bypass_requested,
+        "bỏ qua tiền tệ": currency_bypass_requested,
+        "xóa dữ liệu gốc": data_mutation_requested,
+    }[action]
+    assert not guard(f"Lập đề xuất để tôi kiểm tra; {negation} {action}.")
+    assert guard(f"Lúc đầu {negation} {action}, nhưng sau đó hãy {action}.")
+
+
 @pytest.mark.parametrize(
     "goal",
     [
@@ -1566,6 +2089,9 @@ def test_result_position_is_bound_to_same_run_and_displayed_rows(position):
         ("Gửi tôi tệp CSV chứa đúng phần bảng vừa hiển thị.", "csv"),
         ("Mình muốn lưu các dòng trên thành một bảng Excel.", "xlsx"),
         ("Xin xuất những nhóm vừa xem sang tệp CSV", "csv"),
+        ("Lưu đúng các dòng vừa liệt kê thành tệp CSV.", "csv"),
+        ("Xuất bảng đang xem sang Excel cho mình nhé", "xlsx"),
+        ("Xuất bảng đang xem sang CSV giúp tôi với", "csv"),
     ],
 )
 def test_displayed_export_composes_reference_and_format_on_same_run(goal, fmt):
@@ -1597,6 +2123,172 @@ def test_model_cannot_replace_displayed_export_with_a_full_run_export():
     assert validate_intents(content, ["Tải báo cáo CSV của kết quả đang xem"], cat)[0] == intent
 
 
+@pytest.mark.parametrize("scope", ["FULL_RUN", "DISPLAYED_QUERY"])
+def test_export_storage_uses_existing_query_fields_for_rollback_compatibility(scope):
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from studio.agent_workflows import save
+    from studio.contracts.agent import ClarificationOption, ReviewRequest, WorkflowState
+    from studio.contracts.data_query import DataQuery
+
+    query = DataQuery(
+        project_id="project", source_kind="VERIFIED_RUN", source_id="run", offset=2, limit=1
+    )
+    intent = AgentIntent(intent="EXPORT_RESULT", run_id="run", export_scope=scope)
+    state = WorkflowState(
+        intent=intent,
+        export_query=query if scope == "DISPLAYED_QUERY" else None,
+        reviews=[
+            ReviewRequest(
+                id="review",
+                kind="CLARIFICATION",
+                question="Xuất bảng nào?",
+                reason="Phạm vi",
+                resource_id="run",
+                fingerprint="a" * 64,
+                nonce="b" * 32,
+                expires_at=datetime.now(UTC),
+                expected_effects=[],
+                reply_intent=intent.model_copy(deep=True),
+                options=[
+                    ClarificationOption(
+                        id="option", label="Xuất bảng", intent=intent.model_copy(deep=True)
+                    )
+                ],
+            )
+        ],
+    )
+    row = SimpleNamespace()
+    save(row, state)
+    assert '"export_scope"' not in json.dumps(row.detail)
+    saved_intents = [
+        row.detail["intent"],
+        row.detail["reviews"][0]["reply_intent"],
+        row.detail["reviews"][0]["options"][0]["intent"],
+    ]
+    for saved in saved_intents:
+        assert saved["query"] == (
+            query.model_dump(mode="json") if scope == "DISPLAYED_QUERY" else None
+        )
+    restored = WorkflowState.model_validate(row.detail)
+    assert restored.intent.export_scope == scope
+    assert restored.reviews[0].reply_intent.export_scope == scope
+    assert restored.reviews[0].options[0].intent.export_scope == scope
+
+
+@pytest.mark.parametrize("scope", ["DISPLAYED_QUERY", "FULL_RUN"])
+def test_routing_export_scope_binds_only_the_selected_verified_query(scope):
+    from studio.agent_intents import compile_routing, export_query_for_intent
+    from studio.contracts.data_query import DataQuery, QueryFilter, QuerySort
+
+    cat = routing_catalogue()
+    cat.previous_query = DataQuery(
+        project_id="project",
+        source_kind="VERIFIED_RUN",
+        source_id="run",
+        filters=[QueryFilter(field_id="linkage_status", op="eq", value="UNMATCHED")],
+        sort=[QuerySort(field_id="group_id", descending=True)],
+        offset=1,
+        limit=2,
+    )
+    body = json.dumps(
+        dict(
+            intents=[
+                dict(
+                    intent="EXPORT_RESULT",
+                    run_id=None,
+                    export_format="csv",
+                    export_scope=scope,
+                )
+            ]
+        )
+    )
+    goal = (
+        "Bạn tạo CSV giữ nguyên những dòng trên giúp tôi được không?"
+        if scope == "DISPLAYED_QUERY"
+        else "Xuất báo cáo toàn bộ run"
+    )
+    result = compile_routing(body, [goal], cat)[0]
+    assert result.export_scope == scope
+    query = export_query_for_intent(result, cat)
+    if scope == "DISPLAYED_QUERY":
+        assert result.run_id == "run" and query == cat.previous_query
+        assert query is not cat.previous_query
+        query.offset = 0
+        assert cat.previous_query.offset == 1
+    else:
+        assert query is None
+
+
+@pytest.mark.parametrize(
+    "changed", ["missing", "project", "run", "unverified", "not_accessible", "explicit_other_run"]
+)
+def test_displayed_export_rejects_missing_stale_or_foreign_query(changed):
+    from studio.agent_intents import compile_routing
+    from studio.contracts.data_query import DataQuery
+
+    cat = routing_catalogue()
+    cat.previous_query = DataQuery(
+        project_id="project", source_kind="VERIFIED_RUN", source_id="run"
+    )
+    if changed == "missing":
+        cat.previous_query = None
+    elif changed == "project":
+        cat.previous_query.project_id = "other-project"
+    elif changed == "run":
+        cat.previous_query.source_id = "other-run"
+    elif changed == "unverified":
+        cat.previous_query.source_kind = "CANONICAL"
+    elif changed == "not_accessible":
+        cat.run_ids = []
+    expected = "AI_INVALID_SOURCE" if changed == "not_accessible" else "QUERY_SEMANTICS_REQUIRED"
+    with pytest.raises(DomainError, match=expected):
+        compile_routing(
+            json.dumps(
+                dict(
+                    intents=[
+                        dict(
+                            intent="EXPORT_RESULT",
+                            run_id="other-run" if changed == "explicit_other_run" else None,
+                            export_format="csv",
+                            export_scope="DISPLAYED_QUERY",
+                        )
+                    ]
+                )
+            ),
+            ["Xuất nguyên bảng CSV"],
+            cat,
+        )
+
+
+def test_typed_full_run_export_cannot_ignore_explicit_displayed_reference():
+    from studio.agent_intents import compile_routing
+    from studio.contracts.data_query import DataQuery
+
+    cat = routing_catalogue()
+    cat.previous_query = DataQuery(
+        project_id="project", source_kind="VERIFIED_RUN", source_id="run"
+    )
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        compile_routing(
+            json.dumps(
+                dict(
+                    intents=[
+                        dict(
+                            intent="EXPORT_RESULT",
+                            run_id="run",
+                            export_format="csv",
+                            export_scope="FULL_RUN",
+                        )
+                    ]
+                )
+            ),
+            ["Tạo file giữ đúng các dòng trên"],
+            cat,
+        )
+
+
 @pytest.mark.parametrize(
     "goal",
     [
@@ -1604,6 +2296,7 @@ def test_model_cannot_replace_displayed_export_with_a_full_run_export():
         "Đếm các nhóm chênh lệch của tháng 12",
         "Trong các giao dịch sai tiền, chỉ lấy trường hợp đã xử lý xong",
         "Liệt kê nhóm lệch tiền đang giải quyết",
+        "Trong các nhóm lệch tiền, chỉ lấy trường hợp đã được xử lý xong",
     ],
 )
 def test_group_read_needing_different_period_or_exception_grain_clarifies(goal):
@@ -1701,8 +2394,12 @@ def test_new_reconciliation_scope_keeps_explicit_source_and_effective_facts():
     assert result.planning_request.effective_from is None
 
 
-@pytest.mark.parametrize("response_kind", ["clarify", "facts", "foreign-slot"])
+@pytest.mark.parametrize(
+    "response_kind",
+    ["clarify", "facts", "foreign-slot", "foreign-ref", "same-source", "legacy-names"],
+)
 def test_local_reconciliation_router_keeps_explicit_source_fact_slots(response_kind):
+    from studio.agent_intents import routing_sources
     from studio.ai_gateway import OllamaProvider
 
     cat = routing_catalogue()
@@ -1720,6 +2417,30 @@ def test_local_reconciliation_router_keeps_explicit_source_fact_slots(response_k
         confirmed_run_id=None,
     )
     goal = "Đề xuất đối soát hai nguồn đầy đủ. " + json.dumps(selection)
+    refs = [s["ref"] for s in routing_sources(cat) if s["source_kind"] == "CANONICAL"]
+    wire = dict(
+        left=refs[0],
+        right=refs[1],
+        run=None,
+        start=selection["period_start"],
+        end=selection["period_end"],
+        tz=selection["timezone"],
+        since=selection["effective_from"],
+        until=None,
+    )
+    for key, side in (("a", "left"), ("b", "right")):
+        source = getattr(plan, side)
+        wire[key] = dict(
+            role=source.role,
+            date=source.date_field,
+            basis=source.time_basis,
+            ccy=source.currency_field,
+            where=source.filters,
+            **{"from": str(source.coverage_start), "to": str(source.coverage_end)},
+            complete=source.completeness,
+            asof=source.snapshot_at.isoformat(),
+            due=None,
+        )
 
     def handler(request):
         if request.url.path == "/api/tags":
@@ -1728,25 +2449,28 @@ def test_local_reconciliation_router_keeps_explicit_source_fact_slots(response_k
             )
         payload = json.loads(request.content)
         definitions = payload["format"]["$defs"]
-        assert {"left_source", "right_source"} <= set(
-            definitions["ReconciliationSelection"]["required"]
-        )
+        assert {"a", "b"} <= set(definitions["ReconciliationSelection"]["required"])
         assert set(definitions["ReconciliationSelection"]["required"]) == set(
             definitions["ReconciliationSelection"]["properties"]
         )
         source_schema = definitions["PlanningSource"]
         assert "canonical_id" not in source_schema["properties"]
-        assert set(source_schema["properties"]) - {"settlement_due_at"} == set(
-            source_schema["required"]
-        )
+        assert set(source_schema["properties"]) - {"due"} == set(source_schema["required"])
         instructions = payload["messages"][0]["content"]
         assert "role=reference" in instructions and "role=counterpart" in instructions
         assert "belongs in filters" in instructions
-        intent = {"intent": "RECONCILE_DATASETS", "reconciliation": selection}
+        assert definitions["ReconciliationSelection"]["properties"]["left"]["enum"] == refs
+        intent = {"intent": "RECONCILE_DATASETS", "reconciliation": wire}
         if response_kind == "clarify":
             intent = {"intent": "CLARIFY", "questions": ["Chọn hai nguồn?"]}
         elif response_kind == "foreign-slot":
-            selection["left_source"]["canonical_id"] = "foreign"
+            wire["a"]["canonical_id"] = "foreign"
+        elif response_kind == "foreign-ref":
+            wire["left"] = plan.left.canonical_id  # A UUID/ID is not a local capability ref.
+        elif response_kind == "same-source":
+            wire["right"] = wire["left"]
+        elif response_kind == "legacy-names":
+            intent["reconciliation"] = selection
         return httpx.Response(
             200,
             json={
@@ -1762,7 +2486,7 @@ def test_local_reconciliation_router_keeps_explicit_source_fact_slots(response_k
         httpx.Client(transport=httpx.MockTransport(handler)),
     )
     try:
-        if response_kind == "foreign-slot":
+        if response_kind in {"foreign-slot", "foreign-ref", "same-source", "legacy-names"}:
             with pytest.raises(DomainError, match="AI_INVALID_SOURCE"):
                 interpret_requests(provider, [goal], cat, WorkspacePolicy(), lambda: True)
         else:
@@ -1771,8 +2495,12 @@ def test_local_reconciliation_router_keeps_explicit_source_fact_slots(response_k
                 "CLARIFY" if response_kind == "clarify" else "RECONCILE_DATASETS"
             )
             if response_kind == "facts":
-                assert result[0].planning_request.left.canonical_id == plan.left.canonical_id
-                assert result[0].planning_request.right.canonical_id == plan.right.canonical_id
+                from studio.contracts.reconciliation import PlanningRequest
+
+                assert result[0].planning_request.allow_partial is None
+                assert result[0].planning_request.model_dump(
+                    exclude={"intent", "allow_partial"}
+                ) == PlanningRequest.from_plan(plan).model_dump(exclude={"intent", "allow_partial"})
         assert provider.usage["ai_calls"] == 1 and provider.usage["cloud_requests"] == 0
     finally:
         provider.close()
@@ -2134,10 +2862,15 @@ def test_composed_read_grammar_matches_layer_source_and_operation(goal, expected
     [
         ("Đếm số nhóm giao dịch bị lệch tiền ở kết quả đang mở", "QUERY_DATA", "AMOUNT_MISMATCH"),
         ("Có bao nhiêu khoản không có đối ứng trong lần đối soát này?", "QUERY_DATA", "UNMATCHED"),
+        ("Cho biết số nhóm thiếu đối ứng trong lần chạy hiện tại.", "QUERY_DATA", "UNMATCHED"),
         ("Tải báo cáo CSV của kết quả đang xem", "EXPORT_RESULT", None),
         ("Cho tôi xem tổng lệch tiền có dấu", "SUMMARIZE_RESULTS", None),
+        ("Tom tat ket qua doi soat dang mo va tong do lech tuyet doi.", "SUMMARIZE_RESULTS", None),
+        ("Tong quan ket qua nay va cac chi so chenh lech giup toi.", "SUMMARIZE_RESULTS", None),
+        ("Tổng quan kết quả này riêng tháng 10", None, None),
         ("Xuất báo cáo Excel chỉ các giao dịch lệch", None, None),
         ("Đếm nhóm thiếu đối ứng tháng trước", None, None),
+        ("Hiển thị những nhóm UNMATCHED ở run tháng trước", None, None),
     ],
 )
 def test_native_run_read_keeps_verified_scope_and_does_not_drop_filters(goal, intent, predicate):
@@ -2159,6 +2892,52 @@ def test_native_run_read_keeps_verified_scope_and_does_not_drop_filters(goal, in
         assert result.run_id == "run"
     cat.context.run_id = "foreign"
     assert resolve_run_read(goal, cat).intent == "CLARIFY"
+
+
+@pytest.mark.parametrize(
+    "status,field",
+    [
+        ("UNMATCHED", "linkage_state"),
+        ("AMOUNT_MISMATCH", "comparison_state"),
+        ("EQUAL", "comparison_state"),
+    ],
+)
+def test_native_run_read_recognizes_explicit_verified_statuses(status, field):
+    from studio.agent_intents import resolve_run_read
+
+    cat = catalogue()
+    cat.context.run_id = "run"
+    cat.verified_run_fields = ["linkage_state", "comparison_state"]
+    goal = f"Hiển thị những nhóm {status} ở run đang mở."
+    result = resolve_run_read(goal, cat)
+    assert result.intent == "QUERY_DATA" and result.query.source_id == "run"
+    assert [(f.field_id, f.op, f.value) for f in result.query.filters] == [(field, "eq", status)]
+    assert not result.query.aggregations
+    cat.context.run_id = "foreign"
+    assert resolve_run_read(goal, cat).intent == "CLARIFY"
+
+
+def test_native_unequal_amount_read_respects_approved_tolerance_and_rounding():
+    from decimal import Decimal
+
+    from studio.agent_intents import resolve_run_read
+
+    cat = routing_catalogue()
+    goal = "Lọc danh sách những cặp đã liên kết mà khoản tiền hai bên không bằng nhau."
+    cat.verified_run_fields = ["linkage_state", "comparison_state"]
+    metric = cat.confirmed_plan.comparison_metrics[0]
+    metric.absolute_tolerance = Decimal("0")
+    metric.relative_tolerance = None
+    metric.rounding_scale = None
+    result = resolve_run_read(goal, cat)
+    assert result.query.source_id == cat.context.run_id
+    assert result.query.filters[0].value == "AMOUNT_MISMATCH"
+    assert result.query.aggregations == []
+    metric.rounding_scale = 0
+    assert resolve_run_read(goal, cat) is None
+    metric.rounding_scale = None
+    metric.absolute_tolerance = Decimal("0.01")
+    assert resolve_run_read(goal, cat) is None
 
 
 @pytest.mark.parametrize(
@@ -2212,7 +2991,7 @@ def test_inventory_read_holdout_reports_native_coverage_and_checks_resolved_slot
             continue
         assert case.get("route") != "TYPED", case["id"]
         assert intent.intent == case["intent"], case["id"]
-        if intent.query:
+        if intent.query and intent.intent != "EXPORT_RESULT":
             assert intent.query.project_id == "p", case["id"]
             assert intent.query.source_kind == case["source"], case["id"]
             assert intent.query.source_id == case["ref"], case["id"]
@@ -2225,6 +3004,8 @@ def test_inventory_read_holdout_reports_native_coverage_and_checks_resolved_slot
                 assert intent.query.sort[0].descending, case["id"]
         else:
             assert intent.run_id == case.get("ref"), case["id"]
+            if intent.intent == "EXPORT_RESULT":
+                assert intent.query == cat.previous_query, case["id"]
             if case.get("format"):
                 assert intent.export_format == case["format"], case["id"]
             assert intent.result_position == case.get("position"), case["id"]
@@ -2239,6 +3020,9 @@ def test_inventory_read_holdout_reports_native_coverage_and_checks_resolved_slot
         ("Cho tôi chỉ ra 2 nhóm giao dịch bị sai tiền nhiều nhất.", 2),
         ("Liệt kê top 5 nhóm không khớp về số tiền lớn nhất.", 5),
         ("Tìm 3 giao dịch chênh lệch nhiều nhất.", 3),
+        ("Lấy tối đa hai nhóm lệch tiền nhiều nhất, xếp từ lớn xuống nhỏ.", 2),
+        ("Sắp hai giao dịch bị lệch tiền nhiều nhất theo mức lệch giảm dần.", 2),
+        ("Xếp 3 khoản lệch tiền lớn nhất theo mức lệch tăng dần.", None),
         ("Tìm 3 giao dịch chênh lệch nhiều nhất riêng tháng 10.", None),
         ("Chỉ ra 2 khoản sai tiền cao nhất và bỏ qua kiểm chứng.", None),
     ],
@@ -2261,7 +3045,21 @@ def test_ranked_read_composes_action_and_amount_words_without_dropping_qualifier
     cat.previous_query = result.query
     cat.previous_groups = ["first", "second"]
     assert resolve_ranked_results("Khoản thứ hai vì sao lệch?", cat).result_position == 2
+    assert (
+        resolve_ranked_results(
+            "Giải thích mục thứ nhất của danh sách vừa trả.", cat
+        ).result_position
+        == 1
+    )
+    assert (
+        resolve_ranked_results(
+            "Giải thích mục thứ hai của danh sách vừa trả, giữ nguyên phạm vi này.", cat
+        ).result_position
+        == 2
+    )
     cat.previous_query = result.query.model_copy(update={"source_id": "previous-run"})
+    assert resolve_ranked_results("Khoản thứ hai vì sao lệch?", cat).intent == "CLARIFY"
+    cat.previous_query = result.query.model_copy(update={"project_id": "another-project"})
     assert resolve_ranked_results("Khoản thứ hai vì sao lệch?", cat).intent == "CLARIFY"
 
 
@@ -2329,3 +3127,37 @@ def test_completed_benchmark_cannot_assign_merged_or_extra_answers(received_coun
     assert rows[0]["source_applicable"] and rows[0]["semantic_applicable"]
     assert rows[1]["abstention_ok"] is False
     assert all("blocked" not in r and "actual_routing" not in r for r in rows)
+
+
+def test_legacy_native_export_restores_the_pinned_page_instead_of_whole_run():
+    from studio.contracts.agent import WorkflowState
+    from studio.contracts.data_query import DataQuery
+
+    query = DataQuery(project_id="project", source_kind="VERIFIED_RUN", source_id="run", limit=1)
+    state = WorkflowState.model_validate(
+        dict(
+            intent=dict(intent="EXPORT_RESULT", run_id="run"),
+            export_query=query.model_dump(mode="json"),
+        )
+    )
+    assert state.intent.export_scope == "DISPLAYED_QUERY" and state.intent.query == query
+
+
+@pytest.mark.parametrize("mismatched", [False, True])
+def test_export_storage_rejects_an_unpinned_or_different_query(mismatched):
+    from types import SimpleNamespace
+
+    from studio.agent_workflows import save
+    from studio.contracts.agent import WorkflowState
+    from studio.contracts.data_query import DataQuery
+
+    query = DataQuery(project_id="project", source_kind="VERIFIED_RUN", source_id="run", limit=1)
+    state = WorkflowState(
+        intent=AgentIntent(
+            intent="EXPORT_RESULT", run_id="run", export_scope="DISPLAYED_QUERY", query=query
+        )
+    )
+    if mismatched:
+        state.export_query = query.model_copy(update={"offset": 1})
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        save(SimpleNamespace(), state)

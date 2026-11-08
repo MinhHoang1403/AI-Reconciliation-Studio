@@ -39,6 +39,7 @@ from studio.reconciliation_engine import match_records
 from studio.reconciliation_planner import (
     PLANNER_REVISION,
     PLANNING_PROBE_ROW_LIMIT,
+    metadata_planning_review,
     missing_confirmations,
     propose_plan,
     scoped_key_candidates,
@@ -266,6 +267,12 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
             ),
             "DETERMINISTIC",
         )
+        return
+    review = metadata_planning_review(draft, cats)
+    if review is not None:
+        # Preserve truthful provenance: no provider was instantiated or called,
+        # so this proposal must not be published with GEMINI/OLLAMA origin.
+        publish(review, "DETERMINISTIC")
         return
     cloud = choice == "GEMINI"
     provider_name = "GEMINI" if cloud else "OLLAMA"

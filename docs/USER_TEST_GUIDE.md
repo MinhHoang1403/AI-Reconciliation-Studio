@@ -319,6 +319,8 @@ Trong bảng Chat, bấm tiêu đề cột để sắp xếp nếu cần. Bấm 
 
 Để chỉ xuất trang kết quả trong Chat, hỏi ngay sau khi xem bảng, chẳng hạn “Lưu các dòng trên thành một bảng Excel” hoặc “Gửi tôi tệp CSV chứa đúng phần bảng vừa hiển thị”. Đối chiếu ID và thứ tự ở **Displayed results** với bảng đã xem. **Summary** giữ thông tin của cả lần chạy và ghi rõ phạm vi trang đã xuất.
 
+Nếu yêu cầu vừa lọc một bảng mới vừa xuất tệp trong cùng câu, Chat có thể hỏi bạn muốn làm bước nào trước. Chọn xem/lọc trước, kiểm tra kết quả, rồi yêu cầu xuất đúng bảng vừa hiển thị. Câu “chưa xuất tệp” giữ bước xuất để bạn yêu cầu sau.
+
 Để tải báo cáo của toàn bộ lần đối soát:
 
 1. Mở kết quả vừa đối soát, kiểm tra kỳ và trạng thái xác minh.
@@ -441,4 +443,4 @@ Lượt Smart Mapping Qwen đã thành công ngày 05/11/2026 được giữ t�
 
 ![Qwen đã chuẩn hóa ba nguồn sau các quyết định riêng](images/user-guide/qwen-mapping-completed.png)
 
-Nếu một nguồn lỗi tạo đề xuất, các thẻ đã tạo trước đó vẫn có thể duyệt. Đọc tên nguồn và thông báo của đúng job, dùng **Mở dữ liệu để ghép cột thủ công** cho phần còn lại. Không có fallback cloud tự động. Đổi model chỉ áp dụng cho lần gửi sau; lần gửi chưa rõ phản hồi giữ payload và model ban đầu. Gemini vẫn có HTTP 503 trong vòng cuối và chưa được coi ổn định dù khóa mới đã nhận HTTP 200.
+Nếu một nguồn lỗi tạo đề xuất, các thẻ đã tạo trước đó vẫn có thể duyệt. Đọc tên nguồn và thông báo của đúng job, dùng **Mở dữ liệu để ghép cột thủ công** cho phần còn lại. Không có fallback cloud tự động. Đổi model chỉ áp dụng cho lần gửi sau; lần gửi chưa rõ phản hồi giữ payload và model ban đầu. Các lượt Gemini lịch sử từng có HTTP 503; trạng thái hiện hành và kết quả HTTP 200/400 nằm ở đầu [báo cáo triển khai](IMPLEMENTATION_STATUS.md). Không suy độ ổn định hiện tại từ một lượt lịch sử hoặc quy toàn bộ lỗi cho khóa API.

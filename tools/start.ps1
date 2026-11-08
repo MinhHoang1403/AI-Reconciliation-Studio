@@ -1,6 +1,17 @@
 param([switch]$SkipBuild)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
+if (-not $SkipBuild) {
+    # Buildx's Git label can equal HEAD even when Docker copies modified source.
+    # Ordinary builds must therefore have committed build inputs. A deliberately
+    # uncommitted acceptance candidate needs an explicit content-derived label;
+    # it must never be published or described as the unchanged Git revision.
+    $taskDirtyBuildInputs = @(git status --porcelain --untracked-files=all -- backend frontend requirements.txt pyproject.toml uv.lock alembic.ini compose.yaml .dockerignore)
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot verify Git identity before building application images.' }
+    if ($taskDirtyBuildInputs.Count -gt 0) {
+        throw 'Application build inputs have uncommitted changes. Commit verified changes before a normal build; an uncommitted acceptance candidate must use explicit content-derived image labels.'
+    }
+}
 if (-not (Test-Path -LiteralPath '.env')) {
     function New-LocalSecret {
         $bytes = New-Object byte[] 32

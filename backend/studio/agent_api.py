@@ -11,7 +11,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from studio.access import Actor, require_editor
-from studio.agent_intents import validate_intents
+from studio.agent_intents import export_query_for_intent, validate_intents
 from studio.agent_preparation import approval_from_draft, validate_draft
 from studio.agent_workflows import (
     advance,
@@ -84,9 +84,41 @@ def decide(
     if isinstance(body.decision, PlanReviewDecision) and not body.decision.invalid_rows_reviewed:
         # Preserve the digest of decisions saved before this additive acknowledgement.
         decision_payload.pop("invalid_rows_reviewed")
+    elif isinstance(body.decision, ClarificationDecision):
+        intent = body.decision.intent
+        # Scope is API metadata, not part of the legacy persisted intent. Bind
+        # a displayed query before hashing so FULL_RUN and DISPLAYED_QUERY can
+        # never collapse to the same decision. Replays use the original pin.
+        if (
+            intent.intent == "EXPORT_RESULT"
+            and intent.export_scope == "DISPLAYED_QUERY"
+            and intent.query is None
+        ):
+            if review.state == "DECIDED":
+                pinned = state.export_query
+                if pinned is None:
+                    raise DomainError(
+                        "IDEMPOTENCY_CONFLICT", "Quyết định này đã có nội dung khác.", 409
+                    )
+            else:
+                catalogue = agent_catalogue(
+                    db,
+                    actor,
+                    AssistantContext.model_validate(row.context),
+                    state.dataset_ids,
+                    workflow_id=row.id,
+                )
+                pinned = export_query_for_intent(intent, catalogue)
+            assert pinned is not None
+            decision_payload["intent"]["query"] = pinned.model_dump(mode="json")
+        decision_payload["intent"].pop("export_scope", None)
     decision_hash = digest(decision_payload)
     if review.state == "DECIDED":
-        if decision_hash != review.decision_sha256:
+        # Read decisions from the short-lived candidate that hashed transient
+        # scope metadata too. Both hashes describe the same submitted decision;
+        # changed intent/query/scope still conflicts and never executes again.
+        prior_candidate_hash = digest(body.decision.model_dump(mode="json"))
+        if review.decision_sha256 not in {decision_hash, prior_candidate_hash}:
             raise DomainError("IDEMPOTENCY_CONFLICT", "Quyết định này đã có nội dung khác.", 409)
         return view(row)
     if review.pending_reply_job_id:
@@ -169,6 +201,7 @@ def decide(
             catalogue,
         )
         state.intent = validated[0]
+        state.export_query = export_query_for_intent(state.intent, catalogue)
     review.state, review.decision_sha256 = "DECIDED", decision_hash
     db.add(
         AuditRow(

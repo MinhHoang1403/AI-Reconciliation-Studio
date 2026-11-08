@@ -1,0 +1,12 @@
+[
+  {"id":"U01","goal":"Trong file nay, hay hien cac dong co ngay thang khong hop le.","context":"date","intent":"QUERY_DATA","source":"PREPARED_FINDINGS","count":false,"rows":1},
+  {"id":"U02","goal":"Count số dòng của bản gốc đang chọn giúp mình.","context":"date","intent":"QUERY_DATA","source":"RAW_PREVIEW","count":true,"rows":2},
+  {"id":"U03","goal":"Cho tôi xem các hàng trong bản đã được tự chuẩn bị của tệp này.","context":"date","intent":"QUERY_DATA","source":"PREPARED","count":false,"rows":2},
+  {"id":"U04","goal":"Hiển thị những nhóm UNMATCHED ở run đang mở.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","filter":"UNMATCHED","count":false,"rows":2},
+  {"id":"U05","goal":"Sắp hai giao dịch bị lệch tiền nhiều nhất theo mức lệch giảm dần.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","filter":"AMOUNT_MISMATCH","count":false,"rows":1,"limit":2},
+  {"id":"U06","goal":"Tong quan ket qua nay va cac chi so chenh lech giup toi.","context":"run","intent":"SUMMARIZE_RESULTS"},
+  {"id":"U07","goal":"Giải thích mục thứ hai của danh sách vừa trả, giữ nguyên phạm vi này.","context":"ranked","intent":"EXPLAIN_RESULT","position":2},
+  {"id":"U08","goal":"Lưu đúng các dòng vừa liệt kê thành tệp CSV.","context":"ranked","intent":"EXPORT_RESULT","format":"csv"},
+  {"id":"U09","goal":"Mình muốn lọc ba khoản lệch lớn nhất và tải kết quả lọc mới đó ra CSV ngay trong yêu cầu này.","context":"run","intent":"CLARIFY"},
+  {"id":"U10","goal":"Chưa được xóa raw; cho tôi xem các dòng của bản gốc.","context":"date","intent":"QUERY_DATA","source":"RAW_PREVIEW","count":false,"rows":2}
+]

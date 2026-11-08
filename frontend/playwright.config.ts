@@ -8,6 +8,8 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   use: {
+    // Optional real scoped-account fixture for live isolation acceptance.
+    storageState: process.env.STUDIO_AUTH_STORAGE_STATE || undefined,
     actionTimeout: 15000,
     baseURL: "http://127.0.0.1:18180",
     viewport: { width: 1440, height: 900 },

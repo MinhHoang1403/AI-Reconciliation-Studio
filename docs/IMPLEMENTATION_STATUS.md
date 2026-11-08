@@ -1,6 +1,147 @@
 # Trạng thái triển khai và nghiệm thu
 
-## Biên bản ứng viên `3313e24` — 08/11/2026
+## Nghiệm thu ứng viên `c66f` — 08/11/2026
+
+`worktree-c66fafda2b68d7b0` khớp source, backend/worker và tài nguyên frontend qua HTTP. Bốn dịch vụ healthy trên cùng Compose và hai volume. Snapshot trước và sau khi đổi image khớp 810 run, 1.497 báo cáo và 9.235 artifact. Receipt `runtime/audit-verified-status-identity.log` và `runtime/audit-verified-status-after.log`.
+
+Sáu câu U04–U09 đạt với lựa chọn Qwen trên `c66f`. Tất cả dùng Backend, 0 lượt model, trong 609–2.015 ms. U04 giữ trạng thái `UNMATCHED` và đúng run, U09 giữ yêu cầu làm rõ mà chưa xuất. Receipt `runtime/audit-language-QWEN-c66f-targeted.json`. Test browser ban đầu dùng số thẻ để đo phản hồi mới, vượt cửa sổ 20 tin nhắn ở lượt thứ 11. Trace có XLSX hoàn tất. Test đổi sang chờ thẻ gắn với đúng tin nhắn vừa gửi và giữ toàn bộ xác minh tải tệp. Hai ca browser chạy lại đều đạt trên cùng image. Log `runtime/audit-c66f-targeted-e2e.log` và `runtime/audit-c66f-targeted-e2e-history-window-failure.log`.
+
+Backend/PostgreSQL trên `c66f` đạt 782/782 trong 200,67 giây với một cảnh báo deprecation của Starlette TestClient. Gemini và Qwen đều đạt N20 và U10. Mỗi provider có 10 lượt model và 20 lượt Backend trong hai bộ câu. Gemini dùng 10 lượt cloud, Qwen dùng 0 lượt. Hai Planner LIVE C/B qua duyệt trên trình duyệt đạt oracle 3 khớp, 1 lệch và 0,01 VND. Gemini tới review sau 5,388 giây, Qwen sau 62,327 giây. Mỗi ca gọi model một lượt. Receipt `runtime/audit-language-*-c66f.json` và `runtime/audit-live-planner-*-CB-c66f-current.json`.
+
+Hai tải dữ liệu tổng hợp 1.000 và 10.000 dòng đã có bản gốc và bản tự chuẩn bị sau 1,607–1,626 giây trong khi job Planner Qwen trên trình duyệt vẫn `RUNNING`. Đọc bản tự chuẩn bị mất 80–93 ms, 0 lượt cloud. Đây là tải kiểm thử qua API chạy đồng thời, tách khỏi hành trình duyệt quy tắc trên UI. Receipt `runtime/audit-qwen-upload-overlap-c66f.json`. Bộ mapping mới đạt 19 đề xuất đúng trong 44 cột, bỏ qua 25 và bỏ lỡ một khóa. Log `runtime/audit-mapping-existing-c66f.log`.
+
+Bộ Planner độc lập R01–R06 đạt 6/6. Năm ca Qwen mất 30,391–43,828 giây với 1.323–1.457 token đầu vào và 250–369 token đầu ra. Một ca thiếu dữ kiện dùng quyết định review của Backend. Trong 61 mẫu Windows lấy quanh Planner và Chat Qwen, RSS cao nhất của `llama-server` là 3.725.754.368 byte, VRAM cao nhất 4.225 MiB và RAM khả dụng thấp nhất 452.036 KiB. Đây là cực trị quan sát được trên máy hiện tại. Receipt `runtime/audit-planner-release-c66f.json` và `runtime/audit-qwen-c66f-resources.json`.
+
+Full Playwright đạt 142/142 trong 13,3 phút với retries bằng 0. Suite ghi rõ những ca dùng giao diện và Backend thật, ca dùng fixture mô phỏng lỗi và ca UAT với oracle độc lập. Benchmark host ở 50.000 dòng có trung vị parse 65,42 ms, profile 731,70 ms, chuẩn hóa và ghi 1.552,68 ms, ghép 1.929,69 ms và xác minh 1.683,07 ms. Hai phép đo chạy đồng thời với Playwright và lấy ba mẫu mỗi cỡ. Log `runtime/audit-c66f-full-e2e.log` và `runtime/audit-*-benchmark-c66f.json`.
+
+Hai oracle tài chính browser đã đạt. Đơn hàng ↔ thanh toán có 2.040 khớp, 200 lệch, 215 thiếu đối ứng, signed +7.867 và absolute 60.883 VND. Thanh toán ↔ sao kê có 323 khớp, 40 lệch, 31 thiếu đối ứng, signed −8.306 và absolute 11.812 VND. Đọc lại tệp xuất đối chiếu 5.487 dòng, 5.458 hợp lệ, 29 ngoại lệ, checksum, snapshot và bảng XLSX. Ca Gemini LIVE về ngày trả đúng dòng `0002` và mở được bằng chứng. Chat xuất đúng bảng đang xem, giữ CSV/XLSX qua reload và hỏi làm rõ trước yêu cầu ghép đọc và xuất. Lịch sử 230 nguồn đạt cả hai đường phân trang, tải tệp gốc và mở lại sau reload, 0 lượt cloud. Log `runtime/audit-financial-readback-c66f.log`, `runtime/audit-c66f-date-live.log`, `runtime/audit-chat-export-browser-c66f-current.json` và `runtime/audit-history-browser-c66f-current.json`.
+
+Ma trận bảo trì đạt 14/14 ở năm chiều rộng và hai workspace riêng. Cả 14 cặp CSV/XLSX khớp oracle về giá trị hoàn âm, số 0, mã có số 0 đầu và thứ tự nhóm. Mỗi XLSX có tám sheet và không có ô công thức. 30 kiểm tra dữ liệu, nguồn, quyền reuse, phê duyệt và artifact giữa hai workspace đều đạt. Worker được dừng giữa lúc chuẩn hóa 75.000 dòng, lấy lại lease hết hạn và chỉ công bố một canonical, 0 lượt cloud. Receipt `runtime/audit-matrix-file-readback-c66f.json`, `runtime/audit-workspace-isolation-c66f-current.json` và `runtime/audit-worker-recovery-c66f.json`.
+
+Backup `883e53c7…` khôi phục đủ 24 bảng trong schema thử nghiệm. Bản sao trên máy khớp metadata và 12.132 checksum. Bản rollback `3313e24` đọc được 2.567 workflow, khớp hai oracle tài chính và tải lại CSV/XLSX trùng byte từ Chat. Khi quay lại `c66f`, identity, metadata, artifact và các tệp Chat vẫn khớp. Receipt `runtime/audit-backup-copy-c66f.json`, `runtime/audit-operational-drill-c66f.log` và `runtime/audit-return-c66f-persistence.log`.
+
+| Cổng | Bằng chứng trên `c66f` | Trạng thái |
+| --- | --- | --- |
+| AP-01 | Upload trong Chat tạo pipeline thật, kiểm ở hai hành trình bảo trì | PASS LOCAL |
+| AP-02 | Đọc raw và mở bằng chứng, tuyến đọc riêng khi suy luận bận | PASS LOCAL và test lỗi có kiểm soát |
+| AP-03 | Raw, bản tự chuẩn bị và bản chuẩn hóa được đọc riêng, ca ngày giữ giá trị gốc | PASS LOCAL |
+| AP-04 | Hai oracle tài chính browser giữ đủ 5.487 dòng và tách 29 ngoại lệ có lineage | PASS LOCAL |
+| AP-05 | Phân quyền, tương thích nguồn và từ chối drift trong bộ PostgreSQL | PASS phạm vi kiểm |
+| AP-06 | 19 đề xuất đúng, recall 19/24 trong 44 cột tổng hợp, một khóa bỏ sót | PASS tập đã đo |
+| AP-07 | Hai đường review, nhập riêng và nhập chung, giữ phạm vi của từng phê duyệt | PASS LOCAL |
+| AP-08 | Hai Planner LIVE qua UI và 6/6 ca Planner độc lập | PASS phạm vi kiểm |
+| AP-09 | Phê duyệt UI, nonce, scope, stale và idempotency, 30 probe giữa hai workspace | PASS phạm vi kiểm |
+| AP-10 | 20/20 và 10/10 cho mỗi provider, thêm hai lượt browser từ truy vấn đến xuất | PASS tập đã đo |
+| AP-11 | Hai oracle tài chính và Chat tải đúng tệp theo snapshot, scope, thứ tự và checksum | PASS LOCAL |
+| AP-12 | Full Playwright 142/142 và ma trận 14/14 ở 5 chiều rộng và 2 workspace | PASS LOCAL |
+| AP-13 | Tải 1.000 và 10.000 dòng khi Qwen LIVE, cùng test nhường tuyến đọc trong PostgreSQL | PASS phạm vi kiểm |
+| AP-14 | Worker phục hồi, backup 24 bảng, 12.132 tệp, rollback và quay lại với dữ liệu khớp | PASS LOCAL |
+| AP-15 | Khớp source, image và HTTP, qua các cổng ứng viên. Commit và triển khai chính thức đối chiếu bằng manifest phát hành | PASS ứng viên |
+
+Các kết quả trên là kiểm tra tự động trên ứng viên local. `READY_FOR_RELEASE` của bản triển khai còn phụ thuộc vào đối chiếu đúng commit `main`, smoke và kiểm dữ liệu sau triển khai. Manifest phát hành local ghi riêng commit, image, backup và kết quả này.
+
+## Biên bản ứng viên `4184` — 08/11/2026
+
+`worktree-41840c7256f9aa1e` đã chạy trên cùng Compose và hai volume. Kiểm tra identity xác nhận source khớp backend/worker và bảy tài nguyên frontend qua HTTP. Snapshot trước và sau khi thay image khớp 806 run, 1.493 báo cáo và 9.205 artifact. Receipt `runtime/audit-verified-paraphrases-identity.log` và `runtime/audit-verified-paraphrases-after.log`.
+
+Bốn câu U05–U08 từng lỗi trên `0ad5` nay đạt 4/4 với lựa chọn Qwen, đều chạy Backend, mất 594–2.032 ms và không gọi model. Oracle kiểm thứ tự theo chênh lệch, snapshot tiền, bằng chứng đúng vị trí và CSV đúng các nhóm đã hiện. Các câu đã dùng để sửa trở thành ca hồi quy. Hai hành trình bảo trì qua trình duyệt cũng đạt với bộ câu mới. Receipt `runtime/audit-language-QWEN-4184-targeted.json` và `runtime/audit-4184-targeted-e2e.log`.
+
+Backend/PostgreSQL trên image đạt 776/776 trong 196,83 giây, với một cảnh báo deprecation của Starlette TestClient. Gemini và Qwen đạt Planner LIVE C/B qua browser và N20. Qwen tới review sau 63,564 giây, một lượt model và không dùng cloud. Gemini U10 đạt 10/10. Qwen U10 đạt 9/10. U04 dùng nhãn `UNMATCHED` và đúng run đang mở nhưng model lại hỏi mã giao dịch. `4184` giữ trạng thái PARTIAL.
+
+Sửa nhận diện nhãn trạng thái xác minh tường minh trong Chat. Backend ánh xạ `UNMATCHED` vào trạng thái liên kết, còn `AMOUNT_MISMATCH` và `EQUAL` vào trạng thái so sánh. Chỉ dùng run đang mở và giữ câu có điều kiện kỳ khác ngoài đường xử lý trực tiếp. Câu ghép đọc và xuất có mở đầu “mình muốn” dùng cùng cổng làm rõ, giữ các ca phủ định không xuất. Kiểm tra mục tiêu trên source đạt 339 PASS, cần kiểm tiếp trên image mới.
+
+## Biên bản ứng viên `0ad5` — 08/11/2026
+
+Ứng viên local `worktree-0ad50e711314dd60` đã được đối chiếu source, image và HTTP. Snapshot trước và sau recreate khớp metadata và checksum, gồm 773 lần chạy, 1.432 báo cáo và 8.790 artifact. Cùng một Compose giữ bốn dịch vụ healthy và hai volume. Bằng chứng nằm trong `runtime/audit-verified-read-*.log`.
+
+- Hai provider đã đi qua quy trình lập kế hoạch, duyệt và chạy trên trình duyệt ở ứng viên `d77f`. Qwen hoàn thành trong 65,187 giây với một lượt gọi local và oracle C/B đúng. Gemini đạt 20/20 câu N và 10/10 câu U. Hai oracle tài chính và đọc lại file từ trình duyệt đều đạt trên cùng ứng viên. Đây là bằng chứng cho source `d77f`.
+- Cả hai provider đã đạt hành trình LIVE C/B trên `0ad5`. Gemini tới review sau 11,688 giây, Qwen sau 58,650 giây. Mỗi hành trình có một lượt model và một phê duyệt qua UI, đúng nguồn, role, khóa, kỳ, metric, 3 nhóm khớp, 1 nhóm lệch và chênh 0,01 VND. Qwen dùng 0 lượt cloud. Receipt `runtime/audit-live-planner-*-CB-0ad5-current.json`.
+- Bộ N20 trên `0ad5` đạt 20/20 với lựa chọn Qwen, gồm 6 inference LIVE và 14 ca backend. Sáu ca dùng model có p50/p95 tới kết quả là 10.015,5/15.621 ms, 0 lượt cloud. Trong cửa sổ lấy mẫu quanh ca Planner và các câu Qwen, RSS lớn nhất của `llama-server` là 3.680.804.864 bytes, VRAM lớn nhất 4.225 MiB và RAM khả dụng thấp nhất 682.340 KiB. Số liệu là cực trị quan sát trong cửa sổ lấy mẫu. Receipt `runtime/audit-language-domain-QWEN-0ad5.json` và `runtime/audit-qwen-0ad5-resources.json`.
+- Trên `0ad5`, Gemini đạt 20/20 câu N và 10/10 câu U. Qwen đạt 6/10 câu U. U05 và U06 bị chuyển sang luồng đề xuất đối soát, U07 yêu cầu mở lại danh sách dù đã có truy vấn và U08 hỏi lại khi người dùng đã chỉ đúng các dòng cần xuất. Tất cả bốn lỗi dừng ở yêu cầu làm rõ. Receipt `runtime/audit-language-heldout-*-0ad5.json` giữ nguyên các kết quả. Bộ R01–R06 của Planner chạy trực tiếp đạt 6/6, gồm năm lượt Qwen từ 29,984 đến 43,750 giây và một quyết định review của Backend. Kết quả trực tiếp nằm trong `runtime/audit-planner-release-0ad5.json`, tách riêng với hành trình browser ở trên.
+- Chat Qwen đạt 12/20 ở `d77f` và 15/20 ở `5b93`. Lỗi gồm chọn nhầm tác vụ ghi cho câu đọc, đếm một field thay vì đếm nhóm và hỏi lại dù run đang mở đã đủ ngữ cảnh. Bản `0ad5` đã kiểm đúng cả năm ca từng lỗi N07, N08, N09, N11, N16 bằng dữ kiện đã xác minh trong 0,625–1,031 giây, 0 lượt model và 0 cloud. Các phép đọc này áp dụng cho câu tường minh có ngữ cảnh hợp lệ. Câu hỏi tiền hai bên không bằng nhau chỉ bind trực tiếp thành AMOUNT_MISMATCH khi quy tắc hiện hành so sánh với tolerance bằng 0 và không làm tròn.
+- Lượt UI khi Qwen chạy trên `d77f` từng có hai timeout do job đọc chờ luồng suy luận. Trên `5b93`, hai hành trình bảo trì đã hoàn tất. PostgreSQL xác nhận 13 job Chat hoàn tất trọn vẹn trong cửa sổ các job Qwen. Khi luồng suy luận bận, worker nhận job đọc qua cùng hàng đợi, chỉ khóa job được chọn và kiểm lại scope khi thực thi. Hai thử nghiệm fixture ban đầu trả `CONVERSATION_BUSY` do dùng chung khóa tạo hội thoại. Fixture đã dùng hai hội thoại độc lập, giữ nguyên chốt chống gửi đồng thời trong cùng hội thoại.
+- Bộ backend trên image `5b93` đạt 768/768. Image `0ad5` đạt 771/771 với một cảnh báo deprecation từ Starlette TestClient. Kiểm tra mục tiêu trên source `0ad5` đạt 307/307. Playwright trên image `0ad5` đạt 142/142 trong 14 phút, retries 0. Log tại `runtime/audit-0ad5-image-tests.log` và `runtime/audit-0ad5-full-e2e.log`.
+- Benchmark tổng hợp Windows 1.000, 10.000 và 50.000 dòng, ba lượt mỗi cỡ, 0 cloud. Ở 50.000 dòng, trung vị parse 69,03 ms, profile 794,86 ms, chuẩn hóa và ghi 1.602,01 ms. Phép đo riêng ghép khóa có trung vị 1.918,92 ms và xác minh 1.577,66 ms. Peak process của hai phép đo lần lượt 174,71 MiB và 318,96 MiB. Phép đo chồng thời gian với Playwright, không dùng làm SLA. Số liệu theo từng cỡ nằm trong `runtime/audit-foundation-benchmark-0ad5.json` và `runtime/audit-reconciliation-benchmark-0ad5.json`.
+- Hai oracle tài chính trên `0ad5` đạt từ thao tác duyệt mẫu qua UI đến chạy, mở bằng chứng và xuất CSV/XLSX. Đơn hàng ↔ thanh toán đạt 2.040 khớp, 200 lệch, 215 thiếu đối ứng, signed +7.867 và absolute 60.883 VND. Thanh toán ↔ sao kê đạt 323 khớp, 40 lệch, 31 thiếu đối ứng, signed −8.306 và absolute 11.812 VND. Read-back xác minh SHA tệp nguồn và snapshot với 5.487 dòng, 5.458 hợp lệ, 29 lỗi. Log `runtime/audit-financial-*-0ad5*.log`.
+- Hành trình Chat xuất đúng bảng đã lọc, hỏi rõ khi yêu cầu đồng thời xem và xuất, rồi tiếp tục đọc theo câu trả lời đã đạt trên `0ad5`. Dự án 230 nguồn cũng đạt ở hai đường phân trang, tải bản gốc và mở lại nguồn cũ nhất. Các receipt nằm trong `runtime/audit-chat-export-browser-0ad5-current.json` và `runtime/audit-history-browser-0ad5-current.json`.
+- Chạy lại mapping 44 cột tổng hợp trên cùng source. Implementation chọn đúng 19/19 đề xuất, recall 19/24, 25 abstention và bỏ lỡ một khóa. RapidFuzz độc lập abstain cả 44 cột. Receipt `runtime/audit-mapping-*-0ad5.json`.
+- Ma trận bảo trì trên `0ad5` đạt 14/14 hành trình. Có 10 lượt ở 390, 768, 1366, 1440 và 1920 px, cùng bốn lượt qua hai tài khoản workspace riêng. Đọc lại 14 cặp CSV/XLSX khớp oracle, gồm hoàn tiền âm, số 0, mã có số 0 đầu, đúng thứ tự nhóm, tám sheet và không có ô công thức. 30 kiểm tra phân quyền qua hai workspace đạt. Receipt `runtime/audit-matrix-file-readback-0ad5.json` và `runtime/audit-workspace-isolation-0ad5-current.json`.
+- Diễn tập trên `0ad5` dừng worker giữa bước chuẩn hóa 75.000 dòng. Worker mới lấy lại lease hết hạn, công bố đúng một canonical và tiếp tục workflow với 0 lượt cloud. Backup `7466fd86…` khôi phục đủ 24 bảng trong schema thử nghiệm, chặn checksum sai và đường dẫn thoát thư mục. Bản sao trên máy khớp metadata và 11.504 checksum. Bản rollback `3313e24` giữ metadata và artifact, đọc được 2.144 workflow, tải lại hai tệp Chat trùng byte và đọc đúng cả hai oracle tài chính. Receipt `runtime/audit-worker-recovery-0ad5.json`, `runtime/audit-backup-copy-0ad5.json` và `runtime/audit-rollback-3313-*.log`.
+
+Sửa bốn cách diễn đạt U05–U08 trong bộ nhận diện intent. Xếp hạng và tóm tắt lấy run đang mở, giải thích theo vị trí đòi hỏi danh sách đã trả, xuất CSV ghim vào truy vấn đã lưu. Test giữ ca từ chối khi đổi thứ tự, kỳ, phạm vi lọc hoặc dùng truy vấn của run khác. Kiểm tra mục tiêu trên source sửa đạt 333 PASS và 63 skip thuộc bộ PostgreSQL. Cần chạy lại trên image mới. Trạng thái phát hành vẫn PARTIAL. Nhánh đang làm `codex/intelligent-automation-experience`, HEAD `ca45ab0`.
+
+## Kiểm toán tiếp diễn sau restart — 08/11/2026
+
+**Biên bản ứng viên `7989`.** Nhánh làm việc `codex/intelligent-automation-experience`, HEAD đã push trước nhiệm vụ là `ca45ab0`, `main` ở `3deac3f`. Ứng viên trong biên bản có định danh nội dung `worktree-798982e78270f1ec`. Nhãn source/image/HTTP và kiểm persistence được ghi riêng trong `runtime/audit-literal-keys-*.log`, tất cả đạt.
+
+### A. Nền tảng và bảo toàn dữ liệu
+
+Sau restart của chủ dự án, cùng một Compose project `ai-reconciliation-studio`, bốn dịch vụ và hai volumes được giữ nguyên. Kiểm tra chỉ đọc xác nhận toàn bộ metadata bất biến trong baseline còn nguyên: 743 run, 1.374 export và checksum của 8.478 artifact cùng toàn bộ file run/export. Không có kết luận equality cho metadata workflow/job/audit đã phát sinh hợp lệ trước restart. Hai lượt recreate ứng viên tiếp theo kiểm cả metadata mutable và bytes theo snapshot mới đều đạt; các receipt ghi rõ thời điểm và phạm vi.
+
+### B. Sửa nguyên nhân gốc và hợp đồng
+
+- Xác nhận lịch sử chỉ dùng lại cho đúng cặp canonical có revision và thứ tự. Tên tệp thiếu/trùng không được thay bằng nguồn khác. Nhãn vai trò tường minh ràng buộc riêng từng phía; schema và validator chặn độc lập việc đảo nguồn/role.
+- Wire local thu gọn tên thuộc tính và metadata trùng, giữ cùng DTO và validation. Planner chỉ dùng tổ hợp grain/cardinality/aggregation cùng các cặp metric/basis/currency/unit đã được duyệt. Không có cặp tiền tương thích thì hỏi rõ trước inference. Candidate native có nhiều metric không tự chọn thêm metric.
+- Export phân biệt `FULL_RUN` với `DISPLAYED_QUERY`; bảng đang xem được ghim phía server, giữ filter/fields/sort/page. Lưu trữ dùng các trường query có sẵn để image cũ vẫn đọc được strict DTO; API vẫn trả phạm vi rõ ràng. Hash quyết định chuẩn hóa trường metadata mới, giữ replay quyết định cũ không sinh job trùng và từ chối payload thay đổi.
+- Phủ định một thao tác không biến thành yêu cầu thực hiện nó. Câu có nhiều tool độc lập hỏi bước làm trước. Nguồn xác nhận dưới dạng `Facts nguồn trái/phải: {...}` được kiểm riêng từng phía, không lấy xác nhận phía kia, canonical khác, nhãn phủ định hoặc khóa JSON lặp.
+- Câu tóm tắt kết quả đơn giản dùng snapshot đã xác minh. Cardinality literal được gắn nhãn rõ, không phủ định/mâu thuẫn, giới hạn schema local và được validator kiểm lại cho cả hai provider; model không được đổi quan hệ người dùng nêu. Không đổi Decimal, công thức, verifier, approvals, migrations hoặc dependency.
+- Danh sách ID khóa ghép được nêu tường minh, cùng tồn tại trong hai schema đã duyệt, được ràng buộc đúng thứ tự ở schema local và kiểm độc lập ở validator. Không dịch/đoán khóa, không dùng oracle để tạo schema, không sửa output provider để đạt expected.
+
+### C. Kiểm thử và trạng thái source
+
+Source mới nhất đạt **737/737 backend/PG**, gồm queue/metadata PostgreSQL thật, property/golden/security/contract và AI MOCK có nhãn; không phải 737 lượt LIVE. Lệnh `tools/test-postgres.ps1 -All -Source`, receipt `runtime/audit-literal-keys-source-tests.log`, 215,41 giây. Ruff và mypy 51 source files đạt; frontend TypeScript/ESLint/build đạt. Bản trước đó đạt 711, 717 rồi 727; giữ log trước/sau của các regression. Full Playwright 142 lượt trên `3313e24` là **bằng chứng lịch sử**, chưa được tính lại cho ứng viên hiện tại.
+
+### D. Mapping độc lập
+
+Tập mới gồm 44 cột trên bốn miền, 24 positive/20 negative. Implementation hiện có đúng 19/19 đề xuất, precision 1, recall 19/24, F1 0,88372; 0 false positive, 1 khóa bỏ lỡ, 25 abstention. RapidFuzz trên cùng tập abstain toàn bộ, bỏ lỡ 9 khóa. Receipt `runtime/audit-mapping-independent-existing.json` và `audit-mapping-independent-rapidfuzz.json`; đặc tả cố định trong `tests/fixtures/mapping-domain-independent-specifications.json`. Đây là dữ liệu tổng hợp do cùng người thực hiện tạo, không phải thử nghiệm mù bởi người dùng độc lập. Kết quả tập Việt–Anh cũ bên dưới vẫn là lịch sử riêng, không cộng hai tập thành độ chính xác sản phẩm chung.
+
+### E. Tiếng Việt và xuất file
+
+Trên `worktree-1194d81d05eff884`, bộ N01–N20 đạt **19/20**, 16 Gemini calls; N13 tóm tắt không dấu bị `AI_INVALID_FIELD`. Ba ca từng lỗi N14/N15/N18 đã đạt khi replay LIVE/native. Không được báo cả bộ 20/20 từ tail log. Bộ U01–U10 chưa dùng chỉnh sửa đạt **10/10**, 10 Gemini calls. Receipt `audit-language-domain-1194.json`, `audit-language-targeted-1194.json`, `audit-language-heldout-1194.json`. Sau phát hiện N13, bổ sung đường tóm tắt snapshot; chưa dùng unit PASS thay cho nghiệm thu LIVE trên source mới.
+
+Browser thật `audit-chat-export-browser-1194-current.json` đạt: xem hai nhóm thiếu đối ứng → CSV đúng bảng → XLSX đúng bảng → câu ghép hỏi rõ → trả lời chọn query-only, không xuất → reload còn links; 4 Gemini calls tổng cộng. CSV/XLSX qua link tải trên UI. Các ca này phải phân biệt với benchmark gọi API và với bộ U chưa đụng tới trước lần đo.
+
+Sau sửa N13, `31ba` đạt đủ **20/20 N** (15 Gemini calls, các ca còn lại native) và **10/10 U** (10 Gemini calls), receipts `audit-language-domain-31ba.json`, `audit-language-heldout-31ba.json`. U đã được đo trước đó nên lần này là validation, không gọi là holdout mới. Source `7989` chỉ đổi registered Planner sau hai lượt này; cần xác nhận lại trên image cuối theo cổng nghiệm thu.
+
+Lượt đủ N trên `7989` đạt **19/20**: N20 model chỉ trả QUERY_DATA và bỏ vế xuất, nên workflow cũ hoàn tất một phần yêu cầu. Receipt `audit-language-domain-7989.json` giữ nguyên failure, không đổi expected hoặc trạng thái lịch sử. Đã tái hiện guard thiếu trường hợp model trả một intent không đầy đủ; source tiếp theo bổ sung chốt chuỗi đọc→xuất ở cả native resolver/compiler, gồm regression cho bỏ vế, phủ định và trả lời chọn query-only. Chưa dùng kết quả unit thay cho replay LIVE sau sửa; pipeline đã dừng trước U10/Qwen browser trên `7989` khi oracle N20 không đạt.
+
+### F. Planner LIVE
+
+Gemini trên `1194` chọn đúng cặp C/B, roles, kỳ, coverage, snapshot, khóa, metric và tolerance; một call, người dùng automation bấm duyệt trên UI, run có 3 equal/1 mismatch/0 unmatched, signed/absolute 0,01 VND. Receipt `audit-live-planner-GEMINI-CB-1194-current.json`, run `6a86521d-e0a5-4821-bb41-afcda394f847`.
+
+Qwen có ca browser thành công trên `3f4c` (76,815 giây, một call, 0 cloud, oracle C/B đúng) nhưng cold call mới trên `5704` timeout 90,193 giây, delivery unknown. Không gửi lại job đó hoặc các unknown cũ. Ca T01 riêng trước restart gặp CUDA OOM trong prefill. Codec thử nghiệm `local-planning-2` không có bằng chứng tốt hơn nên đã bỏ khỏi application source; giữ receipt thất bại, không dùng để kết luận PASS.
+
+Sau restart, thử riêng mỗi request `num_batch=128`, cùng model/context/timeout: R02 1:N đúng tất cả slot trong 47,672 giây (cold load 11 giây); T02 ngữ cảnh 4.111 tokens trả đúng facts trong 52,594 giây nhưng backend chặn vì chỉ nhận từ “đầy đủ”. Replay phản hồi lưu sau sửa đạt toàn bộ intent/facts/plan, **0 inference**; đó không phải lượt LIVE mới. R03 N:1 trả 1:N và đảo thứ tự khóa, 50,579 giây; giữ là FAIL, không sửa expected. Sau đó mới bổ sung ràng buộc literal cardinality/validator. Cần LIVE validation và holdout trên source sau sửa.
+
+`31ba` có lượt **browser Qwen cold đạt**: 62,377 giây tới review, một call/0 cloud, đủ source/role/facts, duyệt trên UI rồi oracle C/B đúng. Job `08afc2ba-c568-466d-a9af-4dc99763e889`, run `867ca226-4b78-479f-9ee9-e27d50c7d63f`. Cùng source, tập R đạt 5/6; R03 đã đúng chiều N:1 nhưng đảo thứ tự khóa. Thử riêng schema bind literal lấy từ yêu cầu và approved fields (không đọc gold labels) đạt R03 trong 39,406 giây; sau đó mới đưa vào application.
+
+Trên source/image **`7989`**, `reconciliation-planning-13`, tập R01–R06 đạt **6/6** toàn bộ slot/oracle, năm call Qwen và một review xác định/0 calls; 0 cloud, 0 timeout/OOM trong lượt này. Latency model: R01 40,953 s; R02 34,859 s; R03 31,219 s; R05 46,390 s; R06 36,266 s. Spec SHA256 `932fee25b6a67576c2e05dcd85c01b4dddf96fa7cedf922997f0ecbe96433239`, receipt `runtime/audit-planner-release-7989.json`. R02/R03 đã dùng validation/tối ưu nên không gọi toàn tập là holdout untouched; R01/R04/R05/R06 lần đầu trên `31ba` đều đạt trước sửa khóa. Lượt `7989` có hồi quy backend và recreate chạy cùng khoảng thời gian; không dùng latency đó như benchmark máy rảnh.
+
+### G. Tài nguyên và độ ổn định Qwen
+
+Model giữ `qwen3:8b`, digest `500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41`, Ollama 0.40.9; không đổi driver, daemon hoặc model. Request app đặt batch 128; context đang cấu hình 8192, output 6000, timeout 90 giây, non-thinking, keep-alive 90 giây. Native log xác nhận n_batch/n_ubatch 128, offload 25/37 layers, CUDA model 3258,14 MiB và CUDA Host 1719,48 MiB.
+
+Máy RTX 3050 Laptop 6 GiB, RAM khả dụng biến động mạnh. R02 monitor ban đầu chỉ lấy process quản lý Ollama nên **không dùng RSS đó làm model peak**; mẫu RAM hệ thống có lúc chỉ còn 142.752 KiB. Monitor R03 có `llama-server` thật, sampled peak RSS 2.804.117.504 bytes, RAM còn ít nhất 738.524 KiB trong cửa sổ đo; không phải peak toàn vòng đời. Batch nhỏ tránh OOM trong các lượt đã đo nhưng chưa đủ chứng minh ổn định hoặc đạt chất lượng; AP-08 còn PARTIAL. Không tăng timeout, reset ledger, fallback cloud hoặc dọn cache toàn máy.
+
+### H. UX và oracle tài chính
+
+Hai lượt maintenance sau restart ở 1440 px đạt trên `5704`: upload ba nguồn mới, duyệt ánh xạ, chuẩn hóa, approve plan, chạy, tra bằng chứng, tải CSV/XLSX và reload. Normal/shared facts giữ 26 click/23 trường so với 30 click/14 trường, 2 approvals/4 resources. Không suy là giảm click; đây là giảm trường nhập lặp. Cần tiếp tục đầy đủ 390/768/1366/1440/1920 px trên ứng viên mới.
+
+Browser tài chính trên `37ba` đạt cả orders/payments (2.040 equal/200 mismatch/215 unmatched, signed 7.867/absolute 60.883 VND) và payments/bank (323/40/31, signed -8.306/absolute 11.812 VND). Người dùng automation review template, lưu bản nháp đã kiểm, xác nhận dòng lỗi rồi mới approve/run; không thay UI bằng API chạy hộ. Read-back giữ raw SHA, 5.487/5.458/29, tất cả verifier checks và snapshot trong XLSX 8 sheets/0 formula. Receipt `audit-financial-browser-37ba-export-wait/browser-receipt.json` và `readback-receipt.json`. Các lần harness sai HTTP 200 thay vì contract 201, thiếu bước lưu bản nháp review, hoặc chờ export quá ngắn được giữ log; không sửa application để lách các gates này.
+
+### I. Reliability, security, backup và rollback
+
+Ba workflow TEST do chính đợt kiểm toán tạo đã được bỏ đúng trường metadata `export_scope=null` không tương thích image cũ, giữ mọi giá trị khác/updated_at và audit trước/sau; không sửa dữ liệu người dùng hay tiền. Tất cả 1.486 workflow lúc kiểm đọc được bằng DTO cũ `3313`. Backup trước thao tác `backup_649f32a7e1c144a59b8bfa52a4d6fb08` đã restore thử 24 bảng, kiểm checksums/traversal và production unchanged. Đây chưa phải backup cuối sau toàn bộ nghiệm thu.
+
+Hai tài khoản owner TEST có workspace riêng, policy LOCAL_ONLY và sessions mới sau restart; chưa dùng việc tạo session làm bằng chứng isolation. Còn phải hoàn thành browser journeys trong cả hai workspace, probes đọc/tải/review/grants chéo, worker SIGKILL trên image mới, backup cuối + bản host và rollback thực sang `3313` rồi quay về ứng viên. Không xóa volume, request ledger, bản backup hoặc image rollback.
+
+### J. Phân tích giao diện, Git và phần còn lại
+
+[INTERFACE_REDESIGN_AUDIT.md](INTERFACE_REDESIGN_AUDIT.md) đã có: kiểm kê component/state/API, 30 ảnh trên sáu bề mặt × năm kích thước, vấn đề, đề xuất IA/components/tokens, ưu tiên và regression cần bảo toàn, nguồn tham khảo chính thức. Đây chỉ là phân tích cho đợt sau; không đổi layout/màu/font/CSS hoặc bắt đầu redesign. Không có kết luận WCAG từ ảnh.
+
+Cổng còn mở: Qwen sau sửa và LIVE hai provider trên cùng source cuối; tiếng Việt sau sửa; browser năm kích thước/hai workspace; full E2E trên image cuối; recovery/backup/rollback mới; đối chiếu source và tài liệu cuối. Secret/history/Markdown path scan hiện đạt 205 source candidates, vẫn phải kiểm diff/nội dung trước Git. Chưa commit/push, chưa merge `main`, chưa build release Git và chưa cleanup images vì chưa đủ cổng. Những mục phía dưới là **biên bản lịch sử**, không thay cho bằng chứng ứng viên hiện tại.
+
+## Biên bản lịch sử ứng viên `3313e24` — 08/11/2026
 
 ### A. Trạng thái nền tảng
 
@@ -2161,8 +2302,8 @@ Các lỗi phát hiện và thay đổi:
 - Antigravity có interpreter người dùng3.11 và terminal mặc định mang tên dự án khác. `.vscode/settings.json` ưu tiên trình quản lý venv, đặt terminal Windows PowerShell riêng **PowerShell (AI Reconciliation Studio)** và cwd repository. Profile terminal của dự án khác được giữ nguyên. Profile PowerShell cá nhân đã khôi phục ở mụcV tiếp tục xử lý tự kích hoạt; 10ca mở shell/vào/rời dự án đều đạt, đã chạy lại cả ngoài Codex.
 - VS Code đã chọn Python toàn cục3.11; Python Environments của hai IDE từng trả versionnull cho `.venv`. PET CLI/JSON-RPC và việc ghi lại cache chỉ giải quyết nhận diện, chưa giải quyết nguyên nhân khởi động Python. Không sửa SQLite hay xóa toàn bộ storage.
 - Nguyên nhân gốc được chứng minh bằng `GetFinalPathNameByHandleW`: Python dưới `%APPDATA%/uv/python` mà lệnh trong Codex nhìn thấy thực tế nằm trong `LocalCache/Roaming` của gói MSIX Codex. Vì vậy kiểm tra PASS trong Codex trước đó chưa chứng minh IDE bên ngoài truy cập được Python nền; venv launcher trả `No Python at`, Mypy EPIPE, Pyrefly/Pylance không truy vấn được interpreter.
-- Chuyển hai bản Python đã khôi phục3.12.14/3.11.9 sang `C:/Users/admin/.local/share/uv/python`, giữ tên thư mục theo patch version chuẩn uv. Liên kết lại chính `.venv` hiện có bằng `uv venv --allow-existing`, giữ51gói và lockfile. Đặt `UV_PYTHON_INSTALL_DIR` ở cấu hình tài khoản cả trong và ngoài MSIX; uv cập nhật đăng ký Python/aliases offline. Giữ `python` toàn cục3.11.9 cho tương thích cũ; có `python3.12` và `python3.11`. Các đường dẫn Python AppData cũ còn thiếu được nối về bản dùng chung bằng junction; không thay thư mục Python cũ đang tồn tại hoặc sao chép thêm interpreter.
-- Thông báo Antigravity `Default interpreter path '${workspaceFolder}...' could not be resolved` còn xuất hiện do Python Environments1.20.1 thử phân giải biến workspace ở phạm vi global. Bản1.40.0 của VS Code cần editor>=1.110 nên không ép cài vào Antigravity1.107. Workspace dùng `python-envs.defaultEnvManager=ms-python.python:venv`; cấu hình người dùng của hai IDE đặt đường dẫn dự phòng cụ thể `C:/Users/admin/.local/bin/python3.12.exe` và autoActivationType command. Backup cấu hình trước sửa nằm trong runtime, không vào Git. Sau reload, log Antigravity chọn đúng `.venv`3.12.14 theo defaultEnvManager, không lặp lỗi phân giải đường dẫn.
+- Chuyển hai bản Python đã khôi phục3.12.14/3.11.9 sang `%USERPROFILE%/.local/share/uv/python`, giữ tên thư mục theo patch version chuẩn uv. Liên kết lại chính `.venv` hiện có bằng `uv venv --allow-existing`, giữ51gói và lockfile. Đặt `UV_PYTHON_INSTALL_DIR` ở cấu hình tài khoản cả trong và ngoài MSIX; uv cập nhật đăng ký Python/aliases offline. Giữ `python` toàn cục3.11.9 cho tương thích cũ; có `python3.12` và `python3.11`. Các đường dẫn Python AppData cũ còn thiếu được nối về bản dùng chung bằng junction; không thay thư mục Python cũ đang tồn tại hoặc sao chép thêm interpreter.
+- Thông báo Antigravity `Default interpreter path '${workspaceFolder}...' could not be resolved` còn xuất hiện do Python Environments1.20.1 thử phân giải biến workspace ở phạm vi global. Bản1.40.0 của VS Code cần editor>=1.110 nên không ép cài vào Antigravity1.107. Workspace dùng `python-envs.defaultEnvManager=ms-python.python:venv`; cấu hình người dùng của hai IDE đặt đường dẫn dự phòng cụ thể `%USERPROFILE%/.local/bin/python3.12.exe` và autoActivationType command. Backup cấu hình trước sửa nằm trong runtime, không vào Git. Sau reload, log Antigravity chọn đúng `.venv`3.12.14 theo defaultEnvManager, không lặp lỗi phân giải đường dẫn.
 - Pylance từng mất hơn10giây để liệt kê workspace và cảnh báo quá nhiều thư mục. Cấu hình include backend/tests/tools, extraPaths backend, exclude môi trường/dependencies/runtime/build output; watcher bỏ các thư mục sinh tự động. Log workspace sau thay đổi tìm79source files trong khoảng0,6giây ở một lượt đo; không gọi đây là benchmark tổng thể.
 - Ruff từng lỗi dò executable qua Python và rơi về bản bundled. Workspace trỏ thẳng `.venv/Scripts/ruff.exe`; log mới xác minh Ruff0.17.3 và lệnh chạy server tại đúng đường dẫn. Mypy dùng interpreter `.venv`, importStrategy fromEnvironment; log sau khôi phục của cả hai IDE chạy mypy2.4.0 và publish diagnostics cho file đang mở. Pylance nhận đúng Python3.12.14; Pyrefly chạy language server và truy vấn được môi trường.
 
@@ -2194,7 +2335,7 @@ Lượt này không gọi Gemini/Qwen/LlamaParse hoặc thay đổi cấu hình 
 
 ## X. Kiểm tra lại môi trường sau khi mở lại máy — 03/11/2026
 
-Chủ dự án yêu cầu rà soát lại và báo cáo kết quả kiểm thử. Bắt đầu tại main163b7e9 sạch, đúng repository/origin; không thay đổi mã nghiệp vụ, lockfiles, cấu hình AI hay dự án khác. Python nền dùng chung vẫn ở `C:/Users/admin/.local/share/uv/python`, venv Studio trỏ đúng bản3.12.14; aliases3.11.9/3.12.14, biến UV_PYTHON_INSTALL_DIR của tài khoản, cấu hình người dùng của hai IDE và đường dẫn tương thích AppData còn hoạt động. Đã kiểm tra lại từ tiến trình Windows ngoài MSIX Codex (GetCurrentPackageFullName=15700), không chỉ dựa vào kết quả trong Codex.
+Chủ dự án yêu cầu rà soát lại và báo cáo kết quả kiểm thử. Bắt đầu tại main163b7e9 sạch, đúng repository/origin; không thay đổi mã nghiệp vụ, lockfiles, cấu hình AI hay dự án khác. Python nền dùng chung vẫn ở `%USERPROFILE%/.local/share/uv/python`, venv Studio trỏ đúng bản3.12.14; aliases3.11.9/3.12.14, biến UV_PYTHON_INSTALL_DIR của tài khoản, cấu hình người dùng của hai IDE và đường dẫn tương thích AppData còn hoạt động. Đã kiểm tra lại từ tiến trình Windows ngoài MSIX Codex (GetCurrentPackageFullName=15700), không chỉ dựa vào kết quả trong Codex.
 
 **Điểm đã xử lý:** Docker Desktop/WSL2 chạy nhưng cả bốn container ứng dụng đang dừng từ lượt tắt trước: Backend/frontend/PostgreSQL exit0, worker exit137; OOMKilled=false ở cả bốn, chưa đủ bằng chứng gọi worker là lỗi thiếu RAM. Hai volumes và bốn container/images cũ còn nguyên. Chạy `docker compose start --wait --wait-timeout 90`, không build/pull/recreate hoặc tạo hạ tầng khác. Đủ4healthy với chính các IDs cũ e32d2ba31703/9597a1e33d2c/22fa413d2693/c66ce610a473. Session ban đầu403 đúng cơ chế fail-closed sau khởi động; `tools/verify-local.ps1` xác minh published ports loopback rồi `/api/session`200. Khi tự mở lại ứng dụng, dùng `tools/start.ps1 -SkipBuild` như README; restart policy unless-stopped giữ nguyên ý nghĩa không tự bật container đã bị dừng thủ công.
 

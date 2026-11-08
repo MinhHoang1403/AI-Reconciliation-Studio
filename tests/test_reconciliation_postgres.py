@@ -747,6 +747,50 @@ def test_planner_accepts_sources_without_keys_but_cannot_execute(pg):  # noqa: F
     assert denied.status_code == 422 and denied.json()["code"] == "PLAN_NEEDS_REVIEW"
 
 
+def test_incompatible_planner_metadata_is_deterministic_review_without_provider_trace(
+    pg,  # noqa: F811
+    monkeypatch,
+):
+    from studio import reconciliation_jobs
+    from studio.database import JobRow, PlanRow, TraceRow
+
+    client, factory, worker = pg
+    pid, plan = prepare_pair(pg)
+    original = reconciliation_jobs.selected_catalogue
+
+    def incompatible(*args, **kwargs):
+        sources = original(*args, **kwargs)
+        money = next(f for f in sources[1].schema_definition.fields if f.data_type == "decimal")
+        money.amount_basis = "net"  # Synthetic scoped metadata, not a historical DB edit.
+        return sources
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("No provider or inference reservation for known incompatible metadata")
+
+    monkeypatch.setattr(reconciliation_jobs, "selected_catalogue", incompatible)
+    monkeypatch.setattr(reconciliation_jobs, "GeminiProvider", forbidden)
+    queued = client.post(
+        "/api/reconciliation-plans/ai",
+        json={
+            "project_id": pid,
+            "request": {
+                "left": {"canonical_id": plan.left.canonical_id},
+                "right": {"canonical_id": plan.right.canonical_id},
+            },
+        },
+        headers={"Idempotency-Key": "incompatible-metadata-no-provider"},
+    )
+    assert queued.status_code == 202
+    drain(factory, worker)
+    with factory() as db:
+        job = db.get(JobRow, queued.json()["job_id"])
+        assert job.status == "SUCCEEDED" and job.result["source"] == "DETERMINISTIC"
+        proposal = db.get(PlanRow, job.result["plan_id"])
+        assert proposal.origin == "DETERMINISTIC" and proposal.proposal["status"] == "NEEDS_REVIEW"
+        assert proposal.proposal["plan"] is None and proposal.proposal["missing_requirements"]
+        assert db.scalar(select(TraceRow.id).where(TraceRow.job_id == job.id)) is None
+
+
 @pytest.mark.parametrize("entry", ["scoped", "legacy", "chat"])
 def test_planner_scoped_candidate_or_missing_plan_review(pg, monkeypatch, entry):  # noqa: F811
     from studio import reconciliation_jobs

@@ -55,6 +55,8 @@ Cần Windows/PowerShell và Docker Desktop đang chạy, cổng `127.0.0.1:1818
 .\tools\start.ps1
 ```
 
+Lệnh build thường yêu cầu các tệp đầu vào của ứng dụng đã được commit để nhãn image trỏ đúng mã nguồn.
+
 **Mở lại môi trường đã có image:**
 
 ```powershell
@@ -85,4 +87,5 @@ Chưa nghiệm thu triển khai Internet hoặc nhiều người dùng đồng t
 - [Tích hợp và quyền AI](docs/AI_INTEGRATION.md).
 - [Kiểm thử, backup và khôi phục](docs/TESTING_GUIDE.md#quy-trình-kiểm-thử-và-khôi-phục-hiện-hành).
 - [Báo cáo triển khai và nghiệm thu](docs/IMPLEMENTATION_STATUS.md).
+- [Phân tích giao diện trước đợt thiết kế lại](docs/INTERFACE_REDESIGN_AUDIT.md).
 - [Kế hoạch sản phẩm](docs/PROJECT_PLAN.md), [kế hoạch Agent](docs/AI_AGENT_MVP_IMPLEMENTATION_PLAN.md) và [quy tắc đóng góp](Rules.md).

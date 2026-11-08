@@ -16,6 +16,102 @@ from test_reconciliation_postgres import prepare_pair
 pytestmark = pytest.mark.integration
 
 
+@pytest.mark.parametrize("encoding", ["legacy", "transient"])
+def test_legacy_clarification_decision_replay_preserves_digest_and_creates_no_job(
+    pg,  # noqa: F811
+    monkeypatch,
+    encoding,
+):
+    """Real API/DB replay of a pre-export-scope decision; initial interpretation is MOCK."""
+    from copy import deepcopy
+
+    import studio.agent_jobs as agents
+    from studio.agent_workflows import digest
+    from studio.database import AgentWorkflowRow
+
+    client, factory, worker = pg
+    pid = project(client)
+    context = dict(project_id=pid)
+    cid = conversation(client, context)
+    monkeypatch.setattr(
+        agents,
+        "interpret_requests",
+        lambda *args: [AgentIntent(intent="CLARIFY", questions=["Bạn muốn tra cứu gì?"])],
+    )
+    first = ask_agent(client, context, cid, text="Tra cứu thông tin")
+    drain(factory, worker)
+    flow = workflow_for(client, factory, first["job_id"])
+    review = flow["detail"]["reviews"][0]
+    legacy_intent = AgentIntent(
+        intent="UNSUPPORTED", questions=["Không thực hiện tác vụ này."]
+    ).model_dump(mode="json", exclude={"export_scope"})
+    body = {k: review[k] for k in ("nonce", "fingerprint")}
+    body.update(review_id=review["id"], decision=dict(type="CLARIFICATION", intent=legacy_intent))
+    path = f"/api/agent/workflows/{flow['id']}/decisions"
+    first_decision = client.post(path, json=body, headers={"Idempotency-Key": "legacy-first"})
+    assert first_decision.status_code == 200, first_decision.text
+    with factory() as db:
+        row = db.get(AgentWorkflowRow, flow["id"])
+        detail = deepcopy(row.detail)
+        stored = next(r for r in detail["reviews"] if r["id"] == review["id"])
+        assert stored["state"] == "DECIDED"
+        historical = deepcopy(body["decision"])
+        if encoding == "transient":
+            historical["intent"]["export_scope"] = None
+        stored["decision_sha256"] = digest(historical)
+        row.detail = detail
+        before = db.scalar(select(func.count()).select_from(JobRow))
+        db.commit()
+    replay = client.post(path, json=body, headers={"Idempotency-Key": "legacy-replay"})
+    assert replay.status_code == 200, replay.text
+    changed = deepcopy(body)
+    changed["decision"]["intent"]["questions"] = ["Một quyết định khác."]
+    assert (
+        client.post(path, json=changed, headers={"Idempotency-Key": "legacy-conflict"}).status_code
+        == 409
+    )
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(JobRow)) == before
+
+
+@pytest.mark.parametrize(
+    "code",
+    ["OLLAMA_UNAVAILABLE", "OLLAMA_MODEL_MISSING", "OLLAMA_NOT_CONFIGURED", "GEMINI_UNAVAILABLE"],
+)
+def test_local_provider_failure_blocks_job_without_retry_or_fake_success(pg, monkeypatch, code):  # noqa: F811
+    """Real queue/attempt metadata; provider error itself is explicitly synthetic."""
+    from studio.database import AttemptRow
+    from studio.repository import enqueue_job
+
+    client, factory, worker = pg
+    pid = project(client)
+    with factory() as db:
+        job = enqueue_job(db, "demo", pid, "mapping", "provider-error-probe", {})
+        job_id = job.id
+        db.commit()
+    calls = []
+
+    def fail_once(*args):
+        calls.append(code)
+        raise DomainError(code, "Synthetic provider failure", 503)
+
+    monkeypatch.setattr(worker, "_mapping", fail_once)
+    with factory() as db:
+        claimed = worker.claim_job(db)
+    assert claimed is not None and claimed[0] == job_id
+    worker.process_job(*claimed)
+    with factory() as db:
+        job = db.get(JobRow, job_id)
+        attempt = db.scalar(select(AttemptRow).where(AttemptRow.job_id == job_id))
+        assert job.status == attempt.status == "BLOCKED"
+        assert job.error_code == attempt.error_code == code
+        assert job.result is None and job.attempts == 1 and job.lease_until is None
+        job.available_at = now() - timedelta(seconds=1)
+        db.commit()
+        assert worker.claim_job(db) is None
+    assert calls == [code]
+
+
 @pytest.mark.parametrize(
     "historical,blocked",
     [
@@ -450,7 +546,8 @@ def test_chat_scope_confirmation_builds_a_new_preview_and_never_approves(pg, mon
         assert db.scalar(select(func.count()).select_from(RunRow)) == 0
 
 
-def test_chat_exports_the_displayed_verified_query_and_keeps_full_snapshot(pg, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("route", ["NATIVE", "MODEL", "REPLY", "DECISION"])
+def test_chat_exports_the_displayed_verified_query_and_keeps_full_snapshot(pg, monkeypatch, route):  # noqa: F811
     from io import BytesIO
 
     import studio.agent_jobs as agents
@@ -460,6 +557,7 @@ def test_chat_exports_the_displayed_verified_query_and_keeps_full_snapshot(pg, m
     def forbidden(*args, **kwargs):
         pytest.fail("Exporting the displayed verified query must not call a provider")
 
+    original_model_call = agents.model_call
     monkeypatch.setattr(agents, "model_call", forbidden)
     client, factory, worker = pg
     pid, _, _, run = create_approved_run(pg)
@@ -474,10 +572,70 @@ def test_chat_exports_the_displayed_verified_query_and_keeps_full_snapshot(pg, m
     )
     assert len(table["rows"]) == 1 and table["rows"][0]["delta"] == "2.75"
 
+    initial_goal = "Bạn tạo tệp Excel giữ nguyên các dòng trên được không?"
+    candidate = AgentIntent(
+        intent="EXPORT_RESULT",
+        run_id=run["run_id"],
+        export_format="xlsx",
+        export_scope="DISPLAYED_QUERY",
+    )
+    if route != "NATIVE":
+        monkeypatch.setattr(agents, "model_call", original_model_call)
+        monkeypatch.setattr(
+            agents,
+            "interpret_requests",
+            lambda _provider, goals, *_: [
+                AgentIntent(intent="CLARIFY", questions=["Bạn muốn xuất bảng nào?"])
+                if route in {"REPLY", "DECISION"} and goals == [initial_goal]
+                else candidate
+            ],
+        )
+
     def export(key):
-        message = ask_agent(client, context, cid, text="Xuất danh sách trên", key=key)
+        text = "Xuất danh sách trên" if route == "NATIVE" else initial_goal
+        message = ask_agent(client, context, cid, text=text, key=key)
         drain(factory, worker)
         flow = workflow_for(client, factory, message["job_id"])
+        if route in {"REPLY", "DECISION"}:
+            assert flow["state"] == "WAITING_REVIEW"
+            review = flow["detail"]["reviews"][0]
+            body = {k: review[k] for k in ("nonce", "fingerprint")}
+            body["review_id"] = review["id"]
+            path = f"/api/agent/workflows/{flow['id']}"
+            if route == "REPLY":
+                body["text"] = "Tôi muốn file Excel của bảng đó"
+                response = client.post(
+                    path + "/replies", json=body, headers={"Idempotency-Key": key + "-reply"}
+                )
+                assert response.status_code == 202, response.text
+            else:
+                body["decision"] = dict(
+                    type="CLARIFICATION", intent=candidate.model_dump(mode="json")
+                )
+                response = client.post(
+                    path + "/decisions", json=body, headers={"Idempotency-Key": key + "-decision"}
+                )
+                assert response.status_code == 200, response.text
+            drain(factory, worker)
+            flow = client.get(path).json()
+            if route == "DECISION":
+                replay = client.post(
+                    path + "/decisions", json=body, headers={"Idempotency-Key": key + "-replay"}
+                )
+                assert replay.status_code == 200, replay.text
+                from copy import deepcopy
+
+                changed = deepcopy(body)
+                changed["decision"]["intent"]["export_scope"] = "FULL_RUN"
+                assert (
+                    client.post(
+                        path + "/decisions",
+                        json=changed,
+                        headers={"Idempotency-Key": key + "-different-scope"},
+                    ).status_code
+                    == 409
+                )
+        # Provider output is explicitly MOCK; no reservation/HTTP inference.
         assert flow["state"] == "COMPLETED" and flow["detail"]["model_calls"] == 0
         block = next(block for block in flow["detail"]["blocks"] if block["type"] == "download")
         assert block["displayed_query"] is True

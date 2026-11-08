@@ -126,23 +126,31 @@ test(`[${process.env.STUDIO_LIVE_PROVIDER==='GEMINI'?'LIVE GEMINI':'LOCAL ORACLE
   expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used+(live?1:0));
 });
 
-for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventory sources through Chat approval, reconciliation and export${sharedReview ? ' with shared business facts' : ''}`,async({page})=>{
+for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${process.env.STUDIO_JOURNEY_DATASET==='MAINTENANCE'?'maintenance':'inventory'} sources through Chat approval, reconciliation and export${sharedReview ? ' with shared business facts' : ''}`,async({page})=>{
   test.setTimeout(120000);
   const viewportWidth=Number(process.env.STUDIO_JOURNEY_WIDTH??1440);
   await page.setViewportSize({width:viewportWidth,height:900});
   const vietnameseHeaders=process.env.STUDIO_JOURNEY_HEADERS==='VI';
-  const headers=vietnameseHeaders
+  const maintenance=process.env.STUDIO_JOURNEY_DATASET==='MAINTENANCE'
+    ? JSON.parse(await readFile('../tests/fixtures/browser-maintenance-specifications.json','utf8')) as {
+      headers:string[];names:string[];entity:string;grain:string;metric:string;values:string[][][];
+      expected:{equal:number;mismatch:number;unmatched:number;signed:string;absolute:string;mismatch_id:string;left_amount:string;right_amount:string};
+    } : null;
+  const entity=maintenance?.entity??'inventory',grain=maintenance?.grain??'stock_item',metric=maintenance?.metric??'stock_value';
+  const headers=maintenance?.headers??(vietnameseHeaders
     ? ['Mã hàng','Ngày kiểm kê','Giá trị gộp','Đơn vị tiền tệ']
-    : ['Stock ID','Snapshot Date','Gross Amount','Currency'];
+    : ['Stock ID','Snapshot Date','Gross Amount','Currency']);
   const [keyHeader,,moneyHeader]=headers;
   const suffix=crypto.randomUUID().slice(0,8);
-  const names=[`So-ton-${suffix}.csv`,`Kiem-ke-${suffix}.csv`,`Ton-du-phong-${suffix}.csv`];
-  const values=[
+  const names=(maintenance?.names??['So-ton','Kiem-ke','Ton-du-phong']).map(name=>`${name}-${suffix}.csv`);
+  const values=maintenance?.values??[
     [['0001','100.00'],['0002','250.00'],['0003','25.00']],
     [['0001','100.00'],['0002','200.00'],['0004','15.00']],
     [['0001','100.00'],['0002','200.00'],['0004','15.01']],
   ];
-  const receipts:Record<string,unknown>={names,headers,viewportWidth,sharedReview,expected:{equal:1,mismatch:1,unmatched:2,signed:'50.00',absolute:'50.00'}};
+  const expected=maintenance?.expected??{equal:1,mismatch:1,unmatched:2,signed:'50.00',absolute:'50.00',mismatch_id:'0002',left_amount:'250.00',right_amount:'200.00'};
+  const firstId=values[0][0][0];
+  const receipts:Record<string,unknown>={names,headers,viewportWidth,sharedReview,entity,grain,metric,expected};
   const errors:string[]=[];
   let clicks=0,manualFields=0;
   await page.exposeFunction('recordJourneyClick',()=>{clicks++;});
@@ -154,8 +162,8 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventor
   await page.locator('#project-select').click();
   await page.getByRole('button',{name:'Tạo dự án mới',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Tạo dự án',exact:true});
-  await dialog.getByLabel('Tên dự án',{exact:true}).fill(`UAT tồn kho ${suffix}`);
-  await dialog.getByLabel('Phạm vi nghiệp vụ',{exact:true}).fill('Đối chiếu số dư giá trị tồn theo mã hàng, dữ liệu tổng hợp.');
+  await dialog.getByLabel('Tên dự án',{exact:true}).fill(`UAT ${maintenance?'bảo trì':'tồn kho'} ${suffix}`);
+  await dialog.getByLabel('Phạm vi nghiệp vụ',{exact:true}).fill(maintenance?'Đối chiếu chứng từ bảo trì với khoản thu, có hoàn tiền và số không; dữ liệu tổng hợp.':'Đối chiếu số dư giá trị tồn theo mã hàng, dữ liệu tổng hợp.');
   await dialog.getByRole('button',{name:'Tạo dự án',exact:true}).click();
   await expect(dialog).not.toBeVisible();
   const projectId=(await page.locator('#project-select').getAttribute('data-project-id'))!;
@@ -183,34 +191,34 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventor
   if(sharedReview){
     await page.getByText('Nhập một lần cho các nguồn có cùng nghiệp vụ',{exact:true}).click();
     const common=page.getByRole('region',{name:'Thông tin chung cho các nguồn',exact:true});
-    await common.getByLabel('Loại dữ liệu dùng chung',{exact:true}).fill('inventory');
-    await common.getByLabel('Mỗi dòng của các nguồn là gì?',{exact:true}).fill('stock_item');
+    await common.getByLabel('Loại dữ liệu dùng chung',{exact:true}).fill(entity);
+    await common.getByLabel('Mỗi dòng của các nguồn là gì?',{exact:true}).fill(grain);
     await common.getByLabel('Múi giờ dùng chung',{exact:true}).selectOption('UTC');
     await common.getByLabel('Cơ sở tiền dùng chung',{exact:true}).selectOption('gross');
-    await common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true}).fill('stock_value');
+    await common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true}).fill(metric);
     await expect(common.getByRole('button',{name:'Áp dụng thông tin chung vào bản nháp',exact:true})).toBeDisabled();
     await page.reload();
     await page.getByText('Nhập một lần cho các nguồn có cùng nghiệp vụ',{exact:true}).click();
-    await expect(common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true})).toHaveValue('stock_value');
+    await expect(common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true})).toHaveValue(metric);
     await common.getByRole('checkbox').check();
     await common.getByRole('button',{name:'Áp dụng thông tin chung vào bản nháp',exact:true}).click();
     manualFields+=6;
     for(const name of names){
       const card=cards.filter({hasText:name});
-      await expect(card.getByRole('textbox',{name:'Loại giao dịch',exact:true})).toHaveValue('inventory');
-      await expect(card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true})).toHaveValue('stock_item');
+      await expect(card.getByRole('textbox',{name:'Loại giao dịch',exact:true})).toHaveValue(entity);
+      await expect(card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true})).toHaveValue(grain);
       await card.getByRole('checkbox',{name:keyHeader,exact:true}).check();manualFields++;
     }
   }else{
   for(const name of names){
     const card=cards.filter({hasText:name});
-    await card.getByRole('textbox',{name:'Loại giao dịch',exact:true}).fill('inventory');
-    await card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true}).fill('stock_item');
+    await card.getByRole('textbox',{name:'Loại giao dịch',exact:true}).fill(entity);
+    await card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true}).fill(grain);
     await card.getByRole('checkbox',{name:keyHeader,exact:true}).check();
     await card.getByRole('combobox',{name:'Múi giờ của nguồn',exact:true}).selectOption('UTC');
     await card.getByRole('combobox',{name:`Cơ sở tiền của ${moneyHeader}`,exact:true}).selectOption('gross');
     const meaning=card.getByRole('textbox',{name:'Khoản tiền này là gì?',exact:true});
-    await meaning.fill('stock_value');await meaning.press('Tab');
+    await meaning.fill(metric);await meaning.press('Tab');
     manualFields+=6;
   }
   }
@@ -220,17 +228,20 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventor
   await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
   receipts.upload_to_canonical_ms=Date.now()-start;
   async function send(question:string){
-    const workflows=page.getByRole('region',{name:'Công việc của AI Assistant',exact:true});
-    const previous=await workflows.count();
     await page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true}).fill(question);
     await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();
-    await expect(workflows).toHaveCount(previous+1);
+    const message=page.getByRole('article',{name:'Tin nhắn của bạn',exact:true}).filter({
+      has:page.getByText(question,{exact:true}),
+    });
+    await expect(message.locator('xpath=following-sibling::article[1]').getByRole('region',{
+      name:'Công việc của AI Assistant',exact:true,
+    })).toBeVisible();
   }
   await send(`Mở bảng gốc trong tệp “${names[0]}”`);
-  await expect(work.locator('.agent-table')).toContainText('0001');
+  await expect(work.locator('.agent-table')).toContainText(firstId);
   await send(`Mở bản tự chuẩn bị của tệp “${names[0]}”`);
   await expect(work).toContainText('Đây là bản tự chuẩn bị để xem và tìm kiếm');
-  await expect(work.locator('.agent-table')).toContainText('0001');
+  await expect(work.locator('.agent-table')).toContainText(firstId);
   await send(`Đối soát “${names[0]}” với “${names[1]}”`);
   const scope=page.getByRole('group',{name:'Kỳ và phạm vi dữ liệu',exact:true});
   await scope.getByLabel('Ngày đầu kỳ',{exact:true}).fill('2026-11-01');
@@ -248,11 +259,11 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventor
   expect(runs.latest_verified_run_id).toBeTruthy();
   const runId=runs.latest_verified_run_id;
   const snapshot=await(await page.request.get(`/api/runs/${runId}/metrics`)).json();
-  expect(snapshot.comparison_counts.EQUAL).toBe(1);
-  expect(snapshot.comparison_counts.AMOUNT_MISMATCH).toBe(1);
-  expect(snapshot.linkage_counts.UNMATCHED).toBe(2);
-  expect(snapshot.monetary[0].signed_variance).toBe('50.00');
-  expect(snapshot.monetary[0].absolute_variance).toBe('50.00');
+  expect(snapshot.comparison_counts.EQUAL).toBe(expected.equal);
+  expect(snapshot.comparison_counts.AMOUNT_MISMATCH).toBe(expected.mismatch);
+  expect(snapshot.linkage_counts.UNMATCHED).toBe(expected.unmatched);
+  expect(snapshot.monetary[0].signed_variance).toBe(expected.signed);
+  expect(snapshot.monetary[0].absolute_variance).toBe(expected.absolute);
   receipts.run_id=runId;receipts.upload_to_verified_ms=Date.now()-start;
   await send('Tính tổng chênh lệch tuyệt đối');
   await expect(work).toContainText('Chênh lệch tuyệt đối');
@@ -261,35 +272,41 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new inventor
   const chart=report.getByRole('img',{name:'Phân bố trạng thái đối soát'});
   await chart.scrollIntoViewIfNeeded();
   await expect(chart).toBeVisible();
-  await page.screenshot({path:test.info().outputPath('inventory-verified-chart.png')});
+  await page.screenshot({path:test.info().outputPath(`${maintenance?'maintenance':'inventory'}-verified-chart.png`)});
   await page.keyboard.press('Escape');
   await expect(report).not.toBeVisible();
-  await send('Chỉ ra hai giao dịch sai tiền nhiều nhất');
-  await expect(work.locator('.agent-table')).toContainText('50');
-  const folder=`../runtime/automation-inventory/${suffix}`;
+  await send('Hiển thị những nhóm UNMATCHED ở run đang mở.');
+  await expect(work.locator('.agent-table')).toContainText(`${expected.unmatched} dòng trong trang`);
+  await send('Tong quan ket qua nay va cac chi so chenh lech giup toi.');
+  await expect(work).toContainText('Chênh lệch tuyệt đối');
+  await send('Sắp hai giao dịch bị lệch tiền nhiều nhất theo mức lệch giảm dần.');
+  await expect(work.locator('.agent-table')).toContainText(expected.absolute);
+  const folder=`../runtime/automation-${maintenance?'maintenance':'inventory'}/${suffix}`;
   await mkdir(folder,{recursive:true});
-  await send('Xuất danh sách trên CSV');
+  await send('Lưu đúng các dòng vừa liệt kê thành tệp CSV.');
   const pageFile=page.waitForEvent('download');
   await work.getByRole('link',{name:'Tải bảng đang xem CSV',exact:true}).click();
   await (await pageFile).saveAs(`${folder}/displayed.csv`);
   const rows=(await readFile(`${folder}/displayed.csv`,'utf8')).split(/\r?\n/).filter(row=>row.startsWith('Displayed results,'));
   expect(rows).toHaveLength(2);
-  expect(rows[1]).toMatch(/^Displayed results,AMOUNT_MISMATCH,250\.00,200\.00,50\.00,50\.00,VND,[0-9a-f-]{36}$/);
+  expect(rows[1].split(',').slice(0,-1)).toEqual(['Displayed results','AMOUNT_MISMATCH',expected.left_amount,expected.right_amount,expected.signed,expected.absolute,'VND']);
+  expect(rows[1].split(',').at(-1)).toMatch(/^[0-9a-f-]{36}$/);
   const groupId=rows[1].split(',').at(-1);
-  await send('Khoản thứ một vì sao lệch?');
-  await expect(work).toContainText('250.00 / 200.00 / 50.00');
+  await send('Giải thích mục thứ nhất của danh sách vừa trả, giữ nguyên phạm vi này.');
+  await expect(work).toContainText(`${expected.left_amount} / ${expected.right_amount} / ${expected.signed}`);
   const evidenceResponse=page.waitForResponse(response=>response.url().endsWith(`/runs/${runId}/groups/${groupId}/evidence`));
   await work.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
   expect((await evidenceResponse).ok()).toBe(true);
   const evidence=page.getByRole('dialog',{name:'Bằng chứng đối soát',exact:true});
-  await expect(evidence).toContainText('0002');
+  await expect(evidence).toContainText(expected.mismatch_id);
   await page.keyboard.press('Escape');
   await expect(evidence).not.toBeVisible();
   await send('Xuất báo cáo Excel của lần đối soát này');
   const file=page.waitForEvent('download');
   await work.getByRole('link',{name:/Tải.*XLSX/i}).click();
   const download=await file;
-  await download.saveAs(`${folder}/inventory.xlsx`);
+  const exportFile=maintenance?'maintenance.xlsx':'inventory.xlsx';
+  await download.saveAs(`${folder}/${exportFile}`);receipts.export_file=exportFile;
   await page.reload();
   await expect(work.getByRole('link',{name:/Tải.*XLSX/i})).toBeVisible();
   expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used);

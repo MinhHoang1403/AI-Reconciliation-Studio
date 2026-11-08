@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from studio.config import ModelChoice
 from studio.contracts import Contract, SchemaDefinition
@@ -49,6 +49,17 @@ class AgentIntent(Contract):
     planning_request: PlanningRequest | None = None
     questions: list[str] = Field(default_factory=list, max_length=5)
     export_format: Literal["csv", "xlsx"] = "xlsx"
+    export_scope: Literal["FULL_RUN", "DISPLAYED_QUERY"] | None = None
+
+    @model_validator(mode="after")
+    def restore_export_scope(self) -> "AgentIntent":
+        """Stored exports use legacy query fields; API retains an explicit typed scope."""
+        if self.intent == "EXPORT_RESULT":
+            if self.export_scope is None:
+                self.export_scope = "DISPLAYED_QUERY" if self.query is not None else "FULL_RUN"
+            elif self.export_scope == "FULL_RUN" and self.query is not None:
+                raise ValueError("Whole-run export cannot contain a displayed query")
+        return self
 
 
 class NormalizationField(Contract):
@@ -191,6 +202,7 @@ class RoutingIntent(Contract):
     reconciliation: ReconciliationSelection | None = None
     questions: list[str] = Field(default_factory=list, max_length=5)
     export_format: Literal["csv", "xlsx"] = "xlsx"
+    export_scope: Literal["FULL_RUN", "DISPLAYED_QUERY"] | None = None
 
 
 class RoutingBatch(Contract):
@@ -334,6 +346,19 @@ class WorkflowState(Contract):
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
     query_selection: QuerySelection | None = None
     export_query: DataQuery | None = None
+
+    @model_validator(mode="after")
+    def restore_pinned_export(self) -> "WorkflowState":
+        """Legacy native exports stored their scope only in export_query."""
+        if (
+            self.intent
+            and self.intent.intent == "EXPORT_RESULT"
+            and self.export_query is not None
+            and self.intent.query is None
+        ):
+            self.intent.query = self.export_query.model_copy(deep=True)
+            self.intent.export_scope = "DISPLAYED_QUERY"
+        return self
 
 
 class WorkflowView(Contract):

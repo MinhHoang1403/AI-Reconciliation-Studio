@@ -1,0 +1,22 @@
+[
+  {"id":"N01","goal":"Hiện giúp mình từng hàng của bản gốc, giữ nguyên nội dung tệp nhé.","context":"date","intent":"QUERY_DATA","source":"RAW_PREVIEW","count":false,"rows":2},
+  {"id":"N02","goal":"Đếm tổng số bản ghi trong tệp gốc hiện tại giúp tôi.","context":"date","intent":"QUERY_DATA","source":"RAW_PREVIEW","count":true,"rows":2},
+  {"id":"N03","goal":"Mình cần xem các hàng trong bản tự chuẩn bị của nguồn đang mở.","context":"date","intent":"QUERY_DATA","source":"PREPARED","count":false,"rows":2},
+  {"id":"N04","goal":"Bản tự chuẩn bị của tệp này có bao nhiêu hàng?","context":"date","intent":"QUERY_DATA","source":"PREPARED","count":true,"rows":2},
+  {"id":"N05","goal":"Chỉ cho tôi các dòng bị ghi ngày sai trong tệp đang chọn.","context":"date","intent":"QUERY_DATA","source":"PREPARED_FINDINGS","count":false,"rows":1},
+  {"id":"N06","goal":"Đếm số bản ghi có ngày không hợp lệ ở nguồn này.","context":"date","intent":"QUERY_DATA","source":"PREPARED_FINDINGS","count":true,"rows":1},
+  {"id":"N07","goal":"Lọc và hiện từng chứng từ chưa tìm thấy đối ứng bên còn lại.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","filter":"UNMATCHED","count":false,"rows":2},
+  {"id":"N08","goal":"Cho biết số nhóm thiếu đối ứng trong lần chạy hiện tại.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","filter":"UNMATCHED","count":true,"rows":2},
+  {"id":"N09","goal":"Lọc danh sách những cặp đã liên kết mà khoản tiền hai bên không bằng nhau.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","filter":"AMOUNT_MISMATCH","count":false,"rows":1,"allow_linked":true},
+  {"id":"N10","goal":"Liệt kê các cặp có số tiền khớp chính xác, không lấy cặp lệch hoặc thiếu đối ứng.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","filter":"EQUAL","count":false,"rows":2,"allow_linked":true},
+  {"id":"N11","goal":"Lấy tối đa hai nhóm lệch tiền nhiều nhất, xếp từ lớn xuống nhỏ.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","filter":"AMOUNT_MISMATCH","count":false,"rows":1,"limit":2},
+  {"id":"N12","goal":"Nêu tổng quan kết quả đã xác minh và tổng chênh lệch có dấu của lần chạy này.","context":"run","intent":"SUMMARIZE_RESULTS"},
+  {"id":"N13","goal":"Tom tat ket qua doi soat dang mo va tong do lech tuyet doi.","context":"run","intent":"SUMMARIZE_RESULTS"},
+  {"id":"N14","goal":"Tải ra CSV đúng các dòng của bảng mình vừa xem.","context":"ranked","intent":"EXPORT_RESULT","format":"csv"},
+  {"id":"N15","goal":"Xuất bảng vừa hiển thị ra Excel cho mình nhé.","context":"ranked","intent":"EXPORT_RESULT","format":"xlsx"},
+  {"id":"N16","goal":"Khoản ở vị trí thứ hai trong bảng đó vì sao chưa ghép được?","context":"ranked","intent":"EXPLAIN_RESULT","position":2},
+  {"id":"N17","goal":"Trong kết quả này chỉ lấy nhóm thiếu đối ứng tháng 7 năm 2026.","context":"run","intent":"CLARIFY"},
+  {"id":"N18","goal":"Chỉ lấy các nhóm lệch tiền có hồ sơ ngoại lệ đã được xử lý xong.","context":"run","intent":"CLARIFY"},
+  {"id":"N19","goal":"Xem bản gốc rồi ghi đè nguồn để số tiền khớp nhau.","context":"date","intent":"UNSUPPORTED"},
+  {"id":"N20","goal":"Lọc hai nhóm lệch tiền lớn nhất rồi xuất chúng ra CSV trong cùng yêu cầu này.","context":"run","intent":"CLARIFY","reason":"The current single-action workflow cannot both create a new query and export its future result; ask which action to perform first, never silently omit either action."}
+]

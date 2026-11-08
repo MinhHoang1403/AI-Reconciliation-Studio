@@ -1,0 +1,2132 @@
+[
+  {
+    "id": "R01",
+    "description": "Bãi đỗ xe — fresh release holdout",
+    "request": {
+      "period_start": "2034-02-01",
+      "period_end": "2034-03-01",
+      "timezone": "UTC",
+      "effective_from": "2034-02-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đề xuất để tôi duyệt đối soát Bãi đỗ xe. Khóa ghép zone,pass_ref; quan hệ ONE_TO_ONE; chỉ metric parking_charge, gross EUR; không thêm metric khác; giữ dấu; sai số tuyệt đối 0; không cộng gộp.",
+      "left": {
+        "canonical_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+        "role": "reference",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": "2034-02-01",
+        "coverage_end": "2034-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2034-03-02T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+        "role": "counterpart",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": "2034-02-01",
+        "coverage_end": "2034-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2034-03-02T00:00:00Z",
+        "settlement_due_at": null
+      }
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Bãi đỗ xe - sổ cần đối chiếu.csv",
+          "canonical": {
+            "id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+            "source_table_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+            "schema_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+            "schema_revision": 1,
+            "grain": "parking_ticket",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+            "workspace_id": "planner-evaluation",
+            "name": "Bãi đỗ xe - sổ cần đối chiếu.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "parking_ticket",
+            "fields": [
+              {
+                "id": "zone",
+                "name": "Mã địa điểm",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "pass_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "parking_charge",
+                "amount_basis": "gross",
+                "currency": "EUR",
+                "unit": "EUR"
+              }
+            ],
+            "business_key_fields": [
+              "zone",
+              "pass_ref"
+            ]
+          },
+          "identifier_fields": [
+            "pass_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R01-0-0",
+            "payload": {
+              "zone": "SG",
+              "pass_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "EUR",
+              "booked_amount": "10.00"
+            },
+            "provenance": [
+              {
+                "file_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+                "source_table_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R01-0-1",
+            "payload": {
+              "zone": "SG",
+              "pass_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "EUR",
+              "booked_amount": "0.00"
+            },
+            "provenance": [
+              {
+                "file_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+                "source_table_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Bãi đỗ xe - xác nhận ngoài.csv",
+          "canonical": {
+            "id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+            "source_table_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+            "schema_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+            "schema_revision": 1,
+            "grain": "parking_ticket",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "bfa03acf-c01d-5961-8278-f1d017fb11d0-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+            "workspace_id": "planner-evaluation",
+            "name": "Bãi đỗ xe - xác nhận ngoài.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "parking_ticket",
+            "fields": [
+              {
+                "id": "zone",
+                "name": "Mã địa điểm",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "pass_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "parking_charge",
+                "amount_basis": "gross",
+                "currency": "EUR",
+                "unit": "EUR"
+              }
+            ],
+            "business_key_fields": [
+              "zone",
+              "pass_ref"
+            ]
+          },
+          "identifier_fields": [
+            "pass_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R01-1-0",
+            "payload": {
+              "zone": "SG",
+              "pass_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "EUR",
+              "booked_amount": "10.00"
+            },
+            "provenance": [
+              {
+                "file_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+                "source_table_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R01-1-1",
+            "payload": {
+              "zone": "SG",
+              "pass_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "EUR",
+              "booked_amount": "0.00"
+            },
+            "provenance": [
+              {
+                "file_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+                "source_table_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "PROPOSED",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "37b8cfed-c9bb-5ce5-99c1-7ce15478ac0d",
+          "role": "reference",
+          "date_field": "service_day",
+          "time_basis": "service_day",
+          "currency_field": "ccy",
+          "filters": {},
+          "coverage_start": "2034-02-01",
+          "coverage_end": "2034-03-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2034-03-02T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "bfa03acf-c01d-5961-8278-f1d017fb11d0",
+          "role": "counterpart",
+          "date_field": "service_day",
+          "time_basis": "service_day",
+          "currency_field": "ccy",
+          "filters": {},
+          "coverage_start": "2034-02-01",
+          "coverage_end": "2034-03-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2034-03-02T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "period_start": "2034-02-01",
+        "period_end": "2034-03-01",
+        "timezone": "UTC",
+        "effective_from": "2034-02-01",
+        "effective_to": null,
+        "join_keys": [
+          {
+            "left": "zone",
+            "right": "zone"
+          },
+          {
+            "left": "pass_ref",
+            "right": "pass_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "booked_amount",
+            "right": "booked_amount",
+            "metric_id": "parking_charge",
+            "currency": "EUR",
+            "unit": "EUR",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_ONE",
+        "aggregation": "NONE",
+        "comparison_grain": "parking_ticket"
+      }
+    }
+  },
+  {
+    "id": "R02",
+    "description": "Đặt cọc bình khí — fresh release holdout",
+    "request": {
+      "period_start": "2034-02-01",
+      "period_end": "2034-03-01",
+      "timezone": "UTC",
+      "effective_from": "2034-02-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đề xuất để tôi duyệt đối soát Đặt cọc bình khí. Khóa ghép contract_ref; quan hệ ONE_TO_MANY; chỉ metric cylinder_deposit, gross USD; không thêm metric khác; giữ dấu; sai số tuyệt đối 0; cộng signed amounts theo đúng khóa ghép nêu trên.",
+      "left": {
+        "canonical_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+        "role": "reference",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": "2034-02-01",
+        "coverage_end": "2034-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2034-03-02T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+        "role": "counterpart",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": "2034-02-01",
+        "coverage_end": "2034-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2034-03-02T00:00:00Z",
+        "settlement_due_at": null
+      }
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Đặt cọc bình khí - sổ cần đối chiếu.csv",
+          "canonical": {
+            "id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+            "source_table_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+            "schema_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+            "schema_revision": 1,
+            "grain": "deposit_contract",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+            "workspace_id": "planner-evaluation",
+            "name": "Đặt cọc bình khí - sổ cần đối chiếu.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "deposit_contract",
+            "fields": [
+              {
+                "id": "contract_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "cylinder_deposit",
+                "amount_basis": "gross",
+                "currency": "USD",
+                "unit": "USD"
+              }
+            ],
+            "business_key_fields": [
+              "contract_ref"
+            ]
+          },
+          "identifier_fields": [
+            "contract_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R02-0-0",
+            "payload": {
+              "contract_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "USD",
+              "booked_amount": "10.00"
+            },
+            "provenance": [
+              {
+                "file_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+                "source_table_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R02-0-1",
+            "payload": {
+              "contract_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "USD",
+              "booked_amount": "0.00"
+            },
+            "provenance": [
+              {
+                "file_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+                "source_table_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Đặt cọc bình khí - xác nhận ngoài.csv",
+          "canonical": {
+            "id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+            "source_table_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+            "schema_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+            "schema_revision": 1,
+            "grain": "deposit_receipt",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 3,
+            "valid_count": 3,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "3d4afd4e-e430-567f-bff2-a43e9c869b24-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+            "workspace_id": "planner-evaluation",
+            "name": "Đặt cọc bình khí - xác nhận ngoài.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "deposit_receipt",
+            "fields": [
+              {
+                "id": "contract_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "cylinder_deposit",
+                "amount_basis": "gross",
+                "currency": "USD",
+                "unit": "USD"
+              },
+              {
+                "id": "payment_event",
+                "name": "Mã lần thu, không phải mã đối tượng",
+                "data_type": "string",
+                "required": true
+              }
+            ],
+            "business_key_fields": [
+              "payment_event"
+            ]
+          },
+          "identifier_fields": [
+            "contract_ref",
+            "payment_event"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R02-1-0",
+            "payload": {
+              "contract_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "USD",
+              "booked_amount": "12.50",
+              "payment_event": "PAY-0000"
+            },
+            "provenance": [
+              {
+                "file_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+                "source_table_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R02-1-1",
+            "payload": {
+              "contract_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "USD",
+              "booked_amount": "-2.50",
+              "payment_event": "PAY-0001"
+            },
+            "provenance": [
+              {
+                "file_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+                "source_table_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R02-1-2",
+            "payload": {
+              "contract_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "USD",
+              "booked_amount": "0.00",
+              "payment_event": "PAY-0002"
+            },
+            "provenance": [
+              {
+                "file_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+                "source_table_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+                "source_row_id": "2",
+                "sheet": "Dịch vụ",
+                "row": 4
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "PROPOSED",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "4feac539-dfa5-5789-b0d6-f2d5a74b10b0",
+          "role": "reference",
+          "date_field": "service_day",
+          "time_basis": "service_day",
+          "currency_field": "ccy",
+          "filters": {},
+          "coverage_start": "2034-02-01",
+          "coverage_end": "2034-03-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2034-03-02T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "3d4afd4e-e430-567f-bff2-a43e9c869b24",
+          "role": "counterpart",
+          "date_field": "service_day",
+          "time_basis": "service_day",
+          "currency_field": "ccy",
+          "filters": {},
+          "coverage_start": "2034-02-01",
+          "coverage_end": "2034-03-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2034-03-02T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "period_start": "2034-02-01",
+        "period_end": "2034-03-01",
+        "timezone": "UTC",
+        "effective_from": "2034-02-01",
+        "effective_to": null,
+        "join_keys": [
+          {
+            "left": "contract_ref",
+            "right": "contract_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "booked_amount",
+            "right": "booked_amount",
+            "metric_id": "cylinder_deposit",
+            "currency": "USD",
+            "unit": "USD",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_MANY",
+        "aggregation": "SUM_SIGNED",
+        "comparison_grain": "deposit_contract"
+      }
+    }
+  },
+  {
+    "id": "R03",
+    "description": "Thuê thiết bị — fresh release holdout",
+    "request": {
+      "period_start": "2034-02-01",
+      "period_end": "2034-03-01",
+      "timezone": "UTC",
+      "effective_from": "2034-02-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đề xuất để tôi duyệt đối soát Thuê thiết bị. Khóa ghép branch,lease_ref; quan hệ MANY_TO_ONE; chỉ metric hire_charge, net EUR; không thêm metric khác; giữ dấu; sai số tuyệt đối 0; cộng signed amounts theo đúng khóa ghép nêu trên.",
+      "left": {
+        "canonical_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+        "role": "reference",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": "2034-02-01",
+        "coverage_end": "2034-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2034-03-02T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+        "role": "counterpart",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": "2034-02-01",
+        "coverage_end": "2034-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2034-03-02T00:00:00Z",
+        "settlement_due_at": null
+      }
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Thuê thiết bị - sổ cần đối chiếu.csv",
+          "canonical": {
+            "id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+            "source_table_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+            "schema_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+            "schema_revision": 1,
+            "grain": "hire_collection",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 3,
+            "valid_count": 3,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "f0d86efe-8f6a-5186-8cda-023208879ce0-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+            "workspace_id": "planner-evaluation",
+            "name": "Thuê thiết bị - sổ cần đối chiếu.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "hire_collection",
+            "fields": [
+              {
+                "id": "branch",
+                "name": "Mã địa điểm",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "lease_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "hire_charge",
+                "amount_basis": "net",
+                "currency": "EUR",
+                "unit": "EUR"
+              },
+              {
+                "id": "payment_event",
+                "name": "Mã lần thu, không phải mã đối tượng",
+                "data_type": "string",
+                "required": true
+              }
+            ],
+            "business_key_fields": [
+              "payment_event"
+            ]
+          },
+          "identifier_fields": [
+            "lease_ref",
+            "payment_event"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R03-0-0",
+            "payload": {
+              "branch": "SG",
+              "lease_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "EUR",
+              "booked_amount": "12.50",
+              "payment_event": "PAY-0000"
+            },
+            "provenance": [
+              {
+                "file_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+                "source_table_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R03-0-1",
+            "payload": {
+              "branch": "SG",
+              "lease_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "EUR",
+              "booked_amount": "-2.50",
+              "payment_event": "PAY-0001"
+            },
+            "provenance": [
+              {
+                "file_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+                "source_table_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R03-0-2",
+            "payload": {
+              "branch": "SG",
+              "lease_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "EUR",
+              "booked_amount": "0.00",
+              "payment_event": "PAY-0002"
+            },
+            "provenance": [
+              {
+                "file_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+                "source_table_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+                "source_row_id": "2",
+                "sheet": "Dịch vụ",
+                "row": 4
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Thuê thiết bị - xác nhận ngoài.csv",
+          "canonical": {
+            "id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+            "source_table_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+            "schema_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+            "schema_revision": 1,
+            "grain": "hire_invoice",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+            "workspace_id": "planner-evaluation",
+            "name": "Thuê thiết bị - xác nhận ngoài.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "hire_invoice",
+            "fields": [
+              {
+                "id": "branch",
+                "name": "Mã địa điểm",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "lease_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "hire_charge",
+                "amount_basis": "net",
+                "currency": "EUR",
+                "unit": "EUR"
+              }
+            ],
+            "business_key_fields": [
+              "branch",
+              "lease_ref"
+            ]
+          },
+          "identifier_fields": [
+            "lease_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R03-1-0",
+            "payload": {
+              "branch": "SG",
+              "lease_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "EUR",
+              "booked_amount": "10.00"
+            },
+            "provenance": [
+              {
+                "file_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+                "source_table_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R03-1-1",
+            "payload": {
+              "branch": "SG",
+              "lease_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "EUR",
+              "booked_amount": "0.00"
+            },
+            "provenance": [
+              {
+                "file_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+                "source_table_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "PROPOSED",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "f0d86efe-8f6a-5186-8cda-023208879ce0",
+          "role": "reference",
+          "date_field": "service_day",
+          "time_basis": "service_day",
+          "currency_field": "ccy",
+          "filters": {},
+          "coverage_start": "2034-02-01",
+          "coverage_end": "2034-03-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2034-03-02T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "5f947220-8aea-5700-aa5a-c16b0bd80a4a",
+          "role": "counterpart",
+          "date_field": "service_day",
+          "time_basis": "service_day",
+          "currency_field": "ccy",
+          "filters": {},
+          "coverage_start": "2034-02-01",
+          "coverage_end": "2034-03-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2034-03-02T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "period_start": "2034-02-01",
+        "period_end": "2034-03-01",
+        "timezone": "UTC",
+        "effective_from": "2034-02-01",
+        "effective_to": null,
+        "join_keys": [
+          {
+            "left": "branch",
+            "right": "branch"
+          },
+          {
+            "left": "lease_ref",
+            "right": "lease_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "booked_amount",
+            "right": "booked_amount",
+            "metric_id": "hire_charge",
+            "currency": "EUR",
+            "unit": "EUR",
+            "amount_basis": "net",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "MANY_TO_ONE",
+        "aggregation": "SUM_SIGNED",
+        "comparison_grain": "hire_invoice"
+      }
+    }
+  },
+  {
+    "id": "R04",
+    "description": "Thanh toán nhượng quyền — fresh release holdout",
+    "request": {
+      "period_start": "2034-02-01",
+      "period_end": "2034-03-01",
+      "timezone": "UTC",
+      "effective_from": "2034-02-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đề xuất để tôi duyệt đối soát Thanh toán nhượng quyền. Khóa ghép licence_ref; quan hệ ONE_TO_ONE; chỉ metric royalty_due, net USD; không thêm metric khác; giữ dấu; sai số tuyệt đối 0; không cộng gộp.",
+      "left": {
+        "canonical_id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+        "role": "reference",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": "2034-02-01",
+        "coverage_end": "2034-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2034-03-02T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "59268495-691b-5226-b597-35e2257a1d26",
+        "role": "counterpart",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": "2034-02-01",
+        "coverage_end": "2034-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2034-03-02T00:00:00Z",
+        "settlement_due_at": null
+      }
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Thanh toán nhượng quyền - sổ cần đối chiếu.csv",
+          "canonical": {
+            "id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+            "source_table_id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+            "schema_id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+            "schema_revision": 1,
+            "grain": "royalty_bill",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+            "workspace_id": "planner-evaluation",
+            "name": "Thanh toán nhượng quyền - sổ cần đối chiếu.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "royalty_bill",
+            "fields": [
+              {
+                "id": "licence_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "royalty_due",
+                "amount_basis": "net",
+                "currency": "USD",
+                "unit": "USD"
+              }
+            ],
+            "business_key_fields": [
+              "licence_ref"
+            ]
+          },
+          "identifier_fields": [
+            "licence_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R04-0-0",
+            "payload": {
+              "licence_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "USD",
+              "booked_amount": "10.00"
+            },
+            "provenance": [
+              {
+                "file_id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+                "source_table_id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R04-0-1",
+            "payload": {
+              "licence_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "USD",
+              "booked_amount": "0.00"
+            },
+            "provenance": [
+              {
+                "file_id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+                "source_table_id": "6cdb9e26-c8fd-55a6-9aa8-d660a62cdc2f",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Thanh toán nhượng quyền - xác nhận ngoài.csv",
+          "canonical": {
+            "id": "59268495-691b-5226-b597-35e2257a1d26",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "59268495-691b-5226-b597-35e2257a1d26",
+            "source_table_id": "59268495-691b-5226-b597-35e2257a1d26",
+            "schema_id": "59268495-691b-5226-b597-35e2257a1d26",
+            "schema_revision": 1,
+            "grain": "royalty_bill",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "59268495-691b-5226-b597-35e2257a1d26",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "59268495-691b-5226-b597-35e2257a1d26",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "59268495-691b-5226-b597-35e2257a1d26",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "59268495-691b-5226-b597-35e2257a1d26-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "59268495-691b-5226-b597-35e2257a1d26",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "59268495-691b-5226-b597-35e2257a1d26",
+            "workspace_id": "planner-evaluation",
+            "name": "Thanh toán nhượng quyền - xác nhận ngoài.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "royalty_bill",
+            "fields": [
+              {
+                "id": "licence_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "royalty_due",
+                "amount_basis": "net",
+                "currency": "EUR",
+                "unit": "EUR"
+              }
+            ],
+            "business_key_fields": [
+              "licence_ref"
+            ]
+          },
+          "identifier_fields": [
+            "licence_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R04-1-0",
+            "payload": {
+              "licence_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "EUR",
+              "booked_amount": "10.00"
+            },
+            "provenance": [
+              {
+                "file_id": "59268495-691b-5226-b597-35e2257a1d26",
+                "source_table_id": "59268495-691b-5226-b597-35e2257a1d26",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R04-1-1",
+            "payload": {
+              "licence_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "EUR",
+              "booked_amount": "0.00"
+            },
+            "provenance": [
+              {
+                "file_id": "59268495-691b-5226-b597-35e2257a1d26",
+                "source_table_id": "59268495-691b-5226-b597-35e2257a1d26",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "NEEDS_REVIEW"
+    }
+  },
+  {
+    "id": "R05",
+    "description": "Phí lưu kho thiếu độ phủ — fresh release holdout",
+    "request": {
+      "period_start": "2034-02-01",
+      "period_end": "2034-03-01",
+      "timezone": "UTC",
+      "effective_from": "2034-02-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đề xuất để tôi duyệt đối soát Phí lưu kho thiếu độ phủ. Khóa ghép storage_ref; quan hệ ONE_TO_ONE; chỉ metric storage_charge, gross VND; không thêm metric khác; giữ dấu; sai số tuyệt đối 0; không cộng gộp. Chưa có xác nhận độ phủ, độ đầy đủ hoặc thời điểm chốt. Hãy hỏi thêm, không suy từ kỳ.",
+      "left": {
+        "canonical_id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+        "role": "reference",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": null,
+        "coverage_end": null,
+        "completeness": null,
+        "snapshot_at": null,
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+        "role": "counterpart",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": null,
+        "coverage_end": null,
+        "completeness": null,
+        "snapshot_at": null,
+        "settlement_due_at": null
+      }
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Phí lưu kho thiếu độ phủ - sổ cần đối chiếu.csv",
+          "canonical": {
+            "id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+            "source_table_id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+            "schema_id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+            "schema_revision": 1,
+            "grain": "storage_invoice",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "f850c050-91f9-560c-97b9-31ce9dc23f8d-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+            "workspace_id": "planner-evaluation",
+            "name": "Phí lưu kho thiếu độ phủ - sổ cần đối chiếu.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "storage_invoice",
+            "fields": [
+              {
+                "id": "storage_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "storage_charge",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "storage_ref"
+            ]
+          },
+          "identifier_fields": [
+            "storage_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R05-0-0",
+            "payload": {
+              "storage_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "VND",
+              "booked_amount": "10.00"
+            },
+            "provenance": [
+              {
+                "file_id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+                "source_table_id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R05-0-1",
+            "payload": {
+              "storage_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "VND",
+              "booked_amount": "0.00"
+            },
+            "provenance": [
+              {
+                "file_id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+                "source_table_id": "f850c050-91f9-560c-97b9-31ce9dc23f8d",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Phí lưu kho thiếu độ phủ - xác nhận ngoài.csv",
+          "canonical": {
+            "id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+            "source_table_id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+            "schema_id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+            "schema_revision": 1,
+            "grain": "storage_invoice",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "37fcd5d0-b600-5090-a827-30e731353fe2-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+            "workspace_id": "planner-evaluation",
+            "name": "Phí lưu kho thiếu độ phủ - xác nhận ngoài.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "storage_invoice",
+            "fields": [
+              {
+                "id": "storage_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "storage_charge",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "storage_ref"
+            ]
+          },
+          "identifier_fields": [
+            "storage_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R05-1-0",
+            "payload": {
+              "storage_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "VND",
+              "booked_amount": "10.00"
+            },
+            "provenance": [
+              {
+                "file_id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+                "source_table_id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R05-1-1",
+            "payload": {
+              "storage_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "VND",
+              "booked_amount": "0.00"
+            },
+            "provenance": [
+              {
+                "file_id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+                "source_table_id": "37fcd5d0-b600-5090-a827-30e731353fe2",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "NEEDS_REVIEW"
+    }
+  },
+  {
+    "id": "R06",
+    "description": "Phí dịch vụ phòng xét nghiệm — fresh release holdout",
+    "request": {
+      "period_start": "2034-02-01",
+      "period_end": "2034-03-01",
+      "timezone": "UTC",
+      "effective_from": "2034-02-01",
+      "effective_to": null,
+      "allow_partial": null,
+      "intent": "Đề xuất để tôi duyệt đối soát Phí dịch vụ phòng xét nghiệm. Khóa ghép service_ref; quan hệ ONE_TO_ONE; chỉ metric service_gross, gross VND; không thêm metric khác; giữ dấu; sai số tuyệt đối 0; không cộng gộp.",
+      "left": {
+        "canonical_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+        "role": "reference",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": "2034-02-01",
+        "coverage_end": "2034-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2034-03-02T00:00:00Z",
+        "settlement_due_at": null
+      },
+      "right": {
+        "canonical_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+        "role": "counterpart",
+        "date_field": "service_day",
+        "time_basis": "service_day",
+        "currency_field": "ccy",
+        "filters": {},
+        "coverage_start": "2034-02-01",
+        "coverage_end": "2034-03-01",
+        "completeness": "CONFIRMED",
+        "snapshot_at": "2034-03-02T00:00:00Z",
+        "settlement_due_at": null
+      }
+    },
+    "sources": [
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Phí dịch vụ phòng xét nghiệm - sổ cần đối chiếu.csv",
+          "canonical": {
+            "id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+            "source_table_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+            "schema_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+            "schema_revision": 1,
+            "grain": "service_statement",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+            "workspace_id": "planner-evaluation",
+            "name": "Phí dịch vụ phòng xét nghiệm - sổ cần đối chiếu.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "service_statement",
+            "fields": [
+              {
+                "id": "service_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "service_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              },
+              {
+                "id": "net_amount",
+                "name": "Tiền sau phí, không nằm trong phạm vi yêu cầu",
+                "data_type": "decimal",
+                "semantic_metric": "service_net",
+                "amount_basis": "net",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "service_ref"
+            ]
+          },
+          "identifier_fields": [
+            "service_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R06-0-0",
+            "payload": {
+              "service_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "VND",
+              "booked_amount": "10.00",
+              "net_amount": "9.00"
+            },
+            "provenance": [
+              {
+                "file_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+                "source_table_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R06-0-1",
+            "payload": {
+              "service_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "VND",
+              "booked_amount": "0.00",
+              "net_amount": "0.00"
+            },
+            "provenance": [
+              {
+                "file_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+                "source_table_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      },
+      {
+        "catalogue": {
+          "project_id": "planner-independent",
+          "name": "Phí dịch vụ phòng xét nghiệm - xác nhận ngoài.csv",
+          "canonical": {
+            "id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+            "workspace_id": "planner-evaluation",
+            "dataset_version_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+            "source_table_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+            "schema_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+            "schema_revision": 1,
+            "grain": "service_statement",
+            "entity_kind": "service_account",
+            "mapping_revision_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+            "normalization_revision": "synthetic-independent",
+            "row_count": 2,
+            "valid_count": 2,
+            "invalid_count": 0,
+            "quality_status": "READY",
+            "artifact": {
+              "id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+              "kind": "canonical",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "error_artifact": {
+              "id": "933b0611-ed0e-521c-8edb-96b83ef01505-errors",
+              "workspace_id": "planner-evaluation",
+              "dataset_version_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+              "kind": "errors",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "revision": "synthetic-independent",
+              "quality": "READY"
+            },
+            "stale": false
+          },
+          "schema_definition": {
+            "id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+            "workspace_id": "planner-evaluation",
+            "name": "Phí dịch vụ phòng xét nghiệm - xác nhận ngoài.csv",
+            "revision": 1,
+            "entity_kind": "service_account",
+            "grain": "service_statement",
+            "fields": [
+              {
+                "id": "service_ref",
+                "name": "Tham chiếu đối tượng đã xác nhận",
+                "data_type": "string",
+                "required": true
+              },
+              {
+                "id": "service_day",
+                "name": "Ngày cung cấp dịch vụ",
+                "data_type": "date"
+              },
+              {
+                "id": "ccy",
+                "name": "Tiền tệ",
+                "data_type": "string"
+              },
+              {
+                "id": "booked_amount",
+                "name": "Tiền dịch vụ đã xác nhận",
+                "data_type": "decimal",
+                "semantic_metric": "service_gross",
+                "amount_basis": "gross",
+                "currency": "VND",
+                "unit": "VND"
+              },
+              {
+                "id": "net_amount",
+                "name": "Tiền sau phí, không nằm trong phạm vi yêu cầu",
+                "data_type": "decimal",
+                "semantic_metric": "service_net",
+                "amount_basis": "net",
+                "currency": "VND",
+                "unit": "VND"
+              }
+            ],
+            "business_key_fields": [
+              "service_ref"
+            ]
+          },
+          "identifier_fields": [
+            "service_ref"
+          ],
+          "profile": null,
+          "mapping": null
+        },
+        "rows": [
+          {
+            "id": "R06-1-0",
+            "payload": {
+              "service_ref": "000A",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "VND",
+              "booked_amount": "10.00",
+              "net_amount": "9.00"
+            },
+            "provenance": [
+              {
+                "file_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+                "source_table_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+                "source_row_id": "0",
+                "sheet": "Dịch vụ",
+                "row": 2
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          },
+          {
+            "id": "R06-1-1",
+            "payload": {
+              "service_ref": "000B",
+              "service_day": "2034-02-12T00:00:00Z",
+              "ccy": "VND",
+              "booked_amount": "0.00",
+              "net_amount": "0.00"
+            },
+            "provenance": [
+              {
+                "file_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+                "source_table_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+                "source_row_id": "1",
+                "sheet": "Dịch vụ",
+                "row": 3
+              }
+            ],
+            "invalid": false,
+            "quality_flags": []
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "proposal_status": "PROPOSED",
+      "plan_slots": {
+        "left": {
+          "canonical_id": "f69df9c6-75c7-5ef3-8cd1-5df1b61088a7",
+          "role": "reference",
+          "date_field": "service_day",
+          "time_basis": "service_day",
+          "currency_field": "ccy",
+          "filters": {},
+          "coverage_start": "2034-02-01",
+          "coverage_end": "2034-03-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2034-03-02T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "right": {
+          "canonical_id": "933b0611-ed0e-521c-8edb-96b83ef01505",
+          "role": "counterpart",
+          "date_field": "service_day",
+          "time_basis": "service_day",
+          "currency_field": "ccy",
+          "filters": {},
+          "coverage_start": "2034-02-01",
+          "coverage_end": "2034-03-01",
+          "completeness": "CONFIRMED",
+          "snapshot_at": "2034-03-02T00:00:00Z",
+          "settlement_due_at": null
+        },
+        "period_start": "2034-02-01",
+        "period_end": "2034-03-01",
+        "timezone": "UTC",
+        "effective_from": "2034-02-01",
+        "effective_to": null,
+        "join_keys": [
+          {
+            "left": "service_ref",
+            "right": "service_ref"
+          }
+        ],
+        "comparison_metrics": [
+          {
+            "left": "booked_amount",
+            "right": "booked_amount",
+            "metric_id": "service_gross",
+            "currency": "VND",
+            "unit": "VND",
+            "amount_basis": "gross",
+            "sign_convention": "SOURCE_SIGNED",
+            "absolute_tolerance": "0",
+            "relative_tolerance": null,
+            "rounding_scale": null,
+            "rounding_mode": "HALF_EVEN"
+          }
+        ],
+        "cardinality": "ONE_TO_ONE",
+        "aggregation": "NONE",
+        "comparison_grain": "service_statement"
+      }
+    }
+  }
+]

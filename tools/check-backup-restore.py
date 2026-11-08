@@ -4,9 +4,11 @@ Chạy trong Backend hiện có, lúc không có job/API write. Không overwrite
 không tạo server/container; backup nằm trên volume và phải copy ra nơi lưu độc lập.
 """
 
+import hashlib
 import json
 import shutil
 import time
+from collections import Counter
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -94,16 +96,21 @@ def write_metadata(
 def verify_metadata(
     connection: Any, metadata: MetaData, rows: dict[str, list[dict[str, Any]]]
 ) -> None:
-    """Compare every row, retaining at most one additional table, never two encoded snapshots."""
+    """Compare row SHA256 multisets without duplicating a large decoded table.
+
+    The snapshot/codec remains byte compatible. Multiplicity matters, so a
+    duplicate row cannot hide a missing row. Stream actual rows in bounded
+    batches; only digests, not another workflow/message table, stay resident.
+    """
     for table in metadata.sorted_tables:
-        actual = sorted(
-            [dict(row) for row in connection.execute(select(table)).mappings()], key=canonical
+        expected = Counter(
+            hashlib.sha256(canonical(row).encode("utf-8")).digest() for row in rows[table.name]
         )
-        expected = rows[table.name]
-        if len(actual) != len(expected) or any(
-            canonical(left) != canonical(right)
-            for left, right in zip(actual, expected, strict=True)
-        ):
+        actual = Counter(
+            hashlib.sha256(canonical(dict(row)).encode("utf-8")).digest()
+            for row in connection.execute(select(table).execution_options(yield_per=200)).mappings()
+        )
+        if actual != expected:
             raise RuntimeError(f"Backup metadata differs: {table.name}")
 
 

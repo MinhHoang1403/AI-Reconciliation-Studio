@@ -36,6 +36,12 @@ def test_local_provider_uses_only_installed_model_and_typed_content(config, resp
         body = json.loads(request.content)
         assert body["model"] == "qwen3:8b"
         assert body["format"] == schema and body["think"] is False
+        assert body["options"] == {
+            "temperature": 0,
+            "num_ctx": config.ollama_context,
+            "num_predict": 6000,
+            "num_batch": 128,
+        }
         assert "x-goog-api-key" not in request.headers
         if response_kind == "timeout":
             raise httpx.ReadTimeout("test", request=request)

@@ -122,6 +122,9 @@ class OllamaProvider:
                 "temperature": 0,
                 "num_ctx": self.config.ollama_context,
                 "num_predict": 6000,
+                # Bound prefill/compute buffers on the measured local 6 GiB GPU.
+                # Request-scoped: does not alter Ollama/model/driver settings.
+                "num_batch": 128,
             },
         }
         request_bytes = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
@@ -129,6 +132,7 @@ class OllamaProvider:
             payload_bytes=len(request_bytes),
             context_limit=self.config.ollama_context,
             output_limit=6000,
+            batch_size=128,
             timeout_seconds=self.config.ollama_timeout_seconds,
         )
         started = time.monotonic()

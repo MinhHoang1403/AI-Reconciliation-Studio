@@ -1,0 +1,23 @@
+{
+  "purpose": "Independent synthetic browser journey: signed refund, exact zero, zero-prefixed identifiers, one mismatch and two unmatched documents. Labels are fixed before engine execution.",
+  "headers": ["Mã hóa đơn", "Ngày phát sinh", "Tiền trước phí", "Đơn vị tiền tệ"],
+  "names": ["Hoa-don-bao-tri", "Thu-tien-bao-tri", "So-phu-tham-khao"],
+  "entity": "maintenance_invoice",
+  "grain": "invoice",
+  "metric": "maintenance_charge",
+  "values": [
+    [["00001", "1200.50"], ["00002", "-75.25"], ["00003", "0.00"], ["00004", "25.00"]],
+    [["00001", "1190.25"], ["00002", "-75.25"], ["00003", "0.00"], ["00005", "90.00"]],
+    [["00001", "1190.26"], ["00002", "-75.25"], ["00003", "0.00"], ["00005", "90.00"]]
+  ],
+  "expected": {
+    "equal": 2,
+    "mismatch": 1,
+    "unmatched": 2,
+    "signed": "10.25",
+    "absolute": "10.25",
+    "mismatch_id": "00001",
+    "left_amount": "1200.50",
+    "right_amount": "1190.25"
+  }
+}

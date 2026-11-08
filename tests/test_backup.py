@@ -47,7 +47,9 @@ def test_streamed_backup_preserves_exact_existing_format(tmp_path):
             assert restored == rows[table]
 
 
-@pytest.mark.parametrize("actual", [[{"id": "changed"}], [], [{"id": "a"}, {"id": "b"}]])
+@pytest.mark.parametrize(
+    "actual", [[{"id": "changed"}], [], [{"id": "a"}, {"id": "b"}], [{"id": "a"}, {"id": "a"}]]
+)
 def test_backup_metadata_comparison_rejects_changed_missing_and_extra_rows(actual):
     module = backup_module()
     metadata = MetaData()

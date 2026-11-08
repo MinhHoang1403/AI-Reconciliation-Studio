@@ -25,6 +25,130 @@ from test_reconciliation_postgres import create_approved_run
 pytestmark = pytest.mark.integration
 
 
+@pytest.mark.parametrize("stale", [False, True])
+def test_native_chat_claim_bypasses_busy_inference_without_changing_request_payload(
+    pg,  # noqa: F811
+    monkeypatch,
+    stale,
+):
+    """Real queue/scope/fence; simulate a busy inference lane without a live model."""
+    import studio.agent_jobs as agents
+
+    client, factory, worker = pg
+    pid, _, _, run = create_approved_run(pg)
+    drain(factory, worker)
+    context = dict(project_id=pid, run_id=run["run_id"])
+    waiting = ask_agent(
+        client,
+        context,
+        conversation(client, context, key="waiting-conversation"),
+        key="waiting-model",
+        text="Phân tích những quan hệ mới giữa các tệp giúp tôi",
+    )
+    native = ask_agent(
+        client,
+        context,
+        conversation(client, context, key="native-conversation"),
+        key="native-read",
+        text="Liệt kê các nhóm lệch tiền",
+    )
+    monkeypatch.setattr(
+        agents, "interpret_requests", lambda *args: pytest.fail("Native lane called AI")
+    )
+    with factory() as db:
+        payload = deepcopy(db.get(JobRow, native["job_id"]).payload)
+        claimed = worker.claim_job(db, inference_busy=True)
+        assert claimed and claimed[0] == native["job_id"]
+        assert db.info["native_dispatch_job_id"] == native["job_id"]
+    if stale:
+        monkeypatch.setattr(agents, "resolve_native_read", lambda *args: None)
+    worker.process_job(*claimed, native_only=True)
+    with factory() as db:
+        row = db.get(JobRow, native["job_id"])
+        assert row.payload == payload and row.attempts == 1
+        assert row.status == ("FAILED" if stale else "SUCCEEDED")
+        if stale:
+            assert row.error_code == "STALE_CONTEXT"
+        assert db.get(JobRow, waiting["job_id"]).status == "QUEUED"
+        assert db.get(JobRow, waiting["job_id"]).attempts == 0
+    if not stale:
+        done = workflow_for(client, factory, native["job_id"])
+        assert done["state"] == "COMPLETED" and done["detail"]["model_calls"] == 0
+
+
+def test_read_export_sequence_waits_before_provider_or_partial_execution(pg, monkeypatch):  # noqa: F811
+    """Real API/queue/DB; a compound cannot publish a partial query/export."""
+    import studio.agent_jobs as agents
+    from studio.database import ExportRow, RunRow
+
+    client, factory, worker = pg
+    pid = project(client)
+    context = dict(project_id=pid)
+    cid = conversation(client, context)
+    monkeypatch.setattr(
+        agents, "interpret_requests", lambda *args: pytest.fail("Unexpected AI call")
+    )
+    queued = ask_agent(
+        client, context, cid, text="Lọc hai nhóm lệch tiền lớn nhất rồi xuất chúng ra CSV."
+    )
+    drain(factory, worker)
+    flow = workflow_for(client, factory, queued["job_id"])
+    assert flow["state"] == "WAITING_REVIEW"
+    assert flow["detail"]["intent"]["intent"] == "CLARIFY"
+    assert flow["detail"]["model_calls"] == 0
+    assert not any(b["type"] in {"table", "download"} for b in flow["detail"]["blocks"])
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(ExportRow)) == 0
+        assert db.scalar(select(func.count()).select_from(RunRow)) == 0
+
+
+def test_query_first_reply_resumes_verified_read_without_model_or_export(pg, monkeypatch):  # noqa: F811
+    """Real run/API/queue; choosing read-only after a compound needs no inference."""
+    import studio.agent_jobs as agents
+    from studio.database import ExportRow, RunRow
+
+    client, factory, worker = pg
+    pid, _, _, existing = create_approved_run(pg)
+    drain(factory, worker)
+    context = dict(project_id=pid, run_id=existing["run_id"])
+    cid = conversation(client, context)
+    monkeypatch.setattr(
+        agents, "interpret_requests", lambda *args: pytest.fail("Unexpected AI call")
+    )
+    first = ask_agent(
+        client, context, cid, text="Cho tôi xem các nhóm lệch tiền rồi xuất kết quả đó ra CSV."
+    )
+    drain(factory, worker)
+    flow = workflow_for(client, factory, first["job_id"])
+    review = flow["detail"]["reviews"][0]
+    body = dict(
+        review_id=review["id"],
+        nonce=review["nonce"],
+        fingerprint=review["fingerprint"],
+        text="Trước tiên hãy liệt kê các nhóm lệch tiền, chưa xuất tệp.",
+    )
+    path = f"/api/agent/workflows/{flow['id']}"
+    response = client.post(path + "/replies", json=body, headers={"Idempotency-Key": "query-first"})
+    assert response.status_code == 202, response.text
+    with factory() as db:
+        claimed = worker.claim_job(db, inference_busy=True)
+        assert claimed and claimed[0] == response.json()["job_id"]
+        assert db.info["native_dispatch_job_id"] == claimed[0]
+    worker.process_job(*claimed, native_only=True)
+    drain(factory, worker)
+    done = client.get(path).json()
+    assert done["state"] == "COMPLETED", done
+    assert done["detail"]["model_calls"] == 0
+    assert not any(b["type"] == "download" for b in done["detail"]["blocks"])
+    table = next(b["result"] for b in done["detail"]["blocks"] if b["type"] == "table")
+    assert table["total_count"] == 1
+    assert table["rows"][0]["comparison_state"] == "AMOUNT_MISMATCH"
+    assert table["rows"][0]["group_id"] and table["evidence_complete"]
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(ExportRow)) == 0
+        assert db.scalar(select(func.count()).select_from(RunRow)) == 1
+
+
 def test_settings_chat_limits_match_enforced_upload_contract(pg, monkeypatch):  # noqa: F811
     """Giới hạn công bố và upload cùng đổi theo cấu hình; GET không gọi provider."""
     from studio.config import settings
@@ -423,7 +547,12 @@ def test_followup_position_uses_persisted_displayed_page_and_never_another_conve
         assert cat.previous_query is None and cat.previous_groups == []
 
 
-def test_displayed_page_changed_during_inference_never_explains_a_different_group(pg, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("action", ["EXPLAIN_RESULT", "EXPORT_RESULT"])
+def test_displayed_page_changed_during_inference_never_uses_a_different_selection(
+    pg,  # noqa: F811
+    monkeypatch,
+    action,
+):
     import studio.agent_jobs as agents
     from studio.contracts.data_query import DataQuery
 
@@ -448,10 +577,21 @@ def test_displayed_page_changed_during_inference_never_explains_a_different_grou
             json=query.model_dump(mode="json") | dict(offset=1),
         )
         assert response.status_code == 200, response.text
-        return [AgentIntent(intent="EXPLAIN_RESULT", result_position=1)]
+        return [
+            AgentIntent(intent="EXPLAIN_RESULT", result_position=1)
+            if action == "EXPLAIN_RESULT"
+            else AgentIntent(
+                intent="EXPORT_RESULT", run_id=created["run_id"], export_scope="DISPLAYED_QUERY"
+            )
+        ]
 
     monkeypatch.setattr(agents, "interpret_requests", change_page)
-    second = ask_agent(client, context, cid, key="page-race", text="Giải thích giao dịch đầu tiên")
+    text = (
+        "Giải thích giao dịch đầu tiên"
+        if action == "EXPLAIN_RESULT"
+        else "Bạn tạo CSV giữ nguyên các dòng trên được không?"
+    )
+    second = ask_agent(client, context, cid, key="page-race", text=text)
     drain(factory, worker)
     result = workflow_for(client, factory, second["job_id"])
     assert result["state"] == "BLOCKED" and result["detail"]["error_code"] == "STALE_CONTEXT"

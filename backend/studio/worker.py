@@ -116,6 +116,9 @@ def claim_job(
     db: Session, *, parse_only: bool = False, inference_busy: bool = False
 ) -> tuple[str, str] | None:
     """Claim atomically via SKIP LOCKED; exhausted expired leases are failed, never loop forever."""
+    from studio.agent_jobs import native_dispatch_eligible
+
+    db.info.pop("native_dispatch_job_id", None)
     current = now()
     eligible = or_(
         and_(JobRow.status.in_(["QUEUED", "RETRYABLE_FAILURE"]), JobRow.available_at <= current),
@@ -141,6 +144,28 @@ def claim_job(
     job = db.scalar(
         query.order_by(JobRow.created_at, JobRow.id).with_for_update(skip_locked=True).limit(1)
     )
+    if job is None and inference_busy and not parse_only:
+        # Inspect queued Chat requests without locking the backlog. Only the
+        # selected row is locked and checked again against queue eligibility.
+        chat = (
+            select(JobRow)
+            .where(eligible, JobRow.kind.in_(["agent", "agent_review"]))
+            .order_by(JobRow.created_at, JobRow.id)
+            .execution_options(yield_per=32)
+        )
+        with db.execute(chat) as pending:
+            for candidate in pending.scalars():
+                if not native_dispatch_eligible(db, candidate):
+                    continue
+                job = db.scalar(
+                    select(JobRow)
+                    .where(JobRow.id == candidate.id, eligible)
+                    .with_for_update(skip_locked=True)
+                    .execution_options(populate_existing=True)
+                )
+                if job is not None:
+                    db.info["native_dispatch_job_id"] = job.id
+                    break
     if job is None:
         db.rollback()
         return None
@@ -994,7 +1019,7 @@ def _normalize(job_id: str, token: str) -> None:
         db.commit()
 
 
-def process_job(job_id: str, token: str) -> None:
+def process_job(job_id: str, token: str, *, native_only: bool = False) -> None:
     from studio.agent_jobs import execute_agent
     from studio.assistant_jobs import execute_assistant
     from studio.reconciliation_exports import execute_export
@@ -1007,7 +1032,9 @@ def process_job(job_id: str, token: str) -> None:
             kind = job.kind
         handlers: dict[str, Callable[[str, str], None]] = {
             **{
-                name: lambda jid, claim: execute_agent(jid, claim, SessionFactory, _fence, _finish)
+                name: lambda jid, claim: execute_agent(
+                    jid, claim, SessionFactory, _fence, _finish, native_only=native_only
+                )
                 for name in ("agent", "agent_prepare", "agent_resume", "agent_review")
             },
             "assistant": lambda job_id, token: execute_assistant(
@@ -1040,7 +1067,7 @@ def process_job(job_id: str, token: str) -> None:
             except DomainError:
                 return
             blocked = code.startswith(
-                ("QWEN_", "GEMINI_", "AI_", "CLOUD_", "PARSER_", "LLAMAPARSE_")
+                ("QWEN_", "OLLAMA_", "GEMINI_", "AI_", "CLOUD_", "PARSER_", "LLAMAPARSE_")
             ) or code in {
                 "INVALID_EVIDENCE",
                 "INVALID_SOURCE_FIELD",
@@ -1129,14 +1156,15 @@ def main() -> None:
             with SessionFactory() as db:
                 claimed = claim_job(db, inference_busy=inference is not None)
                 job = db.get(JobRow, claimed[0]) if claimed else None
-                needs_inference = job is not None and _needs_inference(job)
+                native_only = job is not None and db.info.get("native_dispatch_job_id") == job.id
+                needs_inference = job is not None and _needs_inference(job) and not native_only
             if not claimed:
                 time.sleep(settings.worker_poll_seconds)
             elif needs_inference:
                 assert inference is None
                 inference = executor.submit(process_job, *claimed)
             else:
-                process_job(*claimed)
+                process_job(*claimed, native_only=native_only)
 
 
 if __name__ == "__main__":
