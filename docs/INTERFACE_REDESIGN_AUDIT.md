@@ -144,3 +144,112 @@ Trình tự đề nghị: (1) chốt IA và luồng quyết định bằng proto
 | [WCAG 2.2](https://www.w3.org/TR/WCAG22/) | Reflow, contrast, focus không bị che, target size và keyboard | AA target-size 24 CSS px có ngoại lệ; phải kiểm từng ngữ cảnh, không suy compliance từ ảnh. |
 
 Các quyết định cần chủ dự án chốt cho đợt sau: cấu trúc sidebar và vai trò trang thủ công; context panel mặc định/khả năng ghim; mức thông tin luôn hiện khi duyệt; độ rộng/mật độ bảng; font có hỗ trợ tiếng Việt và hệ token; các tác vụ usability dùng làm tiêu chí nghiệm thu. Decimal, raw immutability, workspace isolation, chính sách AI và human approval là ràng buộc bảo toàn, không phải lựa chọn thẩm mỹ.
+
+## 8. Kiểm toán bổ sung ngày 09/11/2026
+
+Phần 1–7 giữ nguyên biên bản ngày 08/11. Các số đo và phương án dưới đây bổ sung cho biên bản đó. Mâu thuẫn về sidebar và phương án từng đề nghị quay về ba mục được đối chiếu lại ở mục 8.6.
+
+### 8.1. Phạm vi và cách đọc bằng chứng
+
+| Nhãn | Ý nghĩa trong vòng này |
+| --- | --- |
+| OBSERVED | Quan sát trực tiếp trên bản Docker. Nếu phiên không qua bootstrap, kết quả chỉ phản ánh shell và trạng thái lỗi phiên. |
+| SOURCE_VERIFIED | Kiểm trong React/CSS, API/DTO và test source tại cùng revision. Giải thích quy tắc có trong mã, không suy ra tần suất xảy ra. |
+| TEST_VERIFIED · MOCK CONTRACT | Chromium tải HTML/CSS/JS từ release đang chạy, nhận DTO TEST tổng hợp do Playwright trả trong trình duyệt. Bao phủ trình bày và tương tác được assert. Backend, model, permissions thật và tác dụng ghi nằm ngoài chứng cứ này. |
+| DOCUMENTED | Hành trình và kết quả đã lưu ở biên bản cũ, hướng dẫn TEST hoặc kế hoạch. Chưa chạy lại live trong vòng này. |
+| REFERENCE | Pattern tham khảo từ tài liệu chính thức hoặc tra cứu cục bộ của skill. |
+| PROPOSED / NEEDS_DECISION | Đặc tả cho đợt sau hoặc lựa chọn cần chủ dự án chốt. |
+
+Baseline Git `c477745d6c4426c663089251f75182aa1e2c375c`. Source ứng dụng được nghiệm thu tại `1d7f4909a3aa5d6c0a79cdddb88cb4303119e701`. Diff giữa hai mốc ở frontend/backend rỗng. Frontend, backend và worker có label revision `c477745d6c4426c663089251f75182aa1e2c375c`; PostgreSQL cùng Compose. Origin khớp repository dự án. Đã đối chiếu [AGENTS](../AGENTS.md), [Rules](../Rules.md), [kế hoạch sản phẩm](PROJECT_PLAN.md), [kế hoạch tự động hóa](AUTOMATION_PRODUCT_PLAN.md), [kiến trúc](ARCHITECTURE.md), [hợp đồng dữ liệu](DATA_CONTRACTS.md), [biên bản nghiệm thu](IMPLEMENTATION_STATUS.md) và [hướng dẫn TEST](USER_TEST_GUIDE.md).
+
+**OBSERVED · giới hạn vận hành.** Tại năm viewport, `GET /api/session` trả HTTP 403 `LOCAL_DEMO_NOT_VERIFIED`; giao diện hiện hướng dẫn xác minh và “Thử kết nối lại”. Bốn container healthy, tức health không chứng minh phiên demo hợp lệ. [Bootstrap](../backend/studio/access.py) kiểm proof gắn instance và frontend. Không kết luận nguyên nhân sâu hơn của proof từ riêng mã lỗi. Không mở dữ liệu thật, thay proof, restart, redeploy, hoặc dùng thông tin xác thực thay để vượt qua gate. Không thể kiểm lại hành trình nghiệp vụ live, mặc dù [nghiệm thu 08/11](IMPLEMENTATION_STATUS.md) có các kết quả lịch sử.
+
+**TEST_VERIFIED · cách cô lập.** Test và phép đo dùng HTML/assets của đúng release. API trên trình duyệt do fixture synthetic trả, request không có fixture bị chặn khỏi Backend trong suite. Harness đo chỉ mở route, đọc bảng, mở modal và gắn tệp trong bộ nhớ trình duyệt. Những ca giả lập ghi như submit review hoặc lỗi upload do handler mock chặn và trả tại trình duyệt. Không tạo project/run/workflow/report thật hoặc gọi AI. Ảnh và đo thô nằm ngoài Git ở thư mục audit local `studio-ux-research-20261109`. Manifest ghi route, state, fixture, revision, viewport, tên ảnh, thông số và nhận xét.
+
+### 8.2. Bố cục đo bằng computed styles
+
+Năm viewport chính là **390×844, 768×1024, 1366×768, 1440×900, 1920×1080**. Ma trận dùng `assistant/data/reconcile/home/exceptions/reports/settings`. Baseline Chat có hội thoại TEST và run đã chọn, nên khác welcome. CSS đóng drawer mobile bằng dịch vị trí; 215 px là chiều rộng của drawer khi mở, không trừ khỏi main khi đóng. Kích thước sau làm tròn theo CSS px.
+
+| Rộng viewport | Sidebar | Main | Header Chat / trang nghiệp vụ | Toolbar Chat / transcript | Composer Chat có kết quả |
+| --- | --- | --- | --- | --- | --- | --- |
+| 390 | Drawer 215 | 390 | 56 / 64 | 358 / 358 | 358 × 104 |
+| 768 | Drawer 215 | 768 | 56 / 64 | 736 / 736 | 736 × 58 |
+| 1366 | Cố định 246 | 1120 | 56 / 73 | 1064 / 1064 | 1064 × 62 |
+| 1440 | Cố định 246 | 1194 | 56 / 73 | 1120 / 1120 | 1120 × 62 |
+| 1920 | Cố định 246 | 1674 | 56 / 73 | 1120 / 1120 | 1120 × 62 |
+
+Ở 1440, composer welcome đo rộng **760 px** và composer có kết quả **1120 px**. Số đo 760 px ở phần cũ đúng cho một trạng thái, không phải trần mọi trạng thái. Dialog Lịch sử, Đổi ngữ cảnh, Chọn dự án và Tải dữ liệu rộng **580 px**. Tệp và dữ liệu trong Chat rộng **900 px**. Bảng Data trong fixture desktop rộng **1070 px**. Modal bằng chứng Báo cáo rộng **900 px**, bảng kết quả đo **1118 px** trong vùng cuộn cùng chiều rộng ở mẫu desktop. Bộ ảnh bổ sung ghi padding, gap, font-size, line-height, scrollWidth/clientWidth, chiều cao panel, table, composer, dialog; không suy một mẫu chung cho mọi route. Cấu hình font CSS hiện tại khai báo Inter/Segoe UI/Arial; detector đọc khai báo chứ chưa xác minh glyph được dùng ở thiết bị khác.
+
+Ở 390 px, ảnh báo cáo cho thấy tiêu đề, mô tả, bộ chọn dự án, tiêu đề kết quả, lịch sử, bộ chọn run và nút xuất nằm trước phần dữ kiện. Ảnh `table` trong fixture Chat cho thấy 10 dòng xem trước nhưng bộ đếm có “25 dòng trong trang”; câu này mô tả trang query, còn hành động bên dưới mở trang đó. Đây là nguy cơ đọc nhầm phạm vi, cần đặt hai con số cạnh nhau. Bảng nhiều cột dùng cuộn nội bộ. Không thấy tràn ngang body trong các mẫu đạt. 390×520 có probe focus, 720×450 là phép thử giảm chiều rộng, 320 px là probe reflow, cùng override root font 200%. Ngoài các probe đó, kiểm zoom thật **200%** trong profile Chromium tạm bằng API zoom của trình duyệt tại Assistant, Data, Reports. Khung 1440×900 thành 720×450 CSS px, DPR 2 và document scrollWidth/clientWidth đều 720. Chat composer 688 px; bảng Data 622 px; bảng Reports 670 px. Không dùng profile hay preference của người dùng. Chưa kiểm zoom chỉ chữ của trình duyệt, bàn phím ảo/IME thật hoặc screen reader.
+
+### 8.3. Ma trận màn hình và trạng thái
+
+| Bề mặt · chức năng | Bằng chứng vòng này | Giới hạn cần kiểm tiếp |
+| --- | --- | --- |
+| AI Assistant · khởi động, welcome, chat mới, model, composer | OBSERVED lỗi phiên. MOCK empty, short, multiline, đính kèm local, loading, sidebar, draft và Enter/Shift+Enter. [AssistantStudio](../frontend/src/AssistantStudio.tsx) kiểm `nativeEvent.isComposing`. | Bộ gõ và bàn phím vật lý/ảo thật. Thử upload end-to-end chỉ trên TEST đã xác minh phiên. |
+| Chat lịch sử, nhiều tin/kết quả, trạng thái đang chạy, hoàn tất, partial, blocked, failed | MOCK 23 trạng thái × năm chiều rộng, scroll anchor, tải tin cũ, pending polling, lỗi provider và lỗi lịch sử; long filename và chart dài. | Số workflow/run lớn thật và provider thực theo policy. Không suy sức tải từ fixture. |
+| Upload từ Chat, dữ liệu vừa tải | MOCK trạng thái đính kèm, request đang đợi, thất bại có kiểm soát và mở dialog upload Data. SOURCE_VERIFIED đường attachments → parse/profile/prepared và limits. | Chưa gửi tệp vào release trong lần audit này. Xem USER_TEST_GUIDE §4, §13 cho kịch bản tiếp theo. |
+| Nguồn/dự án, Data, raw/prepared/canonical/errors, profile, mapping, normalize | MOCK các route/tầng dữ liệu, tách lỗi, đổi sheet chống hiển thị dữ liệu cũ, xử lý API summary lỗi và stale query. SOURCE_VERIFIED các nhánh nguồn/tầng/revision. | Không dùng fixture để khẳng định mapping/canonical thực. PDF/DOCX và phân trang lớn live theo gate riêng. |
+| Làm rõ, Mapping Review và phê duyệt | MOCK tách làm rõ khỏi duyệt ở năm chiều rộng; preflight, chưa đủ thông tin, sparse Planner, xác nhận phạm vi và dữ liệu lỗi. | Expiry/replay/conflict thật theo backend và UAT. Không gửi approval đến release. |
+| Đối soát, lập phương án, rule, chạy | SOURCE_VERIFIED form thủ công và contract; MOCK thẻ Planner và validation payload. RUNNING/COMPLETED được quan sát ở workflow giả lập. | Không tạo plan hoặc run live. Dữ liệu đầu vào và hai oracle tài chính đối chiếu tài liệu nghiệm thu. |
+| Tổng quan/Kết quả, bảng, chart, ngoại lệ | MOCK route `home/reconcile/exceptions/reports`, snapshot, tabular counts, nhóm LINKED và AMOUNT_MISMATCH, biểu đồ, mở evidence. SOURCE_VERIFIED case state độc lập. | Lần chạy verified/partial thật, đa currency, truy cập bị thu hồi và điều hướng trường hợp run ngoài trang cần UAT. |
+| Bằng chứng, báo cáo, xuất CSV/XLSX | MOCK bằng chứng theo run/group, source row ở Chat, nút xuất và download block. SOURCE_VERIFIED giới hạn thành viên và hai export scopes. | Không bấm export live, chưa đọc lại file ở vòng này. 1:N/N:1 nhiều members cần oracle độc lập. |
+| Settings và vai trò | MOCK quyền owner/viewer và trạng thái privacy, kiểm nút ghi của viewer. SOURCE_VERIFIED editor dùng `canEdit`, owner-only classification/reuse và backend guard. | Editor và revoked role chưa được kiểm qua tài khoản live. Không suy ẩn nút thay kiểm quyền API. |
+| Dialog, drawer, popover, manual/deep links | MOCK lịch sử, đổi ngữ cảnh, mobile drawer, tệp, upload, project picker, bằng chứng, xác nhận xóa chỉ mở/đóng; deep links bảy route. History trap: 12 lần Tab vẫn trong dialog, Escape đóng và trả focus Lịch sử. | Kiểm toàn overlay với Shift+Tab, zoom, screen reader và nút đã unmount; giữ manual fallback khi AI lỗi. |
+
+Trạng thái **retryable/non-retryable**, **stale**, **expired**, **revoked** và **no results** có quy tắc riêng ở [ma trận chuyển trạng thái](ui-redesign/SCREEN_AND_COMPONENT_SPECS.md#8-ma-trận-chuyển-trạng-thái). Pending, partial và blocked trong fixture không cấp quyền ghi. Các ca lâu, hết quyền và hết hạn chưa được tái hiện đầy đủ trên phiên thật. Phân biệt wait và đang xử lý: quyết định chưa có hiệu lực khi người dùng mới trả lời làm rõ; một phần đã xác minh chỉ áp dụng đúng phần được chỉ định.
+
+### 8.4. Phát hiện và ưu tiên
+
+P1 ưu tiên giải quyết trước phát hành UX do ảnh hưởng tới việc hiểu hoặc thực hiện quyết định. P2 có lối đi hiện tại nhưng thêm thao tác/khó đọc. P3 là hoàn thiện. Mức ưu tiên đề xuất không đồng nghĩa một lỗi nghiệp vụ đã tái hiện.
+
+| ID · nhóm · mức | Bằng chứng và ảnh hưởng | Hướng cho đặc tả |
+| --- | --- | --- |
+| A01 · Navigation · P2 | SOURCE_VERIFIED có sáu mục thực, desktop cố định 246 px, drawer ở tối đa 900 px. Cài đặt dùng class active và chưa có `aria-current` như các mục trang chính. Trạng thái local/cloud luôn chiếm chỗ đáy sidebar. | Giữ sáu lối vào, active semantic, rail/drawer. Hiện chính sách AI ở chỗ quyết định/chọn model và Settings. |
+| A02 · Chat · P2 | TEST_VERIFIED ở 1440 composer từ 760 px (welcome) sang 1120 px khi có kết quả. Một số khối dài chiếm bề ngang đầy đủ. Source có metadata/chi tiết để giữ. | Trục đọc ổn định; nội dung chi tiết/bảng lớn mở panel; gợi ý xuất hiện theo trạng thái. |
+| A03 · Review · P1 | Ảnh `review` 1440 có cơ sở số tiền, tiền tệ, bước bổ sung, nháp, checkbox và approval trong một cột dài. SOURCE_VERIFIED điều kiện nonce, fingerprint, preflight và ảnh hưởng. MOCK chứng minh làm rõ giữ approval riêng. | Thông tin bắt buộc đọc trước quyết định, phần chuyên sâu theo nhu cầu, một CTA xác nhận có hệ quả rõ. Không gộp trả lời làm rõ và duyệt. |
+| A04 · Dữ liệu · P2 | SOURCE_VERIFIED `App.tsx` tách Tự chuẩn bị và Chuẩn hóa qua nút phụ, ngoài các tabs tác vụ. Ảnh Data lặp tiêu đề/tên nguồn và nhiều tầng trước bảng. Các chiều raw/prepared/canonical đều có thật. | Một hàng scope nguồn–sheet–revision; ba tầng có tên phân biệt; lỗi nằm gần bảng và link đúng dòng. |
+| A05 · Đối soát · P1 | SOURCE_VERIFIED form có quan hệ, khóa, kỳ, độ đầy đủ và metric; một phần điều kiện được lặp ở bước xác nhận. MOCK Planner xác nhận trường thiếu vẫn giữ nút duyệt bị chặn khi chưa đủ điều kiện. | Tóm tắt đối chiếu trái–phải và các dữ kiện chi phối số liệu, mở chuyên sâu khi sửa, không hạ guard nghiệp vụ. |
+| A06 · Báo cáo và xuất · P1 | Ảnh Reports 390 nút CSV/XLSX đứng trước kỳ/đơn vị; chưa thấy phạm vi xuất ngay cạnh nút. SOURCE_VERIFIED xuất thủ công full run, Chat có `DISPLAYED_QUERY` cho đúng trang query đã ghim. Không tái hiện xuất nhầm trên Backend. | Hiện kỳ/run/scope sát thao tác xuất. Giữ query ghim và trang phân biệt với toàn run; không hứa xuất selection/chọn toàn tập lọc khi chưa có API. |
+| A07 · Bằng chứng · P1 | SOURCE_VERIFIED API giới hạn tối đa 100 thành viên mỗi phía và cung cấp cờ đầy đủ; screenshot MOCK có sheet/dòng, giá trị và chênh lệch. | Hiện số đã trả/tổng và cảnh báo thiếu khi cờ báo thiếu. Giữ liên kết đúng run, group, nguồn và revision. |
+| A08 · Cài đặt · P2 | MOCK giao diện tài khoản/quyền/riêng tư/giới hạn; SOURCE_VERIFIED vai trò và capability. Đổi model là hành động theo tin mới, không suy từ nhãn local/cloud toàn shell. | Cài đặt người dùng dùng copy đơn giản. Operator diagnostics chỉ khi liên quan. Tên model và lý do không khả dụng hiển thị ở composer. |
+| A09 · Typography/consistency · P2 | Detector trả 1 cảnh báo `overused-font` cho khai báo Inter trong `styles.css:19`; đây là heuristic thẩm mỹ, không phải thiếu glyph/vi phạm WCAG. Ảnh cho thấy lặp eyebrow/tiêu đề/caption, source có cả tokens và literal. | Chữ hệ thống, phân cấp theo nhiệm vụ, kiểm glyph tiếng Việt và định dạng số bằng formatter dùng chung. |
+| A10 · Responsive/a11y · P2 | Reports 390 đặt nhiều thao tác trước dữ kiện chính. Ảnh live lỗi 390 cho thấy nút “Thử kết nối lại” ngắt thành ba dòng. TEST_VERIFIED history trap và return focus, các phép đo không tràn body, nhưng bảng, sticky composer và zoom cần kiểm theo ngữ cảnh. | Xếp CTA lỗi xuống hàng ở viewport hẹp; bảng có tên, focus, cuộn rõ; kiểm zoom, target, chart alternative và focus không bị che. |
+| A11 · Hiệu năng · cần đo | SOURCE_VERIFIED `App.tsx` giữ `ReconciliationStudio` ẩn khi ở Assistant có dự án. `AssistantStudio.tsx` kiểm phản hồi workflow trùng qua `slice().some()` trong render. Chưa đo đây là bottleneck. | Profile request/render với nhiều run và lịch sử dài trước khi đổi mount strategy hoặc thuật toán presentation. |
+
+Giữ những phần đã hoạt động trong phạm vi kiểm gồm điều hướng manual, project context có kiểm scope, focus trap/return, thông tin nguồn, khả năng mở chi tiết và tách approval. Impeccable Operate đặt tiêu chí hoàn thành việc và độ chính xác lên trước trang trí. Áp dụng critique theo tìm đường, hiểu trạng thái và kiểm soát, audit theo cấu trúc/focus/reflow/theming, shape cho phương án. Detector chạy static với `detect --json --no-config frontend/src`, exit 2 do một cảnh báo. Không dùng overlay tự sinh của critique hoặc scan URL cần browser phụ. Chưa có đủ dữ liệu performance, screen reader hoặc độ phủ zoom cho mọi overlay để chấm tổng điểm accessibility/performance.
+
+### 8.5. Hành trình và phép đo tiếp theo
+
+| Hành trình | Bằng chứng một phần đã đo hoặc kiểm | Phần chưa đo và rủi ro |
+| --- | --- | --- |
+| Mới bắt đầu → gửi tệp | MOCK mở hội thoại mới một lần bấm, 0 route/approval, gắn tệp synthetic trong bộ nhớ rồi thấy chip. Fixture workflow có loading/lỗi. | Không đo thời gian tới dữ liệu sẵn sàng trên release. Dễ nhầm trạng thái “đã gửi” với “sẵn sàng”. |
+| Đọc dữ liệu → chọn tầng → tìm dòng | MOCK mỗi thao tác đổi tầng dùng nút riêng, không chuyển route. Canonical từ Prepared cần nút “Xem bản chuẩn hóa đã duyệt”. | Số bước tìm đúng sheet/phiên bản phụ thuộc source. Kiểm field/click với hai nguồn và kết quả lịch sử. |
+| Kế toán → Báo cáo → xem bằng chứng | MOCK đã vào đúng run qua deep link, một click “Xem bằng chứng”, 0 route/field/approval. Thử đọc nhóm `000701` và chênh lệch theo cùng run. | Chưa đo chọn run và xuất từ điểm đầu. Phải đo nhầm scope và đối chiếu byte khi chạy UAT. |
+| Chuyên gia → chỉnh và xác nhận | MOCK mở phần phạm vi trong Planner, điền dữ kiện rồi mới mở nút duyệt. Ca synthetic dùng trường bắt buộc khác nhau theo dữ liệu/coverage. | Số field và click không đồng nhất giữa reuse, đề xuất đủ và đề xuất thưa. UAT đo từng nhánh; không bỏ bước xác nhận partial hoặc tolerance. |
+| Người gặp lỗi → phục hồi | OBSERVED một nút “Thử kết nối lại” ở 403; mã nguồn giữ lỗi và hướng dẫn riêng. MOCK ba ca bootstrap error retry thành công theo fixture, draft/history giữ lại. | Retry live chỉ có tác dụng sau khi điều kiện phiên hợp lệ. Không đo thời gian phục hồi từ ảnh. |
+| Chỉ xem → kiểm tra số liệu | MOCK xem Điều hướng, Dữ liệu, quyền viewer và disabled write; 0 xác nhận trong tác vụ đọc. | Chưa kiểm thực tế người xem tìm đúng nguồn trên tài khoản độc lập. |
+
+Số lần bấm trên là đoạn đo bằng Playwright sau khi fixture đã đặt đúng điểm bắt đầu. Các con số end-to-end về thời gian, thao tác nhập, chuyển trang và số lần xác nhận do người dùng cần một vòng baseline UAT. [Kiến trúc trải nghiệm](ui-redesign/UX_INFORMATION_ARCHITECTURE.md#3-hành-trình-điểm-rút-gọn-và-phép-đo) và [kế hoạch nghiệm thu](ui-redesign/IMPLEMENTATION_AND_ACCEPTANCE_PLAN.md#5-đo-hành-trình-và-cửa-nghiệm-thu) định nghĩa cách thu cùng dữ liệu và tránh đếm hộ tác vụ người dùng.
+
+### 8.6. Quyết định thiết kế và kiểm lại tính nhất quán
+
+**NEEDS_DECISION.** `Rules.md` §9.1 giữ quyết định ngày 02/11 về sidebar ba mục. Bổ sung 06/11 đầu `PROJECT_PLAN.md` và §6.1 `AUTOMATION_PRODUCT_PLAN.md` mở các lối nghiệp vụ, tương ứng source. Phương án ba mục trong phần 3.C là đề xuất lịch sử. Đề xuất mới giữ sáu mục, Chat là mặc định, Ngoại lệ nằm trong Kết quả của Đối soát và deep links giữ nguyên. [D01](ui-redesign/OPEN_DECISIONS.md) so ưu/nhược điểm và chờ chủ dự án chốt.
+
+**PROPOSED.** Một hệ thiết kế sáng, trung tính, xanh dương, phân cấp bằng khoảng cách và chữ. UI UX Pro Max 2.15.0 chạy 16 tra cứu cục bộ. Hướng tối, landing hero, font tải từ xa và thay bộ icon bị loại vì không hợp bối cảnh sử dụng/stack/giấy phép. Hướng bảng mật độ phù hợp, nhãn trạng thái kèm chữ, đánh giá accessibility theo tác vụ và drill-down được giữ có chọn lọc. [Design System Blueprint](ui-redesign/DESIGN_SYSTEM_BLUEPRINT.md) ghi truy vấn, kết quả và contrast đề xuất. [Microcopy Audit](ui-redesign/MICROCOPY_AUDIT.md) ghi 72 quyết định có source và điều kiện.
+
+Lượt critique cuối trên đặc tả kiểm các xung đột dễ xảy ra. Panel chỉ dock nếu còn đủ trục Chat, nếu thiếu thì chuyển overlay. Preview và toàn bảng cùng dùng một scope có ID; khi mở rộng không đổi query. Review vẫn hiện dữ kiện tài chính dù ẩn trường kỹ thuật. Hai đường xuất được gọi đúng tên; bằng chứng thiếu có biểu đạt riêng. Các số đo 56/240/64/760/400 là đề xuất cần prototype; không lẫn với số đo bản chạy tại mục 8.2. [Đặc tả màn hình](ui-redesign/SCREEN_AND_COMPONENT_SPECS.md) có 12 nhóm màn hình, wireframe, ngữ pháp phản hồi, contracts, handoff và ma trận trạng thái. [Kiến trúc trải nghiệm](ui-redesign/UX_INFORMATION_ARCHITECTURE.md) ghi đối chiếu 12 nguồn chính thức và giới hạn áp dụng. [Kế hoạch triển khai và nghiệm thu](ui-redesign/IMPLEMENTATION_AND_ACCEPTANCE_PLAN.md) giữ các cổng nghiệp vụ, quyền, tiền và rollback cho nhiệm vụ sau.
+
+### 8.7. Biên bản kiểm thử vòng này
+
+| Kiểm tra | Kết quả | Bằng chứng local ngoài repo |
+| --- | --- | --- |
+| Bootstrap thật tại 5 viewport | **BLOCKED LIVE**. Cùng HTTP 403, chưa mở dataset/run thật. | `live-access.json`, 5 ảnh. |
+| Kiểm bố cục và tương tác theo route | **54 mẫu MOCK** trên 7 route và trạng thái bổ sung. Không lỗi JS, không lỗi response hoặc request ghi thoát khỏi fixture trong lượt đo cuối. | `mock-measurements.json`, `mock-activity.json`, 54 ảnh. |
+| Zoom thật 200% | **3 mẫu MOCK** ở Chat, Dữ liệu và Báo cáo, không tràn body. | `native-zoom200.json`, 3 ảnh. |
+| Bộ ca Playwright có sẵn | **50 ca PASS ở lượt đầu** và **1 ca IME PASS sau khi bổ sung bootstrap mock vào bản sao tạm của test**. Không sửa test source. Hai ca đối soát được chọn quá rộng, cần fixture run đã lưu nên dừng trước khi kiểm giao diện; không tính là regression sản phẩm hoặc ca đạt. | `mock-playwright.log`, `ime-playwright.log`. |
+| Trạng thái Chat và focus | **23 trạng thái × 5 viewport** trong suite mock, 115 ảnh. Tab trong History và Escape/return focus kiểm riêng. Cả Enter và Shift+Enter kiểm bằng sự kiện tổng hợp. | `runtime/assistant-layout` trong thư mục audit, `mock-activity.json`. |
+| Manifest và đối chiếu hình ảnh | **177 ảnh** gồm 5 live bootstrap và 172 mock. Có 57 mẫu computed/zoom, các ảnh còn lại gắn với assert của suite. Đã xem ảnh đại diện của lỗi phiên, review, bảng mobile và evidence. | `screenshot-manifest.json`. |
+| Đối chiếu Docker | Cùng bốn container, ID/image/thời điểm khởi động và revision khớp trước/sau. Cả bốn healthy. | `docker-before.txt`, `docker-after.txt`. |
+
+Hạn chế để chủ dự án biết trước khi phê duyệt triển khai. Vòng này đủ bằng chứng để thảo luận các phương án, mô tả hiện trạng theo source, chốt nhiệm vụ cần thử và đánh giá thiết kế. Nghiệm thu live end-to-end, UAT độc lập, screen reader, bàn phím mobile thật, bộ gõ tiếng Việt thật và profiling tải dài được theo dõi riêng. Bổ sung hoặc chỉnh số đo baseline khi phiên demo hoạt động trở lại.
