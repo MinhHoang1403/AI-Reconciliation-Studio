@@ -1,5 +1,50 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Tiếp tục Master Prompt — 10/11/2026
+
+**`NOT_READY`**. Source ứng dụng `d46cf6b18ac3ea1719b233acf024142583333a4a` trên `codex/studio-product-quality`. Image ứng viên chạy qua Nginx trong cùng Compose với schema UUID và kho tệp TEST riêng. Điều kiện độ chính xác Agent vẫn dưới ngưỡng nghiệm thu.
+
+| Phạm vi | Kết quả quan sát |
+| --- | --- |
+| Agent hồi quy | 14/14 câu cũ đi qua định tuyến nội bộ, giữ đúng nguồn, tầng dữ liệu, bộ lọc, vị trí nhóm và phạm vi xuất. |
+| Agent held-out | 69/130 trong ứng dụng TEST khi tắt provider. Các ca kỳ vọng thực hiện đạt 43/84, các ca kỳ vọng làm rõ hoặc từ chối đạt 26/46. Theo nhóm là 10/30 intent, 12/20 ngữ cảnh, 0/20 dữ liệu/mapping, 20/20 lập kế hoạch hoặc làm rõ, 17/20 báo cáo và 10/20 ca khó. Điểm lập kế hoạch xác nhận đúng nguồn và trạng thái chờ, chưa tính như đã chạy một lượt đối soát. |
+| Agent live Ollama | 0/3 câu tra cứu có tham số chính xác cả trước và sau sửa. Trước sửa có đề xuất tìm chứa thay so sánh bằng và đề xuất chuẩn hóa trong yêu cầu đọc. Sau sửa ba câu đều bị chặn bằng `QUERY_SEMANTICS_REQUIRED`. Mỗi câu dùng một lượt gọi model. |
+| Ba nguồn thanh toán | Từ một hội thoại, chuẩn hóa đơn hàng, thanh toán và ngân hàng rồi xác minh hai cặp đã duyệt. Chênh lệch tuyệt đối lần lượt `50.00` và `0.01` VND. XLSX của cả hai cặp đọc lại khớp snapshot, bảng CSV trang đang xem và bằng chứng nguồn được kiểm riêng. |
+| Quyền và xóa vĩnh viễn | 11 ca purge PostgreSQL gồm từ chối quyền, nguồn ngoài phạm vi, hiện vật dùng chung, job đang chạy, xác nhận cũ, checksum, orphan và phục hồi sau gián đoạn. HTTP qua Nginx xác nhận trên một nguồn TEST có ba tệp và biên nhận idempotent. Đường local mặc định tắt, yêu cầu cờ cấu hình, proof loopback, mount đã xác minh và owner. Không xác nhận manifest hay xóa trên `studio.public`. |
+| PostgreSQL và Worker | 831 ca trên image ứng viên, một cảnh báo deprecation từ TestClient. SIGKILL giữa chuẩn hóa 75.000 dòng, Worker lấy lại lease, công bố đúng một bản chuẩn hóa và Agent tiếp tục. |
+| Chromium và UAT | 151/151 ca trong một lượt chạy qua Nginx trên image `d46cf6b`, một worker, 11,5 phút. Lượt này dùng bộ kiểm thử ở `dc751b6`. Thay đổi giữa hai mốc chỉ bổ sung fixture, công cụ đánh giá và sửa kiểm thử. Lượt trước ghi 145/151 vì sáu locator cũ ở panel, số định dạng tiếng Việt hoặc dấu kết nối. Sáu ca chạy lại riêng trước khi bắt đầu toàn bộ lượt 151 ca, với oracle giữ nguyên. |
+| Oracle và đọc lại | Shopee, TikTok và giao nhận khớp oracle. Sáu CSV/XLSX có checksum khớp API và chứa snapshot đã xác minh. Năm tệp nguồn tải lại khớp byte fixture. Hai phép kiểm HTTP từ chối workspace cũ và origin ngoài allowlist. |
+| PDF/DOCX cache | Hai tệp tổng hợp và hai bản trích xuất cache được đối chiếu checksum trước khi đưa vào TEST. Chromium đọc đúng mã, số tiền và cảnh báo chưa xác minh. Không phát sinh parse mới. |
+
+Trong 61 ca held-out chưa đạt, 51 dừng ở `CLOUD_AI_DISABLED`, 10 nhận thành truy vấn trạng thái nguồn. Các tệp câu hỏi và trình chạy được giữ tại [fixture](../tests/fixtures/agent-workflow-heldout.json) và [trình đánh giá HTTP](../tools/evaluate-agent-http.py). Lượt chấm kiểm tra intent, phạm vi, điều kiện được nêu, trạng thái xuất bản hoặc chờ duyệt, cùng checksum và đọc lại với các ca xuất. Nó chưa đo độ chính xác provider cho 51 ca bị chặn. Gemini và Qwen công ty không phát sinh lượt gọi. Bản ghi lần đầu dùng sai discriminator cho khối tải xuống. Điểm 69/130 đến từ đọc lại tám hiện vật trên cùng lượt chạy với oracle giữ nguyên. Trình đánh giá đã lưu sau đó chạy lại đủ 130 ca và cho cùng kết quả, trung vị 1,60 giây và p95 3,48 giây trên các ca có thời gian.
+
+### Giao diện và thao tác
+
+| Hành trình qua Chat | Click trước → sau | Trường nhập trước → sau | Lượt duyệt |
+| --- | --- | --- | --- |
+| A · Tồn kho, các nguồn có cùng khóa và định nghĩa | 29 → 23 | 23 → 10 | 2 → 2 |
+| B · Chứng từ bảo trì, gồm khoản âm và số không | 33 → 23 | 14 → 10 | 2 → 2 |
+
+Đo click bằng sự kiện trình duyệt có `isTrusted`, đếm trường từ các bước nhập trong kịch bản. A dùng cùng dữ liệu, phạm vi, truy vấn, bằng chứng và export nhưng chọn điền chung ở bản mới. Nhánh nhập riêng đo được 25 click và 22 trường ở lần kiểm trước khi bổ sung khóa chung. Lựa chọn chung chỉ điền vào bản nháp cho các nguồn có tên cột khóa trùng duy nhất. Mỗi nguồn vẫn có thể giữ hoặc sửa khóa riêng. Duyệt chuẩn hóa và duyệt đối soát vẫn tách biệt.
+
+UI UX Pro Max được dùng để nhóm bốn khu vực công việc, đưa phạm vi workspace và dự án lên đầu, chọn bố cục co lại cho bảng và tái kiểm thứ bậc tiêu đề, skip link, độ rộng bảng. Gợi ý marketing và nền tối từ kết quả tìm kiếm tổng quát được thay bằng các quyết định D01–D10 đã duyệt. Impeccable được dùng theo `new-work`, `craft-floor` và tiêu chí critique để kiểm bố cục vận hành, mật độ, nhãn, trọng tâm và ảnh ở nhiều cỡ. Sửa nhãn phạm vi bị cắt trên điện thoại, nền Chat và vị trí phần báo cáo. Detector tĩnh trả về 0 phát hiện trong các bề mặt sửa. Critique thực hiện bằng tự rà soát và Chromium, chưa có lượt đánh giá độc lập hai tác nhân theo quy trình đầy đủ của skill. Phạm vi quyết định và ngoại lệ tham khảo cách gắn nguồn, review và theo dõi chênh lệch của các công cụ cùng nghiệp vụ. [Duco](https://support.du.co/hc/en-us/articles/31787826069789-Best-practice-reconciliation-setup), [FloQast](https://www.floqast.com/uk/close-management/products/account-reconciliations), [BlackLine](https://www.blackline.com/products/financial-close/transaction-matching/).
+
+Chromium kiểm 30 tổ hợp route/chiều rộng và 28 tổ hợp có dữ liệu ở 320, 390, 768, 1366, 1440 và 1920 CSS px, gồm chiều cao 520 px. Các tổ hợp này không tràn ngang toàn trang. Zoom trình duyệt 200% cho 711 CSS px, giữ được focus và không tràn trên Báo cáo, Assistant, Dữ liệu và Cài đặt. Giao diện dùng cùng primitives cho hộp thoại và bảng. Khi đủ rộng, bằng chứng và chi tiết kết quả mở cạnh Chat. Khi hẹp, hộp thoại trả focus về nút mở.
+
+### Hiệu năng và nhận dạng ứng viên
+
+Preview purge trên 3.500 dòng JSON ngoài phạm vi mất 877 ms và đỉnh cấp phát Python khoảng 1,74 MiB trong một mẫu. Metadata đích dùng chỉ mục và xử lý theo lô 256. JSON lịch sử vẫn cần quét projection để bắt tham chiếu UUID nhúng trong văn bản. Giữ khóa mức bảng để bảo vệ trước đường ghi không dùng khóa dự án, với `lock_timeout` 5 giây. Phép thử đồng thời kiểm thứ tự giữa xác nhận purge và upload. Một phép đo giữ khóa ghi khác nhận `PURGE_BUSY` sau 5,033 giây, preview lại thành công sau khi nhả khóa. Chưa có số đo áp lực nhiều workspace trên dữ liệu production.
+
+Ba mẫu cục bộ với 5.000 dòng cho khoảng 23–128 ms parse, 73–121 ms profile và 130–293 ms chuẩn hóa/ghi. Đối soát khóa chính xác với tổng 5.000 bản ghi mất 148–211 ms và xác minh 120–165 ms. Đỉnh bộ nhớ tiến trình lần lượt khoảng 88 và 62 MiB. Đây là phép đo trên fixture, chưa xác định cải thiện so với bản nền.
+
+Backend và Worker khớp 56 tệp Python với checkout. Bảy tài sản tải qua Nginx khớp SHA-256 trong image. Digest local của Backend/Worker là `sha256:4aaa91b0833fb07b09369782832b475999d081d1e978bd4cf69b394bfc2e83e1`, của Frontend là `sha256:2ab229238889cbe3d933f98b470f30b055e0a7d7001c8019bcc16632f9fe7ad9`. Bản sao metadata trước thử nghiệm đã kiểm khôi phục và đối chiếu SHA-256 ngoài volume. Chỉ dữ liệu tổng hợp và hai hiện vật cache PDF/DOCX được phục vụ từ TEST.
+
+### Bàn giao
+
+Studio tại cổng 18180 đã về bản nền `76265d2`, với bốn dịch vụ healthy, proof phiên local hợp lệ, schema `studio.public`, migration `add_purge_receipts` và kho artifact gốc. Các bảng dự án, nguồn, artifact, job và lượt đối soát trong `public` vẫn trống. Giữ image ứng viên `candidate-d46cf6b` và cấu hình TEST `runtime/studio-product-quality/master-continuation-test.yaml` để chủ dự án thử lại trong cùng Compose sau khi kiểm bản sao lưu và hàng đợi. Khi dùng override, xác nhận schema và kho tệp TEST trước các phép thử ghi. `origin/main` giữ `c9caf8e`.
+
+Mười hai kịch bản UAT trong Chromium gồm các luồng tài chính với phương án thủ công, đối soát theo kỳ và nhóm, ca biên bảo mật, kiểm 1.000 giao dịch, cùng từ chối tệp hỏng và vượt giới hạn. Kiểm provider live vẫn là phép thử riêng. Kết quả Agent dưới ngưỡng, nên ứng viên giữ trạng thái `NOT_READY` dù bộ hồi quy ứng dụng và tài chính đã qua.
+
 ## Ứng viên theo Master Prompt — 09/11/2026
 
 **Chưa đạt `READY_FOR_OWNER_ACCEPTANCE`.** Ứng viên làm việc trên `codex/studio-product-quality`, xuất phát từ `c9caf8e` và tag `studio-clean-baseline`. Kiểm thử dữ liệu ghi trên schema PostgreSQL TEST và kho tệp riêng, trong cùng Compose project. Các cổng còn mở gồm chất lượng suy luận trên tập câu mới, đích giảm thao tác trong Chat và xóa vĩnh viễn ở phạm vi local thật.
