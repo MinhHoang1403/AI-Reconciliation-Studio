@@ -18,7 +18,14 @@ from pydantic import Field
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
-from studio.access import Actor, authenticate, bootstrap_session, require_editor, require_owner
+from studio.access import (
+    Actor,
+    authenticate,
+    bootstrap_session,
+    require_editor,
+    require_owner,
+    session_token_hash,
+)
 from studio.config import settings
 from studio.contracts import (
     CanonicalDataset,
@@ -175,13 +182,28 @@ def permanent_deletion_impact(
 
 @app.post("/api/permanent-deletion/{kind}/{resource_id}", response_model=PurgeStatus)
 def permanent_deletion_confirm(
-    kind: PurgeKind, resource_id: str, body: PurgeConfirmation, db: DB, actor: CurrentActor
+    kind: PurgeKind,
+    resource_id: str,
+    body: PurgeConfirmation,
+    request: Request,
+    db: DB,
+    actor: CurrentActor,
 ) -> PurgeStatus:
-    return confirm_purge(db, actor, kind, resource_id, body)
+    token = request.cookies.get("studio_session")
+    session_hash = session_token_hash(token) if token else None
+    return confirm_purge(db, actor, kind, resource_id, body, session_hash=session_hash)
 
 
 @app.get("/api/permanent-deletion-receipts/{receipt_id}", response_model=PurgeStatus)
-def permanent_deletion_status(receipt_id: str, db: DB, actor: CurrentActor) -> PurgeStatus:
+def permanent_deletion_status(receipt_id: str, request: Request, db: DB) -> PurgeStatus:
+    try:
+        actor = authenticate(request, db)
+    except DomainError as exc:
+        token = request.cookies.get("studio_session")
+        if exc.code != "AUTH_REQUIRED" or not token:
+            raise
+        # Phiên cũ chỉ đọc được biên nhận đã ràng buộc sau khi workspace bị xóa.
+        return purge_status(db, None, receipt_id, session_hash=session_token_hash(token))
     return purge_status(db, actor, receipt_id)
 
 from studio.reconciliation_api import build_router  # noqa: E402

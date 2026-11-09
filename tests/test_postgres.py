@@ -926,6 +926,27 @@ def test_worker_skip_locked_fencing_and_restart_recovery(pg):
         assert len(list(db.scalars(select(TableRow)))) == 1
 
 
+def test_worker_classifies_json_boolean_consistently_with_dispatch(pg):
+    from studio.repository import enqueue_job
+
+    client, factory, worker = pg
+    pid = project(client)
+    with factory() as db:
+        inference = enqueue_job(
+            db, "demo", pid, "reconciliation_plan", "string-flag",
+            {"verified_candidates_only": "true"},
+        )
+        native = enqueue_job(
+            db, "demo", pid, "reconciliation_plan", "bool-flag",
+            {"verified_candidates_only": True},
+        )
+        db.commit()
+        assert worker._needs_inference(inference)
+        assert not worker._needs_inference(native)
+        assert worker.claim_job(db, inference_busy=True)[0] == native.id
+        assert worker.claim_job(db, inference_busy=True) is None
+
+
 def test_worker_heartbeats_and_renews_during_long_native_job(pg, monkeypatch):
     from threading import Event
     from types import SimpleNamespace

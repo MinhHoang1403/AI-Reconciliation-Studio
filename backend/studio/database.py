@@ -332,6 +332,7 @@ class PurgeReceiptRow(Base):
     actor_id: Mapped[str] = mapped_column(String(64))
     kind: Mapped[str] = mapped_column(String(20))
     resource_id: Mapped[str] = mapped_column(String(64))
+    receipt_session_hash: Mapped[str | None] = mapped_column(String(64))
     files: Mapped[dict[str, str]] = mapped_column(JSONB)
     counts: Mapped[dict[str, int]] = mapped_column(JSONB)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

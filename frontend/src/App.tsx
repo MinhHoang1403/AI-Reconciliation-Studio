@@ -167,6 +167,7 @@ export function App() {
   const [tables, setTables] = useState<Table[]>([]);
   const [tableRequest, setTableRequest] = useState({ datasetId: "", loading: false, error: "" });
   const tableRequestSequence = useRef(0);
+  const detailRequest = useRef<AbortController | null>(null);
   const [documentState, setDocumentState] = useState<{
     datasetId: string;
     items: DocumentArtifact[];
@@ -636,18 +637,27 @@ export function App() {
 
   const loadDetails = useCallback(async () => {
     if (!tableId || !datasetId) return;
-    const [p, m, a] = await Promise.all([
-      api<Profile>(`/tables/${tableId}/profile`),
-      api<{ items: Mapping[] }>(`/tables/${tableId}/mappings`),
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
+    const options = { signal: controller.signal };
+    const details = await Promise.all([
+      api<Profile>(`/tables/${tableId}/profile`, options),
+      api<{ items: Mapping[] }>(`/tables/${tableId}/mappings`, options),
       api<{ canonical_datasets: Canonical[] }>(
-        `/datasets/${datasetId}/artifacts`,
+        `/datasets/${datasetId}/artifacts`, options,
       ),
-    ]);
+    ]).catch(error => {
+      if (controller.signal.aborted) return null;
+      throw error;
+    });
     if (
+      !details || controller.signal.aborted ||
       scopeRef.current.tableId !== tableId ||
       scopeRef.current.datasetId !== datasetId
     )
       return;
+    const [p, m, a] = details;
     setProfile(p);
     setDetailScope(`${datasetId}:${tableId}`);
     setMappings(m.items);
@@ -672,6 +682,7 @@ export function App() {
     setView(pendingTarget?.canonical_id ? "errors" : "raw");
     setPreview(null);
     void loadDetails().catch((err) => setError(err.message));
+    return () => detailRequest.current?.abort();
   }, [loadDetails]);
 
   useEffect(() => {
@@ -679,7 +690,7 @@ export function App() {
       setPreview(null);
       return;
     }
-    let current = true;
+    const controller = new AbortController();
     const params = new URLSearchParams({
       kind: view,
       offset: String(offset),
@@ -687,9 +698,9 @@ export function App() {
       search,
     });
     if (canonicalId) params.set("canonical_id", canonicalId);
-    void api<Preview>(`/tables/${tableId}/preview?${params}`)
+    void api<Preview>(`/tables/${tableId}/preview?${params}`, { signal: controller.signal })
       .then((p) => {
-        if (current) {
+        if (!controller.signal.aborted) {
           setPreview(p);
           setPreviewQuery(
             JSON.stringify([tableId, view, canonicalId, offset, search]),
@@ -697,11 +708,9 @@ export function App() {
         }
       })
       .catch((err) => {
-        if (current) setError(err.message);
+        if (!controller.signal.aborted) setError(err.message);
       });
-    return () => {
-      current = false;
-    };
+    return () => controller.abort();
   }, [tableId, view, canonicalId, offset, search]);
 
   useEffect(() => {

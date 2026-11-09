@@ -256,6 +256,10 @@ def test_purge_isolated_workspace_with_projects_and_sessions(isolated_purge):
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "DELETED"
     assert client.get("/api/projects").status_code == 401
+    receipt_url = f"/api/permanent-deletion-receipts/{body['fingerprint']}"
+    assert client.get(receipt_url).json()["status"] == "DELETED"
+    client.cookies.set("studio_session", uuid4().hex)
+    assert client.get(receipt_url).status_code == 404
     client.cookies.set("studio_session", previous)
     assert client.get(f"/api/projects/{kept}").status_code == 200
     assert not any(path.is_file() for path in (root / workspace_id).rglob("*"))

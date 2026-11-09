@@ -18,6 +18,7 @@ def upgrade() -> None:
         sa.Column("actor_id", sa.String(64), nullable=False),
         sa.Column("kind", sa.String(20), nullable=False),
         sa.Column("resource_id", sa.String(64), nullable=False),
+        sa.Column("receipt_session_hash", sa.String(64)),
         sa.Column("files", JSONB(), nullable=False),
         sa.Column("counts", JSONB(), nullable=False),
         sa.Column("completed_at", sa.DateTime(timezone=True)),

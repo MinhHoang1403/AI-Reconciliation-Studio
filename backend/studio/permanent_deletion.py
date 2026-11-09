@@ -1,6 +1,7 @@
 """Xóa vật lý theo manifest PostgreSQL, chỉ mở trong schema và kho TEST đã ràng buộc."""
 
 import hashlib
+import hmac
 import json
 import re
 import tempfile
@@ -49,7 +50,12 @@ FILE_COLUMNS = {
     "reconciliation_runs": ("result_key", "result_sha256"),
     "run_exports": ("storage_key", "sha256"),
 }
-RESERVATIONS = {"GEMINI_REQUEST_RESERVED", "LLAMAPARSE_DOCUMENT_RESERVED"}
+RESERVATIONS = {
+    "GEMINI_REQUEST_RESERVED",
+    "AGENT_REQUEST_RESERVED",
+    "ASSISTANT_REQUEST_RESERVED",
+    "LLAMAPARSE_DOCUMENT_RESERVED",
+}
 UUID_IN_REFERENCE = re.compile(r"(?<![\w-])[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}(?![\w-])")
 Row = dict[str, Any]
 
@@ -396,13 +402,23 @@ def _status(receipt: PurgeReceiptRow) -> PurgeStatus:
     )
 
 
-def status(db: Session, actor: Actor, receipt_id: str) -> PurgeStatus:
+def status(
+    db: Session, actor: Actor | None, receipt_id: str, *, session_hash: str = ""
+) -> PurgeStatus:
     isolated_root(db)
-    require_owner(actor, db, receipt_id)
+    if actor is not None:
+        require_owner(actor, db, receipt_id)
     receipt = db.get(PurgeReceiptRow, receipt_id)
-    if receipt is None or (receipt.workspace_id, receipt.actor_id) != (
-        actor.workspace_id,
-        actor.id,
+    if receipt is None:
+        raise missing()
+    if actor is not None:
+        if (receipt.workspace_id, receipt.actor_id) != (actor.workspace_id, actor.id):
+            raise missing()
+    elif not (
+        receipt.kind == "workspace"
+        and session_hash
+        and receipt.receipt_session_hash
+        and hmac.compare_digest(receipt.receipt_session_hash, session_hash)
     ):
         raise missing()
     return _status(receipt)
@@ -433,7 +449,13 @@ def finish_files(db: Session, receipt_id: str) -> PurgeStatus:
 
 
 def confirm(
-    db: Session, actor: Actor, kind: PurgeKind, resource_id: str, body: PurgeConfirmation
+    db: Session,
+    actor: Actor,
+    kind: PurgeKind,
+    resource_id: str,
+    body: PurgeConfirmation,
+    *,
+    session_hash: str | None = None,
 ) -> PurgeStatus:
     root = isolated_root(db)
     require_owner(actor, db, resource_id)
@@ -475,6 +497,7 @@ def confirm(
             actor_id=actor.id,
             kind=kind,
             resource_id=resource_id,
+            receipt_session_hash=session_hash if kind == "workspace" else None,
             files=manifest.files,
             counts=manifest.impact.counts,
         )

@@ -132,7 +132,7 @@ def claim_job(
             or_(
                 JobRow.kind.not_in(INFERENCE_JOBS),
                 *(
-                    and_(JobRow.kind == kind, JobRow.payload[flag].astext == "true")
+                    and_(JobRow.kind == kind, JobRow.payload.contains({flag: True}))
                     for kind, flag in DETERMINISTIC_FLAGS.items()
                 ),
                 and_(
