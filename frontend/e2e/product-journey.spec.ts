@@ -366,6 +366,40 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   await expect(layers).toHaveValue("canonical");
   await expect(page.getByRole("cell", { name: "Parcel A repeat", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: /2026-11-01/ })).toBeVisible();
+
+  const sourceList = await page.request.get(`/api/datasets?${new URLSearchParams({
+    project_id: projectId, search: names[0],
+  })}`);
+  expect(sourceList.ok()).toBe(true);
+  const [originalSource] = (await sourceList.json()).items;
+  expect(originalSource.name).toBe(names[0]);
+  const lifecycleUrl = `/api/datasets/${originalSource.id}/lifecycle`;
+  const impact = await page.request.get(lifecycleUrl);
+  expect(impact.ok()).toBe(true);
+  const active = await impact.json();
+  expect(active.allowed).toContain("archive");
+  expect(active.allowed).not.toContain("delete");
+  const transition = async (action: "archive" | "restore", state: "active" | "archived", version: number) => {
+    const response = await page.request.post(lifecycleUrl, {
+      headers: { Origin: new URL(page.url()).origin, "Idempotency-Key": crypto.randomUUID() },
+      data: { action, expected_state: state, expected_version: version },
+    });
+    expect(response.ok()).toBe(true);
+    return response.json();
+  };
+  const archived = await transition("archive", "active", active.version);
+  try {
+    const catalog = await page.request.get(`/api/projects/${projectId}/canonical-catalogue`);
+    expect(catalog.ok()).toBe(true);
+    expect((await catalog.json()).items.map((item: { name: string }) => item.name)).not.toContain(names[0]);
+    await page.goto(`/#${new URLSearchParams({ page: "reports", project: projectId, run_id: runId })}`);
+    await expect(page.locator(".run-sources strong")).toHaveText(names);
+    const retained = await page.request.get(`/api/runs/${runId}/metrics`);
+    expect(retained.ok()).toBe(true);
+    expect(await retained.json()).toEqual(snapshot);
+  } finally {
+    expect((await transition("restore", "archived", archived.version)).state).toBe("active");
+  }
   expect(
     (await (await page.request.get("/api/settings")).json())
       .gemini_requests_used,

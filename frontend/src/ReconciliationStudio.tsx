@@ -161,6 +161,11 @@ export function ReconciliationStudio({
     [exportNotice, setExportNotice] = useState("");
   const [invalidRowsReviewedPlan, setInvalidRowsReviewedPlan] = useState<string | null>(null);
   const [templates, setTemplates] = useState<{ id: string; plan: Plan }[]>([]);
+  const [historicalSources, setHistoricalSources] = useState<{
+    projectId: string;
+    query: string;
+    items: Catalogue[];
+  } | null>(null);
   const [runOffset, setRunOffset] = useState(0),
     [runTotal, setRunTotal] = useState(0);
   const [fromPeriod, setFromPeriod] = useState(""),
@@ -389,12 +394,35 @@ export function ReconciliationStudio({
     (c) => !c.canonical.stale && c.canonical.quality_status !== "FAILED",
   );
   const runPlan = templates.find(template => template.id === run?.contract_id)?.plan;
+  const runSourceIds = runPlan ? [runPlan.left.canonical_id, runPlan.right.canonical_id] : [];
+  const historicalQuery = new URLSearchParams(
+    showResults && run?.metric_snapshot
+      ? runSourceIds.filter(id => !catalogue.some(source => source.canonical.id === id))
+        .map(id => ["canonical_ids", id])
+      : [],
+  ).toString();
+  useEffect(() => {
+    if (!historicalQuery) return;
+    const controller = new AbortController();
+    // Archived sources stay out of the setup picker. Resolve only this run's missing sources.
+    void api<{ items: Catalogue[] }>(`/projects/${projectId}/canonical-catalogue?${historicalQuery}`, {
+      signal: controller.signal,
+    }).then(({ items }) => {
+      if (!controller.signal.aborted) setHistoricalSources({ projectId, query: historicalQuery, items });
+    }).catch(() => {
+      if (!controller.signal.aborted) setHistoricalSources(null);
+    });
+    return () => controller.abort();
+  }, [projectId, historicalQuery]);
+  const runCatalogue = historicalSources?.projectId === projectId && historicalSources.query === historicalQuery
+    ? [...catalogue, ...historicalSources.items]
+    : catalogue;
   const runSources = runPlan ? [runPlan.left, runPlan.right].map(slot =>
-    catalogue.find(source => source.canonical.id === slot.canonical_id)?.name || "Nguồn lịch sử"
+    runCatalogue.find(source => source.canonical.id === slot.canonical_id)?.name || "Nguồn lịch sử"
   ) : [];
   const metricName = (metricId: string) => {
     const metric = runPlan?.comparison_metrics.find(item => item.metric_id === metricId);
-    return catalogue.find(source => source.canonical.id === runPlan?.left.canonical_id)
+    return runCatalogue.find(source => source.canonical.id === runPlan?.left.canonical_id)
       ?.schema_definition.fields.find(field => field.id === metric?.left)?.name || metricId;
   };
   const proposedPlan = proposal?.proposal.plan;
