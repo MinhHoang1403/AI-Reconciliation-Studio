@@ -1,5 +1,6 @@
 import { Files, FolderOpen, PanelTop, ShieldCheck, UserRound } from "lucide-react";
 import type { WorkspaceSettings as Settings } from "./types";
+import { PermanentDeletion } from "./PermanentDeletion";
 
 const roles: Record<string, string> = {
   owner: "Chủ không gian",
@@ -26,6 +27,7 @@ export function WorkspaceSettings({ settings: s, role, tableDensity, onDensityCh
         <div><dt>Quyền của bạn</dt><dd>{roles[role] ?? "Chưa xác minh"}</dd></div>
       </dl>
       {onManageProjects && <button className="text-button" onClick={event => onManageProjects(event.currentTarget)}><FolderOpen size={17} /> Quản lý dự án</button>}
+      {role === "owner" && <PermanentDeletion kind="workspace" />}
     </section>
     <section aria-labelledby="settings-privacy">
       <h2 id="settings-privacy"><ShieldCheck size={18} aria-hidden="true" /> AI và quyền riêng tư</h2>

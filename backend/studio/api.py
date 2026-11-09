@@ -78,6 +78,22 @@ from studio.mapping_reuse import (
 )
 from studio.normalization import NORMALIZATION_REVISION
 from studio.parsing import PARSER_REVISION, ParseConfig, choose_parser, inspect_upload
+from studio.permanent_deletion import (
+    PurgeConfirmation,
+    PurgeImpact,
+    PurgeKind,
+    PurgeStatus,
+    isolated_root,
+)
+from studio.permanent_deletion import (
+    confirm as confirm_purge,
+)
+from studio.permanent_deletion import (
+    preview as preview_purge,
+)
+from studio.permanent_deletion import (
+    status as purge_status,
+)
 from studio.repository import (
     artifact_ref,
     create_mapping,
@@ -136,6 +152,37 @@ def current_actor(request: Request, db: DB) -> Actor:
 
 
 CurrentActor = Annotated[Actor, Depends(current_actor)]
+
+
+@app.get("/api/permanent-deletion-capability")
+def permanent_deletion_capability(db: DB, actor: CurrentActor) -> dict[str, bool | str | None]:
+    if actor.role != "owner":
+        return {"enabled": False, "workspace_id": None}
+    try:
+        isolated_root(db)
+    except DomainError:
+        return {"enabled": False, "workspace_id": None}
+    workspace_id = actor.workspace_id if actor.workspace_id != "demo" else None
+    return {"enabled": True, "workspace_id": workspace_id}
+
+
+@app.get("/api/permanent-deletion/{kind}/{resource_id}", response_model=PurgeImpact)
+def permanent_deletion_impact(
+    kind: PurgeKind, resource_id: str, db: DB, actor: CurrentActor
+) -> PurgeImpact:
+    return preview_purge(db, actor, kind, resource_id)
+
+
+@app.post("/api/permanent-deletion/{kind}/{resource_id}", response_model=PurgeStatus)
+def permanent_deletion_confirm(
+    kind: PurgeKind, resource_id: str, body: PurgeConfirmation, db: DB, actor: CurrentActor
+) -> PurgeStatus:
+    return confirm_purge(db, actor, kind, resource_id, body)
+
+
+@app.get("/api/permanent-deletion-receipts/{receipt_id}", response_model=PurgeStatus)
+def permanent_deletion_status(receipt_id: str, db: DB, actor: CurrentActor) -> PurgeStatus:
+    return purge_status(db, actor, receipt_id)
 
 from studio.reconciliation_api import build_router  # noqa: E402
 

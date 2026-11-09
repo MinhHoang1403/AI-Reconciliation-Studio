@@ -33,12 +33,14 @@ with SessionFactory() as db:
         )), 'Restore the audited finite environment before using a pre-nullable rollback image; retain all request history'
         assert db.scalar(text("SELECT count(*) FROM workspaces WHERE policy->'external_request_budget' = 'null'::jsonb")) == 0, 'Restore compatible finite workspace policy from the audited backup; never reset the request ledger'
     revision=db.scalar(text('SELECT version_num FROM alembic_version'))
-    assert revision in {'create_reconciliation','create_conversations','create_agent_workflows','add_resource_lifecycle'}, 'Unknown schema: compatibility review required'
-    if revision == 'add_resource_lifecycle' and sys.argv[2] != 'True':
+    assert revision in {'create_reconciliation','create_conversations','create_agent_workflows','add_resource_lifecycle','add_purge_receipts'}, 'Unknown schema: compatibility review required'
+    if revision == 'add_purge_receipts':
+        assert not db.scalar(text('SELECT EXISTS (SELECT 1 FROM purge_receipts WHERE completed_at IS NULL)')), 'Finish pending filesystem deletion before rollback'
+    if revision in {'add_resource_lifecycle','add_purge_receipts'} and sys.argv[2] != 'True':
         for table in ('projects', 'datasets'):
             assert not db.scalar(text(f'SELECT EXISTS (SELECT 1 FROM {table} WHERE archived_at IS NOT NULL OR deleted_at IS NOT NULL)')), 'Inactive data requires a lifecycle-aware backend; roll back frontend only'
     assert db.scalar(text("SELECT count(*) FROM jobs WHERE status IN ('QUEUED','RUNNING','RETRYABLE_FAILURE')")) == 0, 'Wait for active jobs'
-    if revision in {'create_agent_workflows','add_resource_lifecycle'}:
+    if revision in {'create_agent_workflows','add_resource_lifecycle','add_purge_receipts'}:
         assert db.scalar(text("SELECT count(*) FROM agent_workflows WHERE state IN ('CREATED','RUNNING')")) == 0, 'Wait for workflows to settle'
         # Reviews remain untouched; resumption requires a compatible accepted source.
         print('Agent reviews are retained; resumption depends on the selected accepted source')

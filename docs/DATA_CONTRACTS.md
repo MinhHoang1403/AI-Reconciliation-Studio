@@ -8,8 +8,15 @@
 - Gửi `POST` đến cùng endpoint với `action` (`archive`, `delete`, `restore`), `expected_state` và `expected_version` lấy từ lần xem tác động. Thao tác lưu trữ hoặc xóa dự án cần thêm `confirmation` bằng đúng tên. Thay đổi ghi một sự kiện audit và tăng phiên bản. Gửi lại cùng chuyển đổi ngay sau thành công trả trạng thái hiện tại. Phiên bản cũ sau lần khôi phục trả 409.
 - Danh sách mặc định chỉ trả mục `active`. Chủ không gian có thể dùng `lifecycle=archived` hoặc `lifecycle=deleted`. Tìm kiếm là chuỗi literal, tối đa 200 ký tự, trước phân trang.
 - Lưu trữ chặn công việc mới và giữ quyền đọc lịch sử trong cùng không gian làm việc. Xóa mềm ẩn khỏi đường dẫn thông thường và chỉ áp dụng khi kiểm tra phụ thuộc cho phép. Tệp gốc, phiên bản, dữ liệu kiểm toán và kho tệp tiếp tục được giữ. Nguồn có liên kết với ánh xạ, bản chuẩn hóa hoặc kết quả có đường lưu trữ.
-- Khóa giao dịch theo dự án tuần tự hóa thay đổi với thao tác tạo việc. Công việc đang chạy/chờ/thử lại hoặc workflow chưa kết thúc chặn chuyển trạng thái. Không gian làm việc là ranh giới phân quyền và không có thao tác xóa.
+- Khóa giao dịch theo dự án tuần tự hóa thay đổi với thao tác tạo việc. Công việc đang chạy/chờ/thử lại hoặc workflow chưa kết thúc chặn chuyển trạng thái.
 - Revision `add_resource_lifecycle` thêm cột metadata. Bản Backend cũ chỉ được dùng khi không có dự án/nguồn đang lưu trữ hoặc xóa mềm. Dùng cổng tương thích trong `tools/rollback.ps1` và giữ schema, volume, audit nguyên vẹn.
+
+### Xóa vĩnh viễn trên TEST cô lập
+
+- `GET /api/permanent-deletion-capability` chỉ mở lối vào cho owner khi schema và kho tệp TEST đã được xác minh. `GET /api/permanent-deletion/{kind}/{id}` trả tác động và dấu vân tay của danh mục. `POST` cùng đường dẫn xác nhận bằng tên tài nguyên và dấu vân tay. Các loại gồm `dataset`, `project` và `workspace`. Workspace `demo` được bảo vệ.
+- Backend khóa phạm vi, tính lại danh mục từ quan hệ SQL và tham chiếu JSON, rồi ghi biên nhận và xóa metadata trong cùng giao dịch. Dữ liệu bên ngoài phạm vi có tham chiếu sẽ chặn thao tác. Bản dùng chung còn tham chiếu hợp lệ được giữ. Công việc đang chạy, chờ hoặc thử lại và luồng chưa kết thúc đều chặn xóa.
+- `GET /api/permanent-deletion-receipts/{id}` dành cho owner đã xác nhận. `DELETING` cho biết metadata đã được gỡ và tệp còn cần kiểm tra. Sau gián đoạn, Worker tiếp tục từ biên nhận. Tệp đã vắng mặt có thể được xác nhận lại, còn tệp sai checksum hoặc chưa có biên nhận sẽ cần kiểm tra. Chỉ trả `DELETED` khi mọi tệp thuộc danh mục đã vắng mặt. Phiên workspace bị thu hồi khi metadata workspace được gỡ.
+- Migration `add_purge_receipts` chỉ thêm bảng biên nhận. Biên nhận giữ định danh, phạm vi và số lượng để gửi lại an toàn. Bản sao lưu nằm ngoài phạm vi xóa. Khi schema nghiệp vụ thật đang dùng, API từ chối xóa vĩnh viễn.
 
 ## Nguồn Planner và facts đã xác nhận — 08/11/2026
 

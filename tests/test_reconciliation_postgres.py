@@ -142,7 +142,7 @@ def test_lifecycle_migration_preserves_existing_approved_canonical(pg):  # noqa:
         assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 1
         assert db.scalar(select(func.count()).select_from(RunRow)) == 0
         assert (
-            db.scalar(text("SELECT version_num FROM alembic_version")) == "add_resource_lifecycle"
+            db.scalar(text("SELECT version_num FROM alembic_version")) == "add_purge_receipts"
         )
     canonical = before["canonical_datasets"][0]
     preview = client.get(

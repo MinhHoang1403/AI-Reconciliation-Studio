@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     database_url: str = Field(default="postgresql+psycopg://studio@postgres/studio", repr=False)
     storage_root: Path = Path("runtime/storage")
+    purge_test_schema: str = ""
     session_secret: SecretStr = SecretStr("")
     session_ttl_seconds: int = Field(default=28800, ge=60, le=86400)
     local_demo_access: bool = False

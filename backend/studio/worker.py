@@ -1180,6 +1180,11 @@ def main() -> None:
                 for _, claim in running.values():
                     with SessionFactory() as db:
                         _renew_lease(db, *claim)
+                if not running and settings.purge_test_schema:
+                    from studio.permanent_deletion import resume_pending
+
+                    with SessionFactory() as db:
+                        resume_pending(db)
                 next_renewal = time.monotonic() + min(20, settings.worker_lease_seconds / 4)
             # Giữ thứ tự dispatch cũ: một lượt xử lý dữ liệu và một lượt suy luận.
             # Vòng chính vẫn phục vụ heartbeat và lease khi xử lý dữ liệu kéo dài.

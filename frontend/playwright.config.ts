@@ -11,7 +11,7 @@ export default defineConfig({
     // Optional real scoped-account fixture for live isolation acceptance.
     storageState: process.env.STUDIO_AUTH_STORAGE_STATE || undefined,
     actionTimeout: 15000,
-    baseURL: "http://127.0.0.1:18180",
+    baseURL: process.env.STUDIO_E2E_BASE_URL || "http://127.0.0.1:18180",
     viewport: { width: 1440, height: 900 },
     screenshot: "only-on-failure",
     trace: "retain-on-failure",

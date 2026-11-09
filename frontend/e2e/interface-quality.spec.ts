@@ -59,7 +59,7 @@ test("[MOCK CONTRACT] project lifecycle previews impact and restores the hidden 
   const dialog = page.getByRole("dialog", { name: "Quản lý dự án" });
   await dialog.getByRole("button", { name: `Quản lý ${sample.name}`, exact: true }).click();
   await expect(dialog.getByRole("region", { name: "Tác động" })).toContainText(sample.name);
-  await dialog.getByRole("button", { name: "Xóa dự án", exact: true }).click();
+  await dialog.getByRole("button", { name: "Đưa vào Thùng rác", exact: true }).click();
   const confirm = dialog.getByRole("button", { name: "Xác nhận xóa", exact: true });
   await expect(confirm).toBeDisabled();
   await dialog.getByLabel("Nhập lại tên dự án").fill(sample.name);
@@ -77,6 +77,47 @@ test("[MOCK CONTRACT] project lifecycle previews impact and restores the hidden 
     { action: "delete", expected_state: "active", expected_version: 0, confirmation: sample.name },
     { action: "restore", expected_state: "deleted", expected_version: 1, confirmation: "" },
   ]);
+});
+
+test("[MOCK CONTRACT] permanent deletion confirms the exact name and waits for verified completion", async ({ page }) => {
+  const [sample] = projects(1);
+  const fingerprint = "a".repeat(64);
+  const writes: unknown[] = [];
+  let finish = false;
+  await fixture(page, [sample], sample.id);
+  await page.route("**/api/permanent-deletion-capability", route =>
+    route.fulfill({ json: { enabled: true, workspace_id: null } }));
+  await page.route(`**/api/projects/${sample.id}/lifecycle`, route => route.fulfill({ json: {
+    id: sample.id, project_id: sample.id, name: sample.name, state: "active",
+    version: 0, references: {}, running_jobs: 0, open_work: 0, allowed: ["archive"],
+  } }));
+  await page.route(`**/api/permanent-deletion/project/${sample.id}`, route => {
+    if (route.request().method() === "POST") {
+      writes.push(route.request().postDataJSON());
+      return route.fulfill({ json: { id: fingerprint, status: "DELETING" } });
+    }
+    return route.fulfill({ json: {
+      name: sample.name, fingerprint, counts: { datasets: 2, run_exports: 1, files: 9 },
+      missing_files: 0,
+    } });
+  });
+  await page.route(`**/api/permanent-deletion-receipts/${fingerprint}`, route =>
+    route.fulfill({ json: { id: fingerprint, status: finish ? "DELETED" : "DELETING" } }));
+  await page.goto("/#page=settings");
+  await page.getByRole("button", { name: "Quản lý dự án", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Quản lý dự án" });
+  await dialog.getByRole("button", { name: `Quản lý ${sample.name}`, exact: true }).click();
+  await dialog.getByRole("button", { name: "Xem tác động khi xóa vĩnh viễn" }).click();
+  const confirm = dialog.getByRole("button", { name: "Xác nhận xóa vĩnh viễn" });
+  await expect(confirm).toBeDisabled();
+  await expect(dialog.getByText("Tệp sẽ xóa", { exact: true })).toBeVisible();
+  await dialog.getByLabel("Nhập đúng tên dự án").fill(sample.name);
+  await confirm.click();
+  await expect(dialog.getByText(/Đang xóa dự án/)).toBeVisible();
+  await expect(dialog.getByText("Đã xóa vĩnh viễn.", { exact: true })).toHaveCount(0);
+  finish = true;
+  await expect(dialog.getByText("Đã xóa vĩnh viễn.", { exact: true })).toBeVisible();
+  expect(writes).toEqual([{ confirmation: sample.name, fingerprint }]);
 });
 
 test("mapping form never exposes a previous sheet while the next profile is delayed",async({page})=>{

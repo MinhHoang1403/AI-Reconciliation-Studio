@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { Archive, ArrowLeft, RotateCcw, Trash2 } from "lucide-react";
 import { api } from "./api";
 import { Modal, Notice, Spinner } from "./components";
+import { PermanentDeletion } from "./PermanentDeletion";
 
 type State = "active" | "archived" | "deleted";
 type Action = "archive" | "delete" | "restore";
@@ -40,6 +41,7 @@ export function ResourceManagement({ target, onClose, onChanged, returnFocus }: 
   const [action, setAction] = useState<Action | null>(null);
   const [confirmation, setConfirmation] = useState("");
   const [pending, setPending] = useState(false);
+  const [purgePending, setPurgePending] = useState(false);
   const [busy, setBusy] = useState(true);
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState("");
@@ -100,8 +102,8 @@ export function ResourceManagement({ target, onClose, onChanged, returnFocus }: 
   }
 
   return <Modal title={`Quản lý ${object}`} open wide returnFocus={returnFocus}
-    onOpenChange={open => { if (!open && !pending) onClose(); }}>
-    {id && <button className="text-button" disabled={pending} onClick={() => {
+    onOpenChange={open => { if (!open && !pending && !purgePending) onClose(); }}>
+    {id && <button className="text-button" disabled={pending || purgePending} onClick={() => {
       setId(""); setAction(null); setConfirmation(""); setResult("");
     }}><ArrowLeft size={16} /> Danh sách {object}</button>}
     {result && <Notice tone="success">{result}</Notice>}
@@ -133,11 +135,17 @@ export function ResourceManagement({ target, onClose, onChanged, returnFocus }: 
         <p>Có dữ liệu hoặc lịch sử liên quan. Có thể lưu trữ để ngừng dùng trong công việc mới và giữ kết quả đã lưu.</p>}
       {!project && !impact.allowed.length && !impact.running_jobs && !impact.open_work &&
         <Notice>Khôi phục dự án trước khi thay đổi trạng thái của nguồn này.</Notice>}
-      {!action ? <div className="modal-actions">
-        {impact.allowed.includes("archive") && <button className="button secondary" onClick={() => setAction("archive")}><Archive size={16} /> Lưu trữ</button>}
-        {impact.allowed.includes("delete") && <button className="button danger" onClick={() => setAction("delete")}><Trash2 size={16} /> {project ? "Xóa dự án" : "Xóa nguồn"}</button>}
-        {impact.allowed.includes("restore") && <button className="button primary" onClick={() => setAction("restore")}><RotateCcw size={16} /> Khôi phục</button>}
-      </div> : <form className="management-confirm" onSubmit={event => { event.preventDefault(); void submit(); }}>
+      {!action ? <><div className="modal-actions">
+        {impact.allowed.includes("archive") && <button className="button secondary" disabled={purgePending} onClick={() => setAction("archive")}><Archive size={16} /> Lưu trữ</button>}
+        {impact.allowed.includes("delete") && <button className="button secondary" disabled={purgePending} onClick={() => setAction("delete")}><Trash2 size={16} /> Đưa vào Thùng rác</button>}
+        {impact.allowed.includes("restore") && <button className="button primary" disabled={purgePending} onClick={() => setAction("restore")}><RotateCcw size={16} /> Khôi phục</button>}
+      </div>
+      <PermanentDeletion key={id} kind={project ? "project" : "dataset"} resourceId={id}
+        onPending={setPurgePending} onDeleted={() => {
+          setId(""); setResult("Đã xóa vĩnh viễn.");
+          onChanged(impact.id, impact.project_id, "deleted");
+        }} />
+      </> : <form className="management-confirm" onSubmit={event => { event.preventDefault(); void submit(); }}>
         <p>{action === "archive" ? "Mục này rời danh sách đang dùng. Dữ liệu và lịch sử vẫn được giữ."
           : action === "delete" ? "Mục này bị xóa khỏi danh sách và đường dẫn cũ. Có thể khôi phục trong mục quản lý."
           : "Mục này sẽ xuất hiện lại trong danh sách đang dùng."}</p>

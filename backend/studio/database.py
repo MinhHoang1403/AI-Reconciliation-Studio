@@ -323,5 +323,20 @@ class AgentWorkflowRow(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class PurgeReceiptRow(Base):
+    """Biên nhận độc lập để tiếp tục dọn tệp sau khi metadata đã bị xóa."""
+
+    __tablename__ = "purge_receipts"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    actor_id: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(20))
+    resource_id: Mapped[str] = mapped_column(String(64))
+    files: Mapped[dict[str, str]] = mapped_column(JSONB)
+    counts: Mapped[dict[str, int]] = mapped_column(JSONB)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 engine = create_engine(settings.database_url, pool_pre_ping=True, pool_size=5, max_overflow=2)
 SessionFactory = sessionmaker(engine, expire_on_commit=False)
