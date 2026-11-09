@@ -1180,7 +1180,7 @@ def main() -> None:
                 for _, claim in running.values():
                     with SessionFactory() as db:
                         _renew_lease(db, *claim)
-                if not running and settings.purge_test_schema:
+                if not running and (settings.purge_test_schema or settings.purge_local_enabled):
                     from studio.permanent_deletion import resume_pending
 
                     with SessionFactory() as db:

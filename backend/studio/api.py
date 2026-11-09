@@ -95,7 +95,7 @@ from studio.permanent_deletion import (
     PurgeImpact,
     PurgeKind,
     PurgeStatus,
-    isolated_root,
+    purge_root,
 )
 from studio.permanent_deletion import (
     confirm as confirm_purge,
@@ -173,7 +173,7 @@ def permanent_deletion_capability(db: DB, actor: CurrentActor) -> dict[str, bool
     if actor.role != "owner":
         return {"enabled": False, "workspace_id": None}
     try:
-        isolated_root(db)
+        purge_root(db)
     except DomainError:
         return {"enabled": False, "workspace_id": None}
     workspace_id = actor.workspace_id if actor.workspace_id != "demo" else None

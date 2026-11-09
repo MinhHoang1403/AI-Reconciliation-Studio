@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -49,7 +50,7 @@ class SessionRow(Base):
     __tablename__ = "sessions"
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     actor_id: Mapped[str] = mapped_column(String(64))
-    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -96,7 +97,7 @@ class ArtifactRow(Base):
     __tablename__ = "artifacts"
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
-    dataset_version_id: Mapped[str] = mapped_column(ForeignKey("dataset_versions.id"))
+    dataset_version_id: Mapped[str] = mapped_column(ForeignKey("dataset_versions.id"), index=True)
     kind: Mapped[str] = mapped_column(String(20))
     sha256: Mapped[str] = mapped_column(String(64))
     revision: Mapped[str] = mapped_column(String(100))
@@ -111,7 +112,7 @@ class TableRow(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
     dataset_version_id: Mapped[str] = mapped_column(ForeignKey("dataset_versions.id"))
-    artifact_id: Mapped[str] = mapped_column(ForeignKey("artifacts.id"))
+    artifact_id: Mapped[str] = mapped_column(ForeignKey("artifacts.id"), index=True)
     sheet: Mapped[str] = mapped_column(String(255))
     row_count: Mapped[int] = mapped_column(Integer)
     parsed_contract: Mapped[dict[str, Any]] = mapped_column(JSONB)
@@ -132,7 +133,7 @@ class MappingRow(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
     source_table_id: Mapped[str] = mapped_column(ForeignKey("source_tables.id"))
-    schema_id: Mapped[str] = mapped_column(ForeignKey("schema_definitions.id"))
+    schema_id: Mapped[str] = mapped_column(ForeignKey("schema_definitions.id"), index=True)
     revision: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(40))
     signature: Mapped[str] = mapped_column(String(64), index=True)
@@ -147,7 +148,7 @@ class CanonicalRow(Base):
     __table_args__ = (UniqueConstraint("mapping_id", "normalization_revision"),)
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
-    source_table_id: Mapped[str] = mapped_column(ForeignKey("source_tables.id"))
+    source_table_id: Mapped[str] = mapped_column(ForeignKey("source_tables.id"), index=True)
     mapping_id: Mapped[str] = mapped_column(ForeignKey("mapping_revisions.id"))
     normalization_revision: Mapped[str] = mapped_column(String(60))
     contract: Mapped[dict[str, Any]] = mapped_column(JSONB)
@@ -159,7 +160,7 @@ class JobRow(Base):
     __table_args__ = (UniqueConstraint("workspace_id", "idempotency_key"),)
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
-    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     kind: Mapped[str] = mapped_column(String(30))
     status: Mapped[str] = mapped_column(String(40), default="QUEUED", index=True)
     idempotency_key: Mapped[str] = mapped_column(String(200))
@@ -188,10 +189,10 @@ class AttemptRow(Base):
 class AuditRow(Base):
     __tablename__ = "audit_events"
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
-    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
     actor_id: Mapped[str] = mapped_column(String(64))
     action: Mapped[str] = mapped_column(String(80))
-    resource_id: Mapped[str] = mapped_column(String(64))
+    resource_id: Mapped[str] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -199,7 +200,7 @@ class TraceRow(Base):
     __tablename__ = "ai_traces"
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
-    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"))
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), index=True)
     provider: Mapped[str] = mapped_column(String(30))
     task_id: Mapped[str] = mapped_column(String(50))
     prompt_revision: Mapped[str] = mapped_column(String(30))
@@ -275,7 +276,7 @@ class ExportRow(Base):
     format: Mapped[str] = mapped_column(String(10))
     revision: Mapped[str] = mapped_column(String(80))
     status: Mapped[str] = mapped_column(String(40), default="QUEUED")
-    storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True, index=True)
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
@@ -333,10 +334,18 @@ class PurgeReceiptRow(Base):
     kind: Mapped[str] = mapped_column(String(20))
     resource_id: Mapped[str] = mapped_column(String(64))
     receipt_session_hash: Mapped[str | None] = mapped_column(String(64))
+    confirmation_hash: Mapped[str | None] = mapped_column(String(64))
     files: Mapped[dict[str, str]] = mapped_column(JSONB)
     counts: Mapped[dict[str, int]] = mapped_column(JSONB)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+Index(
+    "ix_purge_receipts_pending",
+    PurgeReceiptRow.created_at,
+    postgresql_where=PurgeReceiptRow.completed_at.is_(None),
+)
 
 
 engine = create_engine(settings.database_url, pool_pre_ping=True, pool_size=5, max_overflow=2)

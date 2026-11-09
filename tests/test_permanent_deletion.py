@@ -4,6 +4,9 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 from threading import Event
+from time import perf_counter
+from tracemalloc import get_traced_memory, start, stop
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -80,6 +83,32 @@ def test_purge_requires_verified_schema_root_and_owner(isolated_purge, monkeypat
         assert client.post(endpoint, json=body).status_code == 403
     with factory() as db:
         assert db.get(ProjectRow, pid) is not None
+
+
+def test_local_purge_requires_explicit_opt_in_mount_scope_and_host_proof(monkeypatch, tmp_path):
+    fake = Mock()
+    fake.execute.return_value.one.return_value = ("studio", ["pg_catalog", "public"])
+    proof = Mock(return_value=False)
+    monkeypatch.setattr(settings, "purge_test_schema", "")
+    monkeypatch.setattr(settings, "local_demo_access", True)
+    monkeypatch.setattr(settings, "purge_local_enabled", False)
+    monkeypatch.setattr(settings, "storage_root", tmp_path)
+    monkeypatch.setattr(permanent_deletion, "LOCAL_ROOT", tmp_path)
+    monkeypatch.setattr(permanent_deletion, "_demo_allowed", proof)
+    monkeypatch.setattr(Path, "is_mount", lambda path: path == tmp_path)
+    with pytest.raises(permanent_deletion.DomainError, match="PURGE_DISABLED"):
+        permanent_deletion.purge_root(fake)
+    monkeypatch.setattr(settings, "purge_local_enabled", True)
+    with pytest.raises(permanent_deletion.DomainError, match="PURGE_DISABLED"):
+        permanent_deletion.purge_root(fake)
+    fake.execute.assert_not_called()
+    proof.return_value = True
+    assert permanent_deletion.purge_root(fake) == tmp_path
+    proof.return_value = False
+    assert permanent_deletion.purge_root(fake, interactive=False) == tmp_path
+    fake.execute.return_value.one.return_value = ("studio", ["pg_catalog", "test_other"])
+    with pytest.raises(permanent_deletion.DomainError, match="PURGE_DISABLED"):
+        permanent_deletion.purge_root(fake, interactive=False)
 
 
 def test_purge_source_removes_affected_verified_results_and_preserves_other_source(isolated_purge):
@@ -190,6 +219,9 @@ def test_purge_project_recovers_after_partial_file_failure(
         == "DELETED"
     )
     assert not any((root / path).exists() for path in remaining)
+    assert client.post(endpoint, json=body).json()["status"] == "DELETED"
+    wrong_name = {**body, "confirmation": f"{body['confirmation']} khác"}
+    assert client.post(endpoint, json=wrong_name).json()["code"] == "PURGE_CONFIRMATION_STALE"
 
 
 def test_purge_rejects_busy_changed_and_untracked_files_then_allows_missing(isolated_purge):
@@ -361,3 +393,36 @@ def test_purge_preserves_file_still_referenced_by_another_resource(isolated_purg
     assert path.is_file()
     with factory() as db:
         assert db.get(ExportRow, export_id).sha256 == checksum(path)
+
+
+def test_small_purge_streams_unrelated_json_in_bounded_batches(isolated_purge):
+    client, factory, _, _ = isolated_purge
+    target, kept = project(client), project(client)
+    endpoint = f"/api/permanent-deletion/project/{target}"
+    with factory() as db:
+        db.execute(
+            text(
+                "INSERT INTO conversations (id, workspace_id, project_id, actor_id, title,"
+                " context, archived, created_at)"
+                " SELECT 'purge-load-' || i, 'demo', :project, 'test-owner', 'Load fixture',"
+                " jsonb_build_object('body', repeat(md5(i::text), 128)), false, now()"
+                " FROM generate_series(1, 3500) AS i"
+            ),
+            {"project": kept},
+        )
+        db.commit()
+    start()
+    started = perf_counter()
+    try:
+        body, impact = request_body(client, endpoint)
+        _, peak = get_traced_memory()
+    finally:
+        stop()
+    elapsed_ms = round(1000 * (perf_counter() - started))
+    print(f"purge-preview: 3500 unrelated JSON rows, {elapsed_ms} ms, {peak} peak Python bytes")
+    assert peak < 10 * 1024 * 1024
+    assert impact["counts"]["projects"] == 1
+    assert "conversations" not in impact["counts"]
+    assert client.post(endpoint, json=body).json()["status"] == "DELETED"
+    with factory() as db:
+        assert db.scalar(text("SELECT count(*) FROM conversations")) == 3500

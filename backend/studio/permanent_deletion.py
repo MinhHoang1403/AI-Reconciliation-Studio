@@ -1,21 +1,23 @@
-"""Xóa vật lý theo manifest PostgreSQL, chỉ mở trong schema và kho TEST đã ràng buộc."""
+"""Xóa vật lý theo manifest PostgreSQL trong triển khai local hoặc TEST đã ràng buộc."""
 
 import hashlib
 import hmac
 import json
 import re
 import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass
+from itertools import batched
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import Field
-from sqlalchemy import Table, and_, select, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import String, Table, any_, literal, or_, select, text, tuple_
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from studio.access import Actor, require_owner
+from studio.access import Actor, _demo_allowed, require_owner
 from studio.config import settings
 from studio.contracts import Contract
 from studio.database import Base, DatasetRow, ProjectRow, PurgeReceiptRow, now
@@ -58,6 +60,8 @@ RESERVATIONS = {
 }
 UUID_IN_REFERENCE = re.compile(r"(?<![\w-])[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}(?![\w-])")
 Row = dict[str, Any]
+BATCH_SIZE = 256
+LOCAL_ROOT = Path("/var/lib/studio")
 
 
 class PurgeImpact(Contract):
@@ -87,12 +91,28 @@ class Manifest:
     reservations: list[Row]
 
 
-def isolated_root(db: Session) -> Path:
-    """Từ chối trước khi đọc manifest nếu schema hoặc đường ghi chưa được cách ly."""
+def purge_root(db: Session, *, interactive: bool = True) -> Path:
+    """Bind interactive local access to host proof and every receipt to one storage root."""
     schema = settings.purge_test_schema
     denied = DomainError(
-        "PURGE_DISABLED", "Chỉ bật xóa vĩnh viễn trong môi trường TEST cô lập.", 403
+        "PURGE_DISABLED", "Xóa vĩnh viễn chưa được bật trong môi trường đã xác minh.", 403
     )
+    if not schema:
+        if not (
+            settings.purge_local_enabled
+            and settings.local_demo_access
+            and settings.storage_root == LOCAL_ROOT
+            and LOCAL_ROOT.resolve() == LOCAL_ROOT
+            and LOCAL_ROOT.is_mount()
+            and (not interactive or _demo_allowed())
+        ):
+            raise denied
+        database, schemas = db.execute(
+            text("SELECT current_database(), current_schemas(true)")
+        ).one()
+        if (database, schemas) != ("studio", ["pg_catalog", "public"]):
+            raise denied
+        return LOCAL_ROOT
     if not re.fullmatch(r"test_[a-f0-9]{32}", schema):
         raise denied
     database, schemas = db.execute(text("SELECT current_database(), current_schemas(true)")).one()
@@ -140,7 +160,7 @@ def _lock_scope(db: Session, actor: Actor, kind: PurgeKind, resource_id: str) ->
     else:
         project_ids = [resource_id]
     # Chặn DML qua cả các đường không lấy khóa dự án, ví dụ tạo dự án hoặc ghi lịch sử.
-    # Cổng cách ly giới hạn khóa mức bảng trong schema TEST hiện tại.
+    # Scope validation limits these table locks to the verified PostgreSQL schema.
     names = ", ".join(f'"{table.name}"' for table in _business_tables())
     try:
         for project_id in project_ids:
@@ -175,15 +195,24 @@ def _file_path(root: Path, key: str) -> Path:
     return path
 
 
+def _has_id(column: Any, ids: set[str]) -> Any:
+    return column == any_(literal(sorted(ids), type_=ARRAY(String())))
+
+
 def _manifest(db: Session, actor: Actor, kind: PurgeKind, resource_id: str, root: Path) -> Manifest:
     tables = _business_tables()
-    rows = {
-        table.name: [dict(row) for row in db.execute(select(table)).mappings()] for table in tables
-    }
-    by_id = {
-        name: {row["id"]: row for row in values if "id" in row} for name, values in rows.items()
-    }
-    target = next((row for row in rows[TARGET[kind]] if row["id"] == resource_id), None)
+    by_name = {table.name: table for table in tables}
+    selected: dict[str, dict[tuple[str, ...], Row]] = {table.name: {} for table in tables}
+
+    def load_row(name: str, resource: str) -> Row | None:
+        cached = selected[name].get((resource,))
+        if cached is not None:
+            return cached
+        table = by_name[name]
+        row = db.execute(select(table).where(table.c.id == resource)).mappings().one_or_none()
+        return dict(row) if row is not None else None
+
+    target = load_row(TARGET[kind], resource_id)
     workspace_id = actor.workspace_id
     if target is None or target.get("workspace_id", target["id"]) != workspace_id:
         raise missing()
@@ -193,7 +222,7 @@ def _manifest(db: Session, actor: Actor, kind: PurgeKind, resource_id: str, root
         )
     project_id = target.get("project_id", resource_id)
     project_ids = (
-        {row["id"] for row in rows["projects"] if row["workspace_id"] == workspace_id}
+        set(db.scalars(select(ProjectRow.id).where(ProjectRow.workspace_id == workspace_id)))
         if kind == "workspace"
         else {project_id}
     )
@@ -205,9 +234,10 @@ def _manifest(db: Session, actor: Actor, kind: PurgeKind, resource_id: str, root
             return False
         while table in OWNERSHIP_PARENT:
             table, column = OWNERSHIP_PARENT[table]
-            row = by_id[table][row[column]]
-            if row.get("workspace_id", workspace_id) != workspace_id:
+            parent = load_row(table, row[column])
+            if parent is None or parent.get("workspace_id", workspace_id) != workspace_id:
                 return False
+            row = parent
         if kind == "dataset" and table == "datasets":
             return bool(row["id"] == resource_id)
         return row.get("project_id", project_id) in project_ids or kind == "workspace"
@@ -215,101 +245,149 @@ def _manifest(db: Session, actor: Actor, kind: PurgeKind, resource_id: str, root
     external_reference = DomainError(
         "PURGE_EXTERNAL_REFERENCE", "Có dữ liệu ngoài phạm vi đang tham chiếu.", 409
     )
-    if any(row["project_id"] in project_ids and row["status"] in BUSY for row in rows["jobs"]):
+    jobs = by_name["jobs"].c
+    workflows = by_name["agent_workflows"].c
+    if db.scalar(
+        select(jobs.id).where(_has_id(jobs.project_id, project_ids), jobs.status.in_(BUSY)).limit(1)
+    ):
         raise DomainError("PURGE_BUSY", "Chờ công việc trong dự án kết thúc trước khi xóa.", 409)
-    if any(
-        row["project_id"] in project_ids and row["state"] in OPEN_WORK
-        for row in rows["agent_workflows"]
+    if db.scalar(
+        select(workflows.id)
+        .where(_has_id(workflows.project_id, project_ids), workflows.state.in_(OPEN_WORK))
+        .limit(1)
     ):
         raise DomainError(
             "PURGE_OPEN_REVIEW", "Hoàn tất lượt đang chờ xác nhận trước khi xóa.", 409
         )
 
-    selected: dict[str, set[tuple[str, ...]]] = {table.name: set() for table in tables}
-    json_refs: dict[tuple[str, tuple[str, ...]], set[str]] = {}
-    for table in tables:
-        json_columns = [column.name for column in table.columns if isinstance(column.type, JSONB)]
-        for row in rows[table.name]:
-            identity = _identity(table, row)
-            if (
-                (table.name == TARGET[kind] and row is target)
-                or (kind == "workspace" and row.get("workspace_id") == workspace_id)
-                or (kind == "project" and row.get("project_id") == project_id)
-            ):
-                if not in_scope(table.name, row):
-                    raise external_reference
-                selected[table.name].add(identity)
-            json_refs[table.name, identity] = set().union(
-                *(_strings(row[column]) for column in json_columns)
-            )
-
-    while True:
-        before = sum(map(len, selected.values()))
-        selected_ids = {
-            identity[0] for keys in selected.values() for identity in keys if len(identity) == 1
-        }
+    selected[TARGET[kind]][(resource_id,)] = target
+    if kind != "dataset":
+        column, value = (
+            ("workspace_id", workspace_id) if kind == "workspace" else ("project_id", project_id)
+        )
         for table in tables:
-            for row in rows[table.name]:
-                identity = _identity(table, row)
-                if identity in selected[table.name] or table.name == "schema_definitions":
+            if column not in table.c:
+                continue
+            statement = select(table).where(table.c[column] == value)
+            with db.execute(statement.execution_options(yield_per=BATCH_SIZE)) as result:
+                for candidate in result.mappings():
+                    row = dict(candidate)
+                    if not in_scope(table.name, row):
+                        raise external_reference
+                    selected[table.name][_identity(table, row)] = row
+
+    def add_dependent(table: Table, row: Row, *, foreign_ref: bool) -> None:
+        if (
+            not in_scope(table.name, row)
+            or table.name in {"workspaces", "memberships", "sessions", "projects"}
+            or (kind == "dataset" and table.name in SOURCE_ROWS and not foreign_ref)
+        ):
+            raise external_reference
+        selected[table.name][_identity(table, row)] = row
+
+    def json_matches(ids: set[str]) -> Iterator[tuple[Table, tuple[str, ...], set[str]]]:
+        # Legacy JSON can contain nested references or UUIDs embedded in prose.
+        # Project only JSON + PK and stream the scan. Never retain unrelated rows or refs.
+        if not ids:
+            return
+        for table in tables:
+            columns = [column for column in table.columns if isinstance(column.type, JSONB)]
+            if not columns:
+                continue
+            statement = select(*table.primary_key, *columns)
+            with db.execute(statement.execution_options(yield_per=BATCH_SIZE)) as result:
+                for item in result.mappings():
+                    identity = tuple(item[column] for column in table.primary_key)
+                    if identity in selected[table.name]:
+                        continue
+                    refs = set().union(*(_strings(item[column]) for column in columns)) & ids
+                    if refs:
+                        yield table, identity, refs
+
+    scanned: set[str] = set()
+    while True:
+        # Follow indexed FK relationships first. A JSON reference can introduce
+        # another owner, so repeat only while new identifiers were discovered.
+        while True:
+            before = sum(map(len, selected.values()))
+            ids = {key[0] for keys in selected.values() for key in keys if len(key) == 1}
+            for table in tables:
+                predicates = []
+                for fk in table.foreign_keys:
+                    parents = selected[fk.column.table.name]
+                    if parents and len(fk.column.table.primary_key) == 1:
+                        predicates.append(_has_id(fk.parent, {key[0] for key in parents}))
+                if "resource_id" in table.c:
+                    predicates.append(_has_id(table.c.resource_id, ids))
+                if not predicates:
                     continue
-                foreign_ref = any(
-                    (row[key.parent.name],) in selected[key.column.table.name]
-                    for key in table.foreign_keys
-                    if len(key.column.table.primary_key) == 1
-                )
-                json_ref = not selected_ids.isdisjoint(json_refs[table.name, identity])
-                audit_ref = row.get("resource_id") in selected_ids
-                if not (foreign_ref or json_ref or audit_ref):
-                    continue
-                if (
-                    not in_scope(table.name, row)
-                    or table.name in {"workspaces", "memberships", "sessions", "projects"}
-                    or (kind == "dataset" and table.name in SOURCE_ROWS and not foreign_ref)
-                ):
-                    raise external_reference
-                selected[table.name].add(identity)
-        if sum(map(len, selected.values())) == before:
+                statement = select(table).where(or_(*predicates))
+                with db.execute(statement.execution_options(yield_per=BATCH_SIZE)) as result:
+                    for candidate in result.mappings():
+                        row = dict(candidate)
+                        if _identity(table, row) not in selected[table.name]:
+                            add_dependent(
+                                table,
+                                row,
+                                foreign_ref=any(
+                                    (row[fk.parent.name],) in selected[fk.column.table.name]
+                                    for fk in table.foreign_keys
+                                ),
+                            )
+            if sum(map(len, selected.values())) == before:
+                break
+
+        pending = ids - scanned
+        if not pending:
             break
+        for table, identity, _ in json_matches(pending):
+            if table.name == "schema_definitions":
+                continue
+            columns = list(table.primary_key)
+            if len(columns) == 1:
+                dependent = load_row(table.name, identity[0])
+            else:
+                item = (
+                    db.execute(select(table).where(tuple_(*columns) == identity)).mappings().one()
+                )
+                dependent = dict(item)
+            if dependent is not None:
+                add_dependent(table, dependent, foreign_ref=False)
+        scanned.update(pending)
 
-    # Schema dùng chung còn giá trị nếu còn mapping hoặc JSON provenance tham chiếu.
-    removed_mapping_schemas = {
-        row["schema_id"]
-        for row in rows["mapping_revisions"]
-        if (row["id"],) in selected["mapping_revisions"]
-    }
-    surviving_schema_ids = {
-        row["schema_id"]
-        for row in rows["mapping_revisions"]
-        if (row["id"],) not in selected["mapping_revisions"]
-    }
-    for (table_name, identity), refs in json_refs.items():
-        if identity not in selected[table_name]:
-            surviving_schema_ids.update(removed_mapping_schemas & refs)
-    selected["schema_definitions"].update(
-        (schema_id,) for schema_id in removed_mapping_schemas - surviving_schema_ids
-    )
+    # Shared definitions survive if a mapping or provenance outside the manifest uses them.
+    mappings = by_name["mapping_revisions"].c
+    schema_ids = {row["schema_id"] for row in selected["mapping_revisions"].values()}
+    if schema_ids:
+        with db.execute(
+            select(mappings.id, mappings.schema_id)
+            .where(_has_id(mappings.schema_id, schema_ids))
+            .execution_options(yield_per=BATCH_SIZE)
+        ) as result:
+            surviving = {
+                schema_id
+                for mid, schema_id in result
+                if (mid,) not in selected["mapping_revisions"]
+            }
+        surviving.update(ref for _, _, refs in json_matches(schema_ids - surviving) for ref in refs)
+        for schema_id in schema_ids - surviving:
+            definition = load_row("schema_definitions", schema_id)
+            if definition is not None:
+                if not in_scope("schema_definitions", definition):
+                    raise external_reference
+                selected["schema_definitions"][(schema_id,)] = definition
 
-    removed = {
-        table.name: [
-            row for row in rows[table.name] if _identity(table, row) in selected[table.name]
-        ]
-        for table in tables
-    }
+    removed = {name: list(items.values()) for name, items in selected.items()}
     reservations = [row for row in removed["audit_events"] if row["action"] in RESERVATIONS]
     if reservations and kind == "workspace":
         raise DomainError("PURGE_BUDGET_HISTORY", "Không gian còn biên nhận chi phí cần giữ.", 409)
     removed["audit_events"] = [row for row in removed["audit_events"] if row not in reservations]
 
     files: dict[str, str] = {}
-    surviving_keys: set[str] = set()
     for table_name, (key_col, sha_col) in FILE_COLUMNS.items():
-        for row in rows[table_name]:
+        for row in removed[table_name]:
             key = row[key_col]
             if key is None:
-                continue
-            if (row["id"],) not in selected[table_name]:
-                surviving_keys.add(key)
                 continue
             sha = row[sha_col]
             if (
@@ -322,9 +400,49 @@ def _manifest(db: Session, actor: Actor, kind: PurgeKind, resource_id: str, root
                 )
             if files.setdefault(key, sha) != sha:
                 raise DomainError("PURGE_UNSAFE_FILE", "Tệp có nhiều checksum khác nhau.", 409)
-    for (table_name, identity), refs in json_refs.items():
-        if identity not in selected[table_name]:
-            surviving_keys.update(files.keys() & refs)
+    # Các thư mục phiên bản/lượt/xuất được tạo từ ID. Nếu có tệp chưa công bố,
+    # dừng để không bỏ sót tệp hoặc xóa theo tên suy đoán.
+    dirs = [f"{workspace_id}/{row['id']}" for row in removed["dataset_versions"]]
+    dirs += [f"{workspace_id}/runs/{row['id']}" for row in removed["reconciliation_runs"]]
+    dirs += [f"{workspace_id}/exports/{row['id']}" for row in removed["run_exports"]]
+    if kind == "workspace":
+        dirs = [workspace_id]
+    inventory: set[str] = set()
+    for directory in dirs:
+        path = storage_path(root, directory)
+        if path != root / directory:
+            raise DomainError("PURGE_UNSAFE_FILE", "Có liên kết tệp cần kiểm tra.", 409)
+        for entry in path.rglob("*"):
+            if entry.is_symlink():
+                raise DomainError(
+                    "PURGE_UNTRACKED_FILE", "Có tệp chưa có biên nhận trong phạm vi xóa.", 409
+                )
+            if not entry.is_dir():
+                inventory.add(entry.relative_to(root).as_posix())
+
+    surviving_keys: set[str] = set()
+    lookup = inventory | files.keys()
+    for table_name, (key_col, _) in FILE_COLUMNS.items():
+        if not lookup:
+            break
+        table = by_name[table_name]
+        storage_key = table.c[key_col]
+        with db.execute(
+            select(table.c.id, storage_key)
+            .where(_has_id(storage_key, lookup))
+            .execution_options(yield_per=BATCH_SIZE)
+        ) as result:
+            surviving_keys.update(
+                key for row_id, key in result if (row_id,) not in selected[table_name]
+            )
+    surviving_keys.update(
+        ref for _, _, refs in json_matches(files.keys() - surviving_keys) for ref in refs
+    )
+    if inventory - files.keys() - surviving_keys:
+        raise DomainError(
+            "PURGE_UNTRACKED_FILE", "Có tệp chưa có biên nhận trong phạm vi xóa.", 409
+        )
+    shared_count = len(files.keys() & surviving_keys)
     files = {key: sha for key, sha in files.items() if key not in surviving_keys}
     absent = []
     for key, sha in files.items():
@@ -333,36 +451,10 @@ def _manifest(db: Session, actor: Actor, kind: PurgeKind, resource_id: str, root
             absent.append(key)
         elif checksum(path) != sha:
             raise DomainError("PURGE_CHECKSUM", "Tệp đã thay đổi. Hãy kiểm tra trước khi xóa.", 409)
-    # Các thư mục phiên bản/lượt/xuất được tạo từ ID. Nếu có tệp chưa công bố,
-    # dừng để không bỏ sót tệp hoặc xóa theo tên suy đoán.
-    dirs = [f"{workspace_id}/{row['id']}" for row in removed["dataset_versions"]]
-    dirs += [f"{workspace_id}/runs/{row['id']}" for row in removed["reconciliation_runs"]]
-    dirs += [f"{workspace_id}/exports/{row['id']}" for row in removed["run_exports"]]
-    if kind == "workspace":
-        dirs = [workspace_id]
-    known = files.keys() | surviving_keys
-    for directory in dirs:
-        path = storage_path(root, directory)
-        if path != root / directory:
-            raise DomainError("PURGE_UNSAFE_FILE", "Có liên kết tệp cần kiểm tra.", 409)
-        for entry in path.rglob("*"):
-            if entry.is_symlink() or (
-                not entry.is_dir() and entry.relative_to(root).as_posix() not in known
-            ):
-                raise DomainError(
-                    "PURGE_UNTRACKED_FILE", "Có tệp chưa có biên nhận trong phạm vi xóa.", 409
-                )
 
     counts = {table: len(items) for table, items in removed.items() if items}
     counts["files"] = len(files)
-    counts["shared_files"] = len(
-        {
-            row[col]
-            for table, (col, _) in FILE_COLUMNS.items()
-            for row in removed[table]
-            if row[col] in surviving_keys
-        }
-    )
+    counts["shared_files"] = shared_count
     # Ràng buộc bản xem trước với cả giá trị và ID của metadata, không chỉ số dòng.
     payload = [
         kind,
@@ -388,7 +480,7 @@ def _manifest(db: Session, actor: Actor, kind: PurgeKind, resource_id: str, root
 
 
 def preview(db: Session, actor: Actor, kind: PurgeKind, resource_id: str) -> PurgeImpact:
-    root = isolated_root(db)
+    root = purge_root(db)
     require_owner(actor, db, resource_id)
     _lock_scope(db, actor, kind, resource_id)
     return _manifest(db, actor, kind, resource_id, root).impact
@@ -402,10 +494,18 @@ def _status(receipt: PurgeReceiptRow) -> PurgeStatus:
     )
 
 
+def _confirmation_hash(body: PurgeConfirmation) -> str:
+    return hmac.new(
+        settings.session_secret.get_secret_value().encode(),
+        f"{body.fingerprint}:{body.confirmation}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
 def status(
     db: Session, actor: Actor | None, receipt_id: str, *, session_hash: str = ""
 ) -> PurgeStatus:
-    isolated_root(db)
+    purge_root(db)
     if actor is not None:
         require_owner(actor, db, receipt_id)
     receipt = db.get(PurgeReceiptRow, receipt_id)
@@ -426,7 +526,7 @@ def status(
 
 def finish_files(db: Session, receipt_id: str) -> PurgeStatus:
     """Tệp thiếu là kết quả hợp lệ khi thử lại sau crash. Tệp sai checksum giữ chờ."""
-    root = isolated_root(db)
+    root = purge_root(db, interactive=False)
     receipt = db.get(PurgeReceiptRow, receipt_id, with_for_update=True)
     if receipt is None:
         raise missing()
@@ -457,7 +557,7 @@ def confirm(
     *,
     session_hash: str | None = None,
 ) -> PurgeStatus:
-    root = isolated_root(db)
+    root = purge_root(db)
     require_owner(actor, db, resource_id)
     _lock_scope(db, actor, kind, resource_id)
     receipt = db.get(PurgeReceiptRow, body.fingerprint)
@@ -469,6 +569,10 @@ def confirm(
             resource_id,
         ):
             raise missing()
+        if not receipt.confirmation_hash or not hmac.compare_digest(
+            receipt.confirmation_hash, _confirmation_hash(body)
+        ):
+            raise DomainError("PURGE_CONFIRMATION_STALE", "Xác nhận không khớp biên nhận.", 409)
         db.commit()
         return finish_files(db, receipt.id)
     manifest = _manifest(db, actor, kind, resource_id, root)
@@ -484,12 +588,15 @@ def confirm(
             .values(resource_id=hashlib.sha256(row["resource_id"].encode()).hexdigest())
         )
     for table in reversed(_business_tables()):
-        for row in manifest.rows[table.name]:
-            db.execute(
-                table.delete().where(
-                    and_(*(column == row[column.name] for column in table.primary_key))
-                )
+        columns = list(table.primary_key)
+        for batch in batched(manifest.rows[table.name], BATCH_SIZE):
+            identities = [_identity(table, row) for row in batch]
+            predicate = (
+                _has_id(columns[0], {key[0] for key in identities})
+                if len(columns) == 1
+                else tuple_(*columns).in_(identities)
             )
+            db.execute(table.delete().where(predicate))
     db.add(
         PurgeReceiptRow(
             id=body.fingerprint,
@@ -498,6 +605,7 @@ def confirm(
             kind=kind,
             resource_id=resource_id,
             receipt_session_hash=session_hash if kind == "workspace" else None,
+            confirmation_hash=_confirmation_hash(body),
             files=manifest.files,
             counts=manifest.impact.counts,
         )
@@ -509,7 +617,7 @@ def confirm(
 
 def resume_pending(db: Session) -> None:
     try:
-        isolated_root(db)
+        purge_root(db, interactive=False)
     except DomainError as exc:
         if exc.code != "PURGE_DISABLED":
             raise

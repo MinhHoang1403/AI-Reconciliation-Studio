@@ -74,6 +74,8 @@ Tệp gốc được bảo toàn, kết quả có tham chiếu nguồn và quy t
 
 AI hoạt động theo cấu hình, quyền workspace và điều kiện dịch vụ hiện hành; dữ liệu được phép có thể được gửi đến dịch vụ bên ngoài. Môi trường local được cấp quyền có thể bỏ trần số lượt request nội bộ, nhưng usage vẫn được ghi nhận và quota/rate limit/chi phí của nhà cung cấp vẫn áp dụng. Không đồng nghĩa AI miễn phí hoặc nhà cung cấp không giới hạn.
 
+Xóa vĩnh viễn mặc định tắt. Khi môi trường local đã được nghiệm thu và chủ dự án cho phép, người vận hành có thể bật `PURGE_LOCAL_ENABLED=true` cho Backend và Worker rồi chạy `tools/start.ps1` để xác minh loopback. Chủ workspace phải xem tác động và nhập đúng tên cho từng tài nguyên. Biên nhận ghi trạng thái dọn tệp sau khi metadata đã commit. Nếu trạng thái còn đang dọn, giữ cấu hình và volume đã xác minh để Worker tiếp tục. Workspace `demo` và các bản sao lưu được bảo vệ.
+
 PostgreSQL và tệp dữ liệu được giữ trong hai volumes của ứng dụng. GitHub chỉ lưu source, không thay backup dữ liệu. Không xóa volumes để dọn Docker; hướng dẫn backup, kiểm chứng và rollback nằm trong tài liệu kỹ thuật.
 
 ## Phạm vi hỗ trợ
