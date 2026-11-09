@@ -2,16 +2,20 @@
 
 from copy import deepcopy
 from datetime import timedelta
+from unicodedata import normalize
 
 import pytest
 from sqlalchemy import func, select
 from studio.access import Actor
 from studio.agent_api import decide
+from studio.assistant_tools import agent_catalogue
 from studio.contracts.agent import AgentIntent, NormalizationDraft, ReviewDecision
+from studio.contracts.assistant import AssistantContext
 from studio.database import (
     AgentWorkflowRow,
     AuditRow,
     CanonicalRow,
+    DatasetRow,
     JobRow,
     MappingRow,
     MembershipRow,
@@ -23,6 +27,43 @@ from test_postgres import drain, pg, project  # noqa: F401
 from test_reconciliation_postgres import create_approved_run
 
 pytestmark = pytest.mark.integration
+
+
+def test_named_pair_catalogue_searches_active_project_beyond_selected_run(pg):  # noqa: F811
+    client, factory, worker = pg
+    project_id, _, _, run = create_approved_run(pg)
+    drain(factory, worker)
+    other_project = project(client)
+    context = AssistantContext(project_id=project_id, run_id=run["run_id"])
+    names = ("Sổ thanh toán.csv", "Sổ ngân hàng.csv")
+    with factory() as db:
+        actor = Actor("test-owner", "demo", "owner")
+        original = agent_catalogue(db, actor, context, [])
+        original_ids = {dataset.id for dataset in original.datasets}
+        for index, (owner_project, filename) in enumerate(
+            [(project_id, f"out-of-selection-{n}.csv") for n in range(7)]
+            + [(project_id, normalize("NFD", name)) for name in names]
+            + [(other_project, names[1])]
+        ):
+            db.add(
+                DatasetRow(
+                    workspace_id="demo",
+                    project_id=owner_project,
+                    owner_id=actor.id,
+                    name=filename,
+                    sha256=f"{index:064x}",
+                    parse_signature="test",
+                    status="READY",
+                )
+            )
+        db.flush()
+        explicit = agent_catalogue(db, actor, context, [], dataset_names=names)
+        assert {normalize("NFC", item.name) for item in explicit.datasets} == set(names)
+        assert len(explicit.datasets) == 2
+        assert {item.id for item in explicit.datasets}.isdisjoint(original_ids)
+        assert {
+            item.id for item in agent_catalogue(db, actor, context, []).datasets
+        } == original_ids
 
 
 def test_chat_permanent_deletion_stops_before_provider_or_tools(pg, monkeypatch):  # noqa: F811

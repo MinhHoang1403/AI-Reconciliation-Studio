@@ -1335,8 +1335,8 @@ def resolve_displayed_export(goal: str, catalogue: IntentCatalogue) -> AgentInte
     )
 
 
-def resolve_named_reconciliation(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
-    """Resolve only an unqualified request with two exact filenames in stated order."""
+def named_reconciliation_files(goal: str) -> tuple[str, str] | None:
+    """Recognize a whole reconciliation command with two literal file selectors."""
     quoted = list(re.finditer(r'"([^"]+)"|“([^”]+)”', goal))
     if len(quoted) != 2:
         return None
@@ -1348,9 +1348,18 @@ def resolve_named_reconciliation(goal: str, catalogue: IntentCatalogue) -> Agent
         normalized,
     ):
         return None
+    left, right = quoted
+    return (left.group(1) or left.group(2), right.group(1) or right.group(2))
+
+
+def resolve_named_reconciliation(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
+    """Bind the two selectors in stated order to distinct approved canonical sources."""
+    files = named_reconciliation_files(goal)
+    if files is None:
+        return None
     ids = []
-    for match in quoted:
-        name = unicodedata.normalize("NFC", match.group(1) or match.group(2)).casefold()
+    for filename in files:
+        name = unicodedata.normalize("NFC", filename).casefold()
         sources = [
             table
             for dataset in catalogue.datasets

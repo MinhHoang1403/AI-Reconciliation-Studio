@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import unicodedata
 from threading import Timer
 from typing import Any
 
@@ -68,6 +69,7 @@ def agent_catalogue(
     dataset_ids: list[str],
     *,
     workflow_id: str | None = None,
+    dataset_names: tuple[str, str] | None = None,
 ) -> "IntentCatalogue":
     """Catalogue bounded cho router; chỉ metadata/profile, không raw values/paths/secrets."""
     from studio.contracts import SchemaDefinition
@@ -89,9 +91,10 @@ def agent_catalogue(
     )
 
     scoped_context(db, actor, context)
-    if not dataset_ids and context.dataset_id:
+    selected_names = dataset_names if not dataset_ids else None
+    if not dataset_ids and not selected_names and context.dataset_id:
         dataset_ids = [context.dataset_id]
-    if not dataset_ids and context.run_id:
+    if not dataset_ids and not selected_names and context.run_id:
         run = get_scoped(db, RunRow, context.run_id, actor)
         rule = get_scoped(db, ReconciliationContractRow, run.contract_id, actor)
         plan = ReconciliationContract.model_validate(rule.definition).plan
@@ -111,6 +114,19 @@ def agent_catalogue(
     )
     if dataset_ids:
         query = query.where(DatasetRow.id.in_(dataset_ids))
+    elif selected_names:
+        # Search only the current project and workspace. Read names in batches so
+        # unrelated source profiles never enter the catalogue or the provider.
+        names = {unicodedata.normalize("NFC", name).casefold() for name in selected_names}
+        identities = []
+        lookup = query.with_only_columns(DatasetRow.id, DatasetRow.name)
+        with db.execute(lookup.execution_options(yield_per=128)) as result:
+            for dataset_id, name in result:
+                if unicodedata.normalize("NFC", name).casefold() in names:
+                    identities.append(dataset_id)
+                    if len(identities) == 6:
+                        break
+        query = query.where(DatasetRow.id.in_(identities))
     datasets = list(db.scalars(query.order_by(DatasetRow.created_at, DatasetRow.id).limit(6)))
     if len(datasets) > 5 or (dataset_ids and {d.id for d in datasets} != set(dataset_ids)):
         raise DomainError("INPUT_AMBIGUOUS", "Chọn tối đa năm nguồn đúng dự án cần xử lý.")

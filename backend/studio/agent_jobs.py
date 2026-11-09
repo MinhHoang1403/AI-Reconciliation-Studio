@@ -16,6 +16,7 @@ from studio.agent_intents import (
     INTENT_REVISION,
     export_query_for_intent,
     interpret_requests,
+    named_reconciliation_files,
     resolve_attached_normalization,
     resolve_deferred_export_read,
     resolve_named_reconciliation,
@@ -120,7 +121,13 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
             context = effective_request_context(
                 db, actor, conversation.id, AssistantContext.model_validate(message.context)
             )
-            catalogue = agent_catalogue(db, actor, context, job.payload.get("dataset_ids", []))
+            catalogue = agent_catalogue(
+                db,
+                actor,
+                context,
+                job.payload.get("dataset_ids", []),
+                dataset_names=named_reconciliation_files(message.text),
+            )
             return bool(
                 resolve_native_read(message.text, catalogue)
                 or resolve_named_reconciliation(message.text, catalogue)
@@ -360,7 +367,10 @@ def interpret(
             save(row, state)
             db.commit()
             return
-        catalogue = agent_catalogue(db, actor, context, state.dataset_ids, workflow_id=row.id)
+        files = named_reconciliation_files(row.goal)
+        catalogue = agent_catalogue(
+            db, actor, context, state.dataset_ids, workflow_id=row.id, dataset_names=files
+        )
         expected_selection = selection_fingerprint(catalogue)
         ids = [d.id for d in catalogue.datasets]
         parsing = db.scalar(
@@ -395,6 +405,13 @@ def interpret(
         )
         if plain_listing is not None:
             state.export_query = export_query_for_intent(plain_listing, catalogue)
+            if files and plain_listing.intent == "RECONCILE_DATASETS":
+                if not state.dataset_ids:
+                    state.dataset_ids = ids
+                # An explicit new pair owns its planning context. Old case/group
+                # references cannot follow it into the new verified run.
+                context = AssistantContext(project_id=context.project_id)
+                row.context = context.model_dump(mode="json")
             if plain_listing.intent == "SUMMARIZE_RESULTS":
                 context.group_id = context.case_id = None
                 row.context = context.model_dump(mode="json")
