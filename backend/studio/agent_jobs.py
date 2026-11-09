@@ -14,9 +14,6 @@ from sqlalchemy.orm import Session
 from studio.access import Actor, require_editor
 from studio.agent_intents import (
     INTENT_REVISION,
-    approval_bypass_requested,
-    currency_bypass_requested,
-    data_mutation_requested,
     export_query_for_intent,
     interpret_requests,
     resolve_attached_normalization,
@@ -409,26 +406,6 @@ def interpret(
                 row.context = context.model_dump(mode="json")
                 plain_listing = plain_listing.model_copy(update={"result_position": None})
             state.intent = plain_listing
-            save(row, state)
-            db.commit()
-            return
-        if (
-            approval_bypass_requested(goal)
-            or currency_bypass_requested(goal)
-            or data_mutation_requested(goal)
-        ):
-            state.intent = AgentIntent(
-                intent="UNSUPPORTED",
-                questions=[
-                    "Tôi không thể sửa hoặc xóa nguồn dữ liệu qua công cụ đọc."
-                    if data_mutation_requested(goal)
-                    else "Tôi không thể bỏ qua tiền tệ để cộng gộp số tiền. "
-                    "Cần quy tắc quy đổi được duyệt."
-                    if currency_bypass_requested(goal)
-                    else "Tôi không thể tự phê duyệt ánh xạ hoặc quy tắc nghiệp vụ. "
-                    "Bạn cần xem và duyệt quyết định trước khi thực hiện."
-                ],
-            )
             save(row, state)
             db.commit()
             return

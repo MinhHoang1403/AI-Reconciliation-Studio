@@ -165,9 +165,25 @@ def data_mutation_requested(goal: str) -> bool:
     """Agent read tools cannot fulfill deletion or source-rewrite instructions."""
     return _explicit_request(
         re.sub(r'"[^\"]+"|“[^”]+”', "", goal),
-        r"\b(?:xoa|delete|remove|ghi de|overwrite|sua)\s+"
+        r"\b(?:xoa vinh vien|permanently delete|delete permanently)\b"
+        r"|\b(?:xoa|delete|remove|ghi de|overwrite|sua)\s+"
         r"(?:cac |toan bo |tat ca )?(?:raw|du lieu goc|ban goc|ban tu chuan bi|tep|file|nguon)\b",
     )
+
+
+def _denied_request(goal: str) -> AgentIntent | None:
+    if data_mutation_requested(goal):
+        message = (
+            "Bạn có thể mở phần quản lý để xem quyền và tác động của thao tác xóa. "
+            "Yêu cầu này chưa thay đổi dữ liệu."
+        )
+    elif currency_bypass_requested(goal):
+        message = "Cần một quy tắc quy đổi được duyệt trước khi cộng các khoản khác tiền tệ."
+    elif approval_bypass_requested(goal):
+        message = "Bạn cần xem và duyệt ánh xạ hoặc quy tắc trước khi hệ thống thực hiện."
+    else:
+        return None
+    return AgentIntent(intent="UNSUPPORTED", questions=[message])
 
 
 def explicit_read_request(goal: str) -> bool:
@@ -1531,20 +1547,9 @@ def resolve_deferred_export_read(goal: str, catalogue: IntentCatalogue) -> Agent
 
 def resolve_native_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
     """Compose native read capabilities and reduce authority for source mutations."""
-    if (
-        data_mutation_requested(goal)
-        or approval_bypass_requested(goal)
-        or currency_bypass_requested(goal)
-    ):
-        return AgentIntent(
-            intent="UNSUPPORTED",
-            questions=[
-                "Không thể sửa/xóa nguồn, tự phê duyệt hoặc bỏ qua ý nghĩa tiền tệ. "
-                "Bạn có thể yêu cầu chỉ xem dữ liệu."
-            ],
-        )
     return (
-        resolve_read_export_sequence(goal)
+        _denied_request(goal)
+        or resolve_read_export_sequence(goal)
         or resolve_displayed_export(goal, catalogue)
         or resolve_run_filter_clarification(goal, catalogue)
         or resolve_ranked_results(goal, catalogue)
@@ -1686,24 +1691,13 @@ def compile_routing(
     canonicals = {t.canonical_id: t for d in catalogue.datasets for t in d.tables if t.canonical_id}
     expanded: list[AgentIntent] = []
     for goal, item in zip(goals, batch.intents, strict=True):
+        denied = _denied_request(goal)
+        if denied:
+            expanded.append(denied)
+            continue
         listing = resolve_plain_listing(goal, catalogue)
         if listing is not None and item.intent == "CLARIFY":
             expanded.append(listing)
-            continue
-        if (
-            approval_bypass_requested(goal)
-            or currency_bypass_requested(goal)
-            or data_mutation_requested(goal)
-        ):
-            expanded.append(
-                AgentIntent(
-                    intent="UNSUPPORTED",
-                    questions=[
-                        "Không thể sửa/xóa nguồn hoặc bỏ qua phê duyệt nghiệp vụ "
-                        "và ý nghĩa tiền tệ."
-                    ],
-                )
-            )
             continue
         if explicit_read_request(goal) and item.intent in {
             "PREPARE_NORMALIZATION",

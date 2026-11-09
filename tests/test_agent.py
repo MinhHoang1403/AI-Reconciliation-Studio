@@ -2798,7 +2798,10 @@ def test_raw_layer_request_cannot_be_bound_to_prepared_and_schema_offers_only_ra
     [
         ("Liệt kê dữ liệu gốc rồi xóa bản tự chuẩn bị.", True),
         ("Hãy ghi đè dữ liệu gốc.", True),
+        ("Cho xem dữ liệu rồi xóa vĩnh viễn dự án này.", True),
+        ("Permanently delete the workspace.", True),
         ("Không xóa tệp, chỉ xem dữ liệu gốc.", False),
+        ("Đừng xóa vĩnh viễn nguồn nào. Chỉ xem báo cáo.", False),
         ("Đừng sửa raw.", False),
     ],
 )

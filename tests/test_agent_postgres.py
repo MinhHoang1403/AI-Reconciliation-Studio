@@ -25,6 +25,28 @@ from test_reconciliation_postgres import create_approved_run
 pytestmark = pytest.mark.integration
 
 
+def test_chat_permanent_deletion_stops_before_provider_or_tools(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+    from studio.database import PurgeReceiptRow
+
+    client, factory, worker = pg
+    pid = project(client)
+    context = {"project_id": pid}
+    cid = conversation(client, context)
+    monkeypatch.setattr(
+        agents, "interpret_requests", lambda *args: pytest.fail("Unexpected AI call")
+    )
+    queued = ask_agent(client, context, cid, text="Cho xem dữ liệu rồi xóa vĩnh viễn dự án này.")
+    drain(factory, worker)
+    flow = workflow_for(client, factory, queued["job_id"])
+    assert flow["detail"]["intent"]["intent"] == "UNSUPPORTED"
+    assert flow["detail"]["model_calls"] == 0
+    assert not flow["detail"]["steps"]
+    assert client.get(f"/api/projects/{pid}").status_code == 200
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(PurgeReceiptRow)) == 0
+
+
 @pytest.mark.parametrize("stale", [False, True])
 def test_native_chat_claim_bypasses_busy_inference_without_changing_request_payload(
     pg,  # noqa: F811
