@@ -92,9 +92,9 @@ test("explicit report run outside the bounded history page is never replaced by 
   await expect(page.getByLabel("Lần đối soát", { exact: true })).toHaveValue(
     target,
   );
-  await expect(page.locator(".result-kpis")).toContainText("2.75");
+  await expect(page.locator(".result-kpis")).toContainText("2,75");
   await page
-    .getByRole("button", { name: "Hỏi AI Assistant về run này", exact: true })
+    .getByRole("button", { name: "Hỏi AI về kết quả này", exact: true })
     .click();
   await expect(
     page.getByRole("button",{name:"Đổi ngữ cảnh phân tích",exact:true}),
@@ -453,7 +453,7 @@ test("language workflow requires source/period/template confirmation before exis
   });
   await page.getByLabel("Chọn tệp dữ liệu").setInputFiles(files);
   await upload.locator("summary", { hasText: "Tùy chọn đọc nâng cao" }).click();
-  await upload.getByLabel("Dùng AI đề xuất ánh xạ trong hạn mức").uncheck();
+  await upload.getByLabel("Dùng AI đề xuất cách đọc cột").uncheck();
   const uploaded = page.waitForResponse(
     (r) =>
       r.url().endsWith("/datasets/uploads") && r.request().method() === "POST",
@@ -683,6 +683,7 @@ test("language workflow requires source/period/template confirmation before exis
   await expect(explanation).toContainText("chưa chứng minh nguyên nhân");
   // Origin here is Reconciliation; the new UX only offers Back for Data/Exceptions/Reports.
   await openLegacyPage(page, "reports");
+  await page.locator(".run-export > summary").click();
   await page.getByRole("button", { name: "Xuất CSV", exact: true }).click();
   await expect(page.getByRole("link", { name: /Tải báo cáo/ })).toBeVisible();
 });

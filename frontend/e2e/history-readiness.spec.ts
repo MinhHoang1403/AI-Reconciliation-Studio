@@ -2,6 +2,41 @@ import { test } from "./project-selection";
 import {expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 
+test("[MOCK CONTRACT] report history stays in place and clears denied conversation pages", async ({ page }) => {
+  const context = { project_id: "history-project" };
+  const title = "Hội thoại tổng hợp chỉ hiển thị khi có quyền";
+  await page.addInitScript(() => localStorage.setItem("studio.project", "history-project"));
+  await page.route("**/api/**", route => {
+    const url = new URL(route.request().url());
+    const fixtures = {
+      "/api/session": { workspace_id: "synthetic", role: "owner" },
+      "/api/settings": { workspace_name: "TEST", policy: { allow_external_ai: false } },
+      "/api/projects/history-project": { id: context.project_id, name: "Dự án TEST", classification: "TEST", business_scope: "synthetic" },
+    };
+    if (url.pathname === "/api/conversations") {
+      if (url.searchParams.has("before_id")) return route.fulfill({
+        status: 403, json: { code: "FORBIDDEN", message_vi: "Quyền đã được thu hồi." },
+      });
+      return route.fulfill({ json: { items: [{
+        id: "conversation-one", title, context, created_at: "2026-10-12T00:00:00Z", archived: false,
+      }], has_more: true } });
+    }
+    return route.fulfill({ json: fixtures[url.pathname as keyof typeof fixtures] ?? { items: [], total: 0 } });
+  });
+  await page.goto("/#page=reports&project=history-project");
+  await expect(page.getByRole("heading", { name: "Báo cáo đối soát" })).toBeVisible();
+  const reportURL = page.url();
+  await page.getByRole("button", { name: "Lịch sử", exact: true }).click();
+  const modal = page.getByRole("dialog", { name: "Lịch sử", exact: true });
+  await expect(modal.getByText(title)).toBeVisible();
+  await expect(page).toHaveURL(reportURL);
+  await modal.getByRole("button", { name: "Tải thêm hội thoại" }).click();
+  await expect(modal.getByRole("alert")).toContainText("Quyền đã được thu hồi.");
+  await expect(modal.getByText(title)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(reportURL);
+});
+
 for(const width of [390,768,1366,1440,1920]){
   test(`[MOCK CONTRACT] History loading, retry, scope and loaded search at ${width}px`,async({page})=>{
     await page.setViewportSize({width,height:900});

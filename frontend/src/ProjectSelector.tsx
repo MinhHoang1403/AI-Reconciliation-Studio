@@ -19,6 +19,7 @@ export function ProjectSelector({
   canClassify = false,
   onClassificationChange,
   onCreate,
+  onManage,
   showLabel = false,
 }: {
   showLabel?: boolean;
@@ -28,6 +29,7 @@ export function ProjectSelector({
   canClassify?: boolean;
   onClassificationChange?: (project: Project) => void;
   onCreate?: () => void;
+  onManage?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -191,9 +193,6 @@ export function ProjectSelector({
         <span>
           {showLabel&&<small className="project-picker-caption">Dự án</small>}
           <strong>{project?.name || "Chọn dự án"}</strong>
-          {!showLabel&&<small>
-            {project?.business_scope || "Tìm theo tên hoặc phạm vi nghiệp vụ"}
-          </small>}
         </span>
         {project?.classification === "TEST" && (
           <span className="project-test-badge" title="Dự án dùng để thử nghiệm">Thử nghiệm</span>
@@ -355,6 +354,7 @@ export function ProjectSelector({
           </>
         )}
         {onCreate && <button className="button secondary" onClick={()=>{setOpen(false);onCreate();}}>Tạo dự án mới</button>}
+        {onManage && <button className="text-button" onClick={() => { setOpen(false); onManage(); }}>Quản lý dự án</button>}
         {project && canClassify && (
           <details className="project-classification">
             <summary>Phân loại dự án hiện tại</summary>

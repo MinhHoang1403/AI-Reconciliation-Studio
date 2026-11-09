@@ -26,6 +26,12 @@ Công cụ giữ backup trong `/var/lib/studio/backups/<backup_id>` trên volume
 
 Trước restart/rollback, copy `tools/check-persistence.py` vào `/tmp/studio-persistence-check.py` trong Worker, chạy với đối số `snapshot`; sau mỗi lần đổi image chạy `verify`. Snapshot dùng vị trí cố định: copy receipt cũ ra runtime trước khi tạo snapshot mới. `./tools/rollback.ps1` kiểm nguồn/cùng revision và compatibility trước khi chuyển sang cặp tag `rollback`; `./tools/start.ps1 -SkipBuild` trở lại cặp `local` và xác minh phiên loopback. Không downgrade schema, xóa volume hoặc reset lịch sử request AI.
 
+## Kiểm vòng đời dự án và nguồn
+
+Revision `add_resource_lifecycle` chỉ thêm metadata. Kiểm thử PostgreSQL bao gồm quyền owner/viewer, ID ngoài workspace, xóa mềm/khôi phục, gửi lại cùng chuyển đổi, phiên bản cũ, phụ thuộc, checksum tệp gốc, nguồn đã có báo cáo và việc đọc lại bằng chứng. Hai thứ tự đồng thời được kiểm với kết nối độc lập, khóa giao dịch dự án và tạo job.
+
+Trước rollout, giữ image hiện hành và tạo backup/restore khi đã kết thúc mọi phép ghi TEST. Kiểm snapshot metadata cũ trước/sau migration với các cột bổ sung tách riêng. Sau migration kiểm giá trị mặc định active và phiên bản 0. Khi đã có nguồn hoặc dự án lưu trữ/xóa mềm, Backend cũ không hiểu retention. `tools/rollback.ps1` từ chối chuyển về Backend đó. Có thể dùng Frontend cũ cùng Backend hỗ trợ vòng đời trong cùng Compose sau khi kiểm tương thích. Giữ schema và dữ liệu lịch sử.
+
 ## Trạng thái nguồn, lỗi kết thúc và cuộn Chat — 05/11/2026
 
 `tests/test_agent_reliability.py` dùng cùng PostgreSQL/schema UUID hiện có để kiểm trạng thái upload/parse/mapping/READY/PARTIAL/FAILED/stale, nguồn khác project/workspace, revision hiện hành, phản hồi lỗi bền vững, unknown delivery, lease exhausted và preview hai nguồn không gọi model. Provider errors trong các ca này là MOCK, metadata/queue/transaction là PostgreSQL thật. Không dùng số tests này làm độ chính xác AI LIVE.

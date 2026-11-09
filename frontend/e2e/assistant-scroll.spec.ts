@@ -66,7 +66,8 @@ async function chatFixture(page:Page,{long=true,failed=false,withModels=false}={
 test("[MOCK CONTRACT] switching model preserves draft, queued request and history after reload",async({page})=>{
   await page.setViewportSize({width:390,height:844});
   const fixture=await chatFixture(page,{long:false,withModels:true});
-  const model=page.getByLabel("Model cho tin nhắn mới");
+  await page.getByLabel("Tùy chọn hội thoại",{exact:true}).click();
+  const model=page.getByLabel("Trợ lý cho tin nhắn mới");
   const composer=page.getByLabel("Câu hỏi cho AI Assistant",{exact:true});
   await expect(model).toHaveValue("QWEN_8B");
   await expect(model.locator("option")).toHaveText(["Gemini 3.5 Flash Lite", "Qwen 3:8B"]);
@@ -87,6 +88,7 @@ test("[MOCK CONTRACT] switching model preserves draft, queued request and histor
   await expect(page.getByText("Đang kiểm tra nguồn dữ liệu tổng hợp.",{exact:true})).toBeVisible();
   await composer.fill("Bản nháp tiếp theo");
   await page.reload();
+  await page.getByLabel("Tùy chọn hội thoại",{exact:true}).click();
   await expect(model).toHaveValue("GEMINI");
   await expect(composer).toHaveValue("Bản nháp tiếp theo");
   await expect(page.getByText("Kiểm tra đúng nguồn của hội thoại này",{exact:true})).toBeVisible();

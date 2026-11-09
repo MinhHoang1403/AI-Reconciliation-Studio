@@ -12,7 +12,7 @@ import { TooltipComponent } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 import { api, apiPages, ApiError } from "./api";
 import { ReconciliationEvidence } from "./ReconciliationEvidence";
-import { Badge, ContextPanel, Notice, Spinner } from "./components";
+import { Badge, ContextPanel, formatDecimal, Notice, Spinner } from "./components";
 import {
   label,
   type Catalogue,
@@ -27,7 +27,7 @@ import {
   type Slot,
   type SourceEvidence,
 } from "./reconciliationTypes";
-import type { Job } from "./types";
+import { errorText, type Job } from "./types";
 import type { AssistantContext } from "./assistantTypes";
 
 echarts.use([
@@ -47,7 +47,7 @@ const waitForJob = async (jobId: string, signal: AbortSignal) => {
     if (job.status === "SUCCEEDED") return job;
     if (["BLOCKED", "FAILED", "CANCELLED"].includes(job.status))
       throw new Error(
-        `Tác vụ bị chặn: ${job.error_code}. Có thể tạo rule thủ công.`,
+        errorText[job.error_code || ""] || "Chưa thể hoàn tất công việc này. Kiểm tra dữ liệu và thử lại.",
       );
     await new Promise((resolve) => setTimeout(resolve, 800));
   }
@@ -166,11 +166,17 @@ export function ReconciliationStudio({
   const [fromPeriod, setFromPeriod] = useState(""),
     [toPeriod, setToPeriod] = useState(""),
     [sourceFilter, setSourceFilter] = useState("");
+  const [workView, setWorkView] = useState<"setup" | "results">(requestedRun ? "results" : "setup");
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const analysisDisclosure = useRef<HTMLDetailsElement>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const showResults = mode !== "reconcile" || workView === "results";
   const requestedRunId = requestedRun?.id;
   const requestedCaseId = requestedRun?.caseId;
   const requestedRunVersion = requestedRun?.request;
   useEffect(() => {
     if (!requestedRunId) return;
+    setWorkView("results");
     setSelectedCaseId(requestedCaseId || "");
     if (requestedCaseId) {
       setOffset(0);
@@ -186,8 +192,8 @@ export function ReconciliationStudio({
   }, [requestedRunId, requestedCaseId, requestedRunVersion]);
   const alive = useRef(true);
   useEffect(() => {
-    if (runId) onRunSelected(runId, selectedCaseId || undefined);
-  }, [runId, selectedCaseId]);
+    if (showResults && runId) onRunSelected(runId, selectedCaseId || undefined);
+  }, [runId, selectedCaseId, showResults]);
   const controller = useRef(new AbortController());
   const runScope = useRef({ id: runId });
   if (runScope.current.id !== runId) runScope.current = { id: runId };
@@ -195,6 +201,7 @@ export function ReconciliationStudio({
   const evidenceTrigger = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!requestedPlan) return;
+    setWorkView("setup");
     const read = new AbortController();
     void api<Proposal & { project_id: string }>(
       `/reconciliation-plans/${requestedPlan.id}`,
@@ -229,7 +236,7 @@ export function ReconciliationStudio({
     };
   }, []);
   const refreshSequence = useRef(0);
-  const action = async (task: () => Promise<void>) => {
+  const action = async (task: () => Promise<void>, recover?: () => void) => {
     const scope = runScope.current;
     setBusy(true);
     setError("");
@@ -237,8 +244,11 @@ export function ReconciliationStudio({
     try {
       await task();
     } catch (e) {
-      if (alive.current && scope === runScope.current)
-        setError(e instanceof Error ? e.message : "Không thể hoàn tất.");
+      if (alive.current && scope === runScope.current) {
+        const friendly = e instanceof ApiError && errorText[e.code];
+        setError(friendly || (e instanceof Error ? e.message : "Không thể hoàn tất."));
+        recover?.();
+      }
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -378,6 +388,15 @@ export function ReconciliationStudio({
   const sources = catalogue.filter(
     (c) => !c.canonical.stale && c.canonical.quality_status !== "FAILED",
   );
+  const runPlan = templates.find(template => template.id === run?.contract_id)?.plan;
+  const runSources = runPlan ? [runPlan.left, runPlan.right].map(slot =>
+    catalogue.find(source => source.canonical.id === slot.canonical_id)?.name || "Nguồn lịch sử"
+  ) : [];
+  const metricName = (metricId: string) => {
+    const metric = runPlan?.comparison_metrics.find(item => item.metric_id === metricId);
+    return catalogue.find(source => source.canonical.id === runPlan?.left.canonical_id)
+      ?.schema_definition.fields.find(field => field.id === metric?.left)?.name || metricId;
+  };
   const proposedPlan = proposal?.proposal.plan;
   const partialSources = proposedPlan ? sources.filter(source =>
     source.canonical.quality_status === "PARTIAL" &&
@@ -592,25 +611,23 @@ export function ReconciliationStudio({
     return error ? <Notice tone="error">{error}</Notice> : null;
   const content = (
     <section className="reconciliation-studio">
-      <div className="section-heading">
-        <div>
-          <h2>
-            {mode === "reconcile"
-              ? "Thiết lập đối soát"
-              : mode === "exceptions"
-                ? "Ngoại lệ cần xem xét"
-                : "Kết quả đối soát"}
-          </h2>
-        </div>
+      <div className="reconciliation-toolbar">
+        {!panel && mode !== "home" ? <h1>{mode === "reconcile" ? "Đối soát có kiểm chứng" : mode === "exceptions" ? "Ngoại lệ và bằng chứng" : "Báo cáo đối soát"}</h1>
+          : panel ? <h2>{mode === "exceptions" ? "Ngoại lệ cần xem xét" : "Kết quả đối soát"}</h2> : <span />}
         <button
-          className="button secondary"
+          className="icon-button"
+          aria-label="Cập nhật đối soát"
+          title="Cập nhật đối soát"
           disabled={busy}
           onClick={() => void action(refresh)}
         >
-          <RefreshCw size={16} />
-          Cập nhật đối soát
+          <RefreshCw size={16} aria-hidden="true" />
         </button>
       </div>
+      {mode === "reconcile" && <div className="workspace-tabs" role="group" aria-label="Công việc đối soát">
+        <button aria-pressed={workView === "setup"} onClick={() => { setWorkView("setup"); onSetup(); }}>Thiết lập đối soát</button>
+        <button aria-pressed={workView === "results"} onClick={() => setWorkView("results")}>Kết quả đối soát</button>
+      </div>}
       {error && <Notice tone="error">{error}</Notice>}
       {message && <Notice tone="success">{message}</Notice>}
       {!canEdit && (
@@ -620,20 +637,14 @@ export function ReconciliationStudio({
         </Notice>
       )}
       {busy && <Spinner />}
-      {mode === "reconcile" && (
+      {mode === "reconcile" && !showResults && (
         <fieldset
           className="card rule-builder"
           disabled={!canEdit}
           aria-label="Thiết lập quy tắc"
         >
-          <h3>Phạm vi và quy tắc đối soát</h3>
-          <ol className="reconciliation-steps" aria-label="Trình tự thiết lập đối soát">
-            {["Chọn nguồn", "Đặt quy tắc", "Kiểm tra và duyệt", "Chạy", "Xem kết quả"].map(step => <li key={step}>{step}</li>)}
-          </ol>
-          <p className="muted">
-            Chọn hai nguồn đã chuẩn hóa. AI có thể tìm cặp khóa khác tên; bạn
-            xác nhận phạm vi và quy tắc trước khi chạy.
-          </p>
+          <h2>Chọn nguồn đối soát</h2>
+          <p>Chọn hai nguồn đã chuẩn hóa để kiểm tra phạm vi và quy tắc trước khi chạy.</p>
           {listLoading ? (
             <Spinner />
           ) : error && !catalogue.length ? (
@@ -674,14 +685,57 @@ export function ReconciliationStudio({
                       <option value="">Chọn nguồn</option>
                       {sources.map((c) => (
                         <option key={c.canonical.id} value={c.canonical.id}>
-                          {c.name} · {c.schema_definition.grain} ·{" "}
-                          {c.canonical.row_count} dòng
+                          {c.name} · {c.canonical.row_count} dòng
                         </option>
                       ))}
                     </select>
                   </label>
                 ))}
               </div>
+              {draft && templates.length > 0 && (
+                <details>
+                  <summary>Mẫu quy tắc đã duyệt</summary>
+                  {!scopeReady && <p>Điền kỳ, múi giờ và phạm vi hai nguồn để kiểm tra khả năng dùng lại.</p>}
+                  {templates.map((t) => (
+                    <div className="template-row" key={t.id}>
+                      <span>
+                        {t.plan.name} · {label(t.plan.cardinality)}
+                      </span>
+                      <button
+                        className="text-button"
+                        disabled={busy || !scopeReady}
+                        onClick={() =>
+                          draft &&
+                          void action(async () => {
+                            const p = await api<Proposal>(
+                              `/reconciliation-contracts/${t.id}/reuse`,
+                              send({
+                                left_canonical_id: draft.left.canonical_id,
+                                right_canonical_id: draft.right.canonical_id,
+                                period_start: draft.period_start,
+                                period_end: draft.period_end,
+                                left_coverage_start: draft.left.coverage_start,
+                                left_coverage_end: draft.left.coverage_end,
+                                right_coverage_start:
+                                  draft.right.coverage_start,
+                                right_coverage_end: draft.right.coverage_end,
+                                completeness: draft.left.completeness,
+                                snapshot_at: new Date().toISOString(),
+                              }),
+                            );
+                            setScopeConfirmed(false);
+                            setReadiness(null);
+                            setProposal(p);
+                            if (p.proposal.plan) setDraft(p.proposal.plan);
+                          })
+                        }
+                      >
+                        Dùng quy tắc và kiểm tra lại
+                      </button>
+                    </div>
+                  ))}
+                </details>
+              )}
               {draft && (
                 <>
                   <button
@@ -738,16 +792,14 @@ export function ReconciliationStudio({
                             "AI đã chuẩn bị gợi ý. Hãy kiểm tra các điểm cần xác nhận; chưa có quyền thực thi.",
                           );
                         }
-                      })
+                      }, () => setManualOpen(true))
                     }
                   >
                     <Sparkles size={16} />
-                    AI đề xuất kế hoạch (có dùng quota)
+                    Đề xuất cách đối soát
                   </button>
                   <p className="muted">
-                    Chưa cần nhập khóa chính xác để hỏi AI. Thiếu kỳ, múi giờ
-                    hoặc coverage sẽ cần bạn xác nhận. Nếu hết quota, mở phần
-                    chỉnh thủ công bên dưới.
+                    Xác nhận kỳ, múi giờ và độ đầy đủ khi được yêu cầu. Bạn cũng có thể thiết lập thủ công.
                   </p>
                   <div className="rule-grid">
                     <label>
@@ -820,7 +872,7 @@ export function ReconciliationStudio({
                       />
                     </label>
                   </div>
-                  <details open>
+                  <details open={manualOpen} onToggle={event => setManualOpen(event.currentTarget.open)}>
                     <summary>Chỉnh khóa và chỉ tiêu thủ công</summary>
                     {pairBuilder("Khóa liên kết đã xác nhận", "join_keys")}
                     <fieldset className="rule-fieldset">
@@ -1125,7 +1177,7 @@ export function ReconciliationStudio({
                             ),
                           );
                           setMessage(
-                            "Rule hợp lệ về cấu trúc/ngữ nghĩa; vẫn cần bạn phê duyệt.",
+                            "Đã kiểm tra điều kiện. Bạn có thể xem và duyệt quy tắc.",
                           );
                         })
                       }
@@ -1155,8 +1207,7 @@ export function ReconciliationStudio({
                   {readiness && (
                     <Notice>
                       <p>
-                        Đã kiểm tra schema, scope, grain, metric, thời gian và
-                        khóa. Trùng khóa được giữ để review.
+                        Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa. Hãy xem xét các dòng trùng khóa.
                       </p>
                       {readiness.sources.map((s) => (
                         <p key={s.side}>
@@ -1175,10 +1226,9 @@ export function ReconciliationStudio({
                   )}
                   {proposal && (
                     <div className="rule-approval">
-                      <h3>Review trước khi chạy</h3>
+                      <h3>Xác nhận trước khi chạy</h3>
                       <p>
-                        {proposal.origin} · {proposal.proposal.status} ·{" "}
-                        {draft.join_keys
+                        Khóa liên kết: {draft.join_keys
                           .map((p) => `${p.left} ↔ ${p.right}`)
                           .join(", ")}
                       </p>
@@ -1266,6 +1316,7 @@ export function ReconciliationStudio({
                               if (alive.current) {
                                 setSelectedCaseId("");
                                 setRunId(accepted.run_id);
+                                setWorkView("results");
                               }
                             })
                           }
@@ -1278,149 +1329,11 @@ export function ReconciliationStudio({
                   )}
                 </>
               )}
-              {templates.length > 0 && (
-                <details>
-                  <summary>Mẫu quy tắc đã duyệt</summary>
-                  {templates.map((t) => (
-                    <div className="template-row" key={t.id}>
-                      <span>
-                        {t.plan.name} · {t.plan.cardinality}
-                      </span>
-                      <button
-                        className="text-button"
-                        disabled={busy || !draft}
-                        onClick={() =>
-                          draft &&
-                          void action(async () => {
-                            const p = await api<Proposal>(
-                              `/reconciliation-contracts/${t.id}/reuse`,
-                              send({
-                                left_canonical_id: draft.left.canonical_id,
-                                right_canonical_id: draft.right.canonical_id,
-                                period_start: draft.period_start,
-                                period_end: draft.period_end,
-                                left_coverage_start: draft.left.coverage_start,
-                                left_coverage_end: draft.left.coverage_end,
-                                right_coverage_start:
-                                  draft.right.coverage_start,
-                                right_coverage_end: draft.right.coverage_end,
-                                completeness: draft.left.completeness,
-                                snapshot_at: new Date().toISOString(),
-                              }),
-                            );
-                            setProposal(p);
-                            if (p.proposal.plan) setDraft(p.proposal.plan);
-                          })
-                        }
-                      >
-                        Tái sử dụng và review lại
-                      </button>
-                    </div>
-                  ))}
-                </details>
-              )}
             </>
           )}
         </fieldset>
       )}
-      {mode !== "home" && runs.length > 0 && (
-        <details className="card run-history">
-          <summary>Lịch sử các lần đối soát ({runTotal})</summary>
-          <div className="rule-grid">
-            <label>
-              Kỳ bắt đầu từ
-              <input
-                type="date"
-                value={fromPeriod}
-                onChange={(e) => {
-                  setFromPeriod(e.target.value);
-                  setRunOffset(0);
-                }}
-              />
-            </label>
-            <label>
-              Kỳ kết thúc đến
-              <input
-                type="date"
-                value={toPeriod}
-                onChange={(e) => {
-                  setToPeriod(e.target.value);
-                  setRunOffset(0);
-                }}
-              />
-            </label>
-            <label>
-              Lọc theo nguồn
-              <select
-                value={sourceFilter}
-                onChange={(e) => {
-                  setSourceFilter(e.target.value);
-                  setRunOffset(0);
-                }}
-              >
-                <option value="">Tất cả nguồn</option>
-                {catalogue.map((c) => (
-                  <option key={c.canonical.id} value={c.canonical.id}>
-                    {c.name} · {c.canonical.id.slice(0, 8)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="table-scroll">
-            <table className="result-table">
-              <thead>
-                <tr>
-                  <th>Lần đối soát</th>
-                  <th>Kỳ</th>
-                  <th>Trạng thái</th>
-                  <th>Kết quả</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.id.slice(0, 8)}</td>
-                    <td>
-                      {r.metric_snapshot?.period_start || "—"} /{" "}
-                      {r.metric_snapshot?.period_end || "—"}
-                    </td>
-                    <td>{label(r.status)}</td>
-                    <td>
-                      <button
-                        className="text-button"
-                        onClick={() => {
-                          setSelectedCaseId("");
-                          setRunId(r.id);
-                        }}
-                      >
-                        Mở kết quả
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="run-toolbar">
-            <span>{runTotal} lần chạy</span>
-            <button
-              className="button secondary"
-              disabled={!runOffset}
-              onClick={() => setRunOffset(Math.max(0, runOffset - 25))}
-            >
-              Trang lần chạy trước
-            </button>
-            <button
-              className="button secondary"
-              disabled={runOffset + 25 >= runTotal}
-              onClick={() => setRunOffset(runOffset + 25)}
-            >
-              Trang lần chạy sau
-            </button>
-          </div>
-        </details>
-      )}
+      {showResults && <>
       {listLoading ? (
         <Spinner />
       ) : runs.length === 0 && !runId && !error ? (
@@ -1442,7 +1355,7 @@ export function ReconciliationStudio({
           <section className="card run-overview" aria-label="Phạm vi lần đối soát">
           <div className="run-toolbar">
             <label>
-              Lần đối soát
+              <span className="run-selector-label">Lần đối soát</span>
               <select
                 aria-label="Lần đối soát"
                 value={runId}
@@ -1459,55 +1372,35 @@ export function ReconciliationStudio({
                 )}
                 {runs.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.id.slice(0, 8)} · {label(r.status)}
+                    {r.metric_snapshot ? `${r.metric_snapshot.period_start} – ${r.metric_snapshot.period_end}` : "Chưa có kết quả"}
+                    {" · "}{label(r.status)}{" · "}{r.id.slice(0, 8)}
                   </option>
                 ))}
               </select>
             </label>
             {run && <Badge status={run.status} />}
           </div>
+            {!!runSources.length && <p className="run-sources"><strong title={runSources[0]}>{runSources[0]}</strong><span aria-label="đối soát với">↔</span><strong title={runSources[1]}>{runSources[1]}</strong></p>}
             {snapshot && <>
               <p className="run-period">
                 <strong>Kỳ đối soát</strong> {snapshot.period_start} đến trước {snapshot.period_end} · {snapshot.timezone}
               </p>
               {run?.status === "PARTIAL_VERIFIED" && <Notice tone="warning">
-                Kết quả đã xác minh một phần. Xem phạm vi và các nhóm bị loại trước khi sử dụng số liệu.
+                Kết quả đã xác minh một phần.
+                {mode !== "exceptions" ? <button className="text-button" onClick={() => {
+                  const disclosure = analysisDisclosure.current;
+                  if (disclosure) {
+                    disclosure.open = true;
+                    disclosure.querySelector("summary")?.focus();
+                  }
+                }} aria-label="Xem phạm vi và nhóm bị loại">Xem phạm vi</button> : " Kiểm tra phạm vi trước khi sử dụng số liệu."}
               </Notice>}
-              <div className="run-actions">
-                <div className="run-export" aria-label="Xuất báo cáo">
-                  <p>Phạm vi xuất gồm toàn bộ lần đối soát đang chọn. Bộ lọc bên dưới chỉ áp dụng khi xem trên màn hình.</p>
-                  <div className="rule-actions">
-                <button
-                  className="button secondary"
-                  disabled={busy || !canEdit}
-                  onClick={() => void exportFile("csv")}
-                >
-                  <ArrowDownToLine size={16} />
-                  Xuất CSV
-                </button>
-                <button
-                  className="button secondary"
-                  disabled={busy || !canEdit}
-                  onClick={() => void exportFile("xlsx")}
-                >
-                  Xuất XLSX
-                </button>
-                {download && (
-                  <a className="button primary" href={download} download>
-                    Tải báo cáo
-                  </a>
+              <p className="scope-summary" aria-label="Phạm vi chỉ số">
+                <strong>{snapshot.eligible_units} đơn vị đủ điều kiện</strong>
+                {Object.entries(snapshot.excluded_counts).filter(([, count]) => count > 0).map(([state, count]) =>
+                  <span key={state}>{label(state)} · {count}</span>
                 )}
-                  </div>
-                </div>
-                <div className="run-links">
-                  {mode !== "exceptions" && onOpenExceptions && <button className="text-button" onClick={() => onOpenExceptions(runId)}>
-                    Xem ngoại lệ của lần này
-                  </button>}
-                  <button className="text-button" onClick={() => onAsk({ project_id: projectId, run_id: runId })}>
-                    <Sparkles size={16} /> Hỏi AI Assistant về run này
-                  </button>
-                </div>
-              </div>
+              </p>
             </>}
           </section>
           {runId && !run && !error && <Spinner />}
@@ -1534,7 +1427,7 @@ export function ReconciliationStudio({
                         snapshot.full_match_rate.percent === null
                           ? "N/A"
                           : `${snapshot.full_match_rate.percent}%`,
-                        `${snapshot.full_match_rate.numerator}/${snapshot.full_match_rate.denominator} đơn vị đủ điều kiện`,
+                        `${snapshot.full_match_rate.numerator}/${snapshot.full_match_rate.denominator} đủ điều kiện`,
                       ],
                       [
                         "Cần kiểm tra",
@@ -1543,75 +1436,64 @@ export function ReconciliationStudio({
                       ],
                       [
                         "Giá trị lệch tuyệt đối",
-                        snapshot.monetary[0]?.absolute_variance ?? "N/A",
-                        `${snapshot.monetary[0]?.currency || ""} · ${snapshot.monetary[0]?.metric_id || ""}`,
+                        snapshot.monetary[0] ? formatDecimal(snapshot.monetary[0].absolute_variance) : "N/A",
+                        `${snapshot.monetary[0]?.currency || ""} · ${snapshot.monetary[0] ? metricName(snapshot.monetary[0].metric_id) : ""}`,
                       ],
                       [
                         "Tự động phân loại",
                         snapshot.automation_coverage.percent === null
                           ? "N/A"
                           : `${snapshot.automation_coverage.percent}%`,
-                        `${snapshot.automation_coverage.numerator}/${snapshot.automation_coverage.denominator} đơn vị đủ điều kiện, gồm nhóm lệch và thiếu đối ứng đã xác minh`,
+                        `${snapshot.automation_coverage.numerator}/${snapshot.automation_coverage.denominator} đủ điều kiện`,
                       ],
                     ].map(([name, value, detail]) => (
-                      <article className="card" key={name}>
+                      <article key={name}>
                         <span>{name}</span>
                         <strong>{value}</strong>
                         <small>{detail}</small>
                       </article>
                     ))}
                   </div>
-                  <div className="result-panels">
-                    <div className="card">
-                      <h3>Trạng thái liên kết</h3>
-                      <p className="muted">
-                        Đếm nhóm kết quả, gồm cả ngoài phạm vi. Mẫu số KPI được
-                        công bố riêng.
-                      </p>
-                      <StatusChart counts={snapshot.linkage_counts} />
-                    </div>
-                    <div className="card">
-                      <h3>Phạm vi và mẫu số</h3>
-                      <p>
-                        {snapshot.period_start} đến trước {snapshot.period_end}{" "}
-                        · {snapshot.timezone}
-                      </p>
-                      <p>
-                        {snapshot.comparison_unit ===
-                        "Left canonical reference group"
-                          ? "Một nhóm tham chiếu ở nguồn trái"
-                          : "Một bản ghi chuẩn hóa tham chiếu ở nguồn trái"}
-                      </p>
-                      <p className="muted">
-                        Đơn vị trong phạm vi có khóa, số tiền và tiền tệ hợp lệ.
-                        Loại lỗi, ngoài kỳ, đang chờ và thiếu tiền nguồn trái
-                        khỏi mẫu số. Đơn vị mơ hồ vẫn được tính để review. Tự
-                        động hóa là phân loại đã kiểm chứng, không cần quyết
-                        định thủ công trên từng đơn vị.
-                      </p>
-                      <p>
-                        Đủ điều kiện: {snapshot.eligible_units}. Case tại thời
-                        điểm chạy: {snapshot.unresolved_cases_at_run}.
-                      </p>
-                      {Object.entries(snapshot.excluded_counts).map(
-                        ([key, value]) => (
-                          <p key={key}>
-                            Loại khỏi mẫu số: {label(key)} — {value}
-                          </p>
-                        ),
-                      )}
-                      {snapshot.monetary.map((m) => (
-                        <p key={m.metric_id}>
-                          {m.metric_id} ({m.currency}): chênh lệch có dấu{" "}
-                          {m.signed_variance}, tuyệt đối {m.absolute_variance};{" "}
-                          {m.comparable_groups} nhóm so sánh được.
-                        </p>
-                      ))}
-                    </div>
-                  </div>
                 </>
               )}
-              <div className="card">
+              <div className="run-actions">
+                <details className="run-export">
+                  <summary>Xuất báo cáo</summary>
+                  <p>Báo cáo gồm toàn bộ lượt đối soát đang chọn. Bộ lọc chỉ áp dụng trên màn hình.</p>
+                  <div className="rule-actions">
+                <button
+                  className="button secondary"
+                  disabled={busy || !canEdit}
+                  onClick={() => void exportFile("csv")}
+                >
+                  <ArrowDownToLine size={16} />
+                  Xuất CSV
+                </button>
+                <button
+                  className="button secondary"
+                  disabled={busy || !canEdit}
+                  onClick={() => void exportFile("xlsx")}
+                >
+                  Xuất XLSX
+                </button>
+                {download && (
+                  <a className="button primary" href={download} download>
+                    Tải báo cáo
+                  </a>
+                )}
+                  </div>
+                </details>
+                <div className="run-links">
+                  {mode !== "exceptions" && onOpenExceptions && <button className="text-button" onClick={() => onOpenExceptions(runId)}>
+                    Xem ngoại lệ của lần này
+                  </button>}
+                  <button className="text-button" aria-label="Hỏi AI về kết quả này" title="Hỏi AI về kết quả này"
+                    onClick={() => onAsk({ project_id: projectId, run_id: runId })}>
+                    <Sparkles size={16} /><span className="run-ask-label">Hỏi AI về kết quả này</span>
+                  </button>
+                </div>
+              </div>
+              <div className="card result-data">
                 <div className="section-heading">
                   <h3>
                     {mode === "exceptions"
@@ -1877,10 +1759,161 @@ export function ReconciliationStudio({
                   </button>
                 </div>
               </div>
+              {mode !== "exceptions" && <details className="result-analysis" ref={analysisDisclosure}
+                onToggle={event => setAnalysisOpen(event.currentTarget.open)}>
+                <summary>Phạm vi, nhóm loại trừ và phân bố kết quả</summary>
+                  <div className="result-panels">
+                    <div>
+                      <h3>Trạng thái liên kết</h3>
+                      <p className="muted">
+                        Đếm nhóm kết quả, gồm cả ngoài phạm vi. Mẫu số KPI được
+                        công bố riêng.
+                      </p>
+                      {analysisOpen && <StatusChart counts={snapshot.linkage_counts} />}
+                    </div>
+                    <div>
+                      <h3>Phạm vi và mẫu số</h3>
+                      <p>
+                        {snapshot.period_start} đến trước {snapshot.period_end}{" "}
+                        · {snapshot.timezone}
+                      </p>
+                      <p>
+                        {snapshot.comparison_unit ===
+                        "Left canonical reference group"
+                          ? "Một nhóm tham chiếu ở nguồn trái"
+                          : "Một bản ghi chuẩn hóa tham chiếu ở nguồn trái"}
+                      </p>
+                      <p className="muted">
+                        Đơn vị trong phạm vi có khóa, số tiền và tiền tệ hợp lệ.
+                        Loại lỗi, ngoài kỳ, đang chờ và thiếu tiền nguồn trái
+                        khỏi mẫu số. Đơn vị mơ hồ vẫn được tính để xem xét. Tự
+                        động hóa là phân loại đã kiểm chứng, không cần quyết
+                        định thủ công trên từng đơn vị.
+                      </p>
+                      <p>
+                        Đủ điều kiện: {snapshot.eligible_units}. Case tại thời
+                        điểm chạy: {snapshot.unresolved_cases_at_run}.
+                      </p>
+                      {Object.entries(snapshot.excluded_counts).map(
+                        ([key, value]) => (
+                          <p key={key}>
+                            Loại khỏi mẫu số: {label(key)} — {value}
+                          </p>
+                        ),
+                      )}
+                      {snapshot.monetary.map((m) => (
+                        <p key={m.metric_id}>
+                        {metricName(m.metric_id)} ({m.currency}): chênh lệch có dấu{" "}
+                          {m.signed_variance}, tuyệt đối {m.absolute_variance};{" "}
+                          {m.comparable_groups} nhóm so sánh được.
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+              </details>}
             </>
           )}
         </>
       )}
+      {mode !== "home" && runs.length > 0 && (
+        <details className="card run-history">
+          <summary>Lịch sử các lần đối soát ({runTotal})</summary>
+          <div className="rule-grid">
+            <label>
+              Kỳ bắt đầu từ
+              <input
+                type="date"
+                value={fromPeriod}
+                onChange={(e) => {
+                  setFromPeriod(e.target.value);
+                  setRunOffset(0);
+                }}
+              />
+            </label>
+            <label>
+              Kỳ kết thúc đến
+              <input
+                type="date"
+                value={toPeriod}
+                onChange={(e) => {
+                  setToPeriod(e.target.value);
+                  setRunOffset(0);
+                }}
+              />
+            </label>
+            <label>
+              Lọc theo nguồn
+              <select
+                value={sourceFilter}
+                onChange={(e) => {
+                  setSourceFilter(e.target.value);
+                  setRunOffset(0);
+                }}
+              >
+                <option value="">Tất cả nguồn</option>
+                {catalogue.map((c) => (
+                  <option key={c.canonical.id} value={c.canonical.id}>
+                    {c.name} · {c.canonical.id.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="table-scroll">
+            <table className="result-table">
+              <thead>
+                <tr>
+                  <th>Lần đối soát</th>
+                  <th>Kỳ</th>
+                  <th>Trạng thái</th>
+                  <th>Kết quả</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.id.slice(0, 8)}</td>
+                    <td>
+                      {r.metric_snapshot?.period_start || "—"} /{" "}
+                      {r.metric_snapshot?.period_end || "—"}
+                    </td>
+                    <td>{label(r.status)}</td>
+                    <td>
+                      <button
+                        className="text-button"
+                        onClick={() => {
+                          setSelectedCaseId("");
+                          setRunId(r.id);
+                        }}
+                      >
+                        Mở kết quả
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="run-toolbar">
+            <span>{runTotal} lần chạy</span>
+            <button
+              className="button secondary"
+              disabled={!runOffset}
+              onClick={() => setRunOffset(Math.max(0, runOffset - 25))}
+            >
+              Trang lần chạy trước
+            </button>
+            <button
+              className="button secondary"
+              disabled={runOffset + 25 >= runTotal}
+              onClick={() => setRunOffset(runOffset + 25)}
+            >
+              Trang lần chạy sau
+            </button>
+          </div>
+        </details>
+      )}
+      </>}
     </section>
   );
   return <>

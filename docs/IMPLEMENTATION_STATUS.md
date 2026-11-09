@@ -1,5 +1,9 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Ứng viên dựng lại trải nghiệm sản phẩm — 09/11/2026
+
+Chủ dự án đã yêu cầu dựng lại giao diện sau khi xem W1–W5. Nhánh `codex/complete-product-interface` tách từ `f259b099`. Trạng thái và bằng chứng kiểm chứng riêng ở [biên bản dựng lại trải nghiệm](INTERFACE_REDESIGN_AUDIT.md#dung-lai-trai-nghiem). Mốc Docker W1–W5 phía dưới là mốc so sánh.
+
 ## Ứng viên UX đang chạy local — 09/11/2026
 
 W1–W5 chạy tại `http://127.0.0.1:18180` trên một Docker Compose. Chủ dự án miễn prototype W0 riêng và chuyển các phép đo sang bản ứng viên. Nhánh `codex/full-interface-redesign` tách khỏi `main`. Chủ dự án chưa nghiệm thu giao diện.

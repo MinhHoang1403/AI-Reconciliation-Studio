@@ -1,5 +1,18 @@
 # Kiểm kê câu chữ theo hành trình
 
+## Câu chữ trong ứng viên complete-product-interface
+
+| Trước | Trong ứng viên |
+| --- | --- |
+| AI Smart Setup | Xác nhận cột |
+| Chuẩn hóa dùng cho hai hành động | Tạo bản chuẩn hóa hoặc xem lớp Chuẩn hóa |
+| AI đề xuất kế hoạch kèm thông tin lượt dùng | Đề xuất cách đối soát |
+| Model cho tin nhắn mới trong vùng nhập | Trợ lý cho tin nhắn mới trong Tùy chọn hội thoại |
+| Tùy chọn xuất luôn mở | Xuất báo cáo, mở để chọn định dạng và xem phạm vi |
+| Cài đặt với thông báo theo lý do kỹ thuật | Trạng thái sử dụng, quyền chia sẻ dữ liệu và đường thủ công |
+
+Phạm vi, độ đầy đủ, kỳ, tiền tệ, ảnh hưởng của quyết định, bằng chứng và trạng thái xác minh tiếp tục là nội dung nghiệp vụ.
+
 **SOURCE_VERIFIED → PROPOSED**, baseline `c477745d6c4426c663089251f75182aa1e2c375c`. Cột hiện hành trích chuỗi hoặc đoạn định danh đúng vị trí trong source. Các dấu ngoặc nhọn trong cột đề xuất là giá trị từ DTO hoặc biến UI tương ứng. Điều kiện hiển thị ở cột nguồn mô tả khi chuỗi được dùng trong code, không chứng minh mọi nhánh đã được tái hiện trên ứng dụng chạy. Xem [báo cáo kiểm toán](../INTERFACE_REDESIGN_AUDIT.md) cho chứng cứ quan sát.
 
 Câu chữ trong cột đề xuất là danh sách để kiểm trên ứng viên thật theo quyết định miễn prototype W0 riêng. D01–D10 đã **OWNER_APPROVED**. Những chuỗi được đổi trong W1–W5 dùng cùng quyền, trạng thái và dữ kiện review. Một số nhãn điều hướng và thao tác giữ cách gọi đã có để nhất quán giữa Chat và trang thủ công. Xem [biên bản quyết định](OPEN_DECISIONS.md) và [kiểm toán ứng viên](../INTERFACE_REDESIGN_AUDIT.md#w1w5).

@@ -251,7 +251,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     });
     await page.goto('/');
     const projectPicker=page.locator('#project-select');
-    await expect(projectPicker.getByText('Dự án',{exact:true})).toBeVisible();
+    await expect(projectPicker.getByText(projectName,{exact:true})).toBeVisible();
     await expect(projectPicker).toHaveAttribute('title',projectName);
     const shortProjectWidth=(await projectPicker.boundingBox())!.width;
     if(width>=1366)expect(shortProjectWidth).toBeLessThan(300);
@@ -339,7 +339,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     await expect(projectPicker.locator('strong')).toHaveText(projectName);
     const longProjectBox=(await projectPicker.boundingBox())!;
     if(width>=1366)expect(longProjectBox.width).toBeGreaterThan(shortProjectWidth);
-    const controls=(await page.locator('.assistant-toolbar-actions').boundingBox())!;
+    const controls=(await page.locator('.topbar-end').boundingBox())!;
     expect(longProjectBox.x+longProjectBox.width).toBeLessThanOrEqual(controls.x);
     expect(longProjectBox.height).toBeLessThanOrEqual(44);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

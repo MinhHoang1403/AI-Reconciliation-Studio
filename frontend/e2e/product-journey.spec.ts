@@ -14,7 +14,8 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   await page.goto("/#page=home");
   await expect(page.locator("#project-select")).toBeVisible();
   const quota = await (await page.request.get("/api/settings")).json();
-  await page.getByRole("button", { name: "+ Tạo dự án", exact: true }).click();
+  await page.locator("#project-select").click();
+  await page.getByRole("button", { name: "Tạo dự án mới", exact: true }).click();
   const create = page.getByRole("dialog", { name: "Tạo dự án", exact: true });
   await create
     .getByLabel("Tên dự án", { exact: true })
@@ -65,7 +66,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
       buffer: await readFile(i ? xlsxPath : "../tests/fixtures/shipments.csv"),
     });
     await upload.getByText("Tùy chọn đọc nâng cao", { exact: true }).click();
-    await upload.getByLabel("Dùng AI đề xuất ánh xạ trong hạn mức").uncheck();
+    await upload.getByLabel("Dùng AI đề xuất cách đọc cột").uncheck();
     await upload
       .getByRole("button", { name: "Tải 1 tệp", exact: true })
       .click();
@@ -73,16 +74,16 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     await expect(
       page.getByRole("cell", { name: "000702", exact: true }),
     ).toBeVisible();
-    const dataViews = page.getByRole("group", { name: "Lớp dữ liệu" });
-    await dataViews.getByRole("button", { name: "Giá trị gốc", exact: true }).click();
+    const dataViews = page.getByRole("combobox", { name: "Lớp dữ liệu", exact: true });
+    await dataViews.selectOption("raw");
     await expect(page.getByRole("cell", { name: "000702", exact: true })).toBeVisible();
-    await dataViews.getByRole("button", { name: "Tự chuẩn bị", exact: true }).click();
+    await dataViews.selectOption("prepared");
     await expect(page.getByText("Đã tự chuẩn bị để xem và tìm kiếm.", { exact: false })).toBeVisible();
     await expect(page.getByRole("cell", { name: "000702", exact: true })).toBeVisible();
     await page.getByText("Thống kê dữ liệu nguồn", { exact: true }).click();
     await expect(page.locator(".profile-grid")).toContainText("tracking_id");
     await page
-      .getByRole("tab", { name: "AI Smart Setup", exact: true })
+      .getByRole("button", { name: "Xác nhận cột", exact: true })
       .click();
     await page.getByLabel("Loại dữ liệu", { exact: true }).fill("delivery");
     await page
@@ -99,6 +100,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
       const row = page.locator(".mapping-row").filter({
         has: page.getByLabel(`Trường đích ${field}`, { exact: true }),
       });
+      await row.locator(":scope > summary").click();
       await row.getByLabel(`Trường đích ${field}`, { exact: true }).fill(field);
       await row
         .getByLabel(`Kiểu ${field}`, { exact: true })
@@ -139,7 +141,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     await expect(
       page.getByText("Đã cập nhật ánh xạ.", { exact: true }),
     ).toBeVisible();
-    await page.getByRole("tab", { name: "Chuẩn hóa", exact: true }).click();
+    await page.getByRole("button", { name: "Tạo bản chuẩn hóa", exact: true }).click();
     await page
       .getByRole("button", { name: "Chuẩn hóa dữ liệu", exact: true })
       .click();
@@ -165,7 +167,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
       page.getByRole("cell", { name: i ? "10.00" : "12.75", exact: true }),
     ).toBeVisible();
     if (i === 0) {
-      await page.getByRole("tab", { name: "AI Smart Setup", exact: true }).click();
+      await page.getByRole("button", { name: "Xác nhận cột", exact: true }).click();
       await page.getByText("Tự áp dụng cho lần tải tương thích", { exact: true }).click();
       await page.getByRole("button", { name: "Cho phép tự áp dụng mẫu", exact: true }).click();
       await expect(page.getByRole("button", { name: "Tắt tự áp dụng mẫu", exact: true })).toBeVisible();
@@ -213,7 +215,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     .click();
   await expect(
     page.getByText(
-      "Đã kiểm tra schema, scope, grain, metric, thời gian và khóa. Trùng khóa được giữ để review.",
+      "Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa. Hãy xem xét các dòng trùng khóa.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -257,9 +259,8 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   await mismatch
     .getByRole("button", { name: "Xem ngoại lệ", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toContainText(
-    "12.75 − 10.00 = 2.75 VND",
-  );
+  await expect(page.getByRole("dialog").locator(".evidence-comparison tbody tr").getByRole("cell"))
+    .toHaveText(["12.75", "10.00", "2.75", "VND"]);
   await page.keyboard.press("Escape");
   await mismatch
     .getByRole("button", { name: "Hỏi vì sao lệch", exact: true })
@@ -310,6 +311,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   ).toHaveCount(3);
   await openLegacyPage(page, "reports");
   const downloads: string[] = [];
+  await page.locator(".run-export > summary").click();
   for (const format of ["CSV", "XLSX"]) {
     const response = page.waitForResponse(
       (r) =>
@@ -354,15 +356,14 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     buffer: Buffer.from(revised),
   });
   await repeatUpload.getByText("Tùy chọn đọc nâng cao", { exact: true }).click();
-  await repeatUpload.getByLabel("Dùng AI đề xuất ánh xạ trong hạn mức").uncheck();
+  await repeatUpload.getByLabel("Dùng AI đề xuất cách đọc cột").uncheck();
   await repeatUpload.getByRole("button", { name: "Tải 1 tệp", exact: true }).click();
   await expect(repeatUpload).not.toBeVisible();
   await expect(page.getByRole("cell", { name: "Parcel A repeat", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Tự chuẩn bị", exact: true }).click();
-  const canonicalLayer = page.getByRole("group", { name: "Lớp dữ liệu", exact: true })
-    .getByRole("button", { name: "Chuẩn hóa", exact: true });
-  await canonicalLayer.click();
-  await expect(canonicalLayer).toHaveAttribute("aria-pressed", "true");
+  const layers = page.getByRole("combobox", { name: "Lớp dữ liệu", exact: true });
+  await layers.selectOption("prepared");
+  await layers.selectOption("canonical");
+  await expect(layers).toHaveValue("canonical");
   await expect(page.getByRole("cell", { name: "Parcel A repeat", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: /2026-11-01/ })).toBeVisible();
   expect(

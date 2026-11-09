@@ -113,16 +113,13 @@ for(const width of [390,768,1366,1440,1920]) {
     const form=page.locator('.assistant-composer');
     const send=form.getByRole('button',{name:'Gửi câu hỏi',exact:true});
     const box=await form.boundingBox();
-    const model=form.getByRole('combobox',{name:'Model cho tin nhắn mới',exact:true});
-    if(width===390 && await model.isVisible()){
-      await expect(model.locator('option')).toHaveText(['Gemini 3.5 Flash Lite','Qwen 3:8B']);
-      const inputBox=(await input.boundingBox())!;
-      const modelBox=(await model.boundingBox())!;
-      expect(box!.height).toBeLessThanOrEqual(110);
-      expect(modelBox.y).toBeGreaterThanOrEqual(inputBox.y+inputBox.height);
-      expect(inputBox.width).toBeGreaterThan(box!.width*0.75);
-      await expect(send).toBeInViewport();
-    }else expect(box!.height).toBeLessThanOrEqual(64);
+    expect(box!.height).toBeLessThanOrEqual(64);
+    const model=page.getByRole('combobox',{name:'Trợ lý cho tin nhắn mới',exact:true});
+    await expect(model).not.toBeVisible();
+    await page.getByLabel('Tùy chọn hội thoại',{exact:true}).click();
+    await expect(model.locator('option')).toHaveText(['Gemini 3.5 Flash Lite','Qwen 3:8B']);
+    await page.keyboard.press('Escape');
+    await expect(model).not.toBeVisible();
     await expect(send).toHaveText('');await expect(send).toBeDisabled();
     await input.click();
     await expect(page.locator('.app-shell')).toHaveAttribute('data-focus-mode','pointer');
@@ -188,7 +185,7 @@ test('[MOCK CONTRACT] Settings uses user-facing availability, privacy and roles 
     agent_max_upload_files:2,agent_upload_extensions:['.csv','.xlsx'],max_rows:1234,
     policy:{mode:scenario==='local'?'LOCAL_ONLY':'CLOUD_ALLOWED',allow_external_ai:scenario!=='local',allow_cloud_parsing:false}}}));
   await page.route('**/api/session',route=>route.fulfill({json:{role,workspace_id:'synthetic',actor_id:'settings-reader'}}));
-  for(const [next,expected] of [['allowed','Có thể yêu cầu AI hỗ trợ'],['key','Hỗ trợ AI hiện chưa khả dụng'],['budget','Đã hết lượt hỗ trợ AI'],['task','Hỗ trợ AI hiện chưa khả dụng'],['taskbudget','Đã hết lượt hỗ trợ AI'],['local','Xử lý trong ứng dụng']]){
+  for(const [next,expected] of [['allowed','Có thể yêu cầu AI hỗ trợ'],['key','AI tạm thời chưa thể hỗ trợ'],['budget','AI tạm thời chưa thể hỗ trợ'],['task','AI tạm thời chưa thể hỗ trợ'],['taskbudget','AI tạm thời chưa thể hỗ trợ'],['local','Xử lý trong ứng dụng']]){
     scenario=next;await page.goto('/#page=settings');await page.reload();
     const settings=page.locator('.settings-page');await expect(settings).toContainText(expected);
     await expect(settings).not.toContainText(/Thông tin nâng cao|Gemini|Qwen|synthetic-model|Chưa cấu hình|kết nối chưa xác minh|Lượt AI đã ghi nhận/);
@@ -385,6 +382,7 @@ test('[MOCK conversation, LIVE read] verified report opens in chat and preserves
   await page.goto('/');const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await expect(input).toBeEnabled();await input.fill('Bản nháp ở màn hình kết quả');
   const before=page.url();await expect(page.getByRole('region',{name:'Công việc của AI Assistant',exact:true})).toHaveCount(1);await page.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Chi tiết kết quả đã xác minh',exact:true});
+  await dialog.locator(".result-analysis > summary").click();
   await expect(dialog).toContainText('33.33');await expect(dialog).toContainText('2.75');await expect(dialog.getByRole('img',{name:'Phân bố trạng thái đối soát'})).toBeVisible();
   await page.screenshot({path:test.info().outputPath('verified-result.png'),fullPage:true});
   await page.keyboard.press('Escape');await expect(input).toHaveValue('Bản nháp ở màn hình kết quả');expect(page.url()).toBe(before);

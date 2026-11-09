@@ -104,7 +104,11 @@ test(`[${process.env.STUDIO_LIVE_PROVIDER==='GEMINI'?'LIVE GEMINI':'LOCAL ORACLE
   await page.getByRole('button',{name:'Xác nhận phân loại',exact:true}).click();
   await expect(page.getByText('Đã lưu phân loại. Dữ liệu và lịch sử vẫn được giữ nguyên.',{exact:true})).toBeVisible();
   await page.keyboard.press('Escape');
-  if(live)await page.getByRole('combobox',{name:'Model cho tin nhắn mới',exact:true}).selectOption('GEMINI');
+  if(live){
+    await page.getByLabel("Tùy chọn hội thoại",{exact:true}).click();
+    await page.getByRole('combobox',{name:'Trợ lý cho tin nhắn mới',exact:true}).selectOption('GEMINI');
+    await page.keyboard.press('Escape');
+  }
   await page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true}).fill(live
     ? 'Hãy kiểm tra giúp mình: trong tệp này, những hàng nào chứa ngày bị ghi sai?'
     : 'Những dòng lỗi ngày tháng nằm ở đâu?');
@@ -269,6 +273,7 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${proces
   await expect(work).toContainText('Chênh lệch tuyệt đối');
   await work.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
   const report=page.getByRole('dialog',{name:'Chi tiết kết quả đã xác minh',exact:true});
+  await report.locator(".result-analysis > summary").click();
   const chart=report.getByRole('img',{name:'Phân bố trạng thái đối soát'});
   await chart.scrollIntoViewIfNeeded();
   await expect(chart).toBeVisible();

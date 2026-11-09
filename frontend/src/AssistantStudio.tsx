@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense, type RefObject, type ReactNode } from "react";
+import { HistoryRows } from "./ProjectHistory";
+import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense, type RefObject } from "react";
 import { MessageSquarePlus, ArrowUp, Trash2, Plus, MoreHorizontal, Sparkles, X, LoaderCircle, Files, SlidersHorizontal } from "lucide-react";
 import { AgentWorkflowPanel } from "./AgentWorkflowPanel";
 import type { Review } from "./agentTypes";
@@ -102,10 +103,9 @@ export function AssistantStudio({
   onContextChange,
   onUploadProject,
   agentEnabled = false,
-  historyOpen, setHistoryOpen, historyReturnFocus, aiRequestsRemaining,
-  uploadLimits, projectSelector, onScopeDenied,
+  historyOpen, setHistoryOpen, historyReturnFocus,
+  uploadLimits, onScopeDenied,
 }: {
-  projectSelector?: ReactNode;
   initialContext: AssistantContext;
   onNavigate: (target: Suggestion, context: AssistantContext) => void;
   cloudEnabled?: boolean;
@@ -118,7 +118,6 @@ export function AssistantStudio({
   onUploadProject: (id: string) => Promise<void>;
   onScopeDenied: () => void;
   agentEnabled?: boolean;
-  aiRequestsRemaining?: number | null;
   uploadLimits?: { maxBytes: number; maxFiles: number; extensions: string[] };
   historyOpen: boolean;
   setHistoryOpen: (open: boolean) => void;
@@ -801,7 +800,7 @@ export function AssistantStudio({
   return (
     <section className={`assistant-studio ${messages.length?"has-conversation":"is-welcome"}`} aria-label="Hội thoại AI Assistant">
       <div className="assistant-toolbar" aria-label="Công cụ hội thoại">
-        {projectSelector&&<div className="assistant-project-picker">{projectSelector}</div>}
+        <h1>AI Assistant</h1>
         <div className="assistant-toolbar-actions">
           {context.project_id&&<button className="icon-button" aria-label="Tệp đã tải" title="Tệp đã tải" onClick={()=>openDetail("OPEN_DATA",displayContext)}><Files size={18}/></button>}
           {context.project_id&&<button className="icon-button context-chip" data-run-id={displayContext.run_id||""} data-dataset-id={displayContext.dataset_id||""} aria-label="Đổi ngữ cảnh phân tích" title={displayContext.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:displayContext.dataset_id?(sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Nguồn đang xem"):"Chọn dữ liệu phân tích"} onClick={()=>setContextOpen(true)}><SlidersHorizontal size={18}/><span className="visually-hidden">{displayContext.dataset_id&&sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Chọn dữ liệu phân tích"}</span></button>}
@@ -810,8 +809,27 @@ export function AssistantStudio({
             <summary aria-label="Tùy chọn hội thoại" title="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary>
             <div className="assistant-options">
               <strong>Tùy chọn hội thoại</strong>
-              <p>{selectedModel !== "GEMINI" ? "Các yêu cầu cần suy luận sẽ dùng Qwen trên máy." : (mode==="AGENT"?agentEnabled:cloudEnabled)?"AI hỗ trợ theo quyền và chính sách dữ liệu của bạn.":"Chế độ dữ kiện đã xác minh đang được sử dụng; suy luận AI chưa khả dụng theo quyền hiện tại."}</p>
-              {selectedModel === "GEMINI" && typeof aiRequestsRemaining==="number"&&<p>Bạn còn {aiRequestsRemaining} lượt hỗ trợ AI theo quyền hiện tại.</p>}
+              {selectedModel === "GEMINI" && !(mode === "AGENT" ? agentEnabled : cloudEnabled) &&
+                <p>Bạn vẫn có thể hỏi về các kết quả đã xác minh hoặc dùng Đối soát thủ công.</p>}
+              {(models.length > 0 || modelChoice) && <label>Trợ lý<select
+              aria-label="Trợ lý cho tin nhắn mới"
+              value={selectedModel}
+              disabled={busy && !pendingJob}
+              onFocus={() => setModelRefresh(value => value + 1)}
+              onChange={event => {
+                const choice = models.find(option => option.id === event.target.value && option.available);
+                if (!choice) return;
+                localStorage.setItem(modelStorageKey, choice.id);
+                setModelChoice(choice.id);
+              }}
+            >
+              {composerModels.map(model => (
+                <option key={model.id} value={model.id}
+                  disabled={!models.some(option => option.id === model.id && option.available)}>
+                  {model.name}
+                </option>
+              ))}
+            </select></label>}
               <label>Xử lý yêu cầu<select aria-label="Chế độ hội thoại" value={mode} disabled={busy||!!pendingJob} onChange={e=>setMode(e.target.value as "AGENT"|"LEGACY")}><option value="AGENT">Thực hiện tác vụ dữ liệu</option><option value="LEGACY">Chỉ hỏi dữ kiện đã xác minh</option></select></label>
               {context.project_id&&<button className="text-button" onClick={()=>onNavigate("OPEN_RECONCILIATION",displayContext)}>Thiết lập đối soát thủ công</button>}
               {conversation&&<button className="text-button" disabled={busy||!!pendingJob} onClick={event=>{deleteTrigger.current=event.currentTarget;setConfirmDelete(true);}}><Trash2 size={15}/>Xóa hội thoại</button>}
@@ -1084,26 +1102,6 @@ export function AssistantStudio({
               />
             </label>
             <div className="composer-actions">
-            {(models.length > 0 || modelChoice) && <select
-              className="composer-model"
-              aria-label="Model cho tin nhắn mới"
-              value={selectedModel}
-              disabled={busy && !pendingJob}
-              onFocus={() => setModelRefresh(value => value + 1)}
-              onChange={event => {
-                const choice = models.find(option => option.id === event.target.value && option.available);
-                if (!choice) return;
-                localStorage.setItem(modelStorageKey, choice.id);
-                setModelChoice(choice.id);
-              }}
-            >
-              {composerModels.map(model => (
-                <option key={model.id} value={model.id}
-                  disabled={!models.some(option => option.id === model.id && option.available)}>
-                  {model.name}
-                </option>
-              ))}
-            </select>}
             <button
               className="composer-send"
               aria-label="Gửi câu hỏi"
@@ -1162,18 +1160,8 @@ export function AssistantStudio({
           {historyError && <Notice tone="error">Không tải được lịch sử: {historyError}<button className="text-button" onClick={()=>void loadHistory()}>Tải lại lịch sử</button></Notice>}
           {!historyLoading && !historyError && !history.length && <p>Chưa có hội thoại trong dự án này.</p>}
           {!historyLoading && !historyError && history.length>0 && !history.some(item=>item.title.toLocaleLowerCase().includes(historySearch.toLocaleLowerCase())) && <p>Không có hội thoại phù hợp trong danh sách đã tải.</p>}
-          {history.filter(item=>item.title.toLocaleLowerCase().includes(historySearch.toLocaleLowerCase())).map((item) => (
-            <button
-              key={item.id}
-              className={`history-item ${conversation?.id === item.id ? "selected" : ""}`}
-              aria-current={conversation?.id === item.id ? "true" : undefined}
-              disabled={busy}
-              onClick={() => void openConversation(item.id)}
-            >
-              <strong>{item.title}</strong>
-              <small>{new Date(item.created_at).toLocaleString("vi-VN")} · {item.context.run_id ? "Đối soát" : "Chuẩn bị dữ liệu"}</small>
-            </button>
-          ))}
+          <HistoryRows items={history.filter(item => item.title.toLocaleLowerCase().includes(historySearch.trim().toLocaleLowerCase()))}
+            current={conversation?.id} busy={busy} onOpen={id => void openConversation(id)} />
           {moreHistory && (
             <button
               className="text-button"

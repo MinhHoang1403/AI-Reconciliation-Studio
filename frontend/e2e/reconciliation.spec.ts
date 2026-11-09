@@ -168,7 +168,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
     .click();
   await expect(
     page.getByText(
-      "Đã kiểm tra schema, scope, grain, metric, thời gian và khóa. Trùng khóa được giữ để review.",
+      "Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa. Hãy xem xét các dòng trùng khóa.",
     ),
   ).toBeVisible();
   await page
@@ -248,11 +248,8 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
   });
   await row.getByRole("button", { name: "Xem ngoại lệ", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByText("delivery_charge: 12.75 − 10.00 = 2.75 VND", {
-      exact: true,
-    }),
-  ).toBeVisible();
+  const amountRow = dialog.locator(".evidence-comparison tbody tr").filter({ hasText: "delivery_charge" });
+  await expect(amountRow.getByRole("cell")).toHaveText(["12.75", "10.00", "2.75", "VND"]);
   const sourceRequest = page.waitForRequest(
     (r) =>
       decodeURIComponent(r.url()).includes(":c4?row=") && r.method() === "GET",
@@ -302,6 +299,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
   ).toEqual(originalGroups);
   await mkdir("../runtime", { recursive: true });
   const exports: Record<string, unknown> = {};
+  await page.locator(".run-export > summary").click();
   for (const format of ["csv", "xlsx"]) {
     const infoResponse = page.waitForResponse(
       (response) =>
@@ -344,6 +342,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
   await expect(page.getByLabel("Lần đối soát", { exact: true })).toHaveValue(
     rid,
   );
+  await page.locator(".result-analysis > summary").click();
   await expect(
     page.getByRole("img", { name: "Phân bố trạng thái đối soát" }),
   ).toBeVisible();
@@ -457,7 +456,7 @@ test("Planner UI accepts sources with no common key and presents review-only sug
   await page.getByLabel("Nguồn đối ứng", { exact: true }).selectOption(right);
   await page
     .getByRole("button", {
-      name: "AI đề xuất kế hoạch (có dùng quota)",
+      name: "Đề xuất cách đối soát",
       exact: true,
     })
     .click();
@@ -486,12 +485,12 @@ test("Planner UI accepts sources with no common key and presents review-only sug
   );
   await page
     .getByRole("button", {
-      name: "AI đề xuất kế hoạch (có dùng quota)",
+      name: "Đề xuất cách đối soát",
       exact: true,
     })
     .click();
   await expect(
-    page.getByText(/CLOUD_BUDGET_EXHAUSTED.*Có thể tạo rule thủ công/),
+    page.getByText(/Tác vụ AI hiện chưa được phép tiếp tục/),
   ).toBeVisible();
   await expect(
     page
@@ -551,7 +550,7 @@ for (const size of [
     await expect(page.getByLabel("Từ ngày", { exact: true })).toHaveValue("");
     await expect(
       page.getByRole("button", {
-        name: "AI đề xuất kế hoạch (có dùng quota)",
+        name: "Đề xuất cách đối soát",
         exact: true,
       }),
     ).toBeVisible();

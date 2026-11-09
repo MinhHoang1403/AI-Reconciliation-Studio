@@ -17,13 +17,13 @@ import {
   FolderOpen,
   Layers3,
   History,
+  MoreHorizontal,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
   Search,
   Settings2,
-  ShieldCheck,
   Sparkles,
   Upload,
   X,
@@ -32,11 +32,12 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { api, ApiError } from "./api";
 import { WorkspaceSettings as WorkspaceSettingsPanel } from "./WorkspaceSettings";
 import { ProjectSelector } from "./ProjectSelector";
+import { ProjectHistory } from "./ProjectHistory";
+import { ResourceManagement, type ManagedResource } from "./ResourceManagement";
 import { DataOverview } from "./DataOverview";
 import {
   Badge,
   DataTable,
-  DatasetList,
   formatValue,
   Modal,
   Notice,
@@ -125,6 +126,12 @@ export function App() {
   const [tab, setTab] = useState<Tab>("explore");
   const [project, setProject] = useState<Project | null>(null);
   const [projectId, setProjectId] = useState("");
+  const [manage, setManage] = useState<ManagedResource | null>(null);
+  const manageTrigger = useRef<HTMLElement | null>(null);
+  function openManagement(target: ManagedResource, trigger: HTMLElement | null) {
+    manageTrigger.current = trigger;
+    setManage(target);
+  }
   const [planNavigation, setPlanNavigation] = useState<{
     id: string;
     projectId: string;
@@ -139,6 +146,7 @@ export function App() {
   }>({ projectId: "", items: [], loading: true, error: "" });
   const [recentRetry, setRecentRetry] = useState(0);
   const [datasetOffset, setDatasetOffset] = useState(0);
+  const [datasetSearch, setDatasetSearch] = useState("");
   const [sourceListOpen, setSourceListOpen] = useState(() => !location.context?.dataset_id);
   const [datasetTotal, setDatasetTotal] = useState(0);
   const [summary, setSummary] = useState<ProjectSummary | null>(null);
@@ -157,6 +165,8 @@ export function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [datasetId, setDatasetId] = useState("");
   const [tables, setTables] = useState<Table[]>([]);
+  const [tableRequest, setTableRequest] = useState({ datasetId: "", loading: false, error: "" });
+  const tableRequestSequence = useRef(0);
   const [documentState, setDocumentState] = useState<{
     datasetId: string;
     items: DocumentArtifact[];
@@ -217,8 +227,8 @@ export function App() {
   const [evidence, setEvidence] = useState<Record<string, unknown> | null>(
     null,
   );
-  const scopeRef = useRef({ projectId, datasetId, tableId, datasetOffset });
-  scopeRef.current = { projectId, datasetId, tableId, datasetOffset };
+  const scopeRef = useRef({ projectId, datasetId, tableId, datasetOffset, datasetSearch });
+  scopeRef.current = { projectId, datasetId, tableId, datasetOffset, datasetSearch };
   const fileInput = useRef<HTMLInputElement>(null);
   const modalFocus = useRef<HTMLElement | null>(null);
   const navigation = useRef<HTMLElement | null>(null);
@@ -242,8 +252,10 @@ export function App() {
         `${viewport?.height || window.innerHeight}px`,
       );
     resize();
+    window.addEventListener("resize", resize);
     viewport?.addEventListener("resize", resize);
     return () => {
+      window.removeEventListener("resize", resize);
       viewport?.removeEventListener("resize", resize);
       document.documentElement.style.removeProperty(
         "--assistant-viewport-height",
@@ -420,7 +432,7 @@ export function App() {
     try {
       const [d, j, s] = await Promise.all([
         api<{ items: Dataset[]; total: number }>(
-          `/datasets?project_id=${projectId}&offset=${datasetOffset}&limit=25`,
+          `/datasets?project_id=${projectId}&offset=${datasetOffset}&limit=25&search=${encodeURIComponent(datasetSearch)}`,
           { signal: controller.signal },
         ),
         api<{ items: Job[] }>(`/jobs?project_id=${projectId}`, {
@@ -434,7 +446,8 @@ export function App() {
         controller.signal.aborted ||
         sequence !== projectSequence.current ||
         scopeRef.current.projectId !== projectId ||
-        scopeRef.current.datasetOffset !== datasetOffset
+        scopeRef.current.datasetOffset !== datasetOffset ||
+        scopeRef.current.datasetSearch !== datasetSearch
       )
         return;
       setDatasets(d.items);
@@ -463,7 +476,7 @@ export function App() {
       if (!controller.signal.aborted && sequence === projectSequence.current)
         setProjectLoading(false);
     }
-  }, [projectId, datasetOffset]);
+  }, [projectId, datasetOffset, datasetSearch]);
   useEffect(() => {
     if (!ready || page !== "settings") return;
     let current = true;
@@ -502,7 +515,7 @@ export function App() {
         let saved: {tableId?: string; tab?: string} | null = null;
         try { saved=JSON.parse(sessionStorage.getItem(`studio.data-view.${draftOwner}.${projectId}.${requested}`)||"null"); } catch { /* optional tab context */ }
         restoredDataView.current={datasetId:requested,tableId:typeof saved?.tableId==="string"?saved.tableId:""};
-        setPendingTarget(null); setSelectedSource(dataset); setDatasetId(dataset.id);
+        setPendingTarget(null); setSelectedSource(dataset); setDatasetId(dataset.id); setSourceListOpen(false);
         setTab(saved?.tab==="mapping"||saved?.tab==="normalize"?saved.tab:"explore");
       })
       .catch(err=>{if(!controller.signal.aborted)setError(err instanceof Error?err.message:"Không khôi phục được nguồn dữ liệu.");});
@@ -571,14 +584,18 @@ export function App() {
   }, [ready, page, summary, projectLoading, projectError, refreshProject]);
 
   const loadTables = useCallback(async () => {
+    const sequence = ++tableRequestSequence.current;
     if (!datasetId) {
       setTables([]);
+      setTableRequest({ datasetId: "", loading: false, error: "" });
       return;
     }
+    setTableRequest({ datasetId, loading: true, error: "" });
+    try {
     const result = await api<{ items: Table[] }>(
       `/datasets/${datasetId}/tables`,
     );
-    if (scopeRef.current.datasetId !== datasetId) return;
+    if (scopeRef.current.datasetId !== datasetId || sequence !== tableRequestSequence.current) return;
     setTables(result.items);
     const restored = restoredDataView.current;
     setTableId((old) =>
@@ -592,6 +609,11 @@ export function App() {
           : result.items[0]?.id || "",
     );
     if(restored?.datasetId===datasetId)restoredDataView.current=null;
+    setTableRequest({ datasetId, loading: false, error: "" });
+    } catch (err) {
+      if (scopeRef.current.datasetId !== datasetId || sequence !== tableRequestSequence.current) return;
+      setTableRequest({ datasetId, loading: false, error: err instanceof Error ? err.message : "Không tải được bảng dữ liệu." });
+    }
   }, [datasetId, pendingTarget]);
   useEffect(() => {
     void loadTables().catch((err) => setError(err.message));
@@ -714,15 +736,19 @@ export function App() {
     setDatasetId(d.id);
     navigate("data", {project_id: projectId, dataset_id: d.id});
     setTab("explore");
+    setSourceListOpen(false);
     setSidebar(false);
   }
-  function chooseProject(selected: Project, recordHistory = true) {
-    if (selected.id === projectId) return;
+  function chooseProject(selected: Project | null, recordHistory = true) {
+    const nextId = selected?.id ?? "";
+    if (nextId === projectId) return;
+    if (!nextId) localStorage.removeItem("studio.project");
     scopeRef.current = {
-      projectId: selected.id,
+      projectId: nextId,
       datasetId: "",
       tableId: "",
       datasetOffset: 0,
+      datasetSearch: "",
     };
     projectSequence.current += 1;
     refreshController.current?.abort();
@@ -733,11 +759,12 @@ export function App() {
     setSelectedSource(null);
     setPendingTarget(null);
     setProject(selected);
-    setProjectId(selected.id);
+    setProjectId(nextId);
     setDatasets([]);
-    setRecent({ projectId: selected.id, items: [], loading: true, error: "" });
+    setRecent({ projectId: nextId, items: [], loading: !!nextId, error: "" });
     setDatasetTotal(0);
     setDatasetOffset(0);
+    setDatasetSearch("");
     setSourceListOpen(true);
     setJobs([]);
     setSummary(null);
@@ -759,8 +786,8 @@ export function App() {
     if (recordHistory)
       navigate(
         page,
-        page === "assistant" ? { project_id: selected.id } : null,
-        selected.id,
+        page === "assistant" && nextId ? { project_id: nextId } : null,
+        nextId,
       );
   }
   useEffect(() => {
@@ -915,7 +942,7 @@ export function App() {
     setSuccess(
       result.items.every((x) => x.reused)
         ? "Đã tìm thấy dữ liệu cùng nội dung và cấu hình trong dự án; tái sử dụng kết quả hiện có."
-        : "Đã lưu tệp gốc. Worker đang đọc và phân tích dữ liệu.",
+        : "Đã lưu tệp gốc. Đang đọc dữ liệu.",
     );
   }
   async function normalize() {
@@ -1093,7 +1120,6 @@ export function App() {
           <button disabled={!ready} aria-label="Lịch sử" title="Lịch sử" aria-expanded={assistantHistoryOpen} onClick={event => {
             assistantHistoryTrigger.current = window.matchMedia("(max-width: 900px)").matches
               ? document.querySelector<HTMLElement>(".menu-button") : event.currentTarget;
-            if (page !== "assistant") openAssistant({project_id:projectId});
             setSidebar(false);
             setAssistantHistoryOpen(true);
           }}><History size={19}/><span>Lịch sử</span></button>
@@ -1144,15 +1170,20 @@ export function App() {
             >
               {compactNavigation ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
             </button>
-            {page === "assistant" ? <h1 className="shell-title">AI Assistant</h1> :
-              <span className="shell-context">{project && !projectAccessDenied && page !== "settings" ? project.name : "Reconciliation Studio"}</span>}
+            {ready && page !== "settings" && <ProjectSelector
+              project={projectAccessDenied ? null : project} onSelect={chooseProject}
+              disabled={busy} canClassify={actorRole === "owner"}
+              onCreate={canEdit ? openNewProject : undefined}
+              onManage={actorRole === "owner" ? () => openManagement({ kind: "projects" }, document.getElementById("project-select")) : undefined}
+              onClassificationChange={value => setProject(current => current?.id === value.id ? value : current)}
+            />}
           </div>
           <div className="topbar-end">
-            <span className={`connection ${ready ? "connected" : bootstrapError ? "disconnected" : "connecting"}`} role="status" aria-label="Trạng thái kết nối">
+            <span className={`connection ${ready ? "connected visually-hidden" : bootstrapError ? "disconnected" : "connecting"}`} role="status" aria-label="Trạng thái kết nối">
               <span />
               {ready ? "Hệ thống đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}
             </span>
-            <span className="avatar" aria-hidden="true">LC</span>
+            <button className="avatar" aria-label="Tài khoản và cài đặt" onClick={() => setPage("settings")}>LC</button>
           </div>
         </header>
         <main
@@ -1160,7 +1191,7 @@ export function App() {
           className={page === "assistant" ? "assistant-main" : ""}
           inert={restoringLocation || undefined}
         >
-          {page!=="assistant"&&<div className="page-heading">
+          {page !== "assistant" && (!["reconcile", "exceptions", "reports"].includes(page) || !ready || !projectId || projectAccessDenied) && <div className="page-heading">
             <div>
               <h1>
                 {page === "home"
@@ -1224,21 +1255,9 @@ export function App() {
           )}
           {success && <Notice tone="success">{success}</Notice>}
           {!ready && !bootstrapError && <Spinner />}
-          {ready && page !== "settings" && (page !== "assistant" || projectAccessDenied) && (
-            <div className="project-bar">
-              <ProjectSelector
-                project={projectAccessDenied ? null : project}
-                onSelect={chooseProject}
-                disabled={busy}
-                canClassify={actorRole === "owner"}
-                onCreate={canEdit ? openNewProject : undefined}
-                onClassificationChange={(value) =>
-                  setProject((current) =>
-                    current?.id === value.id ? value : current,
-                  )
-                }
-              />
-              {projectId && page!=="assistant" && (
+          {ready && (page === "data" || page === "home") && (
+            <div className="workspace-utilities">
+              {projectId && (
                 <button
                   className="icon-button"
                   aria-label="Cập nhật dự án"
@@ -1252,7 +1271,7 @@ export function App() {
                   />
                 </button>
               )}
-              {page!=="assistant"&&<button
+              {!projectId && <button
                 className="text-button"
                 disabled={!canEdit}
                 onClick={() => openNewProject()}
@@ -1322,7 +1341,7 @@ export function App() {
                         | "exceptions"
                         | "reports"
                     }
-                    onSetup={() => setPage("reconcile")}
+                    onSetup={() => { setRunNavigation(null); setPage("reconcile"); }}
                     onOpenExceptions={id => {
                       setRunNavigation({ id, request: Date.now() });
                       navigate("exceptions", { project_id: projectId, run_id: id });
@@ -1370,15 +1389,6 @@ export function App() {
                 <Suspense fallback={<Spinner />}>
                   <AssistantStudio
                     key={JSON.stringify([assistantContext, location.conversationId])}
-                    projectSelector={<ProjectSelector
-                      showLabel
-                      project={project}
-                      onSelect={chooseProject}
-                      disabled={busy}
-                      canClassify={actorRole === "owner"}
-                      onCreate={canEdit ? openNewProject : undefined}
-                      onClassificationChange={(value) => setProject((current) => current?.id === value.id ? value : current)}
-                    />}
                     initialContext={assistantContext || {project_id:projectId}}
                     projectName={project?.name || "Chưa chọn dự án · tải file để bắt đầu"}
                     draftOwner={draftOwner}
@@ -1393,7 +1403,6 @@ export function App() {
                     }}
                     cloudEnabled={!!workspace?.assistant_cloud_enabled}
                     agentEnabled={!!workspace?.agent_cloud_enabled}
-                    aiRequestsRemaining={workspace?.gemini_requests_remaining}
                     uploadLimits={workspace?.agent_max_upload_files && workspace.agent_upload_extensions ? {
                       maxBytes: workspace.max_upload_bytes, maxFiles: workspace.agent_max_upload_files,
                       extensions: workspace.agent_upload_extensions,
@@ -1452,7 +1461,6 @@ export function App() {
               recentLoading={recent.projectId !== projectId || recent.loading}
               recentError={recent.projectId === projectId ? recent.error : ""}
               onRecentRetry={() => setRecentRetry((value) => value + 1)}
-              workspace={workspace}
               busy={busy}
               onAction={(action) => void run(() => openPreparation(action))}
               onResults={(target) => {
@@ -1474,35 +1482,37 @@ export function App() {
           )}
           {ready && projectId && summary && page === "data" && (
             <>
-              {datasets.length === 0 ? (
-                <section className="panel empty-state">
-                  <Database size={36} />
-                  <h2>Mọi nguồn dữ liệu, trong một nơi</h2>
-                  <p>
-                    Chọn Tải dữ liệu để thêm CSV hoặc XLSX. PDF/DOCX cần quyền
-                    và allowance riêng; bản trích xuất luôn cần kiểm tra.
-                  </p>
-                </section>
-              ) : (
-                <div className="data-workspace">
-                  <section className="panel dataset-panel">
+              <div className="data-workspace source-workspace">
+                  {(!selectedDataset || sourceListOpen) && <section className="source-inventory" aria-busy={projectLoading}>
                     <div className="panel-heading">
                       <h2>
-                        Nguồn trong dự án{" "}
+                        Nguồn dữ liệu{" "}
                         <span className="count">{datasetTotal}</span>
                       </h2>
-                      {selectedDataset && <button type="button" className="text-button source-list-toggle"
-                        aria-controls="project-sources" aria-expanded={sourceListOpen}
-                        onClick={() => setSourceListOpen(open => !open)}>
-                        {sourceListOpen ? "Thu gọn" : "Đổi nguồn"}
-                      </button>}
+                      {actorRole === "owner" && <button type="button" className="text-button" id="manage-sources"
+                        onClick={event => openManagement({ kind: "datasets", projectId }, event.currentTarget)}>Quản lý nguồn</button>}
                     </div>
-                    <div id="project-sources" className={selectedDataset && !sourceListOpen ? "sources-collapsed" : ""}>
-                    <DatasetList
-                      items={datasets}
-                      onSelect={chooseDataset}
-                      selected={datasetId}
-                    />
+                    <label className="search-input inventory-search">
+                      <Search size={17} aria-hidden="true" />
+                      <input type="search" aria-label="Tìm nguồn dữ liệu" placeholder="Tìm nguồn theo tên…" maxLength={200}
+                        value={datasetSearch} onChange={event => { setDatasetSearch(event.target.value); setDatasetOffset(0); }} />
+                    </label>
+                    {projectLoading && <Spinner />}
+                    {datasets.length ? <ul className="inventory-rows dataset-list">
+                      {datasets.map(source => <li key={source.id} className="inventory-row">
+                        <button className="source-name" onClick={() => chooseDataset(source)}>
+                          <FileSpreadsheet size={18} aria-hidden="true" /><span>{source.name}</span>
+                        </button>
+                        <Badge status={source.status} />
+                        <time dateTime={source.created_at}>{new Date(source.created_at).toLocaleDateString("vi-VN")}</time>
+                        {actorRole === "owner" && <button className="icon-button" aria-label={`Quản lý ${source.name}`}
+                          onClick={event => openManagement({ kind: "datasets", projectId, id: source.id }, event.currentTarget)}><MoreHorizontal size={18} /></button>}
+                      </li>)}
+                    </ul> : !projectLoading && <div className="empty-state">
+                      <Database size={28} aria-hidden="true" />
+                      <h3>{datasetSearch.trim() ? "Không tìm thấy nguồn phù hợp" : "Chưa có nguồn dữ liệu"}</h3>
+                      {datasetSearch.trim() ? <button className="text-button" onClick={() => setDatasetSearch("")}>Xóa tìm kiếm</button> : <p>Tải tệp để bắt đầu.</p>}
+                    </div>}
                     {datasetTotal > 25 && (
                       <div className="pagination list-pagination">
                         <span>
@@ -1532,22 +1542,28 @@ export function App() {
                         </div>
                       </div>
                     )}
-                    </div>
-                  </section>
-                  {selectedDataset && (
-                    <section className="panel detail-panel">
+                  </section>}
+                  {selectedDataset && !sourceListOpen && (
+                    <section className="detail-panel source-sheet">
+                      <button type="button" className="text-button source-back" onClick={() => {
+                        setSourceListOpen(true);
+                        setSelectedSource(null);
+                        setDatasetId("");
+                        navigate("data", null);
+                      }}>
+                        <ChevronLeft size={16} /> Nguồn dữ liệu
+                      </button>
                       <div className="panel-heading">
                         <div>
                           <h2>{selectedDataset.name}</h2>
                         </div>
                         <Badge status={selectedDataset.status} />
+                        {actorRole === "owner" && <button className="icon-button" aria-label={`Quản lý ${selectedDataset.name}`}
+                          onClick={event => openManagement({ kind: "datasets", projectId, id: selectedDataset.id }, event.currentTarget)}><MoreHorizontal size={18} /></button>}
                       </div>
                       {selectedDataset.status === "PARTIAL" && (
-                        <Notice tone="warning">
-                          Dữ liệu cần kiểm tra.{" "}
-                          {currentCanonical
-                            ? `${currentCanonical.invalid_count} / ${currentCanonical.row_count} dòng cần kiểm tra trong kết quả đang chọn.`
-                            : "Mở bảng và xem kết quả hoặc hoạt động xử lý để tìm nguyên nhân; trạng thái này không tự cho biết ánh xạ đã được duyệt hay chưa."}
+                        <div className="source-warning" role="status">
+                          {currentCanonical ? `Dữ liệu cần kiểm tra · ${currentCanonical.invalid_count} / ${currentCanonical.row_count} dòng` : "Có dòng cần kiểm tra"}
                           {currentCanonical && (
                             <button
                               className="text-button"
@@ -1557,12 +1573,15 @@ export function App() {
                                 setOffset(0);
                               }}
                             >
-                              Xem cảnh báo / lỗi dữ liệu
+                              Xem lỗi
                             </button>
                           )}
-                        </Notice>
+                        </div>
                       )}
-                      {tables.length === 0 ? (
+                      {tableRequest.datasetId !== datasetId || tableRequest.loading && !tables.length ? <Spinner />
+                        : tableRequest.error ? <Notice tone="error">{tableRequest.error}
+                          <button className="text-button" onClick={() => void loadTables()}>Tải lại bảng dữ liệu</button>
+                        </Notice> : tables.length === 0 ? (
                         <div className="empty-state">
                           {/\.(pdf|docx)$/i.test(selectedDataset.name) ? (
                             <div>
@@ -1595,7 +1614,7 @@ export function App() {
                         <>
                           <div className="table-picker">
                             <label>
-                              Bảng / sheet
+                              Bảng dữ liệu
                               <select
                                 value={tableId}
                                 onChange={(e) => {
@@ -1615,31 +1634,25 @@ export function App() {
                                 ))}
                               </select>
                             </label>
-                            <span>
-                              {table?.parsed.columns.length} cột · Tiêu đề ở
-                              dòng {table?.parsed.header_row}
-                            </span>
                           </div>
                           <div
-                            className="tabs"
-                            role="tablist"
-                            aria-label="Xử lý dữ liệu"
+                            className="source-workflow"
+                            role="group"
+                            aria-label="Công việc với nguồn"
                           >
                             {(
                               [
-                                ["explore", "Khám phá dữ liệu"],
-                                ["mapping", "AI Smart Setup"],
-                                ["normalize", "Chuẩn hóa"],
+                                ["explore", "Xem dữ liệu"],
+                                ["mapping", "Xác nhận cột"],
+                                ["normalize", "Tạo bản chuẩn hóa"],
                               ] as const
                             ).map(([key, label]) => (
                               <button
-                                role="tab"
-                                aria-selected={tab === key}
-                                className={tab === key ? "selected" : ""}
+                                aria-pressed={tab === key}
+                                className={`button ${tab === key ? "secondary selected" : "secondary"}`}
                                 key={key}
                                 onClick={() => setTab(key)}
                               >
-                                {key === "mapping" && <Sparkles size={15} />}
                                 {label}
                               </button>
                             ))}
@@ -1669,10 +1682,6 @@ export function App() {
                                 <div className="section-heading">
                                   <div>
                                     <h2>Chuẩn hóa theo ánh xạ đã duyệt</h2>
-                                    <p>
-                                      Số tiền được xử lý bằng Decimal; giá trị
-                                      lỗi và null được lưu riêng.
-                                    </p>
                                   </div>
                                   <button
                                     className="button primary"
@@ -1695,7 +1704,7 @@ export function App() {
                                       className="text-button"
                                       onClick={() => setTab("mapping")}
                                     >
-                                      Mở AI Smart Setup <ArrowRight size={14} />
+                                      Xác nhận cột <ArrowRight size={14} />
                                     </button>
                                   </Notice>
                                 )}
@@ -1720,7 +1729,7 @@ export function App() {
                                           <Badge status={c.quality_status} />
                                           {c.stale && (
                                             <span className="stale">
-                                              Revision cũ · không dùng cho xử lý
+                                              Phiên bản cũ · không dùng cho xử lý
                                               mới
                                             </span>
                                           )}
@@ -1749,37 +1758,20 @@ export function App() {
                             {tab === "explore" && (
                               <>
                                 <div className="explorer-tools">
-                                  <div
-                                    className="view-toggle"
-                                    role="group"
-                                    aria-label="Lớp dữ liệu"
-                                  >
-                                    {(
-                                      [
-                                        ["raw", "Giá trị gốc"],
-                                        ["prepared", "Tự chuẩn bị"],
-                                        ["canonical", "Chuẩn hóa"],
-                                        ["errors", "Cảnh báo / lỗi"],
-                                      ] as const
-                                    ).map(([key, label]) => (
-                                      <button
-                                        key={key}
-                                        disabled={key === "prepared" && !table?.prepared ||
-                                          key === "canonical" && !canonicalId ||
-                                          key === "errors" && !canonicalId && !table?.prepared}
-                                        aria-pressed={view === key ||
-                                          (key === "errors" && view === "prepared_findings")}
-                                        className={view === key ||
-                                          (key === "errors" && view === "prepared_findings") ? "chosen" : ""}
-                                        onClick={() => {
-                                          setView(key === "errors" && !canonicalId ? "prepared_findings" : key);
-                                          setOffset(0);
-                                        }}
-                                      >
-                                        {label}
-                                      </button>
-                                    ))}
-                                  </div>
+                                  <label className="source-view">
+                                    <span>Lớp dữ liệu</span>
+                                    <select value={view === "prepared_findings" ? "errors" : view}
+                                      onChange={event => {
+                                        const next = event.target.value as View;
+                                        setView(next === "errors" && !canonicalId ? "prepared_findings" : next);
+                                        setOffset(0);
+                                      }}>
+                                      <option value="raw">Giá trị gốc</option>
+                                      <option value="prepared" disabled={!table?.prepared}>Tự chuẩn bị</option>
+                                      <option value="canonical" disabled={!canonicalId}>Đã chuẩn hóa</option>
+                                      <option value="errors" disabled={!canonicalId && !table?.prepared}>Cảnh báo / lỗi</option>
+                                    </select>
+                                  </label>
                                   <label className="search-input">
                                     <Search size={17} />
                                     <input
@@ -1822,7 +1814,7 @@ export function App() {
                                   ["canonical", "errors"].includes(view) && (
                                     <Notice tone="warning">
                                       Kết quả lịch sử thuộc ánh xạ cũ. Cần chuẩn
-                                      hóa lại theo revision hiện hành.
+                                      hóa lại theo cách đọc cột hiện hành.
                                     </Notice>
                                   )}
                                 {view === "raw" && (
@@ -1937,13 +1929,13 @@ export function App() {
                       )}
                     </section>
                   )}
-                </div>
-              )}
+              </div>
             </>
           )}
           {ready && page === "settings" && workspace && (
             <WorkspaceSettingsPanel settings={workspace} role={actorRole}
-              tableDensity={tableDensity} onDensityChange={setTableDensity} />
+              tableDensity={tableDensity} onDensityChange={setTableDensity}
+              onManageProjects={actorRole === "owner" ? trigger => openManagement({ kind: "projects" }, trigger) : undefined} />
           )}
           {ready &&
             jobs.length > 0 &&
@@ -1953,7 +1945,6 @@ export function App() {
                 <div className="panel-heading">
                   <div>
                     <h2>Hoạt động xử lý</h2>
-                    <p>Trạng thái thực tế từ worker.</p>
                   </div>
                   <button
                     className="text-button"
@@ -1991,15 +1982,32 @@ export function App() {
                 ))}
               </section>
             )}
-          {page !== "assistant" && (
-            <footer>
-              <ShieldCheck size={14} />
-              Tệp gốc bất biến · Ánh xạ có phê duyệt · Dữ liệu có nguồn gốc
-              <span>Kết quả có kiểm chứng</span>
-            </footer>
-          )}
         </main>
       </div>
+      {page !== "assistant" && assistantHistoryOpen && <ProjectHistory key={projectId}
+        projectId={projectId} projectName={project?.name || "Dự án"} returnFocus={assistantHistoryTrigger}
+        onClose={() => setAssistantHistoryOpen(false)} onOpen={id => {
+          setAssistantHistoryOpen(false);
+          navigate("assistant", { project_id: projectId }, projectId, false, id);
+        }} />}
+      {manage && actorRole === "owner" && <ResourceManagement target={manage} returnFocus={manageTrigger} onClose={() => setManage(null)}
+        onChanged={(id, parent, state) => {
+          if (parent !== projectId) return;
+          if (manage.kind === "projects" && state !== "active") {
+            chooseProject(null);
+            return;
+          }
+          if (manage.kind === "datasets" && id === datasetId && state !== "active") {
+            setDatasetId(""); setSelectedSource(null); setSourceListOpen(true);
+            navigate("data", null, projectId, true);
+          }
+          if (manage.kind === "datasets" && state !== "active") {
+            requestAnimationFrame(() => {
+              manageTrigger.current = document.getElementById("manage-sources") ?? document.getElementById("project-select");
+            });
+          }
+          void refreshProject();
+        }} />}
       <Modal
         title="Tạo dự án"
         open={projectOpen}
@@ -2130,7 +2138,7 @@ export function App() {
                 checked={requestAiMapping}
                 onChange={(event) => setRequestAiMapping(event.target.checked)}
               />
-              Dùng AI đề xuất ánh xạ trong hạn mức
+              Dùng AI đề xuất cách đọc cột
             </label>
             <div className="form-grid">
               <label>

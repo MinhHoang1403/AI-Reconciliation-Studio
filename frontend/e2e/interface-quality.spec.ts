@@ -28,6 +28,57 @@ const projects = (count: number): Project[] =>
     workspace_id: "synthetic",
   }));
 
+test("[MOCK CONTRACT] project lifecycle previews impact and restores the hidden project", async ({ page }) => {
+  const [sample] = projects(1);
+  sample.classification = "TEST";
+  await fixture(page, [sample], sample.id);
+  let state = "active";
+  let version = 0;
+  const writes: unknown[] = [];
+  await page.route(`**/api/projects/${sample.id}/lifecycle`, async route => {
+    if (route.request().method() === "POST") {
+      const request = route.request().postDataJSON();
+      writes.push(request);
+      state = request.action === "restore" ? "active" : "deleted";
+      version++;
+    }
+    return route.fulfill({ json: {
+      id: sample.id, project_id: sample.id, name: sample.name,
+      state, version, references: {}, running_jobs: 0, open_work: 0,
+      allowed: state === "active" ? ["archive", "delete"] : ["restore"],
+    } });
+  });
+  await page.route("**/api/projects?**", route => {
+    const filter = new URL(route.request().url()).searchParams.get("lifecycle");
+    if (!filter) return route.fallback();
+    return route.fulfill({ json: { items: filter === state ? [sample] : [], total: filter === state ? 1 : 0 } });
+  });
+  await page.goto("/#page=settings");
+  const trigger = page.getByRole("button", { name: "Quản lý dự án", exact: true });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Quản lý dự án" });
+  await dialog.getByRole("button", { name: `Quản lý ${sample.name}`, exact: true }).click();
+  await expect(dialog.getByRole("region", { name: "Tác động" })).toContainText(sample.name);
+  await dialog.getByRole("button", { name: "Xóa dự án", exact: true }).click();
+  const confirm = dialog.getByRole("button", { name: "Xác nhận xóa", exact: true });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByLabel("Nhập lại tên dự án").fill(sample.name);
+  await confirm.click();
+  await expect(dialog.getByText("Đã xóa khỏi danh sách.", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Danh sách dự án" }).click();
+  await dialog.getByRole("combobox", { name: "Danh sách" }).selectOption("deleted");
+  await dialog.getByRole("button", { name: `Quản lý ${sample.name}`, exact: true }).click();
+  await dialog.getByRole("button", { name: "Khôi phục", exact: true }).click();
+  await dialog.getByRole("button", { name: "Xác nhận khôi phục", exact: true }).click();
+  await expect(dialog.getByText("Đã khôi phục.", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Đóng", exact: true }).click();
+  await expect(trigger).toBeFocused();
+  expect(writes).toEqual([
+    { action: "delete", expected_state: "active", expected_version: 0, confirmation: sample.name },
+    { action: "restore", expected_state: "deleted", expected_version: 1, confirmation: "" },
+  ]);
+});
+
 test("mapping form never exposes a previous sheet while the next profile is delayed",async({page})=>{
   await fixture(page,projects(1),'project-000');
   let release:()=>void=()=>{};
@@ -47,13 +98,13 @@ test("mapping form never exposes a previous sheet while the next profile is dela
     return route.fallback();
   });
   await page.goto('/#page=data');await page.getByRole('button').filter({hasText:source.name}).click();
-  await page.getByRole('tab',{name:'AI Smart Setup',exact:true}).click();
+  await page.getByRole('button',{name:'Xác nhận cột',exact:true}).click();
   const entity=page.getByLabel('Loại dữ liệu',{exact:true});await entity.fill('Ý nghĩa của nguồn A');
-  await page.getByRole('combobox',{name:'Bảng / sheet',exact:true}).selectOption('sheet-b');
+  await page.getByRole('combobox',{name:'Bảng dữ liệu',exact:true}).selectOption('sheet-b');
   await expect(entity).toHaveCount(0);
   release();await expect(entity).toBeVisible();await expect(entity).toHaveValue('');
   await entity.fill('Ý nghĩa của nguồn B');
-  await page.getByRole('combobox',{name:'Bảng / sheet',exact:true}).selectOption('sheet-b');
+  await page.getByRole('combobox',{name:'Bảng dữ liệu',exact:true}).selectOption('sheet-b');
   await expect(entity).toHaveValue('Ý nghĩa của nguồn B');
 });
 
@@ -136,7 +187,7 @@ test("[MOCK CONTRACT] explicit project denial clears visible data and allows rec
     return route.fulfill({ status: 403, json: { code: "FORBIDDEN", message_vi: "Quyền đã thu hồi." } });
   });
   await page.goto("/#page=data&project=project-000");
-  const sourceRow = page.getByRole("button", { name: /Dữ liệu từng được cấp quyền/ });
+  const sourceRow = page.getByRole("button", { name: source.name, exact: true });
   await expect(sourceRow).toBeVisible();
   denied = true;
   await page.getByRole("button", { name: "Cập nhật dự án", exact: true }).click();
@@ -436,7 +487,8 @@ test("viewer can reveal test projects but cannot classify; user creation explici
     route.fulfill({ json: { workspace_id: "synthetic", role: "editor" } }),
   );
   await page.reload();
-  await page.getByRole("button", { name: "+ Tạo dự án", exact: true }).click();
+  await page.locator("#project-select").click();
+  await page.getByRole("button", { name: "Tạo dự án mới", exact: true }).click();
   await page.route("**/api/projects", (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     const body = route.request().postDataJSON();
@@ -792,9 +844,10 @@ test("viewer role is truthful and write actions are disabled while navigation re
   await expect(
     page.getByRole("button", { name: "Tải dữ liệu", exact: true }),
   ).toBeDisabled();
-  await expect(
-    page.getByRole("button", { name: "+ Tạo dự án", exact: true }),
-  ).toBeDisabled();
+  await page.locator("#project-select").click();
+  await expect(page.getByRole("button", { name: "Tạo dự án mới", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Quản lý dự án", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await openLegacyPage(page, "reconcile");
   await expect(
     page.getByLabel("Nguồn tham chiếu", { exact: true }),
@@ -1045,10 +1098,10 @@ test("dashboard uses server totals, distinguishes PARTIAL and opens the exact of
     .getByRole("button", { name: "Kiểm tra lỗi dữ liệu", exact: true })
     .click();
   await expect(page.getByRole("heading", { name: source.name })).toBeVisible();
-  await expect(page.getByLabel("Bảng / sheet")).toHaveValue("table-errors");
+  await expect(page.getByLabel("Bảng dữ liệu")).toHaveValue("table-errors");
   await expect(
-    page.getByRole("button", { name: "Cảnh báo / lỗi", exact: true }),
-  ).toHaveClass(/chosen/);
+    page.getByRole("combobox", { name: "Lớp dữ liệu", exact: true }),
+  ).toHaveValue("errors");
   await expect(
     page.getByRole("cell", { name: "invalid", exact: true }),
   ).toBeVisible();
@@ -1163,13 +1216,13 @@ for (const kind of ["REVIEW_MAPPING", "NORMALIZE"] as const) {
         exact: true,
       })
       .click();
-    await expect(page.getByLabel("Bảng / sheet")).toHaveValue("table");
+    await expect(page.getByLabel("Bảng dữ liệu")).toHaveValue("table");
     await expect(
-      page.getByRole("tab", {
-        name: kind === "REVIEW_MAPPING" ? "AI Smart Setup" : "Chuẩn hóa",
+      page.getByRole("button", {
+        name: kind === "REVIEW_MAPPING" ? "Xác nhận cột" : "Tạo bản chuẩn hóa",
         exact: true,
       }),
-    ).toHaveAttribute("aria-selected", "true");
+    ).toHaveAttribute("aria-pressed", "true");
   });
 }
 

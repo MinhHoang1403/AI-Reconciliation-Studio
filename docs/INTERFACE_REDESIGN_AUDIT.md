@@ -1,5 +1,43 @@
 # Phân tích giao diện trước đợt thiết kế lại
 
+<a id="dung-lai-trai-nghiem"></a>
+
+## Dựng lại trải nghiệm sản phẩm · 09/11/2026
+
+Mốc trước là Frontend Docker `3165f1a`. Chủ dự án yêu cầu thay cách tổ chức công việc sau khi xem W1–W5. Ứng viên dùng một bộ chọn dự án, danh sách nguồn tách khỏi bảng, phần sửa theo từng cột, thiết lập đối soát tách kết quả, bảng và phạm vi trước biểu đồ, Lịch sử giữ màn hình đang làm việc, Cài đặt theo nhóm. Các số liệu, khóa, kỳ, tiền tệ, trạng thái và quyền giữ nguồn sự thật từ Backend.
+
+### Kiểm toán hình ảnh
+
+Impeccable 4.8.1 chạy theo chế độ Operate với hai đánh giá độc lập. Đánh giá A tăng từ 22/40 lên 28/40 theo mười tiêu chí Nielsen. Đánh giá B đo 42 tổ hợp trang và viewport, giữ 21 ảnh ứng viên và 18 ảnh đối chiếu thiết lập, ánh xạ, bằng chứng. Không có tràn ngang document. Sáu ca mở bằng chứng bằng bàn phím, Escape và trả focus đạt. Detector CLI trả `[]`. B tìm ra bảng Báo cáo và Ngoại lệ còn xuống thấp. Bản tinh chỉnh gộp tiêu đề và cập nhật, đưa lịch sử lượt chạy xuống dưới, thu gọn phần phạm vi và xếp bộ lọc theo hai cột trên màn hình hẹp. A xem lại ảnh ở 390 và 1440 px.
+
+UI UX Pro Max 2.15.0 được dùng để đối chiếu bảng tài chính, thao tác xác nhận, focus khi đóng hộp thoại và phân tầng công cụ. Ứng viên dùng chữ hệ thống, màu và thành phần của Studio. Tài nguyên và khuyến nghị thiết kế bên thứ ba có điều kiện sử dụng chưa rõ chỉ được tham khảo cục bộ.
+
+| Dòng bảng đầu ở vị trí cuộn đầu trang | Trước → sau ở 390×844 | Trước → sau ở 1440×900 |
+| --- | ---: | ---: |
+| Dữ liệu | 903 → 757 px | 668 → 652 px |
+| Kết quả Đối soát | 2.902 → 863 px | 1.685 → 797 px |
+| Ngoại lệ | 1.332 → 695 px | 852 → 607 px |
+| Báo cáo | 2.452 → 813 px | 1.358 → 742 px |
+
+Các phép đo dùng cùng dự án TEST, nguồn, lượt đã xác minh một phần và locale. Composer ở 390 px giảm từ 104 xuống 58 px. Desktop giữ trục 760 px. Ở zoom Chromium thực 200%, vùng nhìn 720×450 CSS px và mép dưới ô nhập ở 438 px sau sửa. Điểm còn thấy là tên chỉ tiêu lịch sử có thể khó hiểu, phần trên bảng dữ liệu chiếm thêm chiều cao ở 320 px, và nhiều hội thoại có cùng tiêu đề. Các phép đo là automation. Nghiệm thu trực tiếp của chủ dự án, trình đọc màn hình và thiết bị di động thật chưa được thực hiện.
+
+### Dữ liệu và quyền
+
+Migration `add_resource_lifecycle` thêm metadata lưu trữ, xóa mềm và phiên bản. Người có quyền owner xem phụ thuộc trước khi chọn thao tác. Dự án yêu cầu nhập lại tên. Nguồn có kết quả, ánh xạ hoặc công việc liên quan chỉ có đường lưu trữ khi đủ điều kiện. Dữ liệu lịch sử và tệp gốc được giữ. PostgreSQL kiểm quyền, ẩn khỏi danh sách, xóa/khôi phục, tải lại bytes, giữ kết quả đã xuất, từ chối phiên bản cũ và khóa với thao tác tạo job. Xóa Workspace cấp tổ chức nằm ngoài phần đã triển khai.
+
+Chi tiết request, phạm vi và rollback xem ở [hợp đồng vòng đời](DATA_CONTRACTS.md#vòng-đời-dự-án-và-nguồn-nhập) và [hướng dẫn kiểm thử](TESTING_GUIDE.md#kiểm-vòng-đời-dự-án-và-nguồn).
+
+### Phép đo thao tác
+
+| Tác vụ tự động | W1–W5 | Ứng viên |
+| --- | --- | --- |
+| Mở bằng chứng từ đúng lượt Báo cáo rồi Escape | 1 click, 1 phím, 0 trường, 0 đổi màn hình, trả focus | 1 click, 1 phím, 0 trường, 0 đổi màn hình, trả focus |
+| Mở và đóng Lịch sử từ Báo cáo | 1 click, 1 phím, 0 trường, 1 đổi màn hình, ở lại Chat | 1 click, 1 phím, 0 trường, 0 đổi màn hình, giữ đúng Báo cáo |
+| Chat từ tải ba nguồn tới đối soát và đọc lại tệp | 28 click, 23 trường trong ca nhập riêng | 29 click, 23 trường. Một click mở phần phân bố dưới bảng |
+| Chat cùng kịch bản có dữ kiện dùng chung | 32 click, 14 trường | 33 click, 14 trường. Vẫn giữ hai lần phê duyệt |
+
+Hai kịch bản Chat của ứng viên đo từ tải đến kết quả đã xác minh là 14,807 giây và 15,113 giây. Thời gian các lần chạy dao động theo máy và hàng đợi. Số liệu chỉ mô tả phép thử. Chưa có bộ số liệu thao tác trước/sau đồng nhất cho mọi trạng thái của tám hành trình. Hồ sơ cục bộ ở `runtime/product-interface-20261109/` gồm chỉ mục ảnh trước/sau, dữ liệu đo và biên bản kiểm.
+
 ## W1–W5
 
 **09/11/2026 · Nhánh `codex/full-interface-redesign`.** Chủ dự án miễn W0 riêng. Các phép kiểm bố cục và thao tác chạy trực tiếp trên bản build Frontend với API local. Nghiên cứu ở các phần dưới ghi lại trạng thái trước triển khai.

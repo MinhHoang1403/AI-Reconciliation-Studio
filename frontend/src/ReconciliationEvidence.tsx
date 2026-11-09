@@ -107,17 +107,27 @@ export function ReconciliationEvidence({
             <div><dt>Liên kết</dt><dd>{label(evidence.group.linkage_state)}</dd></div>
             <div><dt>Kết quả so sánh</dt><dd>{label(evidence.group.comparison_state)}</dd></div>
           </dl>
-          {evidence.group.comparisons.map((c) => (
-            <Notice key={c.metric_id}>
-              {c.metric_id}: {c.left_amount ?? "N/A"} −{" "}
-              {c.right_amount ?? "N/A"} = {c.delta ?? "N/A"} {c.currency}
-            </Notice>
-          ))}
+          {!!evidence.group.comparisons.length && <div className="table-scroll evidence-comparison"
+            tabIndex={0} aria-label="Số tiền đã đối chiếu">
+            <table className="result-table">
+              <thead><tr>
+                <th scope="col">Chỉ tiêu</th><th scope="col">Tham chiếu</th>
+                <th scope="col">Đối ứng</th><th scope="col">Chênh lệch</th><th scope="col">Tiền tệ</th>
+              </tr></thead>
+              <tbody>{evidence.group.comparisons.map(c => <tr key={c.metric_id}>
+                <th scope="row">{c.metric_id}</th>
+                <td className="numeric-cell">{c.left_amount ?? "N/A"}</td>
+                <td className="numeric-cell">{c.right_amount ?? "N/A"}</td>
+                <td className="numeric-cell">{c.delta ?? "N/A"}</td>
+                <td>{c.currency}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>}
           <div className="evidence-sides">
             {evidence.sources.map((source, i) => (
               <section key={source.canonical.id}>
                 <h3>
-                  Nguồn {i === 0 ? "trái" : "phải"} · {source.filename}
+                  Nguồn {i === 0 ? "tham chiếu" : "đối ứng"} · {source.filename}
                 </h3>
                 <p>Đang hiển thị {source.records.length} / {source.member_count} bản ghi nguồn.</p>
                 <details>
@@ -164,16 +174,14 @@ export function ReconciliationEvidence({
                     ))}
                     {!r.field_evidence_complete && (
                       <Notice>
-                        Hiển thị bằng chứng trường cho 100 dòng gốc đầu; file
-                        báo cáo giữ lineage đầy đủ.
+                        Hiển thị bằng chứng của 100 dòng gốc đầu. Tệp báo cáo có đầy đủ tham chiếu.
                       </Notice>
                     )}
                   </article>
                 ))}
                 {!source.evidence_complete && (
                   <Notice tone="warning">
-                    Đang hiển thị 100 thành viên đầu. Báo cáo chứa đầy đủ
-                    lineage.
+                    Đang hiển thị 100 bản ghi đầu. Tệp báo cáo có đầy đủ tham chiếu.
                   </Notice>
                 )}
               </section>
@@ -189,8 +197,7 @@ export function ReconciliationEvidence({
                 {sourceDetail.canonical === null
                   ? "NULL"
                   : String(sourceDetail.canonical)}
-                . Dòng gốc bên dưới được đọc từ artifact nguồn; phép biến đổi
-                theo mapping đã duyệt.
+                . Dòng gốc và cách chuyển đổi theo quy tắc đã duyệt được liệt kê bên dưới.
               </p>
               <div className="table-scroll">
                 <table>

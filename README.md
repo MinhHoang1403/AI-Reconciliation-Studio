@@ -28,12 +28,13 @@ Một đề xuất chưa được duyệt không phải là kết quả đối s
 
 Xem [hướng dẫn từng bước và bộ dữ liệu tự kiểm thử](docs/USER_TEST_GUIDE.md), từ tạo dự án đến kiểm chứng và xuất Excel.
 
-Trong ô Chat, bộ chọn có hai mục **Gemini 3.5 Flash Lite** và **Qwen 3:8B**. Gemini là lựa chọn mặc định ở môi trường local hiện hành. Qwen chạy qua Ollama trên máy. Quyền của không gian làm việc và khả dụng của từng model vẫn quyết định mục nào chọn được. Xem số liệu kiểm thử trong [báo cáo triển khai](docs/IMPLEMENTATION_STATUS.md).
+Trong bản giao diện mới, bộ chọn **Trợ lý cho tin nhắn mới** nằm trong **Tùy chọn hội thoại**. Quyền của không gian làm việc và khả dụng của từng trợ lý quyết định mục nào chọn được. Xem phiên bản hiện hành và số liệu kiểm thử trong [báo cáo triển khai](docs/IMPLEMENTATION_STATUS.md).
 
 1. Mở **Dữ liệu** và tải CSV/XLSX. Chọn tệp hoặc sheet để xem **Giá trị gốc**, **Tự chuẩn bị** và **Cảnh báo / lỗi**.
 2. Dùng **AI Assistant** để nêu mục tiêu và bổ sung dữ kiện. Duyệt cách ghép cột hoặc quy tắc mới khi cần.
 3. Mở **Đối soát** để chạy quy tắc đã duyệt. Vào **Báo cáo** để xem kết quả, bằng chứng và tải Excel.
-4. Dùng **Lịch sử** để tiếp tục công việc. **Cài đặt** chỉ hiển thị tài khoản, quyền riêng tư và giới hạn tệp dành cho người sử dụng.
+4. Dùng **Lịch sử** để tiếp tục công việc. Mở **Cài đặt** để xem quyền, chính sách chia sẻ và chọn mật độ bảng.
+5. Trong bản giao diện mới, chủ không gian có thể mở **Quản lý dự án** hoặc **Quản lý nguồn**, xem tác động, rồi lưu trữ hoặc xóa mềm nếu được phép. Chọn danh sách **Đã lưu trữ** hoặc **Đã xóa khỏi danh sách** để khôi phục.
 
 Ví dụ yêu cầu:
 
@@ -87,5 +88,5 @@ Chưa nghiệm thu triển khai Internet hoặc nhiều người dùng đồng t
 - [Tích hợp và quyền AI](docs/AI_INTEGRATION.md).
 - [Kiểm thử, backup và khôi phục](docs/TESTING_GUIDE.md#quy-trình-kiểm-thử-và-khôi-phục-hiện-hành).
 - [Báo cáo triển khai và nghiệm thu](docs/IMPLEMENTATION_STATUS.md).
-- [Kiểm toán giao diện](docs/INTERFACE_REDESIGN_AUDIT.md), [hướng UX D01–D10 đã phê duyệt](docs/ui-redesign/OPEN_DECISIONS.md) và [kế hoạch nghiệm thu](docs/ui-redesign/IMPLEMENTATION_AND_ACCEPTANCE_PLAN.md). Prototype và giao diện mới chưa triển khai.
+- [Kiểm toán giao diện](docs/INTERFACE_REDESIGN_AUDIT.md), [hướng UX D01–D10 đã phê duyệt](docs/ui-redesign/OPEN_DECISIONS.md) và [kế hoạch nghiệm thu](docs/ui-redesign/IMPLEMENTATION_AND_ACCEPTANCE_PLAN.md).
 - [Kế hoạch sản phẩm](docs/PROJECT_PLAN.md), [kế hoạch Agent](docs/AI_AGENT_MVP_IMPLEMENTATION_PLAN.md) và [quy tắc đóng góp](Rules.md).

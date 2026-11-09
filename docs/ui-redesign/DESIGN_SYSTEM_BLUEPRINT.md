@@ -1,6 +1,14 @@
 # Quy chuẩn thiết kế Calm Financial Workspace
 
-Trạng thái **OWNER_APPROVED · PENDING_VALIDATION**. D01–D10 chọn phương án A, với D03 và D08 điều chỉnh theo [biên bản quyết định](OPEN_DECISIONS.md). Light theme, xanh chính, font hệ thống hỗ trợ tiếng Việt và cách tái sử dụng đã được duyệt. Token chi tiết, kích thước, mật độ và breakpoint cần đo bằng prototype. UX implementation **NOT_STARTED**.
+## Bố cục ứng viên trên nhánh complete-product-interface
+
+Các màn hình tác nghiệp dùng cùng nền sáng `#F8FAFC`, xanh hành động `#2563EB`, mặt bảng trắng, đường phân cách mảnh và chữ hệ thống hỗ trợ tiếng Việt. Trục đọc hội thoại giữ mốc 760 CSS px. Sidebar mở rộng 212 px, thu gọn 64 px và chuyển drawer khi hẹp. Một bộ chọn dự án trong header thay cho các bộ chọn lặp trên màn hình.
+
+Danh mục và lịch sử dùng hàng có đường phân cách. Thông tin quyết định được nhóm theo nguồn, kỳ và trạng thái. Đối soát tách thiết lập khỏi kết quả. Kết quả ưu tiên phạm vi xác minh, chỉ số và bảng. Biểu đồ và định dạng xuất nằm trong phần mở theo yêu cầu. Cảnh báo xác minh một phần luôn hiện trước khi đọc số liệu. Bảng cuộn nội bộ, tiền dùng chữ số tabular, thông tin quyền và cảnh báo đi cùng thao tác bị ảnh hưởng.
+
+Các phần dưới lưu thiết kế W1–W5 và các quyết định đã duyệt. Mức đạt của ứng viên mới được ghi theo kết quả kiểm thử riêng.
+
+Mốc đặc tả trước triển khai có trạng thái **OWNER_APPROVED · PENDING_VALIDATION**. D01–D10 chọn phương án A, với D03 và D08 điều chỉnh theo [biên bản quyết định](OPEN_DECISIONS.md). Light theme, xanh chính, font hệ thống hỗ trợ tiếng Việt và cách tái sử dụng đã được duyệt. Token chi tiết, kích thước, mật độ và breakpoint được kiểm trên ứng viên thật theo chỉ thị miễn prototype riêng. Kết quả hiện hành xem tại IMPLEMENTATION_STATUS.
 
 Phạm vi sử dụng là một ứng dụng làm việc tài chính, với AI Assistant là điểm bắt đầu, Dữ liệu là nơi kiểm tra nguồn, Đối soát là nơi xác nhận phạm vi và theo dõi lượt chạy, Báo cáo là nơi xem kết quả đã xác minh. Điều hướng, giao diện theo trạng thái và câu chữ có đặc tả riêng. [Kiến trúc trải nghiệm](UX_INFORMATION_ARCHITECTURE.md) · [Đặc tả màn hình](SCREEN_AND_COMPONENT_SPECS.md) · [Kiểm kê câu chữ](MICROCOPY_AUDIT.md) · [Quyết định cần duyệt](OPEN_DECISIONS.md).
 

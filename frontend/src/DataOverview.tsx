@@ -4,7 +4,6 @@ import {
   Database,
   FileSpreadsheet,
   Layers3,
-  ShieldCheck,
   Sparkles,
   Upload,
 } from "lucide-react";
@@ -13,7 +12,6 @@ import type {
   Dataset,
   PreparationAction,
   ProjectSummary,
-  WorkspaceSettings,
 } from "./types";
 import type { ReactNode } from "react";
 
@@ -27,11 +25,11 @@ const actionText: Record<
   },
   WAIT: {
     title: "Cập nhật trạng thái xử lý",
-    help: "Worker đang xử lý. Bạn có thể cập nhật; không cần gửi lại tác vụ.",
+    help: "Dữ liệu đang được xử lý. Kiểm tra trạng thái để tiếp tục.",
   },
   REVIEW_MAPPING: {
     title: "Kiểm tra ánh xạ",
-    help: "Mở bảng chưa có ánh xạ được duyệt. Các bảng cần xác nhận được chọn theo ngày tải và mã nguồn.",
+    help: "Xác nhận cách đọc các cột để chuẩn hóa bảng.",
   },
   NORMALIZE: {
     title: "Chuẩn hóa dữ liệu",
@@ -43,7 +41,7 @@ const actionText: Record<
   },
   RECONCILE: {
     title: "Mở Đối soát",
-    help: "Có ít nhất hai kết quả READY. Hãy chọn nguồn và kiểm tra khóa, ý nghĩa chỉ tiêu, kỳ và phạm vi trước khi duyệt quy tắc.",
+    help: "Đã có ít nhất hai nguồn chuẩn hóa. Chọn cặp nguồn để kiểm tra quy tắc và kỳ đối soát.",
   },
 };
 
@@ -68,8 +66,7 @@ function PreparationGuide({
             <p>{actionText[action.kind].help}</p>
             {action.kind === "UPLOAD" && summary.dataset_count > 0 && (
               <p>
-                Bổ sung hoặc chuẩn hóa nguồn thứ hai; READY chưa xác nhận tính
-                tương thích giữa các nguồn.
+                Đối soát cần hai nguồn đã chuẩn hóa và tương thích.
               </p>
             )}
           </div>
@@ -132,7 +129,6 @@ export function DataOverview({
   recentLoading,
   recentError,
   onRecentRetry,
-  workspace,
   busy,
   onAction,
   onResults,
@@ -144,7 +140,6 @@ export function DataOverview({
   recentLoading: boolean;
   recentError: string;
   onRecentRetry: () => void;
-  workspace: WorkspaceSettings | null;
   busy: boolean;
   onAction: (action: PreparationAction) => void;
   onResults: (page: "reports" | "exceptions") => void;
@@ -153,85 +148,13 @@ export function DataOverview({
 }) {
   return (
     <>
-      {summary.dataset_count === 0 ? (
-        <section className="welcome-card">
-          <div className="welcome-copy">
-            <span className="pill">
-              <Sparkles size={14} />
-              AI SMART SETUP
-            </span>
-            <h2>
-              Khởi đầu từ dữ liệu.
-              <br />
-              <span>Sẵn sàng cho điều tiếp theo.</span>
-            </h2>
-            <p>
-              Tải CSV hoặc Excel lên. Hệ thống đọc cấu trúc, phân tích chất
-              lượng và dùng{" "}
-              {workspace?.mapping_ai_provider === "GEMINI" ? "Gemini" : "Qwen"}{" "}
-              để đề xuất ánh xạ. Quyết định cuối cùng luôn thuộc về bạn.
-            </p>
-            <div className="welcome-points">
-              <span>
-                <CheckCheck size={16} />
-                Giữ nguyên tệp nguồn
-              </span>
-              <span>
-                <CheckCheck size={16} />
-                Truy vết từng dòng
-              </span>
-              <span>
-                <CheckCheck size={16} />
-                Lưu quyết định đã duyệt
-              </span>
-            </div>
-            <button
-              className="text-button"
-              onClick={() => {
-                onData();
-              }}
-            >
-              Tìm hiểu quy trình chuẩn bị dữ liệu <ArrowRight size={16} />
-            </button>
-          </div>
-          <div
-            className="flow-illustration"
-            aria-label="Quy trình từ tệp nguồn đến dữ liệu chuẩn hóa"
-          >
-            <div className="flow-node">
-              <span className="node-icon">
-                <FileSpreadsheet size={23} />
-              </span>
-              <div>
-                <strong>Tệp nguồn</strong>
-                <small>CSV · XLSX</small>
-              </div>
-              <ShieldCheck size={18} />
-            </div>
-            <div className="flow-line" />
-            <div className="flow-node flow-ai">
-              <span className="node-icon">
-                <Sparkles size={23} />
-              </span>
-              <div>
-                <strong>AI Smart Setup</strong>
-                <small>Đề xuất · kiểm tra · xác nhận</small>
-              </div>
-            </div>
-            <div className="flow-line" />
-            <div className="flow-node">
-              <span className="node-icon mint">
-                <Database size={23} />
-              </span>
-              <div>
-                <strong>Dữ liệu chuẩn hóa</strong>
-                <small>Có kiểu · có nguồn gốc</small>
-              </div>
-              <CheckCheck size={18} />
-            </div>
-          </div>
-        </section>
-      ) : (
+      <PreparationGuide
+        summary={summary}
+        busy={busy}
+        onAction={onAction}
+        onResults={onResults}
+      />
+      {summary.dataset_count > 0 && (
         <section className="stats-grid">
           <Stat
             icon={<FileSpreadsheet />}
@@ -259,24 +182,10 @@ export function DataOverview({
           />
         </section>
       )}
-      <PreparationGuide
-        summary={summary}
-        busy={busy}
-        onAction={onAction}
-        onResults={onResults}
-      />
       <details
         className="preparation-help"
-        open={summary.dataset_count === 0 ? true : undefined}
       >
         <summary>Quy trình chuẩn bị dữ liệu · 3 bước</summary>
-        <div className="section-heading">
-          <div>
-            <h2>Quy trình chuẩn bị dữ liệu</h2>
-            <p>Một luồng thống nhất, từ bản gốc đến dữ liệu có thể sử dụng.</p>
-          </div>
-          <span className="subtle">3 bước rõ ràng</span>
-        </div>
         <section className="steps-grid">
           {[
             {
@@ -334,10 +243,7 @@ export function DataOverview({
             <FileSpreadsheet size={31} />
             <h3>Chưa có nguồn dữ liệu</h3>
             <p>Tải tệp đầu tiên vào dự án để bắt đầu.</p>
-            <span className="supported">
-              CSV & XLSX · Tối đa{" "}
-              {workspace ? workspace.max_upload_bytes / 1048576 : 20} MB/tệp
-            </span>
+
           </div>
         )}
       </section>

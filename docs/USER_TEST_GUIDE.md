@@ -4,7 +4,7 @@ Tài liệu dành cho người mới, dùng ứng dụng local tại <http://127
 
 ## 1. Hiểu giao diện trước khi bắt đầu
 
-Ảnh minh họa vùng hội thoại từ một dự án dữ liệu tổng hợp.
+Ảnh minh họa bên dưới lưu bản giao diện trước đợt complete-product-interface. Các thao tác trong hướng dẫn đã cập nhật theo ứng viên mới. Trạng thái đang chạy xem tại IMPLEMENTATION_STATUS.
 
 ![Thanh bên, chọn dự án, công cụ hội thoại và ô nhập](images/user-guide/giao-dien.png)
 
@@ -16,11 +16,11 @@ Tài liệu dành cho người mới, dùng ứng dụng local tại <http://127
 | Báo cáo | Thanh bên trái | Xem kết quả đã xác minh, biểu đồ, bằng chứng và tải CSV/XLSX |
 | Lịch sử | Thanh bên trái | Tìm và mở lại hội thoại đã lưu; trên điện thoại mở nút điều hướng trước |
 | Cài đặt | Thanh bên trái | Xem tài khoản, quyền sử dụng, chia sẻ dữ liệu và giới hạn tệp |
-| Dự án | Đầu vùng Chat, cạnh biểu tượng thư mục | Chọn nhóm dữ liệu đang làm việc. Tên như “Dữ liệu mới” là tên dự án, không phải tên tệp |
+| Dự án | Header ứng dụng, cạnh biểu tượng thư mục | Chọn nhóm dữ liệu đang làm việc. Tên như “Dữ liệu mới” là tên dự án, không phải tên tệp |
 | Tệp đã tải | Biểu tượng tệp trên thanh công cụ Chat | Mở danh sách tệp, chọn sheet, xem dữ liệu gốc, bản chuẩn hóa hoặc dòng lỗi |
 | Đổi ngữ cảnh phân tích | Biểu tượng thanh trượt cạnh nút tệp | Chọn kết quả đối soát để các câu hỏi tiếp theo dùng đúng kết quả |
 | Hội thoại mới | Biểu tượng hội thoại có dấu cộng | Bắt đầu yêu cầu riêng; không xóa tệp và kết quả cũ |
-| Tùy chọn hội thoại | Dấu ba chấm trên thanh công cụ Chat | Mở thiết lập thủ công, thông tin chế độ hoặc xóa hội thoại khi chủ động cần |
+| Tùy chọn hội thoại | Dấu ba chấm trên thanh công cụ Chat | Chọn trợ lý cho tin nhắn mới, chế độ hội thoại, thiết lập thủ công hoặc xóa hội thoại |
 | Dấu cộng | Bên trái ô nhập ở cuối Chat | Đính kèm CSV hoặc XLSX; có thể chọn nhiều tệp |
 | Ô nhập | Cuối vùng Chat | Nhập yêu cầu. Enter gửi; Shift+Enter xuống dòng; bộ gõ tiếng Việt vẫn dùng bình thường |
 | Nút gửi | Mũi tên bên phải ô nhập | Gửi một yêu cầu; nút chờ khi yêu cầu trước đang tiếp nhận |
@@ -37,8 +37,8 @@ Khi gửi câu mới, Chat đưa bạn xuống nội dung mới nhất. Khi AI t
 ### Xem bản tự chuẩn bị ngay sau khi tải
 
 1. Chọn dự án rồi mở **Dữ liệu → Tải dữ liệu**. Chọn tệp và bấm nút tải.
-2. Chọn tệp hoặc sheet vừa tải. Sau khi đọc xong, chuyển giữa **Giá trị gốc**, **Tự chuẩn bị** và **Cảnh báo / lỗi**. Dùng **Xem nguồn** để truy về dòng gốc.
-3. Khi cần xác nhận nghĩa của cột, mở **AI Smart Setup**. Sau khi duyệt và chuẩn hóa, chọn **Xem bản chuẩn hóa đã duyệt** để xem bản dùng tiếp cho đối soát.
+2. Chọn tệp hoặc sheet vừa tải. Sau khi đọc xong, dùng **Lớp dữ liệu** để chọn **Giá trị gốc**, **Tự chuẩn bị**, **Đã chuẩn hóa** hoặc **Cảnh báo / lỗi**. Dùng **Xem nguồn** để truy về dòng gốc.
+3. Khi cần xác nhận nghĩa của cột, mở **Xác nhận cột**. Sau khi duyệt và chuẩn hóa, chọn **Đã chuẩn hóa** trong bộ chọn **Lớp dữ liệu** để xem bản dùng tiếp cho đối soát.
 
 Chủ không gian có thể mở **Tự áp dụng cho lần tải tương thích** tại mapping đã duyệt và có bản chuẩn hóa không lỗi. Quyền này áp dụng trong cùng dự án và phạm vi nghiệp vụ. Tên tệp có thể đổi một kỳ như `2026_10` thành `2026_11`. Hệ thống kiểm cách ghép cột và toàn bảng khi tải lại. Nếu phát hiện thay đổi cần xác nhận, bạn vẫn có bản tự chuẩn bị và bản nháp để kiểm tra.
 
@@ -195,8 +195,8 @@ Không cần đổi API key hoặc mở quyền mới để kiểm tra dữ li�
 
 1. Bấm **Tệp đã tải**, chọn tệp cần làm.
 2. Mở **Kiểm tra thủ công khi cần** → **Mở kiểm tra và ánh xạ thủ công**.
-3. Chọn **Bảng / sheet**: CSV cho A, Giao dịch cho B.
-4. Mở tab **AI Smart Setup**. Dù tên tab có AI, bạn có thể tự xác nhận các cột đang có mà không gửi yêu cầu mới tới dịch vụ AI.
+3. Chọn **Bảng dữ liệu**: CSV cho A, Giao dịch cho B.
+4. Chọn **Xác nhận cột**, mở dòng của cột cần chỉnh. Bạn có thể tự xác nhận các cột mà không gửi yêu cầu mới tới dịch vụ AI.
 5. Nhập loại dữ liệu `reported_transaction`, mỗi dòng `transaction`.
 6. Với từng cột, nhập **Trường đích** giống tên cột trong bảng trên. Chọn kiểu văn bản/số tiền/ngày. Tích **Thành phần khóa** cho scope và reference.
 7. Ở amount: Locale `en-US`, Chỉ tiêu `reported_transaction_amount`, Cơ sở `gross`, Tiền tệ `VND`, Đơn vị `VND`.
@@ -324,7 +324,7 @@ Nếu yêu cầu vừa lọc một bảng mới vừa xuất tệp trong cùng c
 Để tải báo cáo của toàn bộ lần đối soát:
 
 1. Mở kết quả vừa đối soát, kiểm tra kỳ và trạng thái xác minh.
-2. Bấm **Xuất XLSX** hoặc **Xuất CSV**. Chờ tạo xong; không tải một liên kết cũ trước khi công việc hoàn tất.
+2. Mở **Xuất báo cáo**, đọc phạm vi rồi bấm **Xuất XLSX** hoặc **Xuất CSV**. Chờ tạo xong; không tải một liên kết cũ trước khi công việc hoàn tất.
 3. Bấm **Tải báo cáo**, chọn nơi lưu.
 4. Mở XLSX trong Excel. Kiểm tra phần Summary và các bảng chi tiết: đúng lần chạy, kỳ, tiền tệ, số nhóm và chênh lệch.
 5. Với bộ A, kiểm tra 000004, 000011, ô thiếu tiền của 000010 và nhóm trùng 000002. Không kỳ vọng ô thiếu tự thành 0.
@@ -414,7 +414,7 @@ Hai cặp thực hành thủ công đã đạt các số liệu trên. Trước 
 
 Mở **AI Assistant**. Bộ chọn ngay cạnh nút gửi có hai mục **Gemini 3.5 Flash Lite** và **Qwen 3:8B**. Phiên chưa lưu lựa chọn cá nhân dùng Gemini theo cấu hình hiện hành. Chọn Qwen nếu muốn dùng model trên máy. Mục không chọn được phản ánh quyền sử dụng hoặc tình trạng kết nối. Hội thoại giữ model đã dùng cho từng yêu cầu.
 
-Khi chỉnh thẻ xác nhận, bấm **Lưu bản nháp** để tiếp tục ở màn hình khác. Trong phần **Dữ liệu**, tab **AI Smart Setup** hiển thị cùng thẻ nếu bảng đang chờ xác nhận. Nút **Mở trong hội thoại** dẫn tới đúng hội thoại của thẻ. Nếu hết hạn, bấm **Mở lại thẻ xác nhận** khi nguồn vẫn còn nguyên. Bấm **Duyệt cách ghép cột và chuẩn hóa** sau khi kiểm tra các lựa chọn và dự báo dòng lỗi.
+Khi chỉnh thẻ xác nhận, bấm **Lưu bản nháp** để tiếp tục ở màn hình khác. Trong phần **Dữ liệu**, mục **Xác nhận cột** hiển thị cùng thẻ nếu bảng đang chờ xác nhận. Nút **Mở trong hội thoại** dẫn tới đúng hội thoại của thẻ. Nếu hết hạn, bấm **Mở lại thẻ xác nhận** khi nguồn vẫn còn nguyên. Bấm **Duyệt cách ghép cột và chuẩn hóa** sau khi kiểm tra các lựa chọn và dự báo dòng lỗi.
 
 ![Bộ chọn Gemini cạnh nút gửi trong ô Chat](images/user-guide/composer-model.png)
 
@@ -444,3 +444,11 @@ Lượt Smart Mapping Qwen đã thành công ngày 05/11/2026 được giữ t�
 ![Qwen đã chuẩn hóa ba nguồn sau các quyết định riêng](images/user-guide/qwen-mapping-completed.png)
 
 Nếu một nguồn lỗi tạo đề xuất, các thẻ đã tạo trước đó vẫn có thể duyệt. Đọc tên nguồn và thông báo của đúng job, dùng **Mở dữ liệu để ghép cột thủ công** cho phần còn lại. Không có fallback cloud tự động. Đổi model chỉ áp dụng cho lần gửi sau; lần gửi chưa rõ phản hồi giữ payload và model ban đầu. Các lượt Gemini lịch sử từng có HTTP 503; trạng thái hiện hành và kết quả HTTP 200/400 nằm ở đầu [báo cáo triển khai](IMPLEMENTATION_STATUS.md). Không suy độ ổn định hiện tại từ một lượt lịch sử hoặc quy toàn bộ lỗi cho khóa API.
+
+## Quản lý dự án và nguồn
+
+Chủ không gian mở bộ chọn dự án rồi chọn **Quản lý dự án**, hoặc mở **Quản lý nguồn** trong Dữ liệu. Có thể tìm theo tên, chuyển giữa danh sách đang dùng, lưu trữ và đã xóa mềm.
+
+Mở **Quản lý** tại mục cần thay đổi để xem phụ thuộc và công việc đang xử lý. Hệ thống cung cấp thao tác phù hợp. Nguồn có bản chuẩn hóa hoặc kết quả đối soát cần được giữ cùng lịch sử và có thể lưu trữ. Khi xóa mềm mục được phép, mục đó rời danh sách và đường dẫn thông thường. Có thể vào danh sách đã xóa để khôi phục. Lưu trữ hoặc xóa dự án yêu cầu nhập lại đúng tên.
+
+Nếu có công việc chưa kết thúc, hoàn tất hoặc dừng công việc rồi tải lại phần tác động. Nếu trạng thái đã đổi trong lúc bạn xác nhận, xem lại trước khi gửi tiếp. Không gian làm việc là phạm vi phân quyền, không có nút xóa.

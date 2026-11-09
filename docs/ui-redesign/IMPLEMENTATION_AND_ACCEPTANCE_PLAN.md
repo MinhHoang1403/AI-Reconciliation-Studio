@@ -1,5 +1,22 @@
 # Kế hoạch triển khai và nghiệm thu UX
 
+## Dựng lại trải nghiệm theo tác vụ
+
+Chủ dự án đã xem ứng viên W1–W5 và chưa chấp nhận chất lượng thiết kế. D01–D10 cùng các bất biến nghiệp vụ vẫn áp dụng. Nhánh `codex/complete-product-interface` lấy ứng viên cũ làm mốc chức năng và đối chiếu hình ảnh. Hai lượt critique tách riêng đánh giá trải nghiệm và thu thập bằng chứng trình duyệt. Các quyết định thiết kế đi theo mô hình làm việc Operate.
+
+| Hành trình | Cần thấy trước và hành động chính | Hỗ trợ và thông tin mở khi cần | Điều kiện giữ nguyên và phục hồi |
+| --- | --- | --- | --- |
+| A · Người mới | Chat trống có lối tải tệp và yêu cầu bằng tiếng Việt. Dữ liệu mở danh sách nguồn và bước tiếp theo. | Định dạng và giới hạn ở thao tác tải tệp. | Hiện lỗi đúng tệp. Tải lại khi cần, giữ bản gốc và khóa chống gửi trùng. |
+| B · Chuẩn hóa | Chọn nguồn, xem bảng và phần cần xác nhận. Duyệt có nêu hậu quả. | Bằng chứng, bản cũ và cách biến đổi mở theo nhu cầu. | Dùng lại ánh xạ đã duyệt khi tương thích. Giữ cổng kiểm tra lỗi và quyền. |
+| C · Đối soát mới | Hai nguồn, kỳ và hành động tìm phương án. Quy tắc đầy đủ trước khi duyệt. | Thiết lập khóa, chỉ tiêu và dung sai theo điều kiện. | Xác nhận khóa, kỳ, đơn vị, tiền tệ và phạm vi. Có đường thủ công khi AI không thể giúp. |
+| D · Đối soát lặp lại | Dùng quy tắc đã duyệt khi dữ liệu kỳ mới phù hợp. | Lịch sử và hiệu lực của quy tắc. | Tái dùng hợp đồng hiện hành. Chặn quy tắc hết hiệu lực hoặc nguồn chưa phù hợp. |
+| E · Phân tích sai lệch | Kỳ, mức xác minh, chỉ số và bảng nhóm kết quả. Mở ngay bằng chứng của khoản đã chọn. | Bộ lọc, xuất báo cáo và mẫu số theo phạm vi thật. | Giữ lượt, nhóm, bộ lọc và focus khi đóng. Phân biệt tình trạng xử lý với kết quả so sánh. |
+| F · Quản lý dữ liệu | Tìm đúng đối tượng, xem tác động và xác nhận theo quyền. | Danh sách lưu trữ và khôi phục trong cùng trình quản lý. | Giữ hiện vật và audit. Chặn thao tác với công việc đang mở. Nguồn hoặc dự án có phụ thuộc chỉ được lưu trữ. |
+| G · Trợ lý | Kết quả và hành động tiếp theo trong luồng hội thoại. Làm rõ riêng với phê duyệt. | Bảng rộng, bằng chứng và lựa chọn mô hình mở khi cần. | Giữ draft, IME, quyền và ngữ cảnh xuyên reload. |
+| H · AI không khả dụng | Thông báo theo việc người dùng đang làm, kèm lối thủ công. | Lịch sử và báo cáo vẫn có điểm vào riêng. | Giữ nguyên giới hạn xử lý, chính sách và dữ liệu đã lưu. |
+
+Đo số thao tác, chuyển trang, trường cần nhập, lỗi và khả năng phục hồi trên cùng dữ liệu TEST. Ghi rõ phép đo tự động và việc chưa có thử nghiệm người dùng độc lập.
+
 **OWNER_APPROVED · PENDING_VALIDATION** — Chủ dự án đã duyệt hướng D01–D10. Ứng viên W1–W5 thực hiện theo nhiệm vụ được giao ngày 09/11/2026. Mốc so sánh là source ứng dụng `1d7f4909a3aa5d6c0a79cdddb88cb4303119e701` và release `c477745d6c4426c663089251f75182aa1e2c375c`. Phạm vi UX đi theo [kiến trúc](UX_INFORMATION_ARCHITECTURE.md), [quy chuẩn](DESIGN_SYSTEM_BLUEPRINT.md), [đặc tả](SCREEN_AND_COMPONENT_SPECS.md) và [microcopy](MICROCOPY_AUDIT.md). Kết quả đo vòng này nằm trong [báo cáo kiểm toán](../INTERFACE_REDESIGN_AUDIT.md).
 
 **W0_STANDALONE_PROTOTYPE_WAIVED_BY_OWNER · 09/11/2026.** Chủ dự án giao triển khai trực tiếp W1–W5 trên Frontend hiện có. Các phép kiểm thiết kế, D03/D08, hình ảnh và khả năng sử dụng chuyển sang ứng viên thật.

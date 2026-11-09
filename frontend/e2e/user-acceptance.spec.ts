@@ -44,19 +44,20 @@ for(const scenario of manifest.datasets){
       await expect(drawer).not.toBeVisible();
       const tables=await(await page.request.get(`/api/datasets/${dataset.id}/tables`)).json();
       const table=tables.items.find((t:{sheet:string})=>t.sheet==='Giao dịch')||tables.items[0];
-      await page.getByRole('combobox',{name:'Bảng / sheet',exact:true}).selectOption(table.id);
-      await page.getByRole('tab',{name:'AI Smart Setup',exact:true}).click();
+      await page.getByRole('combobox',{name:'Bảng dữ liệu',exact:true}).selectOption(table.id);
+      await page.getByRole('button',{name:'Xác nhận cột',exact:true}).click();
       const manualSummary=page.getByText('Tạo cách ghép cột thủ công riêng',{exact:true});
       await manualSummary.click();
       const manual=page.locator('details').filter({has:manualSummary}).locator('.mapping-studio');
       await manual.getByLabel('Loại dữ liệu',{exact:true}).fill('reported_transaction');
-      await page.getByRole('combobox',{name:'Bảng / sheet',exact:true}).selectOption(table.id);
+      await page.getByRole('combobox',{name:'Bảng dữ liệu',exact:true}).selectOption(table.id);
       await expect(manual.getByLabel('Loại dữ liệu',{exact:true})).toHaveValue('reported_transaction');
       const detail=scenario.cardinality==='ONE_TO_MANY'?i===1:scenario.cardinality==='MANY_TO_ONE'?i===0:false;
       await manual.getByLabel('Mỗi dòng đại diện cho điều gì?',{exact:true}).fill(detail?'transaction_part':'transaction');
       for(let n=0;n<f.headers.length;n++){
         const header=f.headers[n],field=f.order[n];
         const row=manual.locator('.mapping-row').filter({has:page.getByLabel(`Trường đích ${header}`,{exact:true})});
+        await row.locator(":scope > summary").click();
         await row.getByLabel(`Trường đích ${header}`,{exact:true}).fill(field);
         await row.getByLabel(`Kiểu ${header}`,{exact:true}).selectOption(field==='amount'?'decimal':field==='event_date'?'date':'string');
         if(['scope','reference'].includes(field))await row.getByLabel('Thành phần khóa',{exact:true}).check();
@@ -74,7 +75,7 @@ for(const scenario of manifest.datasets){
       const warningReview=manual.getByLabel('Tôi đã kiểm tra các cảnh báo và vùng dữ liệu nguồn.',{exact:true});
       if(await warningReview.isVisible())await warningReview.check();
       await manual.getByRole('button',{name:'Xác nhận ánh xạ',exact:true}).click();await expect(page.getByText('Đã cập nhật ánh xạ.',{exact:true})).toBeVisible();
-      await page.getByRole('tab',{name:'Chuẩn hóa',exact:true}).click();await page.getByRole('button',{name:'Chuẩn hóa dữ liệu',exact:true}).click();
+      await page.getByRole('button',{name:'Tạo bản chuẩn hóa',exact:true}).click();await page.getByRole('button',{name:'Chuẩn hóa dữ liệu',exact:true}).click();
       await expect.poll(async()=>{const a=await(await page.request.get(`/api/datasets/${dataset.id}/artifacts`)).json();return a.canonical_datasets.length;}).toBeGreaterThan(0);
       const artifacts=await(await page.request.get(`/api/datasets/${dataset.id}/artifacts`)).json();
       expect(artifacts.canonical_datasets[0].row_count).toBe(f.rows);
@@ -90,6 +91,7 @@ for(const scenario of manifest.datasets){
     await page.getByRole('combobox',{name:'Quan hệ',exact:true}).selectOption(scenario.cardinality);
     await page.getByLabel('Đơn vị đối soát (mỗi nhóm đại diện cho)',{exact:true}).fill('transaction');
     await page.getByLabel('Từ ngày',{exact:true}).fill('2026-10-01');await page.getByLabel('Đến ngày (không gồm)',{exact:true}).fill('2026-11-01');await page.getByLabel('Múi giờ',{exact:true}).fill('UTC');
+    await page.getByText("Chỉnh khóa và chỉ tiêu thủ công",{exact:true}).click();
     await page.getByLabel('Sai số tuyệt đối',{exact:true}).fill(scenario.tolerance);
     for(const side of ['nguồn trái','nguồn phải']){
       const scope=page.getByRole('group',{name:`Phạm vi ${side}`,exact:true});
@@ -106,7 +108,7 @@ for(const scenario of manifest.datasets){
       const runs=await(await page.request.get(`/api/runs?project_id=${projectId}`)).json();expect(runs.total).toBe(0);
       await writeFile(`../runtime/demo-acceptance/results/${scenario.name}.json`,JSON.stringify({projectId,name,status:'PASS_SAFE_BLOCK',reason:'mixed currencies without FX'}));return;
     }
-    await expect(page.getByText('Đã kiểm tra schema, scope, grain, metric, thời gian và khóa. Trùng khóa được giữ để review.',{exact:true})).toBeVisible();
+    await expect(page.getByText('Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa. Hãy xem xét các dòng trùng khóa.',{exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Lưu đề xuất thủ công',exact:true}).click();
     const approve=page.getByRole('button',{name:'Xác nhận quy tắc và dấu số tiền',exact:true});
     const hasPartial=catalogue.items.some((c:{canonical:{quality_status:string}})=>c.canonical.quality_status==='PARTIAL');
@@ -147,6 +149,7 @@ for(const scenario of manifest.datasets){
       'import json,sys;from decimal import Decimal as D;x=json.load(sys.stdin);s=x["snapshot"]["monetary"][0];o=x["oracle"];assert D(s["signed_variance"])==D(o["signed_variance"]);assert D(s["absolute_variance"])==D(o["absolute_variance"]);g={tuple(v["key"]):v for v in x["groups"] if v["linkage_state"]=="LINKED"};assert all(D(g[tuple(e["key"])]["comparisons"][0][field])==D(e[field]) for e in o["groups"] if e["linkage"]=="LINKED" and e["delta"] is not None for field in ("left_amount","right_amount","delta"))'
     ],{input:JSON.stringify({snapshot,oracle:scenario.oracle,groups}),encoding:'utf8'});
     await openLegacyPage(page,'reports');
+    await page.locator(".run-export > summary").click();
     for(const format of ['CSV','XLSX']){
       const response=page.waitForResponse(r=>/^\/api\/exports\/[^/]+$/.test(new URL(r.url()).pathname)&&r.request().method()==='GET',{timeout:90000});
       await page.getByRole('button',{name:`Xuất ${format}`,exact:true}).click();const info=await(await response).json();const link=page.getByRole('link',{name:'Tải báo cáo',exact:true});await expect(link).toHaveAttribute('href',info.download_url);

@@ -34,6 +34,7 @@ export async function openLegacyPage(page: Page, target: "home"|"data"|"reconcil
     query.set('page',next);window.location.hash=query.toString();
   },target);
   await expect(page).toHaveURL(new RegExp(`page=${target}`));
+  if(target==="reconcile")await page.getByRole("button",{name:"Thiết lập đối soát",exact:true}).click();
   const headings={home:'Dữ liệu sẵn sàng cho quyết định chính xác',data:'Không gian dữ liệu',reconcile:'Đối soát có kiểm chứng',reports:'Báo cáo đối soát',exceptions:'Ngoại lệ và bằng chứng'};
   if(target==='reports'||target==='exceptions')await expect(page.getByRole('heading',{name:headings[target],exact:true})).toBeVisible();
 }

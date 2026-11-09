@@ -87,11 +87,11 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
     await dialog
       .locator("summary", { hasText: "Tùy chọn đọc nâng cao" })
       .click();
-    await dialog.getByLabel("Dùng AI đề xuất ánh xạ trong hạn mức").uncheck();
+    await dialog.getByLabel("Dùng AI đề xuất cách đọc cột").uncheck();
   }
   await dialog.getByRole("button", { name: "Tải 1 tệp" }).click();
   await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole("tab", { name: "AI Smart Setup" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Xác nhận cột" })).toBeVisible();
   await expect(
     page.getByRole("cell", { name: "000123", exact: true }),
   ).toBeVisible();
@@ -142,7 +142,7 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
       }),
     ).toBeEnabled();
   }
-  await page.getByRole("tab", { name: "AI Smart Setup" }).click();
+  await page.getByRole("button", { name: "Xác nhận cột" }).click();
   await expect(
     page.getByRole("heading", { name: "Hiểu dữ liệu, xác nhận ý nghĩa" }),
   ).toBeVisible();
@@ -150,6 +150,8 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
   await page
     .getByLabel("Mỗi dòng đại diện cho điều gì?")
     .fill("Một đơn hàng từ nguồn tổng hợp");
+  await page.getByLabel("Chỉnh cột Order ID", {exact:true}).click();
+  await page.getByLabel("Chỉnh cột Gross amount", {exact:true}).click();
   await page
     .getByLabel("Trường đích Order ID", { exact: true })
     .fill("reference_id");
@@ -190,8 +192,8 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
   ).toBeEnabled();
   await expect(page).toHaveURL(new RegExp(`dataset_id=${datasetId}`));
   await page.reload();
-  await expect(page.getByRole("tab", {name: "AI Smart Setup", exact: true})).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("combobox", {name: "Bảng / sheet", exact: true})).toHaveValue(tableId);
+  await expect(page.getByRole("button", {name: "Xác nhận cột", exact: true})).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("combobox", {name: "Bảng dữ liệu", exact: true})).toHaveValue(tableId);
   await expect(page.getByLabel("Loại dữ liệu", {exact: true})).toHaveValue("order");
   await expect(page.getByLabel("Locale Gross amount", {exact: true})).toHaveValue("en-US");
   await expect(page.getByRole("button", {name: "Xác nhận ánh xạ", exact: true})).toBeEnabled();
@@ -201,7 +203,7 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
   await expect(
     page.getByText("Đã cập nhật ánh xạ.", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "Chuẩn hóa", exact: true }).click();
+  await page.getByRole("button", { name: "Tạo bản chuẩn hóa", exact: true }).click();
   await page
     .getByRole("button", { name: "Chuẩn hóa dữ liệu", exact: true })
     .click();
@@ -246,8 +248,8 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
     page.getByRole("cell", { name: "000124", exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Cảnh báo / lỗi", exact: true })
-    .click();
+    .getByRole("combobox", { name: "Lớp dữ liệu", exact: true })
+    .selectOption("errors");
   await expect(
     page.getByRole("cell", { name: "invalid", exact: true }),
   ).toBeVisible();
@@ -302,11 +304,11 @@ test("B: returning user retains project, approved mapping and canonical refs", a
       name: new RegExp(datasetName.replaceAll(".", "\\.")),
     })
     .click();
-  await page.getByRole("tab", { name: "AI Smart Setup" }).click();
+  await page.getByRole("button", { name: "Xác nhận cột" }).click();
   await expect(
     page.getByLabel("Locale Gross amount", { exact: true }),
   ).toHaveValue("en-US");
-  await page.getByRole("tab", { name: "Chuẩn hóa", exact: true }).click();
+  await page.getByRole("button", { name: "Tạo bản chuẩn hóa", exact: true }).click();
   await page
     .getByRole("button", { name: "Cập nhật kết quả", exact: true })
     .click();
@@ -382,7 +384,8 @@ for (const size of [
         name: new RegExp(datasetName.replaceAll(".", "\\.")),
       })
       .click();
-    await page.getByRole("tab", { name: "AI Smart Setup" }).click();
+    await page.getByRole("button", { name: "Xác nhận cột" }).click();
+    await page.getByLabel("Chỉnh cột Gross amount", { exact: true }).click();
     await expect(
       page.getByLabel("Trường đích Gross amount", { exact: true }),
     ).toBeVisible();
@@ -431,8 +434,11 @@ test("cached document evidence remains readable after parser allowance is closed
     ["docx", "000701", "1.234,50"],
   ]) {
     await page
-      .getByRole("button", {
-        name: new RegExp(`synthetic-transactions\\.${extension}`),
+      .getByRole("button")
+      .filter({
+        has: page.getByText(`synthetic-transactions.${extension}`, {
+          exact: true,
+        }),
       })
       .click();
     await expect(
@@ -447,6 +453,7 @@ test("cached document evidence remains readable after parser allowance is closed
     await expect(
       page.getByRole("button", { name: "Chuẩn hóa dữ liệu", exact: true }),
     ).toHaveCount(0);
+    await page.getByRole("button", { name: "Nguồn dữ liệu", exact: true }).click();
   }
   await page.setViewportSize({ width: 390, height: 844 });
   expect(

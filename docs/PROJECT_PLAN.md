@@ -18,7 +18,7 @@ Kết quả kiểm tra theo từng ứng viên và các cổng AP-01–AP-15 n�
 
 ### Trạng thái sản phẩm và hướng UX hiện hành — 09/11/2026
 
-MVP local đã phát hành. Bộ nghiên cứu đã được tích hợp, [D01–D10 phương án A](ui-redesign/OPEN_DECISIONS.md) được chủ dự án duyệt với hai điều chỉnh D03/D08. AI Assistant mở đầu, sáu lối vào và manual fallback được bảo toàn. Hướng Assistant-only 02/11 trong phần lịch sử đã được thay thế. Prototype **PENDING_VALIDATION** và UX implementation **NOT_STARTED**. [Biên bản release](IMPLEMENTATION_STATUS.md) ghi riêng revision ứng dụng, kiểm chứng local và giới hạn UAT.
+MVP local đã phát hành. Bộ nghiên cứu đã được tích hợp, [D01–D10 phương án A](ui-redesign/OPEN_DECISIONS.md) được chủ dự án duyệt với hai điều chỉnh D03/D08. AI Assistant mở đầu, sáu lối vào và manual fallback được bảo toàn. Hướng Assistant-only 02/11 trong phần lịch sử đã được thay thế. Chủ dự án sau đó miễn prototype riêng, đã xem W1–W5 và yêu cầu dựng lại trải nghiệm toàn sản phẩm trên nhánh `codex/complete-product-interface`. Trạng thái triển khai và kiểm chứng mới nhất được ghi tại IMPLEMENTATION_STATUS. [Biên bản release](IMPLEMENTATION_STATUS.md) ghi riêng revision ứng dụng, kiểm chứng local và giới hạn UAT.
 
 ### Kiểm toán nền tảng và hardening — 06/11/2026
 

@@ -364,15 +364,21 @@ function ManualMappingStudio({
       </div>
       {preflightError&&<Notice tone="error">{preflightError}</Notice>}
       {!invalid&&!preflight&&!preflightError&&<p role="status">Đang kiểm tra trước chuẩn hóa…</p>}
-      {preflight&&<Notice>Đã kiểm tra {preflight.source_rows} dòng; dự kiến {preflight.predicted_invalid_rows} dòng không hợp lệ. {Object.entries(preflight.error_counts).map(([code,count])=>`${code}: ${count}`).join('; ')}. Dữ liệu gốc và bản cũ được giữ nguyên.</Notice>}
-      <div className="mapping-rows">
+      {preflight&&<Notice>Đã kiểm tra {preflight.source_rows} dòng; dự kiến {preflight.predicted_invalid_rows} dòng không hợp lệ. {Object.entries(preflight.error_counts).map(([code,count])=>`${code}: ${count}`).join('; ')}. Dữ liệu gốc và bản đã tạo được giữ lại.</Notice>}
+      <div className="mapping-rows" aria-label="Các cột trong bảng">
         {drafts.map((d) => {
           const col = profile.columns.find((c) => c.column_id === d.source)!;
           const decision = mapping.proposal.decisions.find(
             (x) => x.source_field === d.source,
           );
           return (
-            <article className="mapping-row" key={d.source}>
+            <details className="mapping-row mapping-register-row" key={d.source}>
+              <summary aria-label={`Chỉnh cột ${col.name}`}>
+                <span>{col.name}</span>
+                <span>{d.target || "Chưa chọn trường đích"}{d.key && <small> · Khóa</small>}</span>
+                {decision && <Badge status={decision.decision} />}
+              </summary>
+              <div className="mapping-register-editor">
               <div className="source-column">
                 <div className="source-title">
                   <strong>{col.name}</strong>
@@ -392,9 +398,8 @@ function ManualMappingStudio({
                   ))}
                 </div>
                 <small>
-                  {col.null_count} null · {col.distinct_count} giá trị phân biệt
+                  {col.null_count} giá trị thiếu · {col.distinct_count} giá trị phân biệt
                 </small>
-                {decision && <Badge status={decision.decision} />}
               </div>
               <div className="target-column">
                 <div className="mapping-fields">
@@ -568,12 +573,13 @@ function ManualMappingStudio({
                   </details>
                 )}
               </div>
-            </article>
+              </div>
+            </details>
           );
         })}
       </div>
       <div className="approval-bar">
-        <p>Quyết định được lưu theo revision, kèm người duyệt và nguồn gốc.</p>
+        <p>Mỗi lần xác nhận lưu một phiên bản kèm người duyệt và nguồn dữ liệu.</p>
         <div className="actions">
           <button
             className="button secondary"
