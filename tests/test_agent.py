@@ -3051,11 +3051,15 @@ def test_inventory_read_holdout_reports_native_coverage_and_checks_resolved_slot
         else:
             assert intent.run_id == case.get("ref"), case["id"]
             if intent.intent == "EXPORT_RESULT":
-                assert intent.query == cat.previous_query, case["id"]
+                expected = cat.previous_query if context == "ranked" else None
+                assert intent.query == expected, case["id"]
             if case.get("format"):
                 assert intent.export_format == case["format"], case["id"]
             assert intent.result_position == case.get("position"), case["id"]
-    assert len(misses) <= min(16, total - 1)
+    if fixture_file == "agent-product-quality-holdout.json":
+        assert not misses
+    else:
+        assert len(misses) <= min(16, total - 1)
     print(json.dumps({"native_correct": len(cases) - len(misses), "typed_router_required": misses}))
 
 

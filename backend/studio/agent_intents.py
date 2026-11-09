@@ -204,9 +204,7 @@ def explicit_read_request(goal: str) -> bool:
     workflow vocabulary. This capability guard never infers fields, predicates,
     money or a source; the model/compiler still choose and validate those slots.
     """
-    text = _without_current_run_prefix(
-        plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal))
-    )
+    text = _without_current_run_prefix(plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal)))
     polite = r"(?:(?:hay|vui long|cho toi|toi muon|toi can|xin|giup toi)\s+)*"
     clauses = re.split(r"[.!?;\n]|\b(?:roi|sau do|va)\b", text)
     write = any(
@@ -1057,28 +1055,24 @@ def resolve_ranked_results(goal: str, catalogue: IntentCatalogue) -> AgentIntent
                 )
             ),
         )
-    ordinal_number = f"({number}|nhat)"
-    ordinal = re.fullmatch(
-        r"(?:hay )?giai thich (?:nhom(?: giao dich)?|giao dich|khoan|dong|muc) thu "
-        + ordinal_number
-        + r"(?: (?:trong|cua) (?:bang|danh sach) (?:tren|nay|vua (?:hien thi|dua|gui|tra)))?"
-        r"(?:,? giu nguyen pham vi (?:nay|do))?",
-        normalized,
+    row = (
+        r"(?:nhom(?: giao dich)?|giao dich|khoan|dong|muc) (?:o vi tri )?thu "
+        f"({number}|nhat)"
     )
-    if ordinal is None:
-        ordinal = re.fullmatch(
-            r"(?:nhom(?: giao dich)?|giao dich|khoan|dong) thu "
-            + ordinal_number
-            + r" (?:vi sao|tai sao) (?:bi )?(?:lech|sai tien|chenh lech)",
+    table = (
+        r"(?: (?:trong|cua) (?:bang|danh sach) "
+        r"(?:do|tren|nay|vua (?:hien thi|dua|gui|tra)))?"
+    )
+    reason = r"(?:(?:bi )?(?:lech(?: tien)?|sai tien|chenh lech)|(?:chua|khong) ghep duoc)"
+    why = r"(?:vi sao|tai sao)"
+    ordinal = (
+        re.fullmatch(
+            r"(?:hay )?giai thich " + row + table + r"(?:,? giu nguyen pham vi (?:nay|do))?",
             normalized,
         )
-    if ordinal is None:
-        ordinal = re.fullmatch(
-            r"(?:nhom(?: giao dich)?|giao dich|khoan|dong) o vi tri thu "
-            + ordinal_number
-            + r" trong bang (?:do|tren|nay) (?:vi sao|tai sao) (?:chua|khong) ghep duoc",
-            normalized,
-        )
+        or re.fullmatch(why + " " + row + table + " " + reason, normalized)
+        or re.fullmatch(row + table + " " + why + " " + reason, normalized)
+    )
     if not ordinal:
         return None
     previous = catalogue.previous_query
@@ -1102,7 +1096,8 @@ def resolve_ranked_results(goal: str, catalogue: IntentCatalogue) -> AgentIntent
 
 def resolve_run_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
     """Bind a whole-result read to the verified run selected in the conversation."""
-    normalized = " ".join(plain_question(goal).split()).rstrip("?.!")
+    normalized = _without_current_run_prefix(" ".join(plain_question(goal).split()).rstrip("?.!"))
+    normalized = re.sub(r" (?:cho|giup) (?:toi|minh)(?: (?:voi|nhe))?$", "", normalized)
     normalized = re.sub(
         r" (?:cua|trong|o) (?:lan doi soat|lan chay|ket qua|run) "
         r"(?:nay|dang xem|dang mo|hien tai)$",
@@ -1110,7 +1105,8 @@ def resolve_run_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | Non
         normalized,
     )
     population = re.fullmatch(
-        r"(bao nhieu|co bao nhieu|dem|cho biet so|liet ke|xem|cho toi xem|hien thi|loc va hien) "
+        r"(bao nhieu|co bao nhieu|dem|cho biet so|liet ke|xem|"
+        r"cho (?:toi )?xem|hien thi|loc va hien) "
         r"(?:cac |nhung |tung |so )?(?:nhom(?: giao dich)?|giao dich|khoan|chung tu) "
         r"(lech tien|bi lech tien|chenh lech|thieu doi ung|khong co doi ung|"
         r"chua tim thay doi ung(?: ben con lai)?|unmatched|amount_mismatch|equal)",
@@ -1138,10 +1134,15 @@ def resolve_run_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | Non
             for metric in catalogue.confirmed_plan.comparison_metrics
         )
     )
-    report = re.fullmatch(r"(?:hay )?(?:xuat|tai) bao cao (excel|xlsx|csv)", normalized)
+    report = re.fullmatch(
+        r"(?:hay )?(?:xuat|tai) (?:bao cao|(?:toan bo )?ket qua(?: doi soat)?"
+        r"(?: nay| dang (?:mo|xem)| hien tai)?) "
+        r"(?:(?:thanh|ra|sang|duoi dang) )?(?:tep |file )?(excel|xlsx|csv)",
+        normalized,
+    )
     summary = (
         re.fullmatch(
-            r"(?:cho (?:toi )?xem |tinh )?(?:tong )?(?:chenh lech|lech(?: tien)?) "
+            r"(?:cho (?:toi )?(?:xem|biet) |tinh )?(?:tong )?(?:chenh lech|lech(?: tien)?) "
             r"(?:co dau(?: va| khac)? (?:lech |chenh lech )?tuyet doi(?: ra sao)?|co dau|tuyet doi)"
             r"(?: voi bo ket qua nay)?",
             normalized,
@@ -1387,25 +1388,27 @@ LAYER_TERMS: dict[str, QuerySourceKind] = {
 def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
     """Compose operation, layer and exact source slots for simple read-only questions.
 
-    Unknown modifiers (filters, dates, money) stay with the typed router. A filename
-    in quotes selects only an exact scoped name; near matches never select a source.
+    Unknown modifiers (filters, dates, money) stay with the typed router.
+    Filenames select only exact scoped names; near matches never select a source.
     """
-    text = goal.strip().rstrip("?.!")
-    named = re.search(r'\s+(?:"([^"]+)"|“([^”]+)”)$', text)
-    filename = (named.group(1) or named.group(2)) if named else None
+    text = unicodedata.normalize("NFC", goal).strip().rstrip("?.!")
+    named = re.search(
+        r"\s+(?:của|cua|trong)\s+(?:(?:nguồn|nguon|tệp|tep|file)\s+)?"
+        r'(?:"([^"\r\n]+)"|“([^”\r\n]+)”|([^"“”\r\n;,:]+?\.(?:csv|xlsx)))'
+        r"(?:\s+để\s+(?:(?:tôi|mình|em)\s+)?(?:đối chiếu|kiểm tra|tham khảo))?$",
+        text,
+        re.IGNORECASE,
+    )
+    filename = next((group for group in named.groups() if group), None) if named else None
     if named:
         text = text[: named.start()]
     normalized = " ".join(plain_question(text).split())
     normalized = re.sub(r"^(?:toi muon|minh muon|vui long) ", "", normalized)
     source_suffix = (
-        r"(?: (?:cua|trong) (?:nguon|tep|file) (?:dang (?:mo|chon)|nay|chua (?:duoc )?chon))?$"
+        r" (?:cua|trong) (?:nguon|tep|file) (?:dang (?:mo|chon)|nay|hien tai|chua (?:duoc )?chon)$"
     )
     unselected = bool(re.search(r"\b(?:nguon|tep|file) chua (?:duoc )?chon\b", normalized))
-    if filename:
-        normalized, removed = re.subn(r" (?:cua|trong) (?:nguon|tep|file)$", "", normalized)
-        if not removed:
-            return None
-    else:
+    if not filename:
         normalized = re.sub(source_suffix, "", normalized)
     layer = "|".join(re.escape(term) for term in LAYER_TERMS)
     view = re.fullmatch(
@@ -1413,9 +1416,7 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
     )
     count = re.fullmatch(
         r"(?:hay )?dem (?:so )?(?:ban ghi|dong|hang) (?:trong |cua )?(" + layer + r")", normalized
-    ) or re.fullmatch(
-        r"(?:hay )?dem (?:so )?(" + "|".join(CANONICAL_ROW_TERMS) + r")", normalized
-    )
+    ) or re.fullmatch(r"(?:hay )?dem (?:so )?(" + "|".join(CANONICAL_ROW_TERMS) + r")", normalized)
     count_after = re.fullmatch(
         r"(" + layer + r")(?: (?:cua|trong) (?:nguon|tep|file) "
         r"(?:dang (?:mo|chon)|nay|chua (?:duoc )?chon))? co bao nhieu (?:dong|ban ghi|hang)",
@@ -1436,7 +1437,7 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
     date_rows = re.fullmatch(
         r"(?:(?:(?:cho toi |hay )?(?:xem|liet ke)|co bao nhieu|dem) (?:cac |nhung |so )?"
         r"|(?:cac |nhung )?)(?:dong|ban ghi) (?:bi )?"
-        r"(?:loi ngay(?: thang)?|co ngay (?:sai|khong hop le))(?: nam o dau)?",
+        r"(?:(?:co )?loi ngay(?: thang)?|co ngay (?:sai|khong hop le))(?: nam o dau)?",
         normalized,
     )
     match = view or count or count_after or date_rows
@@ -1577,9 +1578,13 @@ def resolve_native_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | 
     if denied:
         return denied
     filenames = explicit_source_filenames(goal)
-    if len(filenames) == 1 and explicit_read_request(goal) and not any(
-        unicodedata.normalize("NFC", dataset.name).casefold() == filenames[0]
-        for dataset in catalogue.datasets
+    if (
+        len(filenames) == 1
+        and explicit_read_request(goal)
+        and not any(
+            unicodedata.normalize("NFC", dataset.name).casefold() == filenames[0]
+            for dataset in catalogue.datasets
+        )
     ):
         return AgentIntent(
             intent="CLARIFY",
