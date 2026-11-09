@@ -1139,7 +1139,9 @@ test("dashboard uses server totals, distinguishes PARTIAL and opens the exact of
     .getByRole("button", { name: "Kiểm tra lỗi dữ liệu", exact: true })
     .click();
   await expect(page.getByRole("heading", { name: source.name })).toBeVisible();
-  await expect(page.getByLabel("Bảng dữ liệu")).toHaveValue("table-errors");
+  await expect(page.getByRole("combobox", { name: "Bảng dữ liệu", exact: true })).toHaveValue(
+    "table-errors",
+  );
   await expect(
     page.getByRole("combobox", { name: "Lớp dữ liệu", exact: true }),
   ).toHaveValue("errors");
@@ -1257,7 +1259,9 @@ for (const kind of ["REVIEW_MAPPING", "NORMALIZE"] as const) {
         exact: true,
       })
       .click();
-    await expect(page.getByLabel("Bảng dữ liệu")).toHaveValue("table");
+    await expect(page.getByRole("combobox", { name: "Bảng dữ liệu", exact: true })).toHaveValue(
+      "table",
+    );
     await expect(
       page.getByRole("button", {
         name: kind === "REVIEW_MAPPING" ? "Xác nhận cột" : "Tạo bản chuẩn hóa",

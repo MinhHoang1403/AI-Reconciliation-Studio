@@ -180,7 +180,10 @@ test("unknown message delivery keeps its idempotency key after reload", async ({
   await assistant
     .getByRole("button", { name: "Hội thoại mới", exact: true })
     .click();
-  const question = `Tóm tắt kết quả đối soát ${crypto.randomUUID()}`;
+  // Hội thoại mới đã có phạm vi riêng. Giữ nguyên câu hỏi xác định để ca
+  // kiểm biên nhận không phụ thuộc mô hình hoặc phát sinh yêu cầu cloud.
+  const question = "Tóm tắt kết quả đối soát";
+  const quotaBefore = (await (await page.request.get("/api/settings")).json()).gemini_requests_used;
   const keys: string[] = [];
   let firstJob = "";
   let loseResponse = true;
@@ -222,6 +225,8 @@ test("unknown message delivery keeps its idempotency key after reload", async ({
   await expect(assistant.locator(".assistant-message")).toHaveCount(2);
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(keys[1]);
+  const quotaAfter = (await (await page.request.get("/api/settings")).json()).gemini_requests_used;
+  expect(quotaAfter).toBe(quotaBefore);
 });
 
 test("navigation cancels a delayed Back restore without leaving the page inert", async ({
