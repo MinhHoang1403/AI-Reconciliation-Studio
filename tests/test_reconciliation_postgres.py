@@ -112,8 +112,7 @@ def test_approved_templates_are_available_past_the_first_page(pg):  # noqa: F811
     assert rule["id"] in {item["id"] for item in second["items"]}
 
 
-@pytest.mark.parametrize("pg", ["create_data_foundation"], indirect=True)
-def test_additive_migration_preserves_existing_approved_canonical(pg):  # noqa: F811
+def test_lifecycle_migration_preserves_existing_approved_canonical(pg):  # noqa: F811
     client, factory, worker = pg
     project_id = project(client)
     dataset = upload(client, project_id)
@@ -129,13 +128,21 @@ def test_additive_migration_preserves_existing_approved_canonical(pg):  # noqa: 
     drain(factory, worker)
     before = client.get(f"/api/datasets/{dataset['id']}/artifacts").json()
     assert len(before["canonical_datasets"]) == 1
-    command.upgrade(Config("alembic.ini"), "head")
+    config = Config("alembic.ini")
+    command.downgrade(config, "create_agent_workflows")
+    # Candidate ORM needs the new columns, so inspect the old schema with SQL.
+    with factory() as db:
+        assert db.scalar(text("SELECT count(*) FROM canonical_datasets")) == 1
+        assert (
+            db.scalar(text("SELECT version_num FROM alembic_version")) == "create_agent_workflows"
+        )
+    command.upgrade(config, "head")
     assert client.get(f"/api/datasets/{dataset['id']}/artifacts").json() == before
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 1
         assert db.scalar(select(func.count()).select_from(RunRow)) == 0
         assert (
-            db.scalar(text("SELECT version_num FROM alembic_version")) == "create_agent_workflows"
+            db.scalar(text("SELECT version_num FROM alembic_version")) == "add_resource_lifecycle"
         )
     canonical = before["canonical_datasets"][0]
     preview = client.get(
@@ -313,6 +320,45 @@ def create_approved_run(pg, *, workbooks=False, grouped=False):  # noqa: F811
     )
     assert response.status_code == 202, response.text
     return pid, p, rule.json(), response.json()
+
+
+def test_archiving_sources_retains_verified_run_evidence_and_export(pg):  # noqa: F811
+    client, factory, worker = pg
+    pid, _, rule, queued = create_approved_run(pg)
+    drain(factory, worker)
+    rid = queued["run_id"]
+    metrics = client.get(f"/api/runs/{rid}/metrics").json()
+    groups = client.get(f"/api/runs/{rid}/matches").json()
+    group_id = next(g["id"] for g in groups["items"] if g["linkage_state"] == "LINKED")
+    evidence_url = f"/api/runs/{rid}/groups/{group_id}/evidence"
+    evidence = client.get(evidence_url)
+    assert evidence.status_code == 200
+    export = client.post(
+        f"/api/runs/{rid}/exports?format=xlsx", headers={"Idempotency-Key": "lifecycle-export"}
+    ).json()
+    drain(factory, worker)
+    download = client.get(f"/api/exports/{export['export_id']}").json()["download_url"]
+    export_before = client.get(download).content
+    did = client.get(f"/api/datasets?project_id={pid}").json()["items"][0]["id"]
+    endpoint = f"/api/datasets/{did}/lifecycle"
+    impact = client.get(endpoint).json()
+    assert impact["references"]["runs"] == 1
+    assert impact["references"]["exports"] == 1
+    assert impact["allowed"] == ["archive"]
+    archive = {"action": "archive", "expected_state": "active", "expected_version": 0}
+    assert client.post(endpoint, json=archive).json()["state"] == "archived"
+    blocked = client.post(
+        "/api/reconciliation-runs",
+        json={"contract_id": rule["id"]},
+        headers={"Idempotency-Key": "archived-source"},
+    )
+    assert blocked.status_code == 409
+    assert client.post(
+        f"/api/projects/{pid}/lifecycle", json={**archive, "confirmation": "Synthetic delivery"}
+    ).json()["state"] == "archived"
+    assert client.get(f"/api/runs/{rid}/metrics").json() == metrics
+    assert client.get(evidence_url).json() == evidence.json()
+    assert client.get(download).content == export_before
 
 
 def test_owner_mapping_reuse_checks_full_table_and_records_original_approval(pg):  # noqa: F811

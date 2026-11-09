@@ -35,6 +35,7 @@ from studio.database import (
 )
 from studio.errors import DomainError
 from studio.profiling import default_schema, source_signature
+from studio.resource_lifecycle import active_project, active_source, guard_resource
 
 
 def project_classification_expression() -> ColumnElement[str]:
@@ -78,7 +79,7 @@ def preparation_overview(db: Session, project_id: str, active_jobs: int) -> dict
         select(TableRow, DatasetRow)
         .join(VersionRow, TableRow.dataset_version_id == VersionRow.id)
         .join(DatasetRow, VersionRow.dataset_id == DatasetRow.id)
-        .where(DatasetRow.project_id == project_id)
+        .where(DatasetRow.project_id == project_id, active_source())
     )
     table_ids = tables.with_only_columns(TableRow.id)
     canonical = select(CanonicalRow).where(CanonicalRow.source_table_id.in_(table_ids))
@@ -108,7 +109,9 @@ def preparation_overview(db: Session, project_id: str, active_jobs: int) -> dict
     else:
         failed_dataset = db.scalar(
             select(DatasetRow)
-            .where(DatasetRow.project_id == project_id, DatasetRow.status == "FAILED")
+            .where(
+                DatasetRow.project_id == project_id, DatasetRow.status == "FAILED", active_source()
+            )
             .order_by(DatasetRow.created_at, DatasetRow.id)
             .limit(1)
         )
@@ -275,6 +278,7 @@ def get_scoped[T: Base](db: Session, model: type[T], resource_id: str, actor: Ac
     if row is None or getattr(row, "workspace_id", None) != actor.workspace_id:
         # Identical response for missing and other workspace resources.
         raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy tài nguyên trong workspace.", 404)
+    guard_resource(db, row, actor)
     return row
 
 
@@ -307,7 +311,7 @@ def enqueue_job(
     db: Session, workspace_id: str, project_id: str, kind: str, key: str, payload: dict[str, Any]
 ) -> JobRow:
     """Serialize concurrent enqueue per workspace/key using a PostgreSQL advisory lock."""
-    from sqlalchemy import text
+    active_project(db, project_id, workspace_id)
 
     lock = int.from_bytes(
         hashlib.sha256(f"{workspace_id}:{key}".encode()).digest()[:8], "big", signed=True

@@ -60,6 +60,9 @@ class ProjectRow(Base):
     name: Mapped[str] = mapped_column(String(200))
     business_scope: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lifecycle_version: Mapped[int] = mapped_column(Integer, server_default="0")
 
 
 class DatasetRow(Base):
@@ -74,6 +77,9 @@ class DatasetRow(Base):
     parse_signature: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(40), default="UPLOADED")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lifecycle_version: Mapped[int] = mapped_column(Integer, server_default="0")
 
 
 class VersionRow(Base):

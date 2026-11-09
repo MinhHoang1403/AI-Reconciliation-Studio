@@ -2,6 +2,15 @@
 
 Định nghĩa thực thi nằm trong `backend/studio/contracts/`. OpenAPI tại `/openapi.json` và `/docs` mô tả request/response; endpoint này không cấp quyền đọc dữ liệu. Error envelope: `code`, `message_vi`, `details` đã redacted, `retryable`, `correlation_id`.
 
+## Vòng đời dự án và nguồn nhập
+
+- `GET /api/projects/{id}/lifecycle` và `GET /api/datasets/{id}/lifecycle` trả tên, dự án, trạng thái, phiên bản, số phụ thuộc, công việc đang xử lý và các thao tác được phép. Chủ không gian làm việc mới được xem tác động hoặc thay đổi. ID ngoài không gian làm việc trả 404.
+- Gửi `POST` đến cùng endpoint với `action` (`archive`, `delete`, `restore`), `expected_state` và `expected_version` lấy từ lần xem tác động. Thao tác lưu trữ hoặc xóa dự án cần thêm `confirmation` bằng đúng tên. Thay đổi ghi một sự kiện audit và tăng phiên bản. Gửi lại cùng chuyển đổi ngay sau thành công trả trạng thái hiện tại. Phiên bản cũ sau lần khôi phục trả 409.
+- Danh sách mặc định chỉ trả mục `active`. Chủ không gian có thể dùng `lifecycle=archived` hoặc `lifecycle=deleted`. Tìm kiếm là chuỗi literal, tối đa 200 ký tự, trước phân trang.
+- Lưu trữ chặn công việc mới và giữ quyền đọc lịch sử trong cùng không gian làm việc. Xóa mềm ẩn khỏi đường dẫn thông thường và chỉ áp dụng khi kiểm tra phụ thuộc cho phép. Tệp gốc, phiên bản, dữ liệu kiểm toán và kho tệp tiếp tục được giữ. Nguồn có liên kết với ánh xạ, bản chuẩn hóa hoặc kết quả có đường lưu trữ.
+- Khóa giao dịch theo dự án tuần tự hóa thay đổi với thao tác tạo việc. Công việc đang chạy/chờ/thử lại hoặc workflow chưa kết thúc chặn chuyển trạng thái. Không gian làm việc là ranh giới phân quyền và không có thao tác xóa.
+- Revision `add_resource_lifecycle` thêm cột metadata. Bản Backend cũ chỉ được dùng khi không có dự án/nguồn đang lưu trữ hoặc xóa mềm. Dùng cổng tương thích trong `tools/rollback.ps1` và giữ schema, volume, audit nguyên vẹn.
+
 ## Nguồn Planner và facts đã xác nhận — 08/11/2026
 
 Xác nhận nguồn dạng cấu trúc trong chính lời người dùng (`Facts nguồn trái: {...}; Facts nguồn phải: {...}`) được kiểm riêng từng phía: `completeness: CONFIRMED` không bắt buộc kèm lại từ “đầy đủ”. Không nhận nhãn phủ định, object lỗi/khóa lặp, nhiều nhãn cùng phía hoặc canonical ID khác; phía thiếu xác nhận không thừa hưởng phía kia. Đây là bằng chứng cho bản nháp cần duyệt, không cấp quyền tự duyệt.

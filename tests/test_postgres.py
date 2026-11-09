@@ -176,7 +176,7 @@ def test_assistant_raw_download_preserves_bytes_permissions_and_checksum(pg):
 
 
 @pytest.fixture
-def pg(monkeypatch, tmp_path, request):
+def pg(monkeypatch, tmp_path):
     import os
 
     if os.environ.get("STUDIO_POSTGRES_TESTS") != "1":
@@ -203,9 +203,7 @@ def pg(monkeypatch, tmp_path, request):
     monkeypatch.setattr(settings, "instance_path", tmp_path / "instance")
     monkeypatch.setattr(settings, "demo_proof_path", tmp_path / "proof")
     monkeypatch.setattr(settings, "local_demo_access", False)
-    target = getattr(request, "param", "head")
-    assert target in {"head", "create_data_foundation"}
-    command.upgrade(Config("alembic.ini"), target)
+    command.upgrade(Config("alembic.ini"), "head")
     with factory() as db:
         seed_demo(db)
         token = secrets.token_urlsafe(32)
@@ -243,6 +241,121 @@ def project(client, name="Synthetic project"):
     )
     assert response.status_code == 201, response.text
     return response.json()["id"]
+
+
+def test_project_lifecycle_is_scoped_reversible_and_audited_once(pg):
+    from studio.database import AuditRow, ProjectRow
+
+    client, factory, _ = pg
+    pid = project(client, "TEST Lifecycle project")
+    path = f"/api/projects/{pid}/lifecycle"
+    body = {"action": "delete", "expected_state": "active", "expected_version": 0}
+    assert client.get(path).json()["allowed"] == ["archive", "delete"]
+    assert client.post(path, json=body).status_code == 422
+    body["confirmation"] = "TEST Lifecycle project"
+    assert client.post(path, json=body).json()["state"] == "deleted"
+    assert client.post(path, json=body).json()["state"] == "deleted"
+    assert client.get(f"/api/projects/{pid}").status_code == 404
+    assert pid not in {p["id"] for p in client.get("/api/projects").json()["items"]}
+    assert pid in {
+        p["id"] for p in client.get("/api/projects?lifecycle=deleted").json()["items"]
+    }
+    assert client.post(path, json={**body, "action": "archive"}).status_code == 409
+    with factory() as db:
+        assert db.get(ProjectRow, pid).deleted_at is not None
+        events = list(db.scalars(select(AuditRow).where(AuditRow.resource_id == pid)))
+        assert [event.action for event in events if event.action == "PROJECT_DELETE"] == [
+            "PROJECT_DELETE"
+        ]
+        member = db.get(MembershipRow, ("demo", "test-owner"))
+        member.role = "viewer"
+        db.add(WorkspaceRow(id="other", name="Other TEST workspace", policy={}))
+        db.flush()
+        foreign = ProjectRow(workspace_id="other", name="TEST foreign", business_scope="TEST")
+        db.add(foreign)
+        db.commit()
+        foreign_id = foreign.id
+    assert client.get(path).status_code == 403
+    assert client.get(f"/api/projects/{foreign_id}/lifecycle").status_code == 404
+    assert client.get("/api/projects?lifecycle=deleted").status_code == 403
+    with factory.begin() as db:
+        db.get(MembershipRow, ("demo", "test-owner")).role = "owner"
+    assert client.post(
+        path, json={"action": "restore", "expected_state": "deleted", "expected_version": 1}
+    ).json()["state"] == "active"
+    assert client.get(f"/api/projects/{pid}").status_code == 200
+    assert client.post(path, json=body).status_code == 409
+
+
+def test_dataset_lifecycle_retains_tables_blocks_work_and_hides_archived_sources(pg):
+    client, factory, worker = pg
+    pid = project(client, "TEST Dataset retention")
+    dataset = upload(client, pid)
+    did = dataset["id"]
+    path = f"/api/datasets/{did}/lifecycle"
+    archive = {"action": "archive", "expected_state": "active", "expected_version": 0}
+    assert client.get(path).json()["running_jobs"] > 0
+    assert client.post(path, json=archive).status_code == 409
+    drain(factory, worker)
+    impact = client.get(path).json()
+    assert impact["references"]["mappings"] > 0
+    assert impact["allowed"] == ["archive"]
+    assert client.post(path, json={**archive, "action": "delete"}).status_code == 409
+    tables = client.get(f"/api/datasets/{did}/tables").json()
+    assert client.post(path, json=archive).json()["state"] == "archived"
+    assert client.get(f"/api/datasets?project_id={pid}").json()["total"] == 0
+    assert client.get(f"/api/datasets?project_id={pid}&lifecycle=archived").json()["total"] == 1
+    assert client.get(f"/api/datasets/{did}/tables").json() == tables
+    mapping = client.get(f"/api/tables/{tables['items'][0]['id']}/mappings").json()["items"][0]
+    denied = client.post(
+        f"/api/mappings/{mapping['id']}/approve",
+        json={"schema_definition": mapping["schema"], "decisions": []},
+    )
+    assert denied.status_code == 409
+    assert denied.json()["code"] == "SOURCE_ARCHIVED"
+    restored = client.post(
+        path, json={"action": "restore", "expected_state": "archived", "expected_version": 1}
+    )
+    assert restored.json()["state"] == "active"
+    assert client.get(f"/api/datasets?project_id={pid}").json()["total"] == 1
+
+
+def test_failed_source_soft_delete_preserves_raw_artifact_and_supports_restore(pg):
+    from studio.database import VersionRow
+    from studio.storage import checksum, storage_path
+
+    client, factory, worker = pg
+    pid = project(client, "TEST Soft delete")
+    did = upload(client, pid, b"id,value\n001,10\n002,20,unexpected\n")["id"]
+    drain(factory, worker)
+    with factory() as db:
+        version = db.scalar(select(VersionRow).where(VersionRow.dataset_id == did))
+        artifact = db.scalar(
+            select(ArtifactRow).where(ArtifactRow.dataset_version_id == version.id)
+        )
+        file = storage_path(settings.storage_root, artifact.storage_key)
+        original = checksum(file)
+        artifact_id = artifact.id
+    endpoint = f"/api/datasets/{did}/lifecycle"
+    assert client.get(endpoint).json()["allowed"] == ["archive", "delete"]
+    assert client.post(
+        endpoint, json={"action": "delete", "expected_state": "active", "expected_version": 0}
+    ).json()["state"] == "deleted"
+    assert client.get(f"/api/datasets/{did}/artifacts").status_code == 404
+    assert client.get(f"/api/datasets?project_id={pid}&lifecycle=deleted&search=synthetic").json()[
+        "total"
+    ] == 1
+    assert client.get(f"/api/datasets?project_id={pid}&lifecycle=deleted&search=%25").json()[
+        "total"
+    ] == 0
+    with factory() as db:
+        assert db.get(ArtifactRow, artifact_id) is not None
+        assert db.get(DatasetRow, did).deleted_at is not None
+    assert checksum(file) == original
+    assert client.post(
+        endpoint, json={"action": "restore", "expected_state": "deleted", "expected_version": 1}
+    ).json()["state"] == "active"
+    assert client.get(f"/api/datasets/{did}/artifacts").status_code == 200
 
 
 def test_project_classification_owner_audit_conflict_and_scope(pg):

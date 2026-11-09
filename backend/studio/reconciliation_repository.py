@@ -39,6 +39,7 @@ from studio.database import (
 )
 from studio.errors import DomainError
 from studio.repository import get_scoped, mapping_contract, schema_fingerprint
+from studio.resource_lifecycle import active_source, guard_resource
 from studio.storage import checksum, storage_path, write_parquet
 
 
@@ -60,6 +61,8 @@ def catalogue_for_project(
     )
     if canonical_ids is not None:
         query = query.where(CanonicalRow.id.in_(canonical_ids))
+    if canonical_ids is None:
+        query = query.where(active_source())
     if after_id is not None:
         query = query.where(CanonicalRow.id > after_id)
     rows = db.scalars(query.order_by(CanonicalRow.id).limit(limit))
@@ -77,6 +80,8 @@ def catalogue_for_project(
         assert version is not None
         dataset = db.get(DatasetRow, version.dataset_id)
         assert dataset is not None
+        if canonical_ids is not None:
+            guard_resource(db, dataset, actor)
         definition = SchemaDefinition.model_validate(schema.definition)
         profile = DatasetProfile.model_validate(table.profile)
         approved = mapping_contract(mapping)

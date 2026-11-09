@@ -262,6 +262,7 @@ def assess_table_mapping(
 
     from studio.database import DatasetRow, VersionRow
     from studio.repository import project_for_table
+    from studio.resource_lifecycle import active_source
 
     project = project_for_table(db, table)
     others = db.execute(
@@ -270,6 +271,7 @@ def assess_table_mapping(
         .join(DatasetRow, DatasetRow.id == VersionRow.dataset_id)
         .where(
             DatasetRow.project_id == project.id,
+            active_source(),
             TableRow.id != table.id,
             TableRow.workspace_id == actor.workspace_id,
         )

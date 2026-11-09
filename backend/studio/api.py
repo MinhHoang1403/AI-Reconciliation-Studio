@@ -90,6 +90,16 @@ from studio.repository import (
     project_for_table,
     read_prepared_artifact,
 )
+from studio.resource_lifecycle import (
+    LifecycleChange,
+    LifecycleImpact,
+    State,
+    active_project,
+    active_source,
+    change_resource,
+    lifecycle_state,
+    resource_impact,
+)
 from studio.schema_mapping import compile_transform_plan, validate_mapping
 from studio.storage import checksum, storage_path
 
@@ -106,8 +116,15 @@ async def redact_unexpected_failures(request: Request, call_next: Any) -> Respon
         return await unexpected_error(request, exc)
 
 
-def database() -> Generator[Session, None, None]:
+def database(request: Request) -> Generator[Session, None, None]:
     with SessionFactory() as db:
+        path = request.url.path
+        read_checks = {"/api/assistant/tools", "/api/agent/queries", "/api/agent/source-rows",
+            "/api/reconciliation-plans/validate"}
+        db.info["resource_write"] = (
+            request.method in {"POST", "PUT", "PATCH", "DELETE"}
+            and path not in read_checks and not path.endswith("/mapping-preflight")
+        )
         yield db
 
 
@@ -219,10 +236,19 @@ def projects(
     limit: int = Query(50, ge=1, le=100),
     search: str = Query("", max_length=200),
     include_test: bool = True,
+    lifecycle: State = "active",
 ) -> dict[str, Any]:
     """Bounded, workspace-scoped literal search; stable tie ordering across pages."""
     classification = project_classification_expression().label("classification")
     query = select(ProjectRow, classification).where(ProjectRow.workspace_id == actor.workspace_id)
+    if lifecycle != "active":
+        require_owner(actor, db, "workspace")
+    query = query.where(
+        ProjectRow.deleted_at.is_not(None)
+        if lifecycle == "deleted" else ProjectRow.deleted_at.is_(None),
+        ProjectRow.archived_at.is_not(None)
+        if lifecycle == "archived" else ProjectRow.archived_at.is_(None),
+    )
     if not include_test:
         query = query.where(classification != ProjectClassification.TEST)
     if search.strip():
@@ -265,6 +291,30 @@ def project_detail(project_id: str, db: DB, actor: CurrentActor) -> Project:
             select(project_classification_expression()).where(ProjectRow.id == row.id)
         ),
     )
+
+
+@app.get("/api/projects/{project_id}/lifecycle", response_model=LifecycleImpact)
+def project_impact(project_id: str, db: DB, actor: CurrentActor) -> LifecycleImpact:
+    return resource_impact(db, actor, "project", project_id)
+
+
+@app.post("/api/projects/{project_id}/lifecycle", response_model=LifecycleImpact)
+def project_lifecycle(
+    project_id: str, body: LifecycleChange, db: DB, actor: CurrentActor
+) -> LifecycleImpact:
+    return change_resource(db, actor, "project", project_id, body)
+
+
+@app.get("/api/datasets/{dataset_id}/lifecycle", response_model=LifecycleImpact)
+def dataset_impact(dataset_id: str, db: DB, actor: CurrentActor) -> LifecycleImpact:
+    return resource_impact(db, actor, "dataset", dataset_id)
+
+
+@app.post("/api/datasets/{dataset_id}/lifecycle", response_model=LifecycleImpact)
+def dataset_lifecycle(
+    dataset_id: str, body: LifecycleChange, db: DB, actor: CurrentActor
+) -> LifecycleImpact:
+    return change_resource(db, actor, "dataset", dataset_id, body)
 
 
 @app.patch("/api/projects/{project_id}/classification", response_model=Project)
@@ -338,7 +388,7 @@ def create_project(body: ProjectInput, db: DB, actor: CurrentActor) -> dict[str,
 def project_summary(project_id: str, db: DB, actor: CurrentActor) -> ProjectSummary:
     """One backend snapshot of data preparation counts, never financial KPIs."""
     get_scoped(db, ProjectRow, project_id, actor)
-    dataset_ids = select(DatasetRow.id).where(DatasetRow.project_id == project_id)
+    dataset_ids = select(DatasetRow.id).where(DatasetRow.project_id == project_id, active_source())
     table_ids = (
         select(TableRow.id)
         .join(VersionRow, TableRow.dataset_version_id == VersionRow.id)
@@ -493,11 +543,24 @@ def datasets(
     actor: CurrentActor,
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
+    lifecycle: State = "active",
+    search: str = Query("", max_length=200),
 ) -> dict[str, Any]:
     get_scoped(db, ProjectRow, project_id, actor)
     query = select(DatasetRow).where(
         DatasetRow.workspace_id == actor.workspace_id, DatasetRow.project_id == project_id
     )
+    if lifecycle != "active":
+        require_owner(actor, db, project_id)
+    query = query.where(
+        DatasetRow.deleted_at.is_not(None)
+        if lifecycle == "deleted" else DatasetRow.deleted_at.is_(None),
+        DatasetRow.archived_at.is_not(None)
+        if lifecycle == "archived" else DatasetRow.archived_at.is_(None),
+    )
+    if search.strip():
+        literal = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(DatasetRow.name.ilike(f"%{literal}%", escape="\\"))
     return {
         "items": [
             _dataset_dto(d)
@@ -536,6 +599,7 @@ def persist_uploads(
     """Giữ cùng validation/raw/dedup; caller công bố metadata và queue trong transaction."""
     require_editor(actor, db)
     get_scoped(db, ProjectRow, project_id, actor)
+    active_project(db, project_id, actor.workspace_id)
     if len(files) > settings.max_upload_files:
         raise DomainError("TOO_MANY_FILES", "Vượt giới hạn số tệp trong một lần tải lên.")
     try:
@@ -574,6 +638,10 @@ def persist_uploads(
             )
         )
         if existing:
+            if lifecycle_state(existing) != "active":
+                raise DomainError(
+                    "SOURCE_RETAINED", "Khôi phục nguồn đã lưu trữ hoặc xóa để dùng lại tệp.", 409
+                )
             result.append({**_dataset_dto(existing), "reused": True})
             continue
         choose_parser(inspection, policy)

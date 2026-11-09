@@ -31,6 +31,7 @@ from studio.database import DatasetRow, ExceptionRow, ProjectRow, Reconciliation
 from studio.errors import DomainError
 from studio.reconciliation_repository import _connection, result_path, run_contract
 from studio.repository import get_scoped
+from studio.resource_lifecycle import active_source
 
 
 def scoped_context(db: Session, actor: Actor, context: AssistantContext) -> RunRow | None:
@@ -104,7 +105,9 @@ def agent_catalogue(
             )
         )
     query = select(DatasetRow).where(
-        DatasetRow.workspace_id == actor.workspace_id, DatasetRow.project_id == context.project_id
+        DatasetRow.workspace_id == actor.workspace_id,
+        DatasetRow.project_id == context.project_id,
+        active_source(),
     )
     if dataset_ids:
         query = query.where(DatasetRow.id.in_(dataset_ids))
@@ -343,6 +346,7 @@ def read_tool(db: Session, actor: Actor, request: ToolRequest) -> ToolResult:
         query = select(DatasetRow).where(
             DatasetRow.workspace_id == actor.workspace_id,
             DatasetRow.project_id == context.project_id,
+            active_source(),
         )
         result.total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
         result.datasets = [
@@ -362,7 +366,7 @@ def read_tool(db: Session, actor: Actor, request: ToolRequest) -> ToolResult:
             select(TableRow.id)
             .join(VersionRow, TableRow.dataset_version_id == VersionRow.id)
             .join(DatasetRow, VersionRow.dataset_id == DatasetRow.id)
-            .where(DatasetRow.project_id == context.project_id)
+            .where(DatasetRow.project_id == context.project_id, active_source())
         )
         ready = (
             db.scalar(
@@ -414,7 +418,7 @@ def read_tool(db: Session, actor: Actor, request: ToolRequest) -> ToolResult:
             dataset_count=db.scalar(
                 select(func.count())
                 .select_from(DatasetRow)
-                .where(DatasetRow.project_id == context.project_id)
+                .where(DatasetRow.project_id == context.project_id, active_source())
             )
             or 0,
             ready_canonical_count=ready,

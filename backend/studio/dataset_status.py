@@ -13,6 +13,7 @@ from studio.contracts import Contract
 from studio.contracts.assistant import AssistantContext
 from studio.database import CanonicalRow, DatasetRow, MappingRow, TableRow, VersionRow
 from studio.errors import DomainError
+from studio.resource_lifecycle import active_source
 
 
 class ProcessingStatus(Contract):
@@ -71,7 +72,9 @@ def read_processing_status(
     scoped_context(db, actor, context)
     selected = dataset_ids or ([context.dataset_id] if context.dataset_id else [])
     query = select(DatasetRow).where(
-        DatasetRow.workspace_id == actor.workspace_id, DatasetRow.project_id == context.project_id
+        DatasetRow.workspace_id == actor.workspace_id,
+        DatasetRow.project_id == context.project_id,
+        active_source(),
     )
     if selected:
         query = query.where(DatasetRow.id.in_(selected))
