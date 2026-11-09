@@ -2,7 +2,7 @@
 
 ## Chuẩn bị nền sạch trước phát hành — 09/11/2026
 
-**`CLEANUP_AWAITING_OWNER_APPROVAL`.** Studio tiếp tục phục vụ dữ liệu hiện hành. Phạm vi xóa đã có danh mục, backup và diễn tập. Việc xóa dữ liệu hiện hành cần xác nhận theo dấu vân tay của danh mục.
+**`CLEAN_BASELINE_READY_FOR_OWNER_REVIEW`.** Studio local phục vụ nền nghiệp vụ trống sau khi thực thi danh mục đã được chủ dự án phê duyệt. Mốc này bàn giao để chủ dự án xem xét nền sạch.
 
 Đợt này kiểm kê và chuẩn bị dọn môi trường hiện có. Mốc source ứng viên là `b61c858`, còn image ứng dụng dùng đúng các đầu vào từ `76265d2`. Chênh lệch giữa hai mốc chỉ gồm tài liệu và một ca kiểm thử Python. `origin/main` giữ `6403129` vì thay đổi sản phẩm từ ứng viên vẫn chờ nghiệm thu. Các nhánh thiết kế, triển khai giao diện và kiểm toán độ tin cậy đều là tổ tiên của nhánh ứng viên. Kho Git chưa cấu hình GitHub Actions.
 
@@ -10,10 +10,10 @@
 
 - Backup mới khôi phục **25 bảng** trong schema riêng và đối chiếu **14.068 tệp**. Bản sao trên host khớp SHA-256 với manifest. Kích thước metadata là 130.971.836 byte và tệp nghiệp vụ là 701.221.180 byte. Bản trên host và bản trong volume cùng nằm trên máy chạy Studio.
 - PostgreSQL 18.3 giữ database `studio`, schema `public` và migration `add_purge_receipts`. Kiểm kê theo ID, quan hệ khóa ngoại, tham chiếu JSON, checksum từng tệp và sổ hạn mức AI. Danh mục chi tiết, ID, các bản sao và biên nhận vận hành nằm trong `runtime/pre-release-cleanup/`, ngoài Git.
-- Phạm vi dự kiến gồm 1.151 dự án và hai workspace phụ. Trong số đó có 17 dự án cần chủ dự án xác nhận phạm vi TEST, gồm 12 dự án TEST ở workspace phụ, 3 `UNKNOWN` và 2 `WORK`. Hai dự án được đánh dấu giữ trong đợt kiểm toán trước đều mang nhãn TEST và có mặt trong danh mục lần này theo yêu cầu mới. Danh mục giữ workspace demo, membership owner, phiên demo, chính sách AI, sổ hạn mức, audit demo và năm tệp bằng chứng UAT ngoài thư mục nghiệp vụ. Toàn bộ audit được giữ trong backup.
+- Phạm vi được chủ dự án duyệt gồm 1.151 dự án và hai workspace phụ. Trong đó có 12 dự án TEST ở workspace phụ, 3 `UNKNOWN`, 2 `WORK` và cả hai dự án được đề xuất giữ ở đợt kiểm toán trước. Danh mục giữ workspace demo, membership owner, phiên demo, chính sách AI, sổ hạn mức, audit demo và năm tệp bằng chứng UAT ngoài thư mục nghiệp vụ. Toàn bộ audit cũ vẫn có trong backup.
 - Bản sao cô lập đã chạy cả đường quay lui giao dịch và đường xóa. Các bảng nghiệp vụ về 0, dọn đủ 14.068 tệp và tiếp tục được từ danh mục sau khi mô phỏng gián đoạn dọn tệp. Một ca trên schema trống độc lập đã kiểm đăng nhập owner, tạo dự án, tải CSV, đọc bản gốc, chuẩn hóa giữ mã có số 0 đầu và dọn đúng dữ liệu smoke. Sau ca kiểm, các bảng nghiệp vụ và kho tệp TEST trở lại trống.
 
-| Dữ liệu | PostgreSQL hiện hành tại mốc kiểm kê | Bản sao sau diễn tập |
+| Dữ liệu | Trước xóa ở `public` | Sau xóa, restart và dọn smoke test |
 | --- | ---: | ---: |
 | Workspace | 3 | 1 |
 | Dự án | 1.151 | 0 |
@@ -29,7 +29,13 @@
 | Hàng metadata artifact | 11.343 | 0 |
 | Tệp nghiệp vụ | 14.068 | 0 |
 
-Số 0 trong bảng là kết quả trên bản sao. Kiểm lại sau khi trả Studio về `public` cho thấy dấu vân tay cả 25 bảng và 14.068 tệp hiện hành vẫn khớp danh mục. Phiên đăng nhập demo có thể đổi do bootstrap và vẫn được giữ. Xác nhận xóa phải dùng SHA-256 của danh mục cùng danh sách ID cố định, sau đó kiểm lại tính toàn vẹn và dấu vết thay đổi ngay trước thực thi.
+Trước khi xóa, dấu vân tay 25 bảng, 14.068 tệp, nhận dạng database và mount đều khớp danh mục. Backup trong volume và bản sao trên host khớp SHA-256 và có biên nhận khôi phục đạt. Frontend và Backend dừng trong lúc bảo trì. Giao dịch PostgreSQL chỉ gỡ khóa chính có trong danh mục, theo thứ tự phụ thuộc. Biên nhận được ghi bền vững trước khi giao dịch commit và cập nhật khi kiểm chứng tệp đã vắng mặt.
+
+Sau xóa và restart, toàn bộ 19 bảng nghiệp vụ về 0. Migration `add_purge_receipts`, workspace `demo`, membership owner, cấu hình AI và 12.320 dòng audit demo được bảo toàn. 192 sự kiện audit thuộc hai workspace đã xóa nằm trong danh mục duyệt và còn trong backup. Sổ Gemini giữ 636 lượt. Kiểm ràng buộc khóa ngoại đạt và không còn job nghiệp vụ. Phiên demo tiếp tục được tạo hoặc gia hạn theo bootstrap.
+
+Chromium kiểm AI Assistant, Dữ liệu, Đối soát, Báo cáo và Lịch sử ở trạng thái ban đầu. Một ca smoke qua HTTP thật tạo dự án TEST, tải CSV, chạy Worker và kiểm bảng đã chuẩn bị cùng byte nguồn. Sau khi gỡ riêng dự án này và ba tệp của ca kiểm, dấu vân tay hệ thống khớp lại nền trống. Cặp rollback `5855585` mở đúng workspace trống rồi Studio trở lại image `76265d2`.
+
+Tệp nghiệp vụ được gỡ có tổng 701.221.180 byte nội dung. Dung lượng trống đo trong filesystem của volume tăng 731.385.856 byte khi gỡ tệp. PostgreSQL đo bằng `pg_database_size` giảm từ 168.916.671 xuống 75.904.703 byte sau restart, smoke test, `VACUUM (ANALYZE)` trên các bảng nghiệp vụ và kiểm lại rollback. Hai số đo mô tả các lớp lưu trữ khác nhau. Hai bản sao của `backup_b0d2a70d03b347c3a0dcb8d21ef8f480`, biên nhận restore và các backup trước đó được giữ. Kiểm kê cuối ghi nhận 44 thư mục backup trong volume, 42 volume và 27 container ngoài Studio còn nguyên. Biên nhận thực thi, checksum và kết quả sau restart nằm ngoài Git trong `runtime/pre-release-cleanup/`.
 
 ### Source và tài liệu
 
@@ -51,7 +57,7 @@ TypeScript, ESLint, build production, Ruff trong phạm vi công cụ liên quan
 
 Đã chạy bộ rollback rồi trở lại ứng viên trên migration `add_purge_receipts`. Cả hai lần khớp snapshot PostgreSQL và byte của 14.068 tệp. Cùng PostgreSQL container và hai volume gốc phục vụ sau khi quay lại ứng viên. 58 tệp nguồn trong mỗi container Backend/Worker và sáu tệp JS/CSS qua Nginx khớp image/source đã ghi.
 
-Đã gỡ chín image Studio không còn container tham chiếu, kể cả container đã dừng. Giữ bộ hiện hành và đúng một bộ rollback, cùng PostgreSQL. Kiểm lại 27 container ngoài Studio, 42 volume và các network của host cho kết quả khớp. `docker system df` ghi 45 → 36 image và dung lượng image hiển thị 25,38 → 25,37 GB. Dung lượng trống ổ C tăng khoảng 29,6 MB trong khoảng đo, đồng thời có dọn cache cục bộ nên phần tăng không thể quy riêng cho Docker. Cả bốn dịch vụ, phiên owner, phép mở Studio bằng Chromium và hai bộ đối chiếu tài chính kèm XLSX readback đều đạt sau cleanup.
+Trong đợt chuẩn bị trước khi xóa dữ liệu nghiệp vụ, đã gỡ chín image Studio không còn container tham chiếu, kể cả container đã dừng. Giữ bộ hiện hành và đúng một bộ rollback, cùng PostgreSQL. Kiểm lại 27 container ngoài Studio, 42 volume và các network của host cho kết quả khớp. `docker system df` ghi 45 → 36 image và dung lượng image hiển thị 25,38 → 25,37 GB. Dung lượng trống ổ C tăng khoảng 29,6 MB trong khoảng đo, đồng thời có dọn cache cục bộ nên phần tăng không thể quy riêng cho Docker. Ở mốc chuẩn bị, cả bốn dịch vụ, phiên owner, Chromium và hai bộ đối chiếu tài chính kèm XLSX readback đều đạt.
 
 ## Hoàn thiện sản phẩm theo hành trình — 09/11/2026
 
