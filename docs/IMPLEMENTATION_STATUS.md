@@ -1,12 +1,39 @@
 # Trạng thái triển khai và nghiệm thu
 
-## Ứng viên dựng lại trải nghiệm sản phẩm — 09/11/2026
+## Ứng viên dựng lại trải nghiệm đang chạy local — 09/11/2026
 
-Chủ dự án đã yêu cầu dựng lại giao diện sau khi xem W1–W5. Nhánh `codex/complete-product-interface` tách từ `f259b099`. Trạng thái và bằng chứng kiểm chứng riêng ở [biên bản dựng lại trải nghiệm](INTERFACE_REDESIGN_AUDIT.md#dung-lai-trai-nghiem). Mốc Docker W1–W5 phía dưới là mốc so sánh.
+Chủ dự án yêu cầu dựng lại giao diện sau khi xem W1–W5. Ứng viên từ nhánh `codex/complete-product-interface` phục vụ tại `http://127.0.0.1:18180` trong Compose `ai-reconciliation-studio`. Mốc W1–W5 phía dưới dùng để so sánh. Chủ dự án chưa nghiệm thu giao diện.
 
-## Ứng viên UX đang chạy local — 09/11/2026
+| Thành phần | OCI revision | Image ID local |
+| --- | --- | --- |
+| Frontend bàn giao | `3b012ceb44377f2c12c439fc074b2193bcace140` | `sha256:8a2d5588ec9503a2b3451ac7ecb345e234615642c167c4f39d12bb9baef0df3d` |
+| Backend / Worker | `27646643269843e867ae45891e7c1018bca076e3` | `sha256:f5663a123b9f928365009b7924fc52dc682239380e9f7d39c521535ae14048e2` |
+| Frontend kiểm nguyên bộ | `27646643269843e867ae45891e7c1018bca076e3` | `sha256:a4f926b3c2f73cd6eac7dca0299cce2de7988af4fd0a4fcce8be624e69b12495` |
+| Frontend W1–W5 | `3165f1a7223636256c832e57db617ea3758bbfd1` | `sha256:f416072ce968375d71aa3e914d6bdcc61020ddae97f7d3bdc8509329df75b62a` |
 
-W1–W5 chạy tại `http://127.0.0.1:18180` trên một Docker Compose. Chủ dự án miễn prototype W0 riêng và chuyển các phép đo sang bản ứng viên. Nhánh `codex/full-interface-redesign` tách khỏi `main`. Chủ dự án chưa nghiệm thu giao diện.
+Migration `create_agent_workflows` → `add_resource_lifecycle` thêm metadata vòng đời. Dấu vân tay nghiệp vụ trước/sau khớp khi so theo các trường đã có trước migration. Xác minh 10.573 artifact, 906 kết quả lượt đối soát và 1.644 tệp xuất. Mọi hàng dự án/nguồn hiện hữu đều có trạng thái ban đầu của metadata mới. PostgreSQL giữ cùng container. Backend từ chối khởi tạo phiên trước proof bằng 403 `LOCAL_DEMO_NOT_VERIFIED`. Sáu tài nguyên JS/CSS qua Nginx khớp SHA-256 với build đã kiểm thử.
+
+Backup `backup_46eabf1ae7484589bb0edb4f34d6a6c1` được khôi phục thử 24 bảng trên schema cô lập trong 82,747 giây. Checksum của metadata và 13.123 tệp trên host khớp manifest. Hồ sơ local ở `runtime/product-interface-20261109/`. Xem [biên bản dựng lại trải nghiệm](INTERFACE_REDESIGN_AUDIT.md#dung-lai-trai-nghiem) cho kết quả trước/sau, kiểm thử và giới hạn.
+
+Frontend bàn giao bổ sung tra cứu nguồn đã lưu trữ cho Báo cáo. Lần cập nhật đầu bị dừng ở kiểm byte asset do build Windows được tạo trước khi thêm ca hồi quy, khiến Tailwind sinh CSS khác với Docker. Đã quay về image `2764664` và xác minh lại phiên. Build lại đúng tree `3b012ce`, đối chiếu cả sáu SHA-256 qua HTTP và kiểm dấu vân tay dữ liệu trước/sau đều đạt. Backend, Worker, PostgreSQL và schema giữ nguyên trong lần cập nhật này.
+
+Bốn service healthy. Cổng cuối đối chiếu 42 volume trên host và 27 container ngoài Studio với inventory ban đầu. Bản ghi và tệp có trước vẫn khớp sau các ca ghi TEST, kể cả chạy với hai nguồn kỳ mới. `origin/main` ở `64031292af07c7b10e9f0baf418040abedcdd96f` tại lúc bàn giao. Trạng thái kỹ thuật `READY_FOR_OWNER_DESIGN_ACCEPTANCE`.
+
+### Quay về giao diện trước đợt dựng lại
+
+Đã thử `before-product-interface` rồi trở về ứng viên, trên cùng Backend, Worker và PostgreSQL. Proof local và dấu vân tay dữ liệu khớp tại cả hai mốc. Đường rollback đã thử chỉ đổi Frontend để giữ cách đọc các nguồn và dự án đã lưu trữ. Công cụ rollback Backend cũ kiểm tương thích schema và chặn nếu có bản ghi ngừng hoạt động mà image đó không hiểu.
+
+```powershell
+docker image tag ai-reconciliation-studio-frontend:before-product-interface ai-reconciliation-studio-frontend:local
+docker compose up -d --no-build --no-deps --wait frontend
+./tools/verify-local.ps1
+```
+
+Để trở lại bản bàn giao, dùng `ai-reconciliation-studio-frontend:product-interface-3b012ce` làm image nguồn trong lệnh gắn tag và chạy lại hai lệnh sau. `ai-reconciliation-studio-frontend:product-interface-2764664` là mốc trung gian đã kiểm nguyên bộ. Biên bản ở `runtime/product-interface-20261109/frontend-rollback-verified.json` và `runtime/product-interface-20261109/history-frontend-rollout.json`.
+
+## Mốc so sánh W1–W5 — 09/11/2026
+
+W1–W5 đã chạy tại `http://127.0.0.1:18180` trên Compose của Studio. Chủ dự án miễn prototype W0 riêng và chuyển các phép đo sang bản ứng viên. Nhánh `codex/full-interface-redesign` tách khỏi `main`. Chủ dự án yêu cầu dựng lại sau khi xem ứng viên này.
 
 | Thành phần | OCI revision hoặc vai trò | Image ID local |
 | --- | --- | --- |

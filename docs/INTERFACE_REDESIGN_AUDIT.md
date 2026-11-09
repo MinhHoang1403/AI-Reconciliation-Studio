@@ -38,6 +38,57 @@ Chi tiết request, phạm vi và rollback xem ở [hợp đồng vòng đời](
 
 Hai kịch bản Chat của ứng viên đo từ tải đến kết quả đã xác minh là 14,807 giây và 15,113 giây. Thời gian các lần chạy dao động theo máy và hàng đợi. Số liệu chỉ mô tả phép thử. Chưa có bộ số liệu thao tác trước/sau đồng nhất cho mọi trạng thái của tám hành trình. Hồ sơ cục bộ ở `runtime/product-interface-20261109/` gồm chỉ mục ảnh trước/sau, dữ liệu đo và biên bản kiểm.
 
+### Hành trình A–H
+
+| Hành trình | Bằng chứng |
+| --- | --- |
+| A. Người dùng mới | Tạo dự án TEST, tải CSV/XLSX, mở đúng nguồn và nhận bước tiếp theo. |
+| B. Chuẩn hóa | Xác nhận cột và thông tin còn thiếu. Xem kết quả theo lớp dữ liệu và kiểm dòng lỗi sau chuẩn hóa. |
+| C. Đối soát mới | Chọn hai nguồn, xác nhận khóa, kỳ và chỉ tiêu, duyệt quy tắc rồi chạy. So sánh kết quả với oracle độc lập. |
+| D. Đối soát lặp lại | Kiểm live hai nguồn CSV/XLSX kỳ mới, dùng lại ánh xạ theo quyền owner đã bật, sao chép khóa và chỉ tiêu từ quy tắc kỳ trước. Xác nhận phạm vi, duyệt và chạy. Kết quả 1/3 nhóm khớp, chênh lệch có dấu và tuyệt đối đều 2,75 VND. |
+| E. Phân tích sai lệch | Mở đúng lượt, nhóm và hai nguồn trong Bằng chứng. Escape quay về báo cáo, giữ bộ lọc và focus. |
+| F. Quản lý dữ liệu | Tìm nguồn/dự án, xem phụ thuộc, xác nhận, ẩn khỏi danh sách, khôi phục và kiểm tệp gốc. PostgreSQL kiểm quyền, lưu trữ và audit. |
+| G. Assistant | Kiểm câu hỏi tiếng Việt, tiếp tục phiên, bước bổ sung nguồn/kỳ/mẫu và hai lần duyệt trong kịch bản cần kiểm soát. Gồm cả luồng điều phối local và mock contract được ghi nhãn. |
+| H. AI gián đoạn | Kiểm luồng thủ công vẫn truy cập nguồn, dùng trình sửa quy tắc, chạy, mở báo cáo và xuất tệp khi bước AI cần fallback. Không chạy yêu cầu mới tới nhà cung cấp cloud. |
+
+### Lỗi đã sửa và kiểm lại
+
+| Hiện tượng | Nguyên nhân và vị trí sửa | Hồi quy |
+| --- | --- | --- |
+| Lịch sử lấy mất màn hình Báo cáo | Điều hướng lịch sử từng đồng thời đổi sang Chat. `App.tsx` và `ProjectHistory.tsx` mở hội thoại trong đúng ngữ cảnh, xóa trang đã tải khi quyền đọc bị thu hồi. | Đo route/focus và mock 403 khi tải trang tiếp. |
+| Người dùng phải cuộn qua phần giải thích và biểu đồ để tới bảng | `ReconciliationStudio.tsx` và `styles.css` đưa phạm vi, trạng thái, bộ lọc và bảng lên đầu. | Cùng lượt TEST ở 390 và 1440 px. Kiểm truy nguồn, số tiền, cuộn bảng và mở biểu đồ khi cần. |
+| Phần nhập Chat có thể ra ngoài vùng nhìn ở zoom 200% | `AssistantStudio.tsx` và `styles.css` ràng buộc chiều cao theo `visualViewport` và `dvh`. | Zoom thực bằng Chromium, kiểm ô nhập và chiều rộng document. |
+| Phản hồi nguồn chậm có thể hiển thị sai dự án hoặc sai trạng thái rỗng | `App.tsx` và `DataOverview.tsx` tách truy vấn tổng quan khỏi danh sách, kiểm phạm vi và kết thúc tải trước khi hiện trạng thái rỗng. | Kiểm đổi dự án, danh sách 5/30/80 nguồn, phản hồi cũ và tìm kiếm. |
+| Yêu cầu quản lý cũ hoặc job đồng thời có thể tranh chấp trạng thái nguồn | `resource_lifecycle.py` kiểm phiên bản và khóa giao dịch cùng các đường ghi job. | PostgreSQL kiểm hai thứ tự cạnh tranh, request cũ sau khôi phục và tệp gốc. |
+| Báo cáo hiện “Nguồn lịch sử” dù tên nguồn đã lưu trữ vẫn đọc được | `ReconciliationStudio.tsx` chỉ dùng danh mục nguồn đang hoạt động. Khi cần, bản sửa đọc đúng ID canonical của lượt đang xem từ API đã phân quyền. | Tái hiện bằng cùng lượt TEST ở 390 px. Kiểm tên nguồn trước/sau sửa, nguồn vẫn ẩn trong danh mục làm việc và metrics vẫn khớp. `product-journey.spec.ts` kiểm thêm vòng lưu trữ và khôi phục. |
+
+### Hồi quy ứng viên
+
+- **PASS · mã nguồn.** Kiểm TypeScript, ESLint, production build, Ruff, mypy và quét kho mã. Suite Backend/PostgreSQL đạt 788 ca, có một cảnh báo deprecation của Starlette. Thay đổi cuối về thông báo quyền owner được chạy thêm 15 ca Access.
+- **PASS · Chromium trước rollout, tổng hợp nhiều lượt.** Lượt đầy đủ đạt 145/146 ca. Ca còn lại chọn nhầm nút vì tên tệp có trong cả nút mở và nút quản lý. Selector được sửa theo tên tệp hiển thị. Ca chạy lại xác minh mã và số tiền trong PDF/DOCX đọc từ cache. Bảy ca chọn lọc trên build cuối cũng đạt, gồm hợp đồng xóa nội dung Lịch sử sau 403 và hành trình CSV/XLSX đầu cuối.
+- **PASS · thị giác và bàn phím trong phạm vi đã kiểm.** Bảy màn hình ở 320, 390, 768, 1366, 1440 và 1920 px. Kiểm cùng trạng thái trước/sau, dùng hai Skill, chạy lại focus và zoom 200%. Không còn lỗi P0/P1 đã tái hiện trong vòng đánh giá này. Ở 320 px cần cuộn mới đến dòng đầu Báo cáo, và ở 390×844 dòng đầu Kết quả Đối soát bắt đầu dưới vùng nhìn.
+- **NOT_RUN · thiết bị và người dùng.** UAT của chủ dự án, screen reader thực, bộ gõ tiếng Việt cấp hệ điều hành, Safari/iOS và Android trên thiết bị vật lý. Đánh giá automation và hai lượt critique mô tả các tình huống đã kiểm.
+- **Ngoài phạm vi triển khai · Workspace tổ chức.** Xóa mềm hoặc lưu trữ chỉ áp dụng dự án và nguồn. Workspace giữ nguyên quyền và chính sách hiện hành. Khi có dữ liệu liên quan, giữ kết quả và tệp theo hợp đồng vòng đời.
+
+### Kiểm qua Nginx sau migration
+
+Lượt Chromium nguyên bộ trên image `2764664` đạt 147/147 trong 14,5 phút với một runner và chế độ dữ liệu local. Sau lượt này, đối chiếu từng ID, dấu vân tay và tệp của các bản ghi có trước vẫn khớp. Bản ghi mới thuộc các fixture TEST. Các nhãn `[MOCK CONTRACT]` và `[UAT LOCAL manual fallback]` chỉ chế độ thử của automation.
+
+Phần sửa tên nguồn ở Frontend `3b012ce` qua bảy ca chọn lọc và ca đối chiếu trực tiếp trước/sau. Trên image bàn giao chạy lại hai ca qua Nginx trong 46,1 giây. Ca đầu cuối có thêm lưu trữ nguồn đang được tham chiếu, mở lại báo cáo với đúng hai tên nguồn, kiểm metrics rồi khôi phục. Ca Lịch sử có mock thu hồi quyền để kiểm xóa kết quả đã tải sau 403. Chín phép thử HTTP âm tính, hai oracle tài chính và hai tệp xuất cũ qua Chat cũng được xác minh lại trên image này.
+
+Vòng thị giác cuối dùng tài nguyên Nginx ở 42 tổ hợp màn hình/viewport, giữ 21 ảnh và ghi 825 yêu cầu GET/HEAD. Không phát hiện tràn ngang document, lỗi HTTP/JavaScript, yêu cầu ra ngoài hoặc ghi nghiệp vụ trong phép đo. Ảnh TEST được lập chỉ mục trong `runtime/product-interface-20261109/anh-truoc-sau.md`.
+
+Ca kỳ mới trên image bàn giao dùng biên bản job `mapping_reuse` để xác nhận mỗi bảng chuẩn hóa giữ đúng ID ánh xạ mẫu. Quy tắc cũ tạo đề xuất cho kỳ mới. Người dùng kiểm điều kiện, lưu đề xuất, xác nhận và chạy. Chi tiết nguồn mẫu đã áp dụng có trong biên bản job. Màn hình phiên bản ánh xạ hiện chỉ hiện chú thích nguồn mẫu ở bản nháp, nên người dùng khó nhận ra nguồn mẫu sau khi tự áp dụng. Đây là giới hạn hiển thị còn lại của hành trình D.
+
+Hai ca Chromium dùng tài nguyên từ Nginx và API thật đạt trong 48,6 giây. Ca CSV/XLSX đi từ tạo dự án đến phê duyệt, đối soát, xem ngoại lệ, Assistant, đọc lại tệp xuất và mở lại đúng lượt. Ca tài liệu đọc lại mã và số tiền từ PDF/DOCX đã lưu. Không mở lại quyền gọi parser. Kiểm vòng đời qua giao diện với hai dự án và một tệp tổng hợp TEST. Xóa mềm và khôi phục nguồn, kiểm đường dẫn 404 khi xóa và xác minh lại SHA-256 tệp gốc khi khôi phục. Dự án có nguồn chỉ được lưu trữ, vẫn đọc được tệp gốc và trở lại danh sách sau khôi phục. Dự án rỗng yêu cầu nhập đúng tên trước khi xóa. Sáu sự kiện audit trong PostgreSQL khớp ba đối tượng và actor owner.
+
+| Oracle độc lập | Nhóm bằng nhau | Lệch | Thiếu đối ứng | Chênh lệch có dấu | Chênh lệch tuyệt đối |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Đơn hàng ↔ thanh toán | 2.040 | 200 | 215 | 7.867 VND | 60.883 VND |
+| Thanh toán ↔ ngân hàng | 323 | 40 | 31 | −8.306 VND | 11.812 VND |
+
+Hai lượt `PARTIAL_VERIFIED` dùng 5.487 dòng nguồn, gồm 5.458 hợp lệ và 29 lỗi. So Decimal và checksum tệp gốc. Đọc lại XLSX toàn lượt có tám sheet và kiểm số liệu Snapshot. CSV/XLSX của trang truy vấn đã ghim tải lại qua Chat khớp từng byte. Vòng kiểm không gọi thêm cloud. Chín probe HTTP âm tính qua Nginx đạt, gồm Host, Origin, header chuyển tiếp, CSRF, truy cập không có phiên và cookie sai. Quyền và phạm vi lifecycle được kiểm riêng trên PostgreSQL. Kiểm giữ dữ liệu sau thao tác TEST khớp 10.573 artifact, 906 kết quả lượt và 1.644 tệp xuất cùng các metadata có trước.
+
 ## W1–W5
 
 **09/11/2026 · Nhánh `codex/full-interface-redesign`.** Chủ dự án miễn W0 riêng. Các phép kiểm bố cục và thao tác chạy trực tiếp trên bản build Frontend với API local. Nghiên cứu ở các phần dưới ghi lại trạng thái trước triển khai.
