@@ -299,7 +299,6 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
   ).toEqual(originalGroups);
   await mkdir("../runtime", { recursive: true });
   const exports: Record<string, unknown> = {};
-  await page.locator(".run-export > summary").click();
   for (const format of ["csv", "xlsx"]) {
     const infoResponse = page.waitForResponse(
       (response) =>

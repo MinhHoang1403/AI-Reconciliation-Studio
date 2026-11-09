@@ -1484,50 +1484,20 @@ export function ReconciliationStudio({
                   </div>
                 </>
               )}
-              <div className="run-actions">
-                <details className="run-export">
-                  <summary>Xuất báo cáo</summary>
-                  <p>Báo cáo gồm toàn bộ lượt đối soát đang chọn. Bộ lọc chỉ áp dụng trên màn hình.</p>
-                  <div className="rule-actions">
-                <button
-                  className="button secondary"
-                  disabled={busy || !canEdit}
-                  onClick={() => void exportFile("csv")}
-                >
-                  <ArrowDownToLine size={16} />
-                  Xuất CSV
-                </button>
-                <button
-                  className="button secondary"
-                  disabled={busy || !canEdit}
-                  onClick={() => void exportFile("xlsx")}
-                >
-                  Xuất XLSX
-                </button>
-                {download && (
-                  <a className="button primary" href={download} download>
-                    Tải báo cáo
-                  </a>
-                )}
-                  </div>
-                </details>
-                <div className="run-links">
-                  {mode !== "exceptions" && onOpenExceptions && <button className="text-button" onClick={() => onOpenExceptions(runId)}>
-                    Xem ngoại lệ của lần này
-                  </button>}
-                  <button className="text-button" aria-label="Hỏi AI về kết quả này" title="Hỏi AI về kết quả này"
-                    onClick={() => onAsk({ project_id: projectId, run_id: runId })}>
-                    <Sparkles size={16} /><span className="run-ask-label">Hỏi AI về kết quả này</span>
-                  </button>
-                </div>
-              </div>
-              <div className="card result-data">
-                <div className="section-heading">
-                  <h3>
-                    {mode === "exceptions"
-                      ? "Danh sách ngoại lệ"
-                      : "Chi tiết đối soát"}
+              <section className="result-data" aria-labelledby="result-ledger-title">
+                <div className="result-ledger-heading">
+                  <h3 id="result-ledger-title">
+                    {mode === "exceptions" ? "Danh sách ngoại lệ" : "Chi tiết đối soát"}
                   </h3>
+                  <div className="run-links">
+                    {mode !== "exceptions" && onOpenExceptions && <button className="text-button" onClick={() => onOpenExceptions(runId)}>
+                      Xem ngoại lệ của lần này
+                    </button>}
+                    <button className="text-button" aria-label="Hỏi AI về kết quả này"
+                      onClick={() => onAsk({ project_id: projectId, run_id: runId })}>
+                      <Sparkles size={16} aria-hidden="true" /><span>Hỏi AI về kết quả này</span>
+                    </button>
+                  </div>
                 </div>
                 <div className="result-filters">
                   {mode === "exceptions" && selectedCaseId && (
@@ -1786,7 +1756,24 @@ export function ReconciliationStudio({
                     Sau
                   </button>
                 </div>
-              </div>
+              </section>
+              <section className="result-delivery" aria-labelledby="result-delivery-title">
+                <div>
+                  <h3 id="result-delivery-title">Xuất báo cáo</h3>
+                  <p>Xuất toàn bộ lượt đối soát đang chọn. Bộ lọc chỉ áp dụng trên màn hình.</p>
+                </div>
+                <div className="rule-actions">
+                  <button className="button secondary" disabled={busy || !canEdit}
+                    onClick={() => void exportFile("csv")}>
+                    <ArrowDownToLine size={16} aria-hidden="true" /> Xuất CSV
+                  </button>
+                  <button className="button secondary" disabled={busy || !canEdit}
+                    onClick={() => void exportFile("xlsx")}>
+                    <ArrowDownToLine size={16} aria-hidden="true" /> Xuất XLSX
+                  </button>
+                  {download && <a className="button primary" href={download} download>Tải báo cáo</a>}
+                </div>
+              </section>
               {mode !== "exceptions" && <details className="result-analysis" ref={analysisDisclosure}
                 onToggle={event => setAnalysisOpen(event.currentTarget.open)}>
                 <summary>Phạm vi, nhóm loại trừ và phân bố kết quả</summary>

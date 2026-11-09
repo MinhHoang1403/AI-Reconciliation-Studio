@@ -1401,7 +1401,6 @@ export function App() {
                       )
                         writeLocation({ ...current, context, conversationId: undefined }, true);
                     }}
-                    cloudEnabled={!!workspace?.assistant_cloud_enabled}
                     agentEnabled={!!workspace?.agent_cloud_enabled}
                     uploadLimits={workspace?.agent_max_upload_files && workspace.agent_upload_extensions ? {
                       maxBytes: workspace.max_upload_bytes, maxFiles: workspace.agent_max_upload_files,
@@ -1634,6 +1633,15 @@ export function App() {
                                 ))}
                               </select>
                             </label>
+                            {canEdit && tab !== "normalize" && detailScope === `${datasetId}:${tableId}` &&
+                              activeMapping?.status === "APPROVED" && !canonicals.some(c =>
+                                c.mapping_revision_id === activeMapping.id && !c.stale
+                              ) && (
+                                <button className="button primary" disabled={busy}
+                                  onClick={() => { setTab("normalize"); void run(normalize); }}>
+                                  <Layers3 size={17} aria-hidden="true" /> Chuẩn hóa dữ liệu
+                                </button>
+                              )}
                           </div>
                           <div
                             className="source-workflow"
