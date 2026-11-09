@@ -8,11 +8,72 @@ from hypothesis import strategies as st
 from reconciliation_cases import FIXTURES, plan, records
 from studio.contracts.reconciliation import CanonicalRecord, FieldPair
 from studio.reconciliation_engine import match_records
-from studio.verification import verify_result
+from studio.verification import calculate_metric_snapshot, verify_result
 
 
 def by_key(result, key, side="left"):
     return [g for g in result.groups if g.key[-1] == key and any(m.side == side for m in g.members)]
+
+
+def test_refund_batch_tolerance_and_currency_have_independent_signed_oracle():
+    inputs = [
+        ("0001", "-25.01", "-25.00", "VND"),
+        ("0002", "-50.00", "-48.97", "VND"),
+        ("0003", "-9.10", "-9.10", "USD"),
+    ]
+    sides = []
+    for side in ("left", "right"):
+        sides.append(
+            [
+                CanonicalRecord(
+                    id=f"{side}-{key}",
+                    invalid=False,
+                    quality_flags=[],
+                    payload={
+                        "refund_id": key,
+                        "event_date": datetime(2026, 10, 15, tzinfo=UTC),
+                        "currency": "VND" if side == "left" else currency,
+                        "amount": Decimal(left if side == "left" else right),
+                    },
+                    provenance=[
+                        dict(
+                            file_id=side,
+                            source_table_id=side,
+                            source_row_id=f"{side}-{key}",
+                            sheet="Refunds",
+                            row=index + 2,
+                        )
+                    ],
+                )
+                for index, (key, left, right, currency) in enumerate(inputs)
+            ]
+        )
+    rule = plan(
+        left="left",
+        right="right",
+        entity="refund",
+        platform="",
+        keys=["refund_id"],
+        amount="amount",
+        metric="signed_refund",
+    )
+    rule.comparison_metrics[0].absolute_tolerance = Decimal("0.01")
+    result = match_records(rule, *sides)
+    expected = {
+        "0001": ("WITHIN_TOLERANCE", Decimal("-0.01")),
+        "0002": ("AMOUNT_MISMATCH", Decimal("-1.03")),
+        "0003": ("NOT_COMPARABLE", None),
+    }
+    for key, (state, delta) in expected.items():
+        [group] = by_key(result, key)
+        assert group.linkage_state == "LINKED"
+        assert group.comparison_state == state and group.comparisons[0].delta == delta
+        assert {member.record_id for member in group.members} == {f"left-{key}", f"right-{key}"}
+    assert all(check.passed for check in verify_result(rule, *sides, result))
+    [amounts] = calculate_metric_snapshot("run", "rule", 1, rule, *sides, result).monetary
+    assert amounts.currency == "VND" and amounts.comparable_groups == 2
+    assert amounts.signed_variance == Decimal("-1.04")
+    assert amounts.absolute_variance == Decimal("1.04")
 
 
 @pytest.mark.parametrize(

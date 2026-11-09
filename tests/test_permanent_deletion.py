@@ -13,7 +13,9 @@ from studio.access import session_token_hash
 from studio.config import settings
 from studio.database import (
     ArtifactRow,
+    ConversationRow,
     DatasetRow,
+    ExportRow,
     JobRow,
     MembershipRow,
     ProjectRow,
@@ -266,3 +268,67 @@ def test_purge_isolated_workspace_with_projects_and_sessions(isolated_purge):
     with factory() as db:
         assert db.get(WorkspaceRow, workspace_id) is None
         assert db.get(WorkspaceRow, "demo") is not None
+
+
+def test_purge_rejects_json_reference_from_another_project(isolated_purge):
+    client, factory, worker, root = isolated_purge
+    target = upload(client, project(client))
+    kept = project(client)
+    drain(factory, worker)
+    with factory() as db:
+        raw = db.scalar(select(ArtifactRow).where(ArtifactRow.kind == "raw"))
+        raw_path = root / raw.storage_key
+        db.add(
+            ConversationRow(
+                workspace_id="demo",
+                project_id=kept,
+                actor_id="test-owner",
+                context={"nested": {"ref": f"source:{target['id']}"}},
+                title="External reference fixture",
+            )
+        )
+        db.commit()
+    endpoint = f"/api/permanent-deletion/dataset/{target['id']}"
+    assert client.get(endpoint).json()["code"] == "PURGE_EXTERNAL_REFERENCE"
+    assert raw_path.is_file()
+    assert client.get(f"/api/datasets/{target['id']}").status_code == 200
+
+
+def test_purge_preserves_file_still_referenced_by_another_resource(isolated_purge):
+    client, factory, worker, root = isolated_purge
+    target_project = project(client)
+    target = upload(client, target_project)
+    drain(factory, worker)
+    kept_project, _, _, queued = create_approved_run((client, factory, worker))
+    drain(factory, worker)
+    with factory() as db:
+        raw = db.scalar(
+            text(
+                "SELECT storage_key FROM artifacts JOIN dataset_versions"
+                " ON dataset_version_id=dataset_versions.id"
+                " WHERE kind='raw' AND dataset_id=:id"
+            ),
+            {"id": target["id"]},
+        )
+        path = root / raw
+        shared_export = ExportRow(
+            workspace_id="demo",
+            project_id=kept_project,
+            run_id=queued["run_id"],
+            format="csv",
+            revision="shared-storage-fixture",
+            status="SUCCEEDED",
+            storage_key=raw,
+            sha256=checksum(path),
+        )
+        db.add(shared_export)
+        db.flush()
+        export_id = shared_export.id
+        db.commit()
+    endpoint = f"/api/permanent-deletion/project/{target_project}"
+    body, impact = request_body(client, endpoint)
+    assert impact["counts"]["shared_files"] == 1
+    assert client.post(endpoint, json=body).json()["status"] == "DELETED"
+    assert path.is_file()
+    with factory() as db:
+        assert db.get(ExportRow, export_id).sha256 == checksum(path)
