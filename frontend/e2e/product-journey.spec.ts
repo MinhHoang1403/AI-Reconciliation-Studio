@@ -1,4 +1,4 @@
-import { test } from "./project-selection";
+import { assistantPanel, test } from "./project-selection";
 import { openLegacyPage } from "./project-selection";
 import { expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
@@ -273,8 +273,8 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   await answer
     .getByRole("button", { name: "Xem bằng chứng", exact: true })
     .click();
-  await page
-    .getByRole("dialog")
+  await assistantPanel(page, "Xem xét ngoại lệ")
+    .or(assistantPanel(page, "Bằng chứng đối soát"))
     .getByRole("button", { name: "Xem nguồn delivery_charge", exact: true })
     .first()
     .click();

@@ -1294,7 +1294,7 @@ test("[MOCK CONTRACT] local proof recovery preserves draft and reloads project a
   await expect(operatorCommand).not.toBeVisible();
   await page.getByText("Hướng dẫn cho người vận hành local", {exact:true}).click();
   await expect(operatorCommand).toBeVisible();
-  expect(await status.locator("span").evaluate(el=>getComputedStyle(el).backgroundColor)).not.toBe("rgb(22, 163, 74)");
+  expect(await status.locator("span:first-child").evaluate(el=>getComputedStyle(el).backgroundColor)).not.toBe("rgb(22, 163, 74)");
   verified = true;
   await page.getByRole("button", {name:"Thử kết nối lại",exact:true}).click();
   await expect(status).toHaveText("Đã kết nối");

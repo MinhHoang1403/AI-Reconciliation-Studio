@@ -1,7 +1,6 @@
-import { test } from "./project-selection";
+import { assistantPanel, openLegacyPage, selectProject, test } from "./project-selection";
 import { expect, type Page } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
-import { selectProject, openLegacyPage } from "./project-selection";
 import type { Catalogue } from "../src/reconciliationTypes";
 import type { AssistantRule } from "../src/assistantTypes";
 
@@ -327,7 +326,7 @@ for (const name of ["shopee", "tiktok", "delivery"]) {
     await answer
       .getByRole("button", { name: "Xem bằng chứng", exact: true })
       .click();
-    const evidence = page.getByRole("dialog").last();
+    const evidence = assistantPanel(page, "Bằng chứng đối soát");
     await expect(evidence).toContainText(group.key.at(-1));
     await page.keyboard.press("Escape");
     await answer
@@ -675,10 +674,10 @@ test("language workflow requires source/period/template confirmation before exis
   );
   await expect(page.locator(".run-toolbar .badge-verified")).toBeVisible();
   const mismatch = page
+    .getByRole("table", { name: "Chi tiết đối soát", exact: true })
     .getByRole("row")
-    .filter({ hasText: "0002" })
-    .filter({ hasText: "10.00" })
-    .first();
+    .filter({ has: page.getByRole("cell", { name: "Shopee / SHOP-A / 0002", exact: true }) })
+    .filter({ has: page.getByRole("cell", { name: "10,00 VND", exact: true }) });
   await mismatch
     .getByRole("button", { name: "Hỏi vì sao lệch", exact: true })
     .click();
