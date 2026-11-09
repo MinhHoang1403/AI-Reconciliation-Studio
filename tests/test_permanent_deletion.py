@@ -84,7 +84,7 @@ def test_purge_requires_verified_schema_root_and_owner(isolated_purge, monkeypat
 
 def test_purge_source_removes_affected_verified_results_and_preserves_other_source(isolated_purge):
     client, factory, worker, root = isolated_purge
-    pid, _, _, queued = create_approved_run((client, factory, worker))
+    pid, plan, _, queued = create_approved_run((client, factory, worker))
     drain(factory, worker)
     run_id = queued["run_id"]
     assert client.get(f"/api/runs/{run_id}").json()["status"] == "VERIFIED"
@@ -103,8 +103,33 @@ def test_purge_source_removes_affected_verified_results_and_preserves_other_sour
     backup.parent.mkdir()
     backup.write_text("backup kept", encoding="ascii")
     endpoint = f"/api/permanent-deletion/dataset/{deleted}"
+    original_body, _ = request_body(client, endpoint)
+    followup = plan.model_copy(update={"name": "Synthetic repeat verification"})
+    proposed = client.post(
+        "/api/reconciliation-plans",
+        json={"project_id": pid, "plan": followup.model_dump(mode="json")},
+        headers={"Idempotency-Key": "purge-followup-plan"},
+    ).raise_for_status()
+    approved = client.post(
+        f"/api/reconciliation-contracts/{proposed.json()['id']}/approve",
+    ).raise_for_status()
+    accepted = client.post(
+        "/api/reconciliation-runs",
+        json={"contract_id": approved.json()["id"]},
+        headers={"Idempotency-Key": "purge-followup-run"},
+    ).raise_for_status()
+    second_run_id = accepted.json()["run_id"]
+    assert second_run_id != run_id
+    with factory() as db:
+        claim = worker.claim_job(db)
+        assert claim is not None
+    assert client.post(endpoint, json=original_body).json()["code"] == "PURGE_BUSY"
+    worker.process_job(*claim)
+    drain(factory, worker)
+    assert client.get(f"/api/runs/{second_run_id}").json()["status"] == "VERIFIED"
+    assert client.post(endpoint, json=original_body).json()["code"] == "PURGE_CONFIRMATION_STALE"
     body, impact = request_body(client, endpoint)
-    assert impact["counts"]["reconciliation_runs"] == 1
+    assert impact["counts"]["reconciliation_runs"] == 2
     assert impact["counts"]["run_exports"] == 2
     assert impact["counts"]["canonical_datasets"] == 1
     assert client.post(endpoint, json={**body, "confirmation": "wrong"}).status_code == 409
@@ -113,15 +138,19 @@ def test_purge_source_removes_affected_verified_results_and_preserves_other_sour
     assert completed.json()["status"] == "DELETED"
     assert client.post(endpoint, json=body).json() == completed.json()
     assert client.get(f"/api/runs/{run_id}").status_code == 404
+    assert client.get(f"/api/runs/{second_run_id}").status_code == 404
     assert client.get(f"/api/datasets/{deleted}/download").status_code == 404
     assert client.get(f"/api/datasets/{kept}/download").content == kept_raw
     assert client.get(f"/api/datasets/{kept}/artifacts").json() == kept_before
     assert backup.read_text(encoding="ascii") == "backup kept"
     with factory() as db:
-        assert db.get(DatasetRow, deleted) is None and db.get(RunRow, run_id) is None
+        assert db.get(DatasetRow, deleted) is None
+        assert db.get(RunRow, run_id) is None and db.get(RunRow, second_run_id) is None
         receipt = db.get(PurgeReceiptRow, body["fingerprint"])
         assert receipt.completed_at and not receipt.files
-    assert not any(path.is_file() for path in (root / "demo" / "runs" / run_id).rglob("*"))
+    for removed_run_id in (run_id, second_run_id):
+        directory = root / "demo" / "runs" / removed_run_id
+        assert not any(path.is_file() for path in directory.rglob("*"))
 
 
 @pytest.mark.parametrize("removed_before_failure", [0, 1])
