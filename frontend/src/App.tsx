@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { api, ApiError, setApiWorkspace } from "./api";
-import { WorkspaceSettings as WorkspaceSettingsPanel } from "./WorkspaceSettings";
+import { WorkspaceManager, WorkspaceSettings as WorkspaceSettingsPanel } from "./WorkspaceSettings";
 import { ProjectSelector } from "./ProjectSelector";
 import { ProjectHistory } from "./ProjectHistory";
 import { ResourceManagement, type ManagedResource } from "./ResourceManagement";
@@ -74,6 +74,7 @@ import {
   type PreparationAction,
   type Profile,
   type Project,
+  type ProjectClassification,
   type ProjectSummary,
   type Table,
   type WorkspaceSettings,
@@ -208,6 +209,7 @@ export function App() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newClassification, setNewClassification] = useState<ProjectClassification>("WORK");
   const [newScope, setNewScope] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [encoding, setEncoding] = useState("utf-8-sig");
@@ -912,12 +914,13 @@ export function App() {
       body: JSON.stringify({
         name: newName,
         business_scope: newScope,
-        classification: "WORK",
+        classification: actorRole === "owner" ? newClassification : "WORK",
       }),
     });
     chooseProject(p);
     setProjectOpen(false);
     setNewName("");
+    setNewClassification("WORK");
     setNewScope("");
     setSuccess("Đã tạo dự án. Bạn có thể tải dữ liệu đầu tiên.");
   }
@@ -1067,6 +1070,51 @@ export function App() {
         event.preventDefault();
         document.getElementById("main-content")?.focus();
       }}>Đến nội dung chính</a>
+      <header className="topbar studio-masthead" inert={sidebar || undefined}>
+        <div className="masthead-brand">
+          <button
+            className="icon-button menu-button"
+            aria-label="Mở điều hướng"
+            aria-expanded={sidebar}
+            onClick={() => setSidebar(true)}
+          >
+            <Menu size={20} aria-hidden="true" />
+          </button>
+          <button
+            className="icon-button navigation-toggle"
+            aria-label={compactNavigation ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
+            title={compactNavigation ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
+            aria-expanded={!compactNavigation}
+            onClick={toggleNavigation}
+          >
+            {compactNavigation ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
+          </button>
+          <div className="brand" aria-label="AI Reconciliation Studio">
+            <span className="brand-symbol"><Layers3 size={18} aria-hidden="true" /></span>
+            <span className="brand-label">Reconciliation Studio</span>
+          </div>
+        </div>
+        <div className="masthead-scope" role="group" aria-label="Phạm vi làm việc">
+          {ready && workspace?.workspace_id && <WorkspaceManager key={workspace.workspace_id}
+            current={{ id: workspace.workspace_id, name: workspace.workspace_name, role: actorRole }}
+            onRename={name => setWorkspace(current => current ? { ...current, workspace_name: name } : current)} />}
+          {ready && <ProjectSelector
+            project={projectAccessDenied ? null : project} onSelect={chooseProject}
+            disabled={busy} canClassify={actorRole === "owner"}
+            onCreate={canEdit ? openNewProject : undefined}
+            onManage={actorRole === "owner" ? () => openManagement({ kind: "projects" }, document.getElementById("project-select")) : undefined}
+            onClassificationChange={value => setProject(current => current?.id === value.id ? value : current)}
+          />}
+        </div>
+        <div className="topbar-end">
+          <span className={`connection ${ready ? "connected" : bootstrapError ? "disconnected" : "connecting"}`} role="status" aria-label="Trạng thái kết nối"
+            title={ready ? "Hệ thống đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}>
+            <span />
+            <span className="connection-label">{ready ? "Đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}</span>
+          </span>
+          <button className="avatar" aria-label="Tài khoản và cài đặt" onClick={() => setPage("settings")}>LC</button>
+        </div>
+      </header>
       {sidebar && (
         <button
           className="sidebar-scrim"
@@ -1081,15 +1129,13 @@ export function App() {
         aria-modal={sidebar || undefined}
         aria-label={sidebar ? "Điều hướng" : undefined}
       >
-        <div className="brand" aria-label="AI Reconciliation Studio">
-          <span className="brand-symbol"><Layers3 size={19} aria-hidden="true" /></span>
-          <span className="brand-label">Reconciliation Studio</span>
+        <div className="sidebar-heading">
+          <strong>Điều hướng</strong>
           {sidebar && <button className="icon-button sidebar-close" aria-label="Đóng điều hướng" onClick={() => setSidebar(false)}>
             <X size={20} aria-hidden="true" />
           </button>}
         </div>
         <nav aria-label="Điều hướng chính">
-          <span className="navigation-group-label" aria-hidden="true">Công việc</span>
           <button
             aria-label="AI Assistant"
             title="AI Assistant"
@@ -1168,41 +1214,6 @@ export function App() {
         </div>
       </aside>
       <div className="main-shell" inert={sidebar || undefined}>
-        <header className="topbar">
-          <div className="breadcrumb">
-            <button
-              className="icon-button menu-button"
-              aria-label="Mở điều hướng"
-              aria-expanded={sidebar}
-              onClick={() => setSidebar(true)}
-            >
-              <Menu size={20} aria-hidden="true" />
-            </button>
-            <button
-              className="icon-button navigation-toggle"
-              aria-label={compactNavigation ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
-              title={compactNavigation ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
-              aria-expanded={!compactNavigation}
-              onClick={toggleNavigation}
-            >
-              {compactNavigation ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
-            </button>
-            {ready && page !== "settings" && <ProjectSelector
-              project={projectAccessDenied ? null : project} onSelect={chooseProject}
-              disabled={busy} canClassify={actorRole === "owner"}
-              onCreate={canEdit ? openNewProject : undefined}
-              onManage={actorRole === "owner" ? () => openManagement({ kind: "projects" }, document.getElementById("project-select")) : undefined}
-              onClassificationChange={value => setProject(current => current?.id === value.id ? value : current)}
-            />}
-          </div>
-          <div className="topbar-end">
-            <span className={`connection ${ready ? "connected visually-hidden" : bootstrapError ? "disconnected" : "connecting"}`} role="status" aria-label="Trạng thái kết nối">
-              <span />
-              {ready ? "Hệ thống đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}
-            </span>
-            <button className="avatar" aria-label="Tài khoản và cài đặt" onClick={() => setPage("settings")}>LC</button>
-          </div>
-        </header>
         <main
           id="main-content"
           tabIndex={-1}
@@ -1226,6 +1237,11 @@ export function App() {
               </h1>
             </div>
             <div className="heading-actions">
+              {(page === "data" || page === "home") && ready && projectId && <button
+                className="icon-button" aria-label="Cập nhật dự án" title="Cập nhật dự án"
+                disabled={busy || projectLoading} onClick={() => void run(changed)}>
+                <RefreshCw size={17} className={projectLoading ? "spin" : ""} />
+              </button>}
               {(page === "home" || page === "data") && (
                 <button
                   className={`button ${page === "data" && datasetId && tab !== "explore" ? "secondary" : "primary"}`}
@@ -1273,31 +1289,6 @@ export function App() {
           )}
           {success && <Notice tone="success">{success}</Notice>}
           {!ready && !bootstrapError && <Spinner />}
-          {ready && (page === "data" || page === "home") && (
-            <div className="workspace-utilities">
-              {projectId && (
-                <button
-                  className="icon-button"
-                  aria-label="Cập nhật dự án"
-                  title="Cập nhật dự án"
-                  disabled={busy || projectLoading}
-                  onClick={() => void run(changed)}
-                >
-                  <RefreshCw
-                    size={17}
-                    className={projectLoading ? "spin" : ""}
-                  />
-                </button>
-              )}
-              {!projectId && <button
-                className="text-button"
-                disabled={!canEdit}
-                onClick={() => openNewProject()}
-              >
-                + Tạo dự án
-              </button>}
-            </div>
-          )}
           {ready && !projectId && !["settings","assistant"].includes(page) && (
             <Notice>
               Chọn hoặc tạo dự án để xem dữ liệu. Dự án chưa được chọn; không
@@ -2084,6 +2075,13 @@ export function App() {
               maxLength={200}
             />
           </label>
+          {actorRole === "owner" && <label>
+            Nhóm dự án
+            <select value={newClassification} onChange={event => setNewClassification(event.target.value as ProjectClassification)}>
+              <option value="WORK">Công việc</option>
+              <option value="TEST">Thử nghiệm</option>
+            </select>
+          </label>}
           <p className="field-help">
             Mẫu ánh xạ chỉ được gợi ý tái sử dụng trong cùng phạm vi tương
             thích.

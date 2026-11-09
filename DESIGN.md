@@ -6,9 +6,10 @@ Lấy nhịp từ mục lục hồ sơ và dấu chỉ mục. Nền sáng, chữ
 
 ## Bố cục vận hành
 
-- **Assistant.** Mở bằng bàn làm việc theo tác vụ. Chọn một việc để đặt nội dung vào ô gửi. Khi đã có hội thoại, dành vùng đọc cho transcript, quyết định chờ duyệt và bằng chứng.
+- **Điều hướng.** Thanh đầu trang chạy toàn chiều rộng với tên ứng dụng, workspace, dự án, kết nối và tài khoản. Bốn khu vực nghiệp vụ nằm trong cùng một nhóm điều hướng, còn Lịch sử và Cài đặt có nhãn riêng. Trên màn hẹp, phạm vi xuống một hàng riêng và điều hướng mở dạng drawer.
+- **Assistant.** Danh sách việc khởi đầu cuộn cùng vùng đọc, phía trên ô gửi cố định. Khi đã có hội thoại, cùng vùng đọc chứa transcript và quyết định chờ duyệt. Biểu mẫu chung trong một lô nguồn nằm trước các thẻ quyết định. Nút xác nhận chỉ điền nháp cho đúng các nguồn liệt kê. Khóa từng nguồn và lượt duyệt sau đó vẫn hiển thị riêng.
 - **Dữ liệu.** Trên màn rộng, mở bảng nguồn cạnh danh mục đang tìm kiếm. Trên màn hẹp, chỉ mở danh mục hoặc chi tiết. Vị trí đang chọn luôn có nhãn và dấu chọn.
-- **Đối soát và báo cáo.** Duy trì hai bề mặt thiết lập và kết quả. Mỗi màn cho biết phạm vi trước khi đọc số. Bảng bằng chứng và ngoại lệ nằm trước biểu đồ phụ trợ.
+- **Đối soát và báo cáo.** Duy trì hai bề mặt thiết lập và kết quả. Mỗi màn cho biết phạm vi trước khi đọc số. Bảng bằng chứng và ngoại lệ nằm trước biểu đồ phụ trợ. Khi mở chi tiết báo cáo từ Assistant, phần phân bố đã sẵn để cuộn tới. Khu xuất báo cáo đi sau phân bố, với mô tả phạm vi xuất.
 - **Cài đặt.** Nhóm theo quyền quản lý, chia sẻ AI, hiển thị và giới hạn tệp. Hành động xóa vĩnh viễn nằm tách khỏi thông tin tài khoản và giữ xác nhận theo quyền.
 
 ## Tương tác

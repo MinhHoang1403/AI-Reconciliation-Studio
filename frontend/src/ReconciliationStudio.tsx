@@ -178,7 +178,7 @@ export function ReconciliationStudio({
     [toPeriod, setToPeriod] = useState(""),
     [sourceFilter, setSourceFilter] = useState("");
   const [workView, setWorkView] = useState<"setup" | "results">(requestedRun ? "results" : "setup");
-  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(!!panel && mode === "reports");
   const analysisDisclosure = useRef<HTMLDetailsElement>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const showResults = mode !== "reconcile" || workView === "results";
@@ -1770,24 +1770,7 @@ export function ReconciliationStudio({
                   </button>
                 </div>
               </section>
-              <section className="result-delivery" aria-labelledby="result-delivery-title">
-                <div>
-                  <h3 id="result-delivery-title">Xuất báo cáo</h3>
-                  <p>Xuất toàn bộ lượt đối soát đang chọn. Bộ lọc chỉ áp dụng trên màn hình.</p>
-                </div>
-                <div className="rule-actions">
-                  <button className="button secondary" disabled={busy || !canEdit}
-                    onClick={() => void exportFile("csv")}>
-                    <ArrowDownToLine size={16} aria-hidden="true" /> Xuất CSV
-                  </button>
-                  <button className="button secondary" disabled={busy || !canEdit}
-                    onClick={() => void exportFile("xlsx")}>
-                    <ArrowDownToLine size={16} aria-hidden="true" /> Xuất XLSX
-                  </button>
-                  {download && <a className="button primary" href={download} download>Tải báo cáo</a>}
-                </div>
-              </section>
-              {mode !== "exceptions" && <details className="result-analysis" ref={analysisDisclosure}
+              {mode !== "exceptions" && <details className="result-analysis" ref={analysisDisclosure} open={analysisOpen}
                 onToggle={event => setAnalysisOpen(event.currentTarget.open)}>
                 <summary>Phạm vi, nhóm loại trừ và phân bố kết quả</summary>
                   <div className="result-panels">
@@ -1839,6 +1822,23 @@ export function ReconciliationStudio({
                     </div>
                   </div>
               </details>}
+              <section className="result-delivery" aria-labelledby="result-delivery-title">
+                <div>
+                  <h3 id="result-delivery-title">Xuất báo cáo</h3>
+                  <p>Xuất toàn bộ lượt đối soát đang chọn. Bộ lọc chỉ áp dụng trên màn hình.</p>
+                </div>
+                <div className="rule-actions">
+                  <button className="button secondary" disabled={busy || !canEdit}
+                    onClick={() => void exportFile("csv")}>
+                    <ArrowDownToLine size={16} aria-hidden="true" /> Xuất CSV
+                  </button>
+                  <button className="button secondary" disabled={busy || !canEdit}
+                    onClick={() => void exportFile("xlsx")}>
+                    <ArrowDownToLine size={16} aria-hidden="true" /> Xuất XLSX
+                  </button>
+                  {download && <a className="button primary" href={download} download>Tải báo cáo</a>}
+                </div>
+              </section>
             </>
           )}
         </>

@@ -178,16 +178,12 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${proces
   const dialog=page.getByRole('dialog',{name:'Tạo dự án',exact:true});
   await dialog.getByLabel('Tên dự án',{exact:true}).fill(`UAT ${maintenance?'bảo trì':'tồn kho'} ${suffix}`);
   await dialog.getByLabel('Phạm vi nghiệp vụ',{exact:true}).fill(maintenance?'Đối chiếu chứng từ bảo trì với khoản thu, có hoàn tiền và số không; dữ liệu tổng hợp.':'Đối chiếu số dư giá trị tồn theo mã hàng, dữ liệu tổng hợp.');
+  await dialog.getByLabel('Nhóm dự án',{exact:true}).selectOption('TEST');
   await dialog.getByRole('button',{name:'Tạo dự án',exact:true}).click();
   await expect(dialog).not.toBeVisible();
   const projectId=(await page.locator('#project-select').getAttribute('data-project-id'))!;
   receipts.project_id=projectId;
-  await page.locator('#project-select').click();
-  await page.getByText('Phân loại dự án hiện tại',{exact:true}).click();
-  await page.getByLabel('Nhóm dự án',{exact:true}).selectOption('TEST');
-  await page.getByRole('button',{name:'Xác nhận phân loại',exact:true}).click();
-  await expect(page.getByText('Đã lưu phân loại. Dữ liệu và lịch sử vẫn được giữ nguyên.',{exact:true})).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(page.locator('#project-select')).toContainText('Thử nghiệm');
   await page.locator('.assistant-composer input[type=file]').setInputFiles(names.map((name,index)=>({name,mimeType:'text/csv',buffer:Buffer.from(
     headers.join(',')+'\n'+values[index].map(([id,amount])=>`${id},2026-11-01,${amount},VND\n`).join('')
   )})));
@@ -203,20 +199,18 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${proces
   await expect(cards).toHaveCount(3);
   receipts.upload_to_reviews_ms=Date.now()-start;
   if(sharedReview){
-    await page.getByText('Nhập một lần cho các nguồn có cùng nghiệp vụ',{exact:true}).click();
     const common=page.getByRole('region',{name:'Thông tin chung cho các nguồn',exact:true});
+    const apply=common.getByRole('button',{name:'Xác nhận và điền vào bản nháp',exact:true});
+    await expect(apply).toBeDisabled();
     await common.getByLabel('Loại dữ liệu dùng chung',{exact:true}).fill(entity);
     await common.getByLabel('Mỗi dòng của các nguồn là gì?',{exact:true}).fill(grain);
     await common.getByLabel('Múi giờ dùng chung',{exact:true}).selectOption('UTC');
     await common.getByLabel('Cơ sở tiền dùng chung',{exact:true}).selectOption('gross');
     await common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true}).fill(metric);
-    await expect(common.getByRole('button',{name:'Áp dụng thông tin chung vào bản nháp',exact:true})).toBeDisabled();
     await page.reload();
-    await page.getByText('Nhập một lần cho các nguồn có cùng nghiệp vụ',{exact:true}).click();
     await expect(common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true})).toHaveValue(metric);
-    await common.getByRole('checkbox').check();
-    await common.getByRole('button',{name:'Áp dụng thông tin chung vào bản nháp',exact:true}).click();
-    manualFields+=6;
+    await apply.click();
+    manualFields+=5;
     for(const name of names){
       const card=cards.filter({hasText:name});
       await expect(card.getByRole('textbox',{name:'Loại giao dịch',exact:true})).toHaveValue(entity);
@@ -283,7 +277,6 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${proces
   await expect(work).toContainText('Chênh lệch tuyệt đối');
   await work.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
   const report=page.getByRole('dialog',{name:'Chi tiết kết quả đã xác minh',exact:true});
-  await report.locator(".result-analysis > summary").click();
   const chart=report.getByRole('img',{name:'Phân bố trạng thái đối soát'});
   await chart.scrollIntoViewIfNeeded();
   await expect(chart).toBeVisible();

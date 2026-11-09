@@ -26,22 +26,22 @@ function CommonMappingFacts({reviews, storageKey, disabled, onApply}: {
         }catch{/* A malformed local draft cannot supply business facts. */}
         return empty;
     });
-    const [confirmed,setConfirmed]=useState(false);
     useEffect(()=>{try{sessionStorage.setItem(storageKey,JSON.stringify(fields));}catch{/* Private storage may be unavailable. */}},[fields,storageKey]);
-    const ready=confirmed&&Object.values(fields).every(value=>value.trim()&&value.trim().toLowerCase()!=="unknown");
-    function edit(key:keyof typeof fields,value:string){setFields(previous=>({...previous,[key]:value}));setConfirmed(false);}
-    return <details><summary>Nhập một lần cho các nguồn có cùng nghiệp vụ</summary>
+    const ready=Object.values(fields).every(value=>value.trim()&&value.trim().toLowerCase()!=="unknown");
+    function edit(key:keyof typeof fields,value:string){setFields(previous=>({...previous,[key]:value}));}
+    return <details className="agent-shared-facts" open><summary>Nhập một lần cho các nguồn có cùng nghiệp vụ</summary>
         <section aria-label="Thông tin chung cho các nguồn">
             <p>Chỉ dùng khi mỗi dòng, ý nghĩa khoản tiền và múi giờ giống nhau. Các khóa vẫn được chọn riêng; lựa chọn đã có trong từng thẻ được giữ nguyên.</p>
             <ul>{reviews.map(review=><li key={review.id}>{review.resource_label}: {review.normalization_draft?.fields.filter(field=>field.data_type==="decimal").map(field=>field.name).join(", ")}</li>)}</ul>
+            <div className="agent-form-grid">
             <label>Loại dữ liệu dùng chung<input value={fields.entity_kind} maxLength={100} disabled={disabled} onChange={event=>edit("entity_kind",event.target.value)}/></label>
             <label>Mỗi dòng của các nguồn là gì?<input value={fields.grain} maxLength={200} disabled={disabled} onChange={event=>edit("grain",event.target.value)}/></label>
             <label>Múi giờ dùng chung<select aria-label="Múi giờ dùng chung" value={fields.timezone} disabled={disabled} onChange={event=>edit("timezone",event.target.value)}><option value="">Chọn theo quy ước nguồn</option><option value="UTC">UTC</option><option value="Asia/Ho_Chi_Minh">Việt Nam</option></select></label>
             <label>Cơ sở tiền dùng chung<select aria-label="Cơ sở tiền dùng chung" value={fields.amount_basis} disabled={disabled} onChange={event=>edit("amount_basis",event.target.value)}><option value="">Chưa xác định</option><option value="gross">Trước khấu trừ / gross</option><option value="net">Sau khấu trừ / net</option><option value="paid">Đã thanh toán / paid</option><option value="expected">Dự kiến / expected</option><option value="fee">Phí / fee</option></select></label>
             <label>Khoản tiền dùng chung là gì?<input value={fields.semantic_metric} maxLength={100} disabled={disabled} onChange={event=>edit("semantic_metric",event.target.value)}/></label>
-            <label><input type="checkbox" checked={confirmed} disabled={disabled} onChange={event=>setConfirmed(event.target.checked)}/>Tôi xác nhận các thông tin này đúng cho những nguồn liệt kê trên</label>
-            <button type="button" className="button secondary" disabled={disabled||!ready} onClick={()=>onApply({...fields,reviewKeys:reviews.map(review=>`${review.id}:${review.nonce}:${review.fingerprint}`)})}>Áp dụng thông tin chung vào bản nháp</button>
-            <p>Đây là chỉnh bản nháp. Hệ thống kiểm lại từng nguồn; bạn vẫn duyệt các quyết định sau khi xem từng thẻ.</p>
+            </div>
+            <p>Dùng nút bên dưới khi bạn đã xác nhận thông tin đúng cho các nguồn liệt kê. Sau đó, xem từng nguồn trước khi duyệt chuẩn hóa.</p>
+            <button type="button" className="button secondary" disabled={disabled||!ready} onClick={()=>onApply({...fields,reviewKeys:reviews.map(review=>`${review.id}:${review.nonce}:${review.fingerprint}`)})}>Xác nhận và điền vào bản nháp</button>
         </section>
     </details>;
 }

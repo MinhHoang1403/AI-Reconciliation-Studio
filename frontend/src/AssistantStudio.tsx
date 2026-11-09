@@ -907,6 +907,28 @@ export function AssistantStudio({
                     : "Đính kèm CSV/XLSX để bắt đầu. Chọn dự án để tra cứu dữ liệu hoặc đọc kết quả đã lưu."}</p>
                 </div>
               )}
+              {!loading && !messages.length && (
+                <ul className="agent-prompts" aria-label="Việc có thể làm với Assistant">
+                  {starterTasks.map(({ title, description, prompt, command: action, icon: Icon }, index) => (
+                    <li key={title}>
+                      <button type="button" className="assistant-task"
+                        disabled={busy || !!reviewReply || (!context.project_id && index > 1)
+                          || (!!text.trim() && !starterTasks.some(task => task.prompt === text))}
+                        onClick={() => {
+                          setText(prompt);
+                          setCommand(action);
+                          sessionStorage.setItem(draftKey.current, prompt);
+                          sessionStorage.setItem(`${draftKey.current}.task`, title);
+                          composerInput.current?.focus();
+                        }}>
+                        <Icon size={20} aria-hidden="true" />
+                        <span><strong>{title}</strong><small>{description}</small></span>
+                        <ArrowRight size={16} aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {messages.filter((message,index)=>message.role!=="assistant"||!message.workflow_id||!messages.slice(index+1).some(next=>next.role==="assistant"&&next.workflow_id===message.workflow_id)).map((message) => (
                 <article
                   className={`assistant-message ${message.role}`}
@@ -1087,28 +1109,6 @@ export function AssistantStudio({
             <p className="draft-notice" role="status">
               {draftNotice}
             </p>
-          )}
-          {!loading && !messages.length && (
-            <ul className="agent-prompts" aria-label="Việc có thể làm với Assistant">
-              {starterTasks.map(({ title, description, prompt, command: action, icon: Icon }, index) => (
-                <li key={title}>
-                  <button type="button" className="assistant-task"
-                    disabled={busy || !!reviewReply || (!context.project_id && index > 1)
-                      || (!!text.trim() && !starterTasks.some(task => task.prompt === text))}
-                    onClick={() => {
-                      setText(prompt);
-                      setCommand(action);
-                      sessionStorage.setItem(draftKey.current, prompt);
-                      sessionStorage.setItem(`${draftKey.current}.task`, title);
-                      composerInput.current?.focus();
-                    }}>
-                    <Icon size={20} aria-hidden="true" />
-                    <span><strong>{title}</strong><small>{description}</small></span>
-                    <ArrowRight size={16} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
           )}
           <form
             className={`assistant-composer ${reviewReply?"is-review-reply":""}`}

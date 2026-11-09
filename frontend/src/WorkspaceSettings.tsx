@@ -1,4 +1,4 @@
-import { Files, FolderOpen, PanelTop, ShieldCheck, UserRound } from "lucide-react";
+import { ChevronDown, Files, FolderOpen, PanelTop, ShieldCheck, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { Modal, Notice, Spinner } from "./components";
@@ -13,9 +13,8 @@ const roles: Record<string, string> = {
 
 type WorkspaceChoice = { id: string; name: string; role: string };
 
-function WorkspaceManager({ current, role, onRename }: {
+export function WorkspaceManager({ current, onRename }: {
   current: WorkspaceChoice;
-  role: string;
   onRename: (name: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -85,14 +84,15 @@ function WorkspaceManager({ current, role, onRename }: {
   }
 
   return <>
-    <button className="text-button" ref={trigger} onClick={() => {
+    <button className="workspace-picker" aria-label="Quản lý không gian làm việc" aria-haspopup="dialog"
+      aria-expanded={open} title={current.name} ref={trigger} onClick={() => {
       setChoices(null);
       setSelected(current.id);
       setError("");
       setStatus("");
       setAction(null);
       setOpen(true);
-    }}>Quản lý không gian làm việc</button>
+    }}><strong>{current.name}</strong><ChevronDown size={15} aria-hidden="true" /></button>
     <Modal title="Quản lý không gian làm việc" open={open} returnFocus={trigger}
       onOpenChange={next => { if (!pending) setOpen(next); }}>
       {error && <Notice tone="error">{error}</Notice>}
@@ -108,7 +108,7 @@ function WorkspaceManager({ current, role, onRename }: {
         </label>}
         <div className="modal-actions">
           {action ? <button type="button" className="button secondary" disabled={pending} onClick={() => setAction(null)}>Hủy</button>
-            : role === "owner" && <>
+            : current.role === "owner" && <>
               <button type="button" className="button secondary" disabled={pending} onClick={() => { setName(""); setAction("create"); }}>Tạo không gian</button>
               <button type="button" className="button secondary" disabled={pending} onClick={() => { setName(current.name); setAction("rename"); }}>Đổi tên không gian hiện tại</button>
             </>}
@@ -128,7 +128,6 @@ export function WorkspaceSettings({ settings: s, role, tableDensity, onDensityCh
   onDensityChange: (value: "comfortable" | "compact") => void;
   onManageProjects?: (trigger: HTMLButtonElement) => void;
 }) {
-  const [workspaceName, setWorkspaceName] = useState(s.workspace_name);
   const external = s.policy.mode === "CLOUD_ALLOWED" && s.policy.allow_external_ai;
   const available = external && s.agent_cloud_enabled && s.gemini_configured
     && s.gemini_requests_remaining !== 0 && s.ai_task_allowances?.agent?.remaining !== 0;
@@ -137,15 +136,13 @@ export function WorkspaceSettings({ settings: s, role, tableDensity, onDensityCh
     <section aria-labelledby="settings-account">
       <h2 id="settings-account"><UserRound size={18} aria-hidden="true" /> Tài khoản và không gian làm việc</h2>
       <dl className="settings-rows">
-        <div><dt>Không gian làm việc</dt><dd>{workspaceName}</dd></div>
+        <div><dt>Không gian làm việc</dt><dd>{s.workspace_name}</dd></div>
         <div><dt>Quyền của bạn</dt><dd>{roles[role] ?? "Chưa xác minh"}</dd></div>
       </dl>
-      {(onManageProjects || s.workspace_id) && <div className="settings-actions">
-        {onManageProjects && <button className="text-button" onClick={event => onManageProjects(event.currentTarget)}>
+      {onManageProjects && <div className="settings-actions">
+        <button className="text-button" onClick={event => onManageProjects(event.currentTarget)}>
           <FolderOpen size={17} aria-hidden="true" /> Quản lý dự án
-        </button>}
-        {s.workspace_id && <WorkspaceManager current={{ id: s.workspace_id, name: workspaceName, role }}
-          role={role} onRename={setWorkspaceName} />}
+        </button>
       </div>}
     </section>
     <section aria-labelledby="settings-privacy">
