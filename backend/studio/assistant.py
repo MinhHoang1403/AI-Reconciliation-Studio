@@ -114,18 +114,39 @@ def validate_answer(content: str, facts: AnswerFactSet) -> list[AnswerLine]:
     return lines
 
 
+def _forbidden_fact_request(text: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:execute|run|chay|thuc thi)\s+(?:sql|python)\b"
+            r"|\breset[\s_-]+(?:budget|quota)\b|(?:^|[\s/\\])\.env\b"
+            r"|\b(?:bo qua|tat)\s+(?:phe duyet|xac minh|bao mat)\b",
+            text,
+        )
+    )
+
+
+def _unknown_metric(text: str) -> bool:
+    return any(w in text for w in ("ebitda", "loi nhuan", "risk score", "diem rui ro"))
+
+
+def explicit_fact_question(question: str) -> bool:
+    """Nhận câu hỏi chỉ đọc đơn lẻ. Câu ghép và thao tác để Agent phân giải."""
+    text = plain_question(question)
+    if _forbidden_fact_request(text):
+        return True
+    return bool(
+        re.fullmatch(
+            r"(?:vi sao lech|tai sao lech|tom tat ket qua doi soat|ty le khop(?: la bao nhieu)?"
+            r"|(?:ty le )?ebitda(?: la bao nhieu)?)",
+            text.rstrip("?!., "),
+        )
+    )
+
+
 def deterministic_answer(question: str, facts: AnswerFactSet) -> AssistantAnswer | None:
     """Chỉ hỗ trợ intents facts rõ ràng; không gọi heuristic này là LLM/live inference."""
     text = plain_question(question)
-    # Deny explicit requests outside the read-only Assistant boundary before cloud
-    # routing, even when the workspace has inference allowance. This is a bounded
-    # security guard, not a language router or permission to execute matched text.
-    if re.search(
-        r"\b(?:execute|run|chay|thuc thi)\s+(?:sql|python)\b"
-        r"|\breset[\s_-]+(?:budget|quota)\b|(?:^|[\s/\\])\.env\b"
-        r"|\b(?:bo qua|tat)\s+(?:phe duyet|xac minh|bao mat)\b",
-        text,
-    ):
+    if _forbidden_fact_request(text):
         return AssistantAnswer(
             status="INSUFFICIENT_EVIDENCE",
             mode="DETERMINISTIC",
@@ -139,7 +160,7 @@ def deterministic_answer(question: str, facts: AnswerFactSet) -> AssistantAnswer
             ],
             suggestions=["OPEN_DATA"],
         )
-    if any(w in text for w in ("ebitda", "loi nhuan", "risk score", "diem rui ro")):
+    if _unknown_metric(text):
         return AssistantAnswer(
             status="INSUFFICIENT_EVIDENCE",
             mode="DETERMINISTIC",

@@ -11,8 +11,8 @@ def request_failure_message(code: str) -> str:
             " nếu hỏi kết quả đối soát, cần một kết quả đã xác minh."
         ),
         "INPUT_AMBIGUOUS": (
-            "Chưa xác định được nguồn hoặc yêu cầu cụ thể. Hãy chọn dữ liệu tro"
-            "ng ngữ cảnh và bổ sung thông tin."
+            "Chưa xác định được nguồn hoặc yêu cầu cụ thể. "
+            "Hãy chọn nguồn dữ liệu và bổ sung thông tin."
         ),
         "QUERY_FIELD_INVALID": (
             "Trường cần tra cứu không có trong nguồn đang chọn. Hãy kiểm tra lại nguồn và tên cột."

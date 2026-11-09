@@ -141,7 +141,6 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     await expect(
       page.getByText("Đã cập nhật ánh xạ.", { exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Tạo bản chuẩn hóa", exact: true }).click();
     await page
       .getByRole("button", { name: "Chuẩn hóa dữ liệu", exact: true })
       .click();
@@ -265,10 +264,8 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   await mismatch
     .getByRole("button", { name: "Hỏi vì sao lệch", exact: true })
     .click();
-    await page.locator(".assistant-policy summary").click();
-    await page.getByLabel("Chế độ hội thoại",{exact:true}).selectOption("LEGACY");
-    await page
-      .getByLabel("Câu hỏi cho AI Assistant", { exact: true })
+  await page
+    .getByLabel("Câu hỏi cho AI Assistant", { exact: true })
     .fill("Vì sao lệch?");
   await page.getByRole("button", { name: "Gửi câu hỏi", exact: true }).click();
   const answer = page.locator(".assistant-message.assistant").last();
@@ -311,7 +308,6 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   ).toHaveCount(3);
   await openLegacyPage(page, "reports");
   const downloads: string[] = [];
-  await page.locator(".run-export > summary").click();
   for (const format of ["CSV", "XLSX"]) {
     const response = page.waitForResponse(
       (r) =>

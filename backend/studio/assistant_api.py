@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from studio.access import Actor
 from studio.ai_gateway import OllamaProvider, require_local_model, route_ai_task
+from studio.assistant import explicit_fact_question
 from studio.assistant_tools import read_tool, scoped_context
 from studio.config import ModelChoice, settings
 from studio.contracts import WorkspacePolicy
@@ -320,8 +321,16 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             )
         ident = str(uuid5(NAMESPACE_URL, f"message:{actor.workspace_id}:{actor.id}:{key}"))
         existing = db.get(MessageRow, ident)
+        # Yêu cầu rõ là chỉ đọc dùng cùng bộ dựng facts đã có. Tệp, lệnh
+        # xác định và câu ghép luôn vào Agent để giữ đủ các bước của yêu cầu.
+        auto_read = (
+            body.mode == "AUTO" and not body.command and not body.dataset_ids
+            and explicit_fact_question(body.text)
+        )
+        agent = body.mode == "AGENT" or (body.mode == "AUTO" and not auto_read)
+        model_choice = None if auto_read else body.model_choice
         if existing is None:
-            check_model_choice(db, actor, body.model_choice, legacy=body.mode == "LEGACY")
+            check_model_choice(db, actor, model_choice, legacy=not agent)
             pending = db.scalar(
                 select(JobRow.id)
                 .where(
@@ -340,7 +349,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             db,
             actor.workspace_id,
             row.project_id,
-            "agent" if body.mode == "AGENT" else "assistant",
+            "agent" if agent else "assistant",
             f"assistant:{actor.id}:{key}",
             dict(
                 conversation_id=row.id,
@@ -351,10 +360,10 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             )
             | (
                 dict(dataset_ids=body.dataset_ids, command=body.command)
-                if body.mode == "AGENT"
+                if agent
                 else {}
             )
-            | ({"model_choice": body.model_choice} if body.model_choice else {}),
+            | ({"model_choice": model_choice} if model_choice else {}),
         )
         if existing is None:
             db.add(

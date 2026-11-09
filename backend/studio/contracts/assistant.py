@@ -187,7 +187,7 @@ class MessageInput(Contract):
     conversation_id: Identifier
     text: str = Field(min_length=1, max_length=2000)
     context: AssistantContext
-    mode: Literal["LEGACY", "AGENT"] = "LEGACY"
+    mode: Literal["LEGACY", "AGENT", "AUTO"] = "LEGACY"
     model_choice: ModelChoice | None = None
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
     command: AssistantCommand | None = None

@@ -119,16 +119,10 @@ async function openAssistant(page: Page, projectId: string) {
   await expect(
     dialog.getByRole("button", { name: "Đổi ngữ cảnh phân tích" }),
   ).toBeEnabled();
-  // Giữ regression luồng hỏi facts thủ công; Agent actions có suite riêng.
-  await dialog.locator(".assistant-policy summary").click();
-  await dialog.getByLabel("Chế độ hội thoại", {exact:true}).selectOption("LEGACY");
   return dialog;
 }
 async function ask(page: Page, text: string) {
   const dialog = page.getByRole("region", { name: "AI Assistant", exact: true });
-  const policy=dialog.locator(".assistant-policy");
-  if(!await policy.evaluate(e=>(e as HTMLDetailsElement).open))await policy.locator("summary").click();
-  await dialog.getByLabel("Chế độ hội thoại",{exact:true}).selectOption("LEGACY");
   await dialog.getByRole("textbox", { name: "Câu hỏi cho AI Assistant" }).fill(text);
   await dialog
     .getByRole("button", { name: "Gửi câu hỏi", exact: true })
@@ -535,6 +529,11 @@ test("language workflow requires source/period/template confirmation before exis
   await dialog
     .getByRole("button", { name: "Hội thoại mới", exact: true })
     .click();
+  // Kiểm hợp đồng đề xuất chỉ đọc cũ. AUTO đưa yêu cầu giao việc này vào Agent.
+  const endpoint = "**/api/assistant/messages";
+  await page.route(endpoint, route => route.continue({
+    postData: { ...route.request().postDataJSON(), mode: "LEGACY" },
+  }), { times: 1 });
   const answer = await ask(page, "Đối soát ba file tháng 10");
   await expect(answer).toContainText("Chưa xác nhận năm");
   const writes: string[] = [];
@@ -683,7 +682,6 @@ test("language workflow requires source/period/template confirmation before exis
   await expect(explanation).toContainText("chưa chứng minh nguyên nhân");
   // Origin here is Reconciliation; the new UX only offers Back for Data/Exceptions/Reports.
   await openLegacyPage(page, "reports");
-  await page.locator(".run-export > summary").click();
   await page.getByRole("button", { name: "Xuất CSV", exact: true }).click();
   await expect(page.getByRole("link", { name: /Tải báo cáo/ })).toBeVisible();
 });

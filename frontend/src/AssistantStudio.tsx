@@ -66,6 +66,11 @@ function sameRequestExceptModel(previous: string, next: string, reuseUploadedSco
     const after = JSON.parse(next);
     delete before.model_choice;
     delete after.model_choice;
+    // Receipt cũ vẫn gửi lại đúng body và key ban đầu khi người dùng thử lại.
+    if (after.mode === "AUTO" && (before.mode === "AGENT" || before.mode === "LEGACY")) {
+      after.mode = before.mode;
+      if (before.mode === "LEGACY" && after.command === null) delete after.command;
+    }
     if (reuseUploadedScope && !after.dataset_ids) {
       if (before.command === "PREPARE_UPLOAD" && after.command === null) after.command = before.command;
       delete before.dataset_ids;
@@ -94,7 +99,6 @@ async function attachmentSignature(files: File[]): Promise<string> {
 export function AssistantStudio({
   initialContext,
   onNavigate,
-  cloudEnabled = false,
   canEdit,
   onReview,
   projectName,
@@ -108,7 +112,6 @@ export function AssistantStudio({
 }: {
   initialContext: AssistantContext;
   onNavigate: (target: Suggestion, context: AssistantContext) => void;
-  cloudEnabled?: boolean;
   canEdit: boolean;
   onReview: (planId: string) => void;
   projectName: string;
@@ -168,7 +171,6 @@ export function AssistantStudio({
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [command, setCommand] = useState<string | null>(null);
-  const [mode, setMode] = useState<"AGENT" | "LEGACY">("AGENT");
   type ReplyBinding=Pick<Review,"id"|"nonce"|"fingerprint"|"question">&{workflowId:string};
   const [reviewReply,setReviewReply]=useState<ReplyBinding|null>(null);
   const replyKeyFor=(scope:AssistantContext,id:string)=>`studio.review-reply.${draftOwner}.${scope.project_id}.${id}`;
@@ -301,7 +303,7 @@ export function AssistantStudio({
     try {
       const saved=JSON.parse(sessionStorage.getItem(`studio.assistant-request.${draftOwner}.${scope.project_id}`)||"null");
       const body=saved?.body?JSON.parse(saved.body):null;
-      if(body?.conversation_id===id&&(body?.mode==="AGENT"||body?.mode==="LEGACY")){setMode(body.mode);setCommand(body.command||null);}
+      if(body?.conversation_id===id){setCommand(body.command||null);}
     }catch{/* Chỉ khôi phục bản nháp hợp lệ, server vẫn kiểm lại mọi request. */}
   }
   const alive = useRef(true);
@@ -588,7 +590,7 @@ export function AssistantStudio({
           localStorage.setItem(`studio.conversation.${uploaded.project_id}`,created.id);
           const question=text.trim()||"Chuẩn bị dữ liệu vừa tải";
           const body=JSON.stringify({conversation_id:created.id,context:created.context,text:question,
-            mode:"AGENT",command:command||(!text.trim()&&uploadedDatasetIds?.length?"PREPARE_UPLOAD":null),
+            mode:"AUTO",command:command||(!text.trim()&&uploadedDatasetIds?.length?"PREPARE_UPLOAD":null),
             ...(uploadedDatasetIds?.length ? {dataset_ids:uploadedDatasetIds} : {}),
             ...(modelChoice && (text.trim() || command || !uploadedDatasetIds?.length) ? {model_choice:modelChoice} : {})});
           const key=createKey.current+"-message";
@@ -628,10 +630,10 @@ export function AssistantStudio({
         conversation_id: active.id,
         context: active.context,
         text: text.trim() || "Chuẩn bị dữ liệu vừa tải",
-        mode,
-        ...(modelChoice && (text.trim() || command || !uploadedDatasetIds?.length || mode !== "AGENT") ? {model_choice:modelChoice} : {}),
-        ...(mode === "AGENT" && uploadedDatasetIds?.length ? {dataset_ids:uploadedDatasetIds} : {}),
-        ...(mode==="AGENT"?{command:command||(!text.trim()&&uploadedDatasetIds?.length?"PREPARE_UPLOAD":null)}:{}),
+        mode: "AUTO",
+        ...(modelChoice && (text.trim() || command || !uploadedDatasetIds?.length) ? {model_choice:modelChoice} : {}),
+        ...(uploadedDatasetIds?.length ? {dataset_ids:uploadedDatasetIds} : {}),
+        command: command||(!text.trim()&&uploadedDatasetIds?.length?"PREPARE_UPLOAD":null),
       });
       let previous = pendingRequest.current;
       if (!previous) {
@@ -809,7 +811,7 @@ export function AssistantStudio({
             <summary aria-label="Tùy chọn hội thoại" title="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary>
             <div className="assistant-options">
               <strong>Tùy chọn hội thoại</strong>
-              {selectedModel === "GEMINI" && !(mode === "AGENT" ? agentEnabled : cloudEnabled) &&
+              {selectedModel === "GEMINI" && !agentEnabled &&
                 <p>Bạn vẫn có thể hỏi về các kết quả đã xác minh hoặc dùng Đối soát thủ công.</p>}
               {(models.length > 0 || modelChoice) && <label>Trợ lý<select
               aria-label="Trợ lý cho tin nhắn mới"
@@ -830,7 +832,6 @@ export function AssistantStudio({
                 </option>
               ))}
             </select></label>}
-              <label>Xử lý yêu cầu<select aria-label="Chế độ hội thoại" value={mode} disabled={busy||!!pendingJob} onChange={e=>setMode(e.target.value as "AGENT"|"LEGACY")}><option value="AGENT">Thực hiện tác vụ dữ liệu</option><option value="LEGACY">Chỉ hỏi dữ kiện đã xác minh</option></select></label>
               {context.project_id&&<button className="text-button" onClick={()=>onNavigate("OPEN_RECONCILIATION",displayContext)}>Thiết lập đối soát thủ công</button>}
               {conversation&&<button className="text-button" disabled={busy||!!pendingJob} onClick={event=>{deleteTrigger.current=event.currentTarget;setConfirmDelete(true);}}><Trash2 size={15}/>Xóa hội thoại</button>}
             </div>

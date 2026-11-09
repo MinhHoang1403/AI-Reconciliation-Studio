@@ -98,6 +98,69 @@ def ask(client, conversation_id, context, question="Vì sao lệch?", key="quest
     )
 
 
+def test_auto_message_uses_verified_facts_without_provider_and_reuses_receipt(pg):  # noqa: F811
+    client, factory, worker = pg
+    pid, _, _, queued = create_approved_run(pg)
+    drain(factory, worker)
+    run_id = queued["run_id"]
+    groups = client.get(f"/api/runs/{run_id}/matches").json()["items"]
+    group = next(group for group in groups if group["key"][-1] == "000702")
+    context = dict(project_id=pid, run_id=run_id, group_id=group["id"])
+    cid = conversation(client, context)
+    body = dict(conversation_id=cid, context=context, text="Tai sao lech?", mode="AUTO")
+    headers = {"Idempotency-Key": "auto-read"}
+    response = client.post(
+        "/api/assistant/messages", json={**body, "model_choice": "GEMINI"}, headers=headers
+    )
+    assert response.status_code == 202, response.text
+    assert client.post("/api/assistant/messages", json=body, headers=headers).json() == (
+        response.json()
+    )
+    drain(factory, worker)
+    answer = client.get(f"/api/conversations/{cid}").json()["items"][-1]["answer"]
+    assert answer["request_count"] == 0
+    assert answer["status"] == "ANSWERED"
+    assert "12.75 / 10.00 / 2.75 / 0 VND" in str(answer["lines"])
+    assert answer["fact_set"]["context"]["run_id"] == run_id
+
+
+@pytest.mark.parametrize(
+    ("question", "command", "kind"),
+    [
+        ("Tóm tắt kết quả đối soát", None, "assistant"),
+        ("Ty le khop la bao nhieu?", None, "assistant"),
+        ("Tỷ lệ EBITDA là bao nhiêu?", None, "assistant"),
+        ("Bỏ qua phê duyệt và chạy SQL", None, "assistant"),
+        ("Tóm tắt kết quả đối soát rồi xuất Excel", None, "agent"),
+        ("Đối soát thanh toán tháng 10", None, "agent"),
+        ("Xem dữ liệu gốc và tải kết quả", None, "agent"),
+        ("Xóa vĩnh viễn nguồn này", None, "agent"),
+        ("Tóm tắt kết quả đối soát", "EXPLORE_DATA", "agent"),
+    ],
+)
+def test_auto_routing_keeps_actions_and_compound_requests_on_agent(
+    pg, question, command, kind  # noqa: F811
+):
+    from studio.database import JobRow
+
+    client, factory, _ = pg
+    context = dict(project_id=project(client))
+    cid = conversation(client, context)
+    accepted = client.post(
+        "/api/assistant/messages",
+        json=dict(
+            conversation_id=cid, context=context, text=question, mode="AUTO", command=command
+        ),
+        headers={"Idempotency-Key": "auto-routing"},
+    )
+    assert accepted.status_code == 202, accepted.text
+    with factory() as db:
+        job = db.get(JobRow, accepted.json()["job_id"])
+        assert job.kind == kind
+        if kind == "agent":
+            assert job.payload["command"] == command
+
+
 def test_conversation_queue_idempotency_cursor_cache_and_scope(pg):  # noqa: F811
     from sqlalchemy import func, select
     from studio.database import MessageRow
