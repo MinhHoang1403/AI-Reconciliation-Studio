@@ -1297,7 +1297,7 @@ test("[MOCK CONTRACT] local proof recovery preserves draft and reloads project a
   expect(await status.locator("span").evaluate(el=>getComputedStyle(el).backgroundColor)).not.toBe("rgb(22, 163, 74)");
   verified = true;
   await page.getByRole("button", {name:"Thử kết nối lại",exact:true}).click();
-  await expect(status).toHaveText("Hệ thống đã kết nối");
+  await expect(status).toHaveText("Đã kết nối");
   await expect(page.locator("#project-select")).toHaveAttribute("data-project-id","project-000");
   await expect(page.getByRole("textbox",{name:"Câu hỏi cho AI Assistant",exact:true})).toHaveValue("Bản nháp được giữ nguyên");
   await page.getByRole("button", {name:"Lịch sử",exact:true}).click();
@@ -1329,9 +1329,9 @@ for (const failure of ["network", "timeout", "settings"] as const) {
     await expect(page.getByText("Đang xác minh quyền",{exact:false})).toHaveCount(0);
     failed=false;
     await page.getByRole("button",{name:"Thử kết nối lại",exact:true}).click();
-    await expect(status).toHaveText("Hệ thống đã kết nối");
+    await expect(status).toHaveText("Đã kết nối");
     await expect(page.getByRole("textbox",{name:"Câu hỏi cho AI Assistant",exact:true})).toBeEnabled();
     await page.reload();
-    await expect(status).toHaveText("Hệ thống đã kết nối");
+    await expect(status).toHaveText("Đã kết nối");
   });
 }

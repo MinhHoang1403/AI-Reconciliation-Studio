@@ -20,6 +20,11 @@ export const test = base.extend({
   },
 });
 
+export function assistantPanel(page: Page, name: string) {
+  const label = { name, exact: true };
+  return page.getByRole("dialog", label).or(page.getByRole("complementary", label));
+}
+
 /** Các trang cũ là deep links dự phòng, không còn là menu chính của Assistant. */
 export async function openLegacyPage(page: Page, target: "home"|"data"|"reconcile"|"reports"|"exceptions") {
   await expect(page.getByRole('button',{name:'AI Assistant',exact:true,includeHidden:true})).toBeEnabled();

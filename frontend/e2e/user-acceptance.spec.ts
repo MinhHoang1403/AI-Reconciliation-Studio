@@ -1,10 +1,9 @@
-import { test } from "./project-selection";
+import { assistantPanel, openLegacyPage, test } from "./project-selection";
 import {expect} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
-import {openLegacyPage} from './project-selection';
 
 type Row=Record<string,string>;
 type Scenario={name:string;files:{name:string;headers:string[];order:string[];locale:string;rows:number;sha256:string}[];cardinality:string;tolerance:string;raw:{left:Row[];right:Row[]};oracle:{groups:{key:string[];linkage:string;comparison:string;left_rows:number[];right_rows:number[];delta:string|null}[];signed_variance:string;absolute_variance:string;partitions:Record<string,{input:number;invalid:number[];out_of_scope:number[];in_scope:number[]}>}};
@@ -39,7 +38,7 @@ for(const scenario of manifest.datasets){
       const raw=await page.request.get(`/api/datasets/${dataset.id}/download`);
       expect(createHash('sha256').update(await raw.body()).digest('hex')).toBe(f.sha256);
       await page.getByRole('button',{name:'Tệp đã tải',exact:true}).click();
-      const drawer=page.getByRole('dialog',{name:'Tệp và dữ liệu',exact:true});await drawer.getByRole('button').filter({hasText:f.name}).click();
+      const drawer=assistantPanel(page,'Tệp và dữ liệu');await drawer.getByRole('button').filter({hasText:f.name}).click();
       await drawer.getByText('Kiểm tra thủ công khi cần',{exact:true}).click();await drawer.getByRole('button',{name:'Mở kiểm tra và ánh xạ thủ công',exact:true}).click();
       await expect(drawer).not.toBeVisible();
       const tables=await(await page.request.get(`/api/datasets/${dataset.id}/tables`)).json();

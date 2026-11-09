@@ -1,4 +1,4 @@
-import { test } from "./project-selection";
+import { assistantPanel, test } from "./project-selection";
 import {expect} from "@playwright/test";
 import {mkdir, readFile} from "node:fs/promises";
 import {createHash} from "node:crypto";
@@ -337,7 +337,7 @@ test('Chat files drawer previews and downloads original bytes without leaving co
   const classified=await page.request.patch(`/api/projects/${attachment.project_id}/classification`,{data:{classification:'TEST',expected_classification:'UNKNOWN'},headers:{Origin:'http://127.0.0.1:18180'}});expect(classified.status()).toBe(200);
   const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await input.fill('Bản nháp cần giữ');
   const originalURL=page.url();await page.getByRole('button',{name:'Tệp đã tải',exact:true}).click();
-  const drawer=page.getByRole('dialog',{name:'Tệp và dữ liệu',exact:true});await drawer.getByRole('button',{name:new RegExp(name)}).click();
+  const drawer=assistantPanel(page,'Tệp và dữ liệu');await drawer.getByRole('button',{name:new RegExp(name)}).click();
   await expect(drawer.getByRole('table')).toContainText('000702');await expect(drawer.getByRole('table')).toContainText('12.75');
   const response=await page.request.get(`/api/datasets/${attachment.items[0].id}/download`);expect(response.status()).toBe(200);
   expect(createHash('sha256').update(await response.body()).digest('hex')).toBe(createHash('sha256').update(raw).digest('hex'));
@@ -368,7 +368,7 @@ test('Persisted canonical and error previews stay inside the chat files drawer',
   await page.goto('/');
   const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await expect(input).toBeEnabled();await input.fill('Giữ nguyên bản nháp kiểm tra nguồn');
   const before=page.url();await page.getByRole('button',{name:'Tệp đã tải',exact:true}).click();
-  const drawer=page.getByRole('dialog',{name:'Tệp và dữ liệu',exact:true});
+  const drawer=assistantPanel(page,'Tệp và dữ liệu');
   await drawer.getByRole('button',{name:s.sources[0].name}).click();
   const artifacts=await(await page.request.get(`/api/datasets/${s.sources[0].id}/artifacts`)).json();
   await drawer.getByLabel('Phiên bản chuẩn hóa',{exact:true}).selectOption(artifacts.canonical_datasets[0].id);
@@ -394,8 +394,7 @@ test('[MOCK conversation, LIVE read] verified report opens in chat and preserves
   await page.route('**/api/agent/workflows/overlay-workflow',route=>route.fulfill({json:{id:'overlay-workflow',conversation_id:s.conversation_id,context,state:'COMPLETED',updated_at:'2026-11-02T00:00:00Z',detail:{intent:{intent:'SUMMARIZE_RESULTS'},model_calls:0,error_code:null,reviews:[],steps:[],blocks:[{type:'facts',result:{tool:'get_run_summary',run:{metric_snapshot:s.snapshot}}}]}}}));
   await page.goto('/');const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await expect(input).toBeEnabled();await input.fill('Bản nháp ở màn hình kết quả');
   const before=page.url();await expect(page.getByRole('region',{name:'Công việc của AI Assistant',exact:true})).toHaveCount(1);await page.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
-  const dialog=page.getByRole('dialog',{name:'Chi tiết kết quả đã xác minh',exact:true});
-  await dialog.locator(".result-analysis > summary").click();
+  const dialog=assistantPanel(page,'Chi tiết kết quả đã xác minh');
   await expect(dialog).toContainText('33.33');
   await expect(dialog.getByRole("table", { name: "Chi tiết đối soát", exact: true }))
     .toContainText("2,75 VND");

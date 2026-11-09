@@ -109,7 +109,7 @@ test("explicit report run outside the bounded history page is never replaced by 
 });
 async function openAssistant(page: Page, projectId: string) {
   await page.goto("/#page=data");
-  await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
+  await expect(page.getByRole("status", { name: "Trạng thái kết nối" })).toHaveText("Đã kết nối");
   await selectProject(page, projectId);
   const menu = page.getByRole("button", { name: "Mở điều hướng", exact: true });
   if (await menu.isVisible()) await menu.click();
@@ -276,7 +276,7 @@ for (const name of ["shopee", "tiktok", "delivery"]) {
     page.on("pageerror", (e) => errors.push(e.message));
     const s = await state();
     await page.goto("/");
-    await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
+    await expect(page.getByRole("status", { name: "Trạng thái kết nối" })).toHaveText("Đã kết nối");
     const quota = await (await page.request.get("/api/settings")).json();
     const runId = s.runs[name].run_id;
     const groups = (
@@ -399,7 +399,7 @@ test("language workflow requires source/period/template confirmation before exis
   test.setTimeout(180000);
   const s = await state();
   await page.goto("/#page=home");
-  await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
+  await expect(page.getByRole("status", { name: "Trạng thái kết nối" })).toHaveText("Đã kết nối");
   await selectProject(page, s.project_id);
   const filenames = [
     "internal-sales.csv",
@@ -817,7 +817,7 @@ test("data screen passes only its current scoped dataset to assistant", async ({
 }) => {
   const s = await state();
   await page.goto("/#page=home");
-  await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
+  await expect(page.getByRole("status", { name: "Trạng thái kết nối" })).toHaveText("Đã kết nối");
   await selectProject(page, s.project_id);
   const dataset = (
     await (

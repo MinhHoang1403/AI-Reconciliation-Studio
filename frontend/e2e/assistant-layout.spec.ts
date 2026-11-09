@@ -49,7 +49,7 @@ for(const width of [390,768,1366,1440,1920]){
     const input=page.getByLabel("Câu hỏi cho AI Assistant",{exact:true});
     for(const name of ["empty","short","long","upload","running","review","completed","table","chart","evidence","history","multiline","keyboard","sidebar","delete","error","permission","loading","partial","failed","unavailable","export","longfilename"]){
       scenario=name;gate=new Promise<void>(resolve=>release=resolve);
-      await page.goto("/");await expect(page.getByText("Hệ thống đã kết nối",{exact:true})).toBeAttached();
+      await page.goto("/");await expect(page.getByRole("status",{name:"Trạng thái kết nối"})).toHaveText("Đã kết nối");
       if(name==="loading"){await expect(input).toBeDisabled();await shot(name);release();await expect(input).toBeEnabled();continue;}
       if(name==="error"){await expect(page.getByRole("alert")).toContainText("Chưa tải được hội thoại");await shot(name);continue;}
       await expect(input).toBeEnabled();
@@ -259,7 +259,8 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     expect((await toolbar.boundingBox())!.height).toBeLessThanOrEqual(44);
     const transcript=page.locator('.assistant-scroll');
     const beforeMenu=(await transcript.boundingBox())!;
-    expect(beforeMenu.y).toBeLessThanOrEqual(130);
+    const masthead=(await page.getByRole('banner').boundingBox())!;
+    expect(beforeMenu.y-(masthead.y+masthead.height)).toBeLessThanOrEqual(60);
     if(width>=1366)expect(beforeMenu.width).toBeGreaterThanOrEqual(Math.min(1100,width-320));
     await page.getByLabel('Tùy chọn hội thoại',{exact:true}).click();
     const manual=page.getByRole('button',{name:'Thiết lập đối soát thủ công',exact:true});
@@ -342,8 +343,10 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     const longProjectBox=(await projectPicker.boundingBox())!;
     if(width>=1366)expect(longProjectBox.width).toBeGreaterThan(shortProjectWidth);
     const controls=(await page.locator('.topbar-end').boundingBox())!;
-    expect(longProjectBox.x+longProjectBox.width).toBeLessThanOrEqual(controls.x);
-    expect(longProjectBox.height).toBeLessThanOrEqual(44);
+    if(width<=600)expect(longProjectBox.y).toBeGreaterThanOrEqual(controls.y+controls.height);
+    else expect(longProjectBox.x+longProjectBox.width).toBeLessThanOrEqual(controls.x);
+    if(width<=600)expect(longProjectBox.height).toBeGreaterThanOrEqual(44);
+    expect(longProjectBox.height).toBeLessThanOrEqual(width<=600?56:44);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 
 

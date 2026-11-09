@@ -120,7 +120,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
   });
   const s = await state();
   await page.goto("/#page=home");
-  await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
+  await expect(page.getByRole("status", { name: "Trạng thái kết nối" })).toHaveText("Đã kết nối");
   await selectProject(page, s.project_id);
   await openLegacyPage(page, "reconcile");
   await page
@@ -364,7 +364,7 @@ test("Planner UI accepts sources with no common key and presents review-only sug
   const left = s.sources["shipments.csv"].canonical_id,
     right = s.sources["delivery-confirmations.csv"].canonical_id;
   await page.goto("/#page=home");
-  await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
+  await expect(page.getByRole("status", { name: "Trạng thái kết nối" })).toHaveText("Đã kết nối");
   const selected = await (await page.request.get(
     `/api/projects/${s.project_id}/canonical-catalogue?${new URLSearchParams([["canonical_ids",left],["canonical_ids",right]])}`,
   )).json();

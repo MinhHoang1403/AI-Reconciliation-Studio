@@ -62,7 +62,7 @@ let tableId = "";
 
 async function openApp(page: Page) {
   await page.goto("/#page=home");
-  await expect(page.getByText("Hệ thống đã kết nối")).toBeAttached();
+  await expect(page.getByRole("status", { name: "Trạng thái kết nối" })).toHaveText("Đã kết nối");
   await expect(page.locator("#project-select")).toBeVisible();
 }
 
