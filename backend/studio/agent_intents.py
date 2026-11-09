@@ -186,6 +186,17 @@ def _denied_request(goal: str) -> AgentIntent | None:
     return AgentIntent(intent="UNSUPPORTED", questions=[message])
 
 
+def _without_current_run_prefix(text: str) -> str:
+    """Discard a scope preface that already points to the displayed run."""
+    return re.sub(
+        r"^(?:trong|o) (?:lan doi soat|ket qua|lan chay) "
+        r"(?:nay|hien tai|dang (?:mo|xem))(?:\s*[,;:]\s*|\s+)",
+        "",
+        text.strip(),
+        count=1,
+    )
+
+
 def explicit_read_request(goal: str) -> bool:
     """Reduce authority for explicit read/count commands, without choosing a query.
 
@@ -193,7 +204,9 @@ def explicit_read_request(goal: str) -> bool:
     workflow vocabulary. This capability guard never infers fields, predicates,
     money or a source; the model/compiler still choose and validate those slots.
     """
-    text = plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal))
+    text = _without_current_run_prefix(
+        plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal))
+    )
     polite = r"(?:(?:hay|vui long|cho toi|toi muon|toi can|xin|giup toi)\s+)*"
     clauses = re.split(r"[.!?;\n]|\b(?:roi|sau do|va)\b", text)
     write = any(
@@ -225,6 +238,14 @@ def read_query_sources(
     goal: str, catalogue: IntentCatalogue, sources: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
     """Keep existing-result reads focused on current run/cases, never new source plans."""
+    filenames = explicit_source_filenames(goal)
+    if len(filenames) == 1:
+        sources = [
+            source
+            for source in sources
+            if source.get("dataset_id")
+            and unicodedata.normalize("NFC", source["name"]).casefold() == filenames[0]
+        ]
     layers = explicit_read_layers([goal])
     if layers:
         return [s for s in sources if s["source_kind"] in layers]
@@ -1552,13 +1573,29 @@ def resolve_deferred_export_read(goal: str, catalogue: IntentCatalogue) -> Agent
 
 def resolve_native_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
     """Compose native read capabilities and reduce authority for source mutations."""
+    denied = _denied_request(goal)
+    if denied:
+        return denied
+    filenames = explicit_source_filenames(goal)
+    if len(filenames) == 1 and explicit_read_request(goal) and not any(
+        unicodedata.normalize("NFC", dataset.name).casefold() == filenames[0]
+        for dataset in catalogue.datasets
+    ):
+        return AgentIntent(
+            intent="CLARIFY",
+            questions=["Không thấy đúng tên tệp trong dự án. Bạn muốn dùng nguồn nào?"],
+        )
+    normalized = plain_question(goal)
+    scoped = _without_current_run_prefix(normalized)
+    run_goal = (
+        scoped if catalogue.context.run_id in catalogue.run_ids and scoped != normalized else goal
+    )
     return (
-        _denied_request(goal)
-        or resolve_read_export_sequence(goal)
+        resolve_read_export_sequence(goal)
         or resolve_displayed_export(goal, catalogue)
-        or resolve_run_filter_clarification(goal, catalogue)
-        or resolve_ranked_results(goal, catalogue)
-        or resolve_run_read(goal, catalogue)
+        or resolve_run_filter_clarification(run_goal, catalogue)
+        or resolve_ranked_results(run_goal, catalogue)
+        or resolve_run_read(run_goal, catalogue)
         or resolve_plain_listing(goal, catalogue)
     )
 

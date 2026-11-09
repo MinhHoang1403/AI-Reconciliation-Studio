@@ -2957,6 +2957,30 @@ def test_counting_normalized_rows_cannot_read_a_different_layer(noun):
     assert [aggregation.op for aggregation in intent.query.aggregations] == ["count"]
 
 
+def test_unquoted_named_read_never_substitutes_another_source():
+    from studio.agent_intents import read_query_sources, resolve_native_read, routing_sources
+
+    cat = catalogue()
+    cat.datasets[0].name = "Sổ kho tháng 11.xlsx"
+    goal = "Cho tôi xem dữ liệu gốc của tệp Sổ kho tháng 10.xlsx."
+    assert read_query_sources(goal, cat, routing_sources(cat)) == []
+    intent = resolve_native_read(goal, cat)
+    assert intent is not None and intent.intent == "CLARIFY" and intent.query is None
+
+
+def test_current_run_preface_preserves_read_only_intent():
+    from studio.agent_intents import explicit_read_request, resolve_native_read
+
+    cat = catalogue()
+    cat.context.run_id = "run"
+    cat.verified_run_fields = ["comparison_state", "absolute_variance"]
+    goal = "Trong lần chạy đang xem hãy liệt kê 2 nhóm sai tiền lớn nhất."
+    assert explicit_read_request(goal)
+    intent = resolve_native_read(goal, cat)
+    assert intent is not None and intent.query is not None
+    assert intent.query.source_id == "run" and intent.query.limit == 2
+
+
 @pytest.mark.parametrize(
     "fixture_file,total",
     [

@@ -2027,7 +2027,7 @@ export function App() {
           navigate("assistant", { project_id: projectId }, projectId, false, id);
         }} />}
       {manage && actorRole === "owner" && <ResourceManagement target={manage} returnFocus={manageTrigger} onClose={() => setManage(null)}
-        onChanged={(id, parent, state) => {
+        onChanged={(id, parent, state, name) => {
           if (parent !== projectId) return;
           if (manage.kind === "projects" && state !== "active") {
             chooseProject(null);
@@ -2036,6 +2036,10 @@ export function App() {
           if (manage.kind === "datasets" && id === datasetId && state !== "active") {
             setDatasetId(""); setSelectedSource(null); setSourceListOpen(true);
             navigate("data", null, projectId, true);
+          }
+          if (manage.kind === "datasets" && name) {
+            setSelectedSource(source => source?.id === id ? { ...source, name } : source);
+            setDatasets(sources => sources.map(source => source.id === id ? { ...source, name } : source));
           }
           if (manage.kind === "datasets" && state !== "active") {
             requestAnimationFrame(() => {

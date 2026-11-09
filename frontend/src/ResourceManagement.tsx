@@ -28,7 +28,7 @@ const states = { active: "Đang dùng", archived: "Đã lưu trữ", deleted: "�
 export function ResourceManagement({ target, onClose, onChanged, returnFocus }: {
   target: ManagedResource;
   onClose: () => void;
-  onChanged: (id: string, projectId: string, state: State) => void;
+  onChanged: (id: string, projectId: string, state: State, name?: string) => void;
   returnFocus: RefObject<HTMLElement | null>;
 }) {
   const [id, setId] = useState(target.id || "");
@@ -119,7 +119,7 @@ export function ResourceManagement({ target, onClose, onChanged, returnFocus }: 
       setImpact(renamed);
       setNewName(null);
       setResult("Đã đổi tên hiển thị.");
-      onChanged(renamed.id, renamed.project_id, renamed.state);
+      onChanged(renamed.id, renamed.project_id, renamed.state, renamed.name);
     } catch (err) {
       if (!controller.signal.aborted) {
         setError(err instanceof Error ? err.message : "Chưa thể đổi tên nguồn.");

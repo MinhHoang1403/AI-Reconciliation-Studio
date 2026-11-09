@@ -389,7 +389,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     expect(catalog.ok()).toBe(true);
     expect((await catalog.json()).items.map((item: { name: string }) => item.name)).not.toContain(names[0]);
     await page.goto(`/#${new URLSearchParams({ page: "reports", project: projectId, run_id: runId })}`);
-    await expect(page.locator(".run-sources strong")).toHaveText(names);
+    await expect(page.locator(".run-sources dd")).toHaveText(names);
     const retained = await page.request.get(`/api/runs/${runId}/metrics`);
     expect(retained.ok()).toBe(true);
     expect(await retained.json()).toEqual(snapshot);
