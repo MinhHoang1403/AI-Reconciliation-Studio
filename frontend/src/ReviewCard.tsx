@@ -104,6 +104,7 @@ function ScopeConfirmation({ request, catalogue, disabled, onConfirm }: {
 }) {
     const [start, setStart] = useState(request.period_start || "");
     const [end, setEnd] = useState(request.period_end || "");
+    const [month, setMonth] = useState("");
     const [zone, setZone] = useState(request.timezone || "");
     const [snapshot, setSnapshot] = useState("");
     const [confirmed, setConfirmed] = useState(false);
@@ -116,6 +117,19 @@ function ScopeConfirmation({ request, catalogue, disabled, onConfirm }: {
     const snapshotNeeded = sides.some(side => !request[side].snapshot_at);
     const ready = confirmed && start && end && start < end && zone && (!snapshotNeeded || snapshot) &&
         sources.every(Boolean) && sides.every((side, index) => !!dateFor(index) && !!request[side].role);
+    function chooseMonth(value: string) {
+        setMonth(value);
+        const parts = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value);
+        if (!parts) return;
+        const year = Number(parts[1]);
+        const index = Number(parts[2]);
+        if (!year || (year === 9999 && index === 12)) return;
+        const nextYear = String(year + (index === 12 ? 1 : 0)).padStart(4, "0");
+        const nextMonth = String(index % 12 + 1).padStart(2, "0");
+        setStart(`${value}-01`);
+        setEnd(`${nextYear}-${nextMonth}-01`);
+        setConfirmed(false);
+    }
     function confirm() {
         if (!ready) return;
         const slot = (side: typeof sides[number], index: number): PlanningScope["left"] => {
@@ -136,14 +150,15 @@ function ScopeConfirmation({ request, catalogue, disabled, onConfirm }: {
     }
     return <fieldset className="agent-form-grid">
         <legend>Kỳ và phạm vi dữ liệu</legend>
-        <label>Ngày đầu kỳ<input type="date" value={start} disabled={disabled} onChange={event=>setStart(event.target.value)}/></label>
-        <label>Ngày sau cuối kỳ<input type="date" value={end} disabled={disabled} onChange={event=>setEnd(event.target.value)}/></label>
-        <label>Múi giờ đối soát<select value={zone} disabled={disabled} onChange={event=>setZone(event.target.value)}>
+        <label>Tháng đối soát<input type="month" value={month} min="0001-01" max="9999-11" disabled={disabled} onChange={event=>chooseMonth(event.target.value)}/></label>
+        <label>Ngày đầu kỳ<input type="date" value={start} disabled={disabled} onChange={event=>{setStart(event.target.value);setMonth("");setConfirmed(false);}}/></label>
+        <label>Ngày sau cuối kỳ<input type="date" value={end} disabled={disabled} onChange={event=>{setEnd(event.target.value);setMonth("");setConfirmed(false);}}/></label>
+        <label>Múi giờ đối soát<select value={zone} disabled={disabled} onChange={event=>{setZone(event.target.value);setConfirmed(false);}}>
             <option value="">Chọn múi giờ</option>{Array.from(new Set(["UTC", "Asia/Ho_Chi_Minh", ...(request.timezone ? [request.timezone] : [])])).map(value=><option key={value}>{value}</option>)}
         </select></label>
-        {snapshotNeeded && <label>Thời điểm chốt dữ liệu (UTC)<input type="datetime-local" value={snapshot} disabled={disabled} onChange={event=>setSnapshot(event.target.value)}/></label>}
+        {snapshotNeeded && <label>Thời điểm chốt dữ liệu (UTC)<input type="datetime-local" value={snapshot} disabled={disabled} onChange={event=>{setSnapshot(event.target.value);setConfirmed(false);}}/></label>}
         {sides.map((side, index) => <label key={side}>Ngày dùng cho {sources[index]?.name || (index ? "nguồn đối ứng" : "nguồn tham chiếu")}
-            <select value={dateFor(index)} disabled={disabled} onChange={event=>setDates(previous=>previous.map((value, i)=>i===index ? event.target.value : value))}>
+            <select value={dateFor(index)} disabled={disabled} onChange={event=>{setDates(previous=>previous.map((value, i)=>i===index ? event.target.value : value));setConfirmed(false);}}>
                 <option value="">Chọn cột ngày</option>{dateFields[index].map(field=><option value={field.id} key={field.id}>{field.name}</option>)}
             </select></label>)}
         <p>Quy tắc dự kiến có hiệu lực từ {request.effective_from || start || "ngày đầu kỳ"}. Bạn sẽ được xem đề xuất trước khi duyệt.</p>

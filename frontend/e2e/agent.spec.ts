@@ -140,7 +140,8 @@ test(`[${process.env.STUDIO_LIVE_PROVIDER==='GEMINI'?'LIVE GEMINI':'LOCAL ORACLE
   expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used+(live?1:0));
 });
 
-for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${process.env.STUDIO_JOURNEY_DATASET==='MAINTENANCE'?'maintenance':'inventory'} sources through Chat approval, reconciliation and export${sharedReview ? ' with shared business facts' : ''}`,async({page})=>{
+const paymentJourney = process.env.STUDIO_JOURNEY_DATASET === 'PAYMENT';
+for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL ORACLE] Three new ${paymentJourney?'payment':process.env.STUDIO_JOURNEY_DATASET==='MAINTENANCE'?'maintenance':'inventory'} sources through Chat approval, reconciliation and export${sharedReview ? ' with shared business facts' : ''}`,async({page})=>{
   test.setTimeout(120000);
   const viewportWidth=Number(process.env.STUDIO_JOURNEY_WIDTH??1440);
   await page.setViewportSize({width:viewportWidth,height:900});
@@ -150,13 +151,16 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${proces
       headers:string[];names:string[];entity:string;grain:string;metric:string;values:string[][][];
       expected:{equal:number;mismatch:number;unmatched:number;signed:string;absolute:string;mismatch_id:string;left_amount:string;right_amount:string};
     } : null;
-  const entity=maintenance?.entity??'inventory',grain=maintenance?.grain??'stock_item',metric=maintenance?.metric??'stock_value';
-  const headers=maintenance?.headers??(vietnameseHeaders
+  const entity=maintenance?.entity??(paymentJourney?'payment':'inventory');
+  const grain=maintenance?.grain??(paymentJourney?'payment_reference':'stock_item');
+  const metric=maintenance?.metric??(paymentJourney?'settled_amount':'stock_value');
+  const basis=paymentJourney?'paid':'gross';
+  const headers=maintenance?.headers??(paymentJourney?['Mã thanh toán','Ngày ghi nhận','Tiền đã thanh toán','Đơn vị tiền tệ']:vietnameseHeaders
     ? ['Mã hàng','Ngày kiểm kê','Giá trị gộp','Đơn vị tiền tệ']
     : ['Stock ID','Snapshot Date','Gross Amount','Currency']);
   const [keyHeader,,moneyHeader]=headers;
   const suffix=crypto.randomUUID().slice(0,8);
-  const names=(maintenance?.names??['So-ton','Kiem-ke','Ton-du-phong']).map(name=>`${name}-${suffix}.csv`);
+  const names=(maintenance?.names??(paymentJourney?['Don-hang','Thanh-toan','Ngan-hang']:['So-ton','Kiem-ke','Ton-du-phong'])).map(name=>`${name}-${suffix}.csv`);
   const values=maintenance?.values??[
     [['0001','100.00'],['0002','250.00'],['0003','25.00']],
     [['0001','100.00'],['0002','200.00'],['0004','15.00']],
@@ -176,9 +180,9 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${proces
   await page.locator('#project-select').click();
   await page.getByRole('button',{name:'Tạo dự án mới',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Tạo dự án',exact:true});
-  await dialog.getByLabel('Tên dự án',{exact:true}).fill(`UAT ${maintenance?'bảo trì':'tồn kho'} ${suffix}`);
-  await dialog.getByLabel('Phạm vi nghiệp vụ',{exact:true}).fill(maintenance?'Đối chiếu chứng từ bảo trì với khoản thu, có hoàn tiền và số không; dữ liệu tổng hợp.':'Đối chiếu số dư giá trị tồn theo mã hàng, dữ liệu tổng hợp.');
-  await dialog.getByLabel('Nhóm dự án',{exact:true}).selectOption('TEST');
+  await dialog.getByLabel('Tên dự án',{exact:true}).fill(`UAT ${paymentJourney?'thanh toán':maintenance?'bảo trì':'tồn kho'} ${suffix}`);
+  await dialog.getByLabel('Phạm vi nghiệp vụ',{exact:true}).fill(paymentJourney?'Đối chiếu số tiền đã thanh toán theo mã thanh toán giữa đơn hàng, cổng thanh toán và ngân hàng. Dữ liệu tổng hợp.':maintenance?'Đối chiếu chứng từ bảo trì với khoản thu, có hoàn tiền và số không; dữ liệu tổng hợp.':'Đối chiếu số dư giá trị tồn theo mã hàng, dữ liệu tổng hợp.');
+  await dialog.getByRole('combobox',{name:'Nhóm dự án',exact:true}).selectOption('TEST');
   await dialog.getByRole('button',{name:'Tạo dự án',exact:true}).click();
   await expect(dialog).not.toBeVisible();
   const projectId=(await page.locator('#project-select').getAttribute('data-project-id'))!;
@@ -205,7 +209,7 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${proces
     await common.getByLabel('Loại dữ liệu dùng chung',{exact:true}).fill(entity);
     await common.getByLabel('Mỗi dòng của các nguồn là gì?',{exact:true}).fill(grain);
     await common.getByLabel('Múi giờ dùng chung',{exact:true}).selectOption('UTC');
-    await common.getByLabel('Cơ sở tiền dùng chung',{exact:true}).selectOption('gross');
+    await common.getByLabel('Cơ sở tiền dùng chung',{exact:true}).selectOption(basis);
     await common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true}).fill(metric);
     await page.reload();
     await expect(common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true})).toHaveValue(metric);
@@ -250,22 +254,26 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${proces
   await send(`Mở bản tự chuẩn bị của tệp “${names[0]}”`);
   await expect(work).toContainText('Đây là bản tự chuẩn bị để xem và tìm kiếm');
   await expect(work.locator('.agent-table')).toContainText(firstId);
-  await send(`Đối soát “${names[0]}” với “${names[1]}”`);
-  const scope=page.getByRole('group',{name:'Kỳ và phạm vi dữ liệu',exact:true});
-  await scope.getByLabel('Ngày đầu kỳ',{exact:true}).fill('2026-11-01');
-  await scope.getByLabel('Ngày sau cuối kỳ',{exact:true}).fill('2026-12-01');
-  await scope.getByRole('combobox',{name:/^Múi giờ đối soát/}).selectOption('UTC');
-  await scope.getByLabel('Thời điểm chốt dữ liệu (UTC)',{exact:true}).fill('2026-12-02T00:00');
-  await scope.getByRole('checkbox').check();manualFields+=5;
-  await scope.getByRole('button',{name:'Kiểm tra phạm vi và tìm khóa',exact:true}).click();
-  await expect(cards.getByText('Phương án liên kết đã kiểm tra',{exact:true})).toBeVisible();
-  const runRequest=page.waitForResponse(response=>response.url().endsWith('/decisions')&&response.request().method()==='POST');
-  await cards.getByRole('button',{name:'Duyệt quy tắc và đối soát',exact:true}).click();
-  expect((await runRequest).ok()).toBe(true);
-  await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
-  const runs=await(await page.request.get(`/api/projects/${projectId}/summary`)).json();
-  expect(runs.latest_verified_run_id).toBeTruthy();
-  const runId=runs.latest_verified_run_id;
+  async function reconcilePair(left:string,right:string){
+    await send(`Đối soát “${left}” với “${right}”`);
+    const scope=page.getByRole('group',{name:'Kỳ và phạm vi dữ liệu',exact:true});
+    await scope.getByLabel('Tháng đối soát',{exact:true}).fill('2026-11');
+    await expect(scope.getByLabel('Ngày đầu kỳ',{exact:true})).toHaveValue('2026-11-01');
+    await expect(scope.getByLabel('Ngày sau cuối kỳ',{exact:true})).toHaveValue('2026-12-01');
+    await scope.getByRole('combobox',{name:/^Múi giờ đối soát/}).selectOption('UTC');
+    await scope.getByLabel('Thời điểm chốt dữ liệu (UTC)',{exact:true}).fill('2026-12-02T00:00');
+    await scope.getByRole('checkbox').check();manualFields+=4;
+    await scope.getByRole('button',{name:'Kiểm tra phạm vi và tìm khóa',exact:true}).click();
+    await expect(cards.getByText('Phương án liên kết đã kiểm tra',{exact:true})).toBeVisible();
+    const runRequest=page.waitForResponse(response=>response.url().endsWith('/decisions')&&response.request().method()==='POST');
+    await cards.getByRole('button',{name:'Duyệt quy tắc và đối soát',exact:true}).click();
+    expect((await runRequest).ok()).toBe(true);
+    await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
+    const summary=await(await page.request.get(`/api/projects/${projectId}/summary`)).json();
+    expect(summary.latest_verified_run_id).toBeTruthy();
+    return summary.latest_verified_run_id as string;
+  }
+  const runId=await reconcilePair(names[0],names[1]);
   const snapshot=await(await page.request.get(`/api/runs/${runId}/metrics`)).json();
   expect(snapshot.comparison_counts.EQUAL).toBe(expected.equal);
   expect(snapshot.comparison_counts.AMOUNT_MISMATCH).toBe(expected.mismatch);
@@ -289,7 +297,7 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${proces
   await expect(work).toContainText('Chênh lệch tuyệt đối');
   await send('Sắp hai giao dịch bị lệch tiền nhiều nhất theo mức lệch giảm dần.');
   await expect(work.locator('.agent-table')).toContainText(expected.absolute);
-  const folder=`../runtime/automation-${maintenance?'maintenance':'inventory'}/${suffix}`;
+  const folder=`../runtime/automation-${paymentJourney?'payment':maintenance?'maintenance':'inventory'}/${suffix}`;
   await mkdir(folder,{recursive:true});
   await send('Lưu đúng các dòng vừa liệt kê thành tệp CSV.');
   const pageFile=page.waitForEvent('download');
@@ -317,7 +325,17 @@ for (const sharedReview of [false,true]) test(`[LOCAL ORACLE] Three new ${proces
   await download.saveAs(`${folder}/${exportFile}`);receipts.export_file=exportFile;
   await page.reload();
   await expect(work.getByRole('link',{name:/Tải.*XLSX/i})).toBeVisible();
+  if(paymentJourney){
+    const bankRun=await reconcilePair(names[1],names[2]);
+    expect(bankRun).not.toBe(runId);
+    const bank=await(await page.request.get(`/api/runs/${bankRun}/metrics`)).json();
+    expect(bank.comparison_counts.EQUAL).toBe(2);
+    expect(bank.comparison_counts.AMOUNT_MISMATCH).toBe(1);
+    expect(bank.monetary[0].signed_variance).toBe('-0.01');
+    expect(bank.monetary[0].absolute_variance).toBe('0.01');
+    receipts.bank_run_id=bankRun;
+  }
   expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used);
   expect(errors).toEqual([]);
-  await writeFile(`${folder}/receipt.json`,JSON.stringify({...receipts,clicks,manualFields,approvedResources:4,approvalClicks:2,pageErrors:errors},null,2));
+  await writeFile(`${folder}/receipt.json`,JSON.stringify({...receipts,clicks,manualFields,approvedResources:paymentJourney?5:4,approvalClicks:paymentJourney?3:2,pageErrors:errors},null,2));
 });

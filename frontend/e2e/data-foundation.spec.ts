@@ -17,7 +17,7 @@ test.afterEach(({ page }) => {
 test.describe.configure({ mode: "serial" });
 const providerMode = process.env.STUDIO_EXPECT_AI_PROVIDER || "MANUAL";
 
-test("[LOCAL] create, switch and rename a workspace from Settings", async ({ page }) => {
+test("[LOCAL] create, switch and rename a workspace from the masthead", async ({ page }) => {
   await page.goto("/#page=settings");
   await expect(page.getByRole("heading", { name: "Cài đặt không gian làm việc" })).toBeVisible();
   const before = await (await page.request.get("/api/session")).json();
@@ -32,7 +32,8 @@ test("[LOCAL] create, switch and rename a workspace from Settings", async ({ pag
   await expect(dialog.getByRole("status")).toContainText("Đã tạo.");
   await dialog.getByRole("button", { name: "Chuyển không gian" }).click();
   await expect(dialog).not.toBeVisible();
-  await expect(page.getByText(name, { exact: true })).toBeVisible();
+  await expect(manage).toHaveAccessibleDescription(name);
+  await expect(page.getByRole("main").getByText(name, { exact: true })).toBeVisible();
   const after = await (await page.request.get("/api/session")).json();
   expect(after.workspace_id).not.toBe(before.workspace_id);
   expect((await (await page.request.get("/api/projects")).json()).total).toBe(0);

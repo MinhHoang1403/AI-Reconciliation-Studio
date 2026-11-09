@@ -84,7 +84,7 @@ export function WorkspaceManager({ current, onRename }: {
   }
 
   return <>
-    <button className="workspace-picker" aria-label="Quản lý không gian làm việc" aria-haspopup="dialog"
+    <button className="workspace-picker" aria-label="Quản lý không gian làm việc" aria-description={current.name} aria-haspopup="dialog"
       aria-expanded={open} title={current.name} ref={trigger} onClick={() => {
       setChoices(null);
       setSelected(current.id);
