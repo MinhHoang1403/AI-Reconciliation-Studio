@@ -72,7 +72,7 @@ def capture() -> dict[str, Any]:
             AgentWorkflowRow,
         ):
             records = []
-            for row in db.scalars(select(model)):
+            for row in db.scalars(select(model).execution_options(yield_per=200)):
                 values = {c.name: getattr(row, c.name) for c in model.__table__.columns}
                 records.append(
                     {
@@ -84,14 +84,14 @@ def capture() -> dict[str, Any]:
                 )
             result[model.__tablename__] = sorted(records, key=lambda r: r["id"])
         artifacts = []
-        for row in db.scalars(select(ArtifactRow)):
+        for row in db.scalars(select(ArtifactRow).execution_options(yield_per=200)):
             actual = checksum(storage_path(settings.storage_root, row.storage_key))
             if actual != row.sha256:
                 raise SystemExit("FAIL: artifact checksum differs from published ref")
             artifacts.append({"id": row.id, "kind": row.kind, "sha256": actual})
         result["artifacts"] = sorted(artifacts, key=lambda r: r["id"])
         results = []
-        for row in db.scalars(select(RunRow)):
+        for row in db.scalars(select(RunRow).execution_options(yield_per=200)):
             if row.result_key:
                 digest = checksum(storage_path(settings.storage_root, row.result_key))
                 if digest != row.result_sha256:
@@ -99,7 +99,7 @@ def capture() -> dict[str, Any]:
                 results.append({"id": row.id, "sha256": digest})
         result["run_artifacts"] = sorted(results, key=lambda r: r["id"])
         exports = []
-        for row in db.scalars(select(ExportRow)):
+        for row in db.scalars(select(ExportRow).execution_options(yield_per=200)):
             if row.storage_key:
                 digest = checksum(storage_path(settings.storage_root, row.storage_key))
                 if digest != row.sha256:

@@ -2,6 +2,7 @@
 
 import json
 import runpy
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -50,17 +51,19 @@ def test_streamed_backup_preserves_exact_existing_format(tmp_path):
 @pytest.mark.parametrize(
     "actual", [[{"id": "changed"}], [], [{"id": "a"}, {"id": "b"}], [{"id": "a"}, {"id": "a"}]]
 )
-def test_backup_metadata_comparison_rejects_changed_missing_and_extra_rows(actual):
+def test_backup_metadata_comparison_rejects_changed_missing_and_extra_rows(actual, tmp_path):
     module = backup_module()
     metadata = MetaData()
     Table("records", metadata, Column("id", String, primary_key=True))
 
     class Connection:
         def execute(self, statement):
-            return self
+            return nullcontext(self)
 
         def mappings(self):
             return actual
 
+    path = tmp_path / "metadata.json"
+    offsets = module["write_metadata"](path, {"records": [{"id": "a"}]})
     with pytest.raises(RuntimeError, match="Backup metadata differs: records"):
-        module["verify_metadata"](Connection(), metadata, {"records": [{"id": "a"}]})
+        module["verify_metadata"](Connection(), metadata, path, offsets)

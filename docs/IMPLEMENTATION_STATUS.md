@@ -1,8 +1,47 @@
 # Trạng thái triển khai và nghiệm thu
 
-## Ứng viên dựng lại trải nghiệm đang chạy local — 09/11/2026
+## Kiểm toán vận hành và dữ liệu — 09/11/2026
 
-Chủ dự án yêu cầu dựng lại giao diện sau khi xem W1–W5. Ứng viên từ nhánh `codex/complete-product-interface` phục vụ tại `http://127.0.0.1:18180` trong Compose `ai-reconciliation-studio`. Mốc W1–W5 phía dưới dùng để so sánh. Chủ dự án chưa nghiệm thu giao diện.
+Mốc kiểm tra ban đầu là ứng viên từ `codex/complete-product-interface` tại cổng loopback. Bốn dịch vụ healthy, Alembic ở `add_resource_lifecycle`. Image Backend/Worker mang revision `2764664`, Frontend mang revision `3b012ce`. Sáu tệp JS/CSS phục vụ qua Nginx có SHA-256 khớp image. `origin/main` ở `6403129`. Nhánh nghiên cứu đã nằm trong lịch sử main, hai nhánh giao diện còn thay đổi chưa hợp nhất vào main.
+
+- **Worker.** Tái hiện vòng điều phối ngừng cập nhật heartbeat khi tác vụ dữ liệu chạy đồng bộ. Ứng viên tách thực thi khỏi vòng điều phối, giữ tối đa một lượt dữ liệu và một lượt suy luận như trước. Chỉ gia hạn lease còn hiệu lực của lượt có đúng token. Việc giữ khóa khi công bố vẫn chặn lượt khác ghi trùng. Ca PostgreSQL dùng đồng hồ mô phỏng đi qua 340 giây, kiểm một lượt công bố và token cũ bị từ chối.
+- **Backup.** Lần chạy với công cụ cũ dừng trong lúc thu metadata, khi Backend ghi nhận sự kiện hết bộ nhớ. Công cụ mới đọc theo lô từ PostgreSQL, ghi định dạng metadata hiện có và đối chiếu SHA-256 từng dòng khi khôi phục. Thứ tự dòng trong bản sao mới theo khóa chính, còn cách mã hóa kiểu dữ liệu được giữ. Chạy trên Worker hiện có, chụp 24 bảng trong 64,689 giây, khôi phục thử trong 56,135 giây. Bản sao ngoài volume khớp SHA-256 metadata và 13.582 tệp, tổng 798.469.545 byte. Bản sao này nằm trên cùng máy. Công cụ chụp dấu vân tay trước/sau restart cũng đọc PostgreSQL theo lô.
+- **Dữ liệu.** Kiểm kê sau các ca TEST ghi nhận 3 workspace, 1.113 dự án và 2.739 nguồn. Đề xuất giữ 2 dự án, đưa 982 dự án TEST vào danh sách xem xét và chặn 129 dự án khác theo quyền/phạm vi, phân loại hoặc công việc chờ. Hai oracle tài chính đã được chạy lại qua API, gồm đối chiếu tiền, checksum nguồn và đọc lại XLSX. Hai lượt vẫn là `PARTIAL_VERIFIED` và giữ các dòng loại trừ trong phạm vi kiểm chứng. Dự án thứ hai có một lượt `VERIFIED` từ kiểm thử hành trình. Danh mục định danh và tên tài nguyên lưu cục bộ, ngoài Git. Xóa vĩnh viễn cần xác nhận từng ID và backup khôi phục được.
+- **Giao diện.** Bản dựng hiện hành vẫn cần thiết kế lại theo phản hồi mới của chủ dự án. Rà soát Impeccable theo chế độ vận hành và tra UI UX Pro Max về phản hồi tiến trình, xác nhận và thứ bậc tiêu đề. Giữ hướng sáng và xanh theo D06–D07. Bộ chọn chế độ ở Assistant vẫn yêu cầu người dùng phân biệt hai đường xử lý, còn hiệu quả giảm thao tác của thiết kế mới chưa có phép đo.
+
+Các đường thực thi đã đối chiếu trong nguồn hiện tại:
+
+| Hành trình | Điểm vào và nơi thực thi | Ranh giới cần giữ khi cải tổ |
+| --- | --- | --- |
+| Chat giao việc | `assistant_api.py` → `agent_jobs.py` → `agent_intents.py` → `agent_tools.py` → `agent_workflows.py` và Worker | Phân biệt hiểu câu hỏi, kiểm phạm vi và thực thi công cụ. Đường hỏi dữ kiện hiện vẫn được dùng. |
+| Nạp và chuẩn hóa | `api.persist_uploads` → công việc parse/mapping/normalize trong Worker → `normalization.py` và kho artifact | Giữ tệp gốc bất biến, ánh xạ đã duyệt và dấu vết từng dòng. |
+| Đọc bảng và bằng chứng | `api.data_query` và công cụ đọc trong `agent_tools.py` | So các kiểm tra quyền, phạm vi truy vấn và cách lấy bằng chứng trước khi hợp nhất. |
+| Đối soát và xuất | `reconciliation_jobs.py` → Engine và Verifier → `reconciliation_exports.py` | Xuất từ lượt và ảnh chụp chỉ số đã kiểm chứng, theo đúng phạm vi đã chọn. |
+| Phê duyệt và tiếp tục | API phê duyệt → lưu quyết định → `agent_workflows.notify_job_finished` / `resume_prepared_reviews` | Kiểm lại dữ liệu và quyền trước khi chạy bước sau phê duyệt. |
+| Quản lý vòng đời | `resource_lifecycle` kiểm owner, khóa dự án, đếm phụ thuộc và cập nhật trạng thái | `deleted_at` giữ dữ liệu để khôi phục. Xóa vật lý cần kiểm cả tham chiếu JSON, tệp dùng chung và khả năng tiếp tục sau lỗi. |
+
+Kiểm thử trên nguồn ứng viên đạt 789 ca Python/PostgreSQL. Hai ca về heartbeat và khóa công bố đạt khi chạy lại sau điều chỉnh cách chờ Worker. Chromium đạt 13 ca hành trình trên bản local ban đầu. Bộ ca này dùng luồng thủ công hoặc xác định trên dữ liệu tổng hợp, gồm CSV/XLSX, xác nhận, đối soát, ngoại lệ và xuất tệp. Lint/build Frontend, Ruff, mypy Worker và kiểm tra đường dẫn/bí mật đều đạt. Chưa có phép đánh giá live AI mới hoặc kết quả Chromium nguyên bộ trong lượt kiểm toán này.
+
+### Triển khai ứng viên Worker và quay lui
+
+Đã chạy lần lượt ứng viên, quay về Backend/Worker `2764664` và trở lại ứng viên. Mỗi lần xác minh HTTP 403 trước khi cấp lại proof loopback, sau đó kiểm phiên, quyền đọc dự án và dấu vân tay metadata, phê duyệt, nguồn, lượt đối soát và tệp xuất. Frontend và PostgreSQL giữ cùng container trong ba lượt. Alembic giữ `add_resource_lifecycle`.
+
+Sau triển khai, đối chiếu 56 tệp trong mỗi container Backend/Worker với source revision, quy đổi xuống dòng CRLF khi cần. Hai oracle tài chính và đọc lại XLSX đạt lần nữa. Kiểm thật bằng `SIGKILL` lúc Worker đang chuẩn hóa 75.000 dòng tổng hợp. Lease hết hạn được nhận lại, lần thử thứ hai công bố đúng một kết quả chuẩn hóa và luồng Assistant tiếp tục đến `COMPLETED`. Ca thử mất 19,375 giây từ upload đến khôi phục hoàn tất và phát sinh 0 lượt gọi cloud.
+
+| Thành phần | Revision đang phục vụ | Image ID local |
+| --- | --- | --- |
+| Backend và Worker | `585558512de504b4034fca0919a120f1afbfe6e6` | `sha256:91ae4eef9c0fc8c273765c6552c1d4176b1dcef384e235e90ee8aded6a528d19` |
+| Frontend | `3b012ceb44377f2c12c439fc074b2193bcace140` | `sha256:8a2d5588ec9503a2b3451ac7ecb345e234615642c167c4f39d12bb9baef0df3d` |
+| PostgreSQL 18.3 Alpine | `postgres:18.3-alpine` | `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` |
+| Backend và Worker quay lui | `27646643269843e867ae45891e7c1018bca076e3` | `sha256:f5663a123b9f928365009b7924fc52dc682239380e9f7d39c521535ae14048e2` |
+
+Mẫu HTTP ban đầu qua Nginx, 25 lần mỗi đường dẫn trên máy local trong lúc chạy kiểm thử, cho p50/p95 là 8,63/10,01 ms ở `/api/ready`, 84,81/142,65 ms ở `/api/projects?limit=20` và 1,96/2,86 ms ở trang gốc. Đây là số đo tham khảo trong điều kiện tải đó. Sáu tệp JS/CSS có tổng 1.151.737 byte trước nén. Chưa có số đo giảm click, trường nhập hoặc thời gian hành trình của giao diện mới.
+
+Kế hoạch §41 còn mô tả điểm vào “Tổng quan”. Kiểm thử lần này theo D01 và Rules §9.1, mở AI Assistant làm trang mặc định và giữ lối thủ công trên thanh điều hướng.
+
+## Mốc bàn giao bản dựng lại trải nghiệm — 09/11/2026
+
+Chủ dự án yêu cầu dựng lại giao diện sau khi xem W1–W5. Tại mốc bàn giao, ứng viên từ nhánh `codex/complete-product-interface` phục vụ tại `http://127.0.0.1:18180` trong Compose `ai-reconciliation-studio`. Mốc W1–W5 phía dưới dùng để so sánh. Chủ dự án chưa nghiệm thu giao diện.
 
 | Thành phần | OCI revision | Image ID local |
 | --- | --- | --- |

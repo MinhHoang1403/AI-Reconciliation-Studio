@@ -9,10 +9,11 @@ import json
 import shutil
 import time
 from collections import Counter
+from collections.abc import Iterable
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 from uuid import uuid4
 
 from sqlalchemy import MetaData, create_engine, select, text
@@ -55,22 +56,24 @@ def canonical(value: Any) -> str:
     return json.dumps(encode(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
-def capture(connection: Any, metadata: MetaData) -> dict[str, list[dict[str, Any]]]:
+def capture(connection: Any, metadata: MetaData) -> dict[str, Iterable[dict[str, Any]]]:
     active = connection.scalar(
         text("SELECT count(*) FROM jobs WHERE status IN ('QUEUED','RUNNING','RETRYABLE_FAILURE')")
     )
     if active:
         raise RuntimeError("BLOCKED: wait for active jobs and stop API writes before backup")
-    return {
-        table.name: sorted(
-            [dict(row) for row in connection.execute(select(table)).mappings()], key=canonical
-        )
-        for table in metadata.sorted_tables
-    }
+
+    def stream_table(table: Any) -> Iterable[dict[str, Any]]:
+        # Thứ tự ổn định theo khóa chính, cursor chỉ đọc một batch metadata.
+        query = select(table).order_by(*table.primary_key.columns).execution_options(yield_per=200)
+        with connection.execute(query) as result:
+            yield from (dict(row) for row in result.mappings())
+
+    return {table.name: stream_table(table) for table in metadata.sorted_tables}
 
 
 def write_metadata(
-    path: Path, rows: dict[str, list[dict[str, Any]]]
+    path: Path, rows: dict[str, Iterable[dict[str, Any]]]
 ) -> dict[str, list[tuple[int, int]]]:
     """Write the existing codec and index each row's byte range for bounded restore."""
     offsets: dict[str, list[tuple[int, int]]] = {}
@@ -93,40 +96,55 @@ def write_metadata(
     return offsets
 
 
+def read_row(stream: BinaryIO, start: int, length: int) -> bytes:
+    stream.seek(start)
+    return stream.read(length)
+
+
 def verify_metadata(
-    connection: Any, metadata: MetaData, rows: dict[str, list[dict[str, Any]]]
+    connection: Any,
+    metadata: MetaData,
+    path: Path,
+    offsets: dict[str, list[tuple[int, int]]],
 ) -> None:
     """Compare row SHA256 multisets without duplicating a large decoded table.
 
-    The snapshot/codec remains byte compatible. Multiplicity matters, so a
+    The snapshot uses the same codec. Multiplicity matters, so a
     duplicate row cannot hide a missing row. Stream actual rows in bounded
     batches; only digests, not another workflow/message table, stay resident.
     """
-    for table in metadata.sorted_tables:
-        expected = Counter(
-            hashlib.sha256(canonical(row).encode("utf-8")).digest() for row in rows[table.name]
-        )
-        actual = Counter(
-            hashlib.sha256(canonical(dict(row)).encode("utf-8")).digest()
-            for row in connection.execute(select(table).execution_options(yield_per=200)).mappings()
-        )
-        if actual != expected:
-            raise RuntimeError(f"Backup metadata differs: {table.name}")
+    with path.open("rb") as stream:
+        for table in metadata.sorted_tables:
+            expected = Counter(
+                hashlib.sha256(read_row(stream, start, length)).digest()
+                for start, length in offsets[table.name]
+            )
+            with connection.execute(select(table).execution_options(yield_per=200)) as result:
+                actual = Counter(
+                    hashlib.sha256(canonical(dict(row)).encode("utf-8")).digest()
+                    for row in result.mappings()
+                )
+            if actual != expected:
+                raise RuntimeError(f"Backup metadata differs: {table.name}")
 
 
-def file_inventory(rows: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
+def file_inventory(connection: Any, metadata: MetaData) -> dict[str, str]:
     files: dict[str, str] = {}
     for table, key, digest in (
         ("artifacts", "storage_key", "sha256"),
         ("reconciliation_runs", "result_key", "result_sha256"),
         ("run_exports", "storage_key", "sha256"),
     ):
-        for row in rows.get(table, []):
-            if row[key] and row[digest]:
-                path = storage_path(settings.storage_root, row[key])
-                if checksum(path) != row[digest]:
+        columns = metadata.tables[table].c
+        query = select(columns[key], columns[digest]).execution_options(yield_per=200)
+        with connection.execute(query) as result:
+            for storage_key, sha in result:
+                if not storage_key or not sha:
+                    continue
+                path = storage_path(settings.storage_root, storage_key)
+                if checksum(path) != sha:
                     raise RuntimeError("Published artifact checksum mismatch")
-                files[row[key]] = row[digest]
+                files[storage_key] = sha
     return files
 
 
@@ -150,25 +168,28 @@ def main() -> None:
     # Reflect the deployed schema, including exact current migration; not local create_all.
     names = list(Base.metadata.tables) + ["alembic_version"]
     metadata.reflect(bind=engine, only=names)
+    metadata_path = directory / "metadata.json"
     with engine.connect() as connection:
         connection.execute(text("SET TRANSACTION READ ONLY"))
         rows = capture(connection, metadata)
-        files = file_inventory(rows)
-        metadata_offsets = write_metadata(directory / "metadata.json", rows)
+        metadata_offsets = write_metadata(metadata_path, rows)
+        files = file_inventory(connection, metadata)
+        alembic_version = metadata.tables["alembic_version"].c.version_num
+        schema_revision = connection.scalar(select(alembic_version))
         for key in files:
             target = storage_path(directory / "files", key)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(storage_path(settings.storage_root, key), target)
         connection.rollback()
     with engine.connect() as connection:
-        verify_metadata(connection, metadata, rows)
+        verify_metadata(connection, metadata, metadata_path, metadata_offsets)
     manifest = dict(
         backup_id=ident,
         created_at=datetime.now().astimezone().isoformat(),
         metadata_sha256=checksum(directory / "metadata.json"),
         files=files,
-        counts={k: len(v) for k, v in rows.items()},
-        schema_revision=rows["alembic_version"][0]["version_num"],
+        counts={k: len(v) for k, v in metadata_offsets.items()},
+        schema_revision=schema_revision,
         backup_seconds=round(time.monotonic() - started, 3),
     )
     (directory / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -205,17 +226,17 @@ def main() -> None:
             connection.execute(text(f'CREATE SCHEMA "{schema}"'))
             scoped = connection.execution_options(schema_translate_map={None: schema})
             metadata.create_all(scoped)
-            with (directory / "metadata.json").open("rb") as stream:
+            with metadata_path.open("rb") as stream:
                 for table in metadata.sorted_tables:
                     ranges = metadata_offsets[table.name]
                     for offset in range(0, len(ranges), 200):
-                        batch = []
-                        for start, length in ranges[offset : offset + 200]:
-                            stream.seek(start)
-                            batch.append(decode(json.loads(stream.read(length))))
+                        batch = [
+                            decode(json.loads(read_row(stream, start, length)))
+                            for start, length in ranges[offset : offset + 200]
+                        ]
                         scoped.execute(table.insert(), batch)
                         del batch
-            verify_metadata(scoped, metadata, rows)
+            verify_metadata(scoped, metadata, metadata_path, metadata_offsets)
         for key, digest in files.items():
             target = storage_path(restored, key)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -239,8 +260,8 @@ def main() -> None:
         if restored.exists():
             shutil.rmtree(restored)
     with engine.connect() as connection:
-        verify_metadata(connection, metadata, rows)
-    assert file_inventory(rows) == files
+        verify_metadata(connection, metadata, metadata_path, metadata_offsets)
+        assert file_inventory(connection, metadata) == files
     (directory / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(json.dumps({k: v for k, v in manifest.items() if k != "files"}, ensure_ascii=False))
     print("PASS: restored metadata and files; production unchanged; backup retained on volume")
