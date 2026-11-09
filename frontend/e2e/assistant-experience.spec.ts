@@ -396,7 +396,7 @@ test('[MOCK conversation, LIVE read] verified report opens in chat and preserves
   const before=page.url();await expect(page.getByRole('region',{name:'Công việc của AI Assistant',exact:true})).toHaveCount(1);await page.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Chi tiết kết quả đã xác minh',exact:true});
   await dialog.locator(".result-analysis > summary").click();
-  await expect(dialog).toContainText('33.33');await expect(dialog).toContainText('2.75');await expect(dialog.getByRole('img',{name:'Phân bố trạng thái đối soát'})).toBeVisible();
+  await expect(dialog).toContainText('33.33');await expect(dialog.locator(".result-table")).toContainText('2,75 VND');await expect(dialog.getByRole('img',{name:'Phân bố trạng thái đối soát'})).toBeVisible();
   await page.screenshot({path:test.info().outputPath('verified-result.png'),fullPage:true});
   await page.keyboard.press('Escape');await expect(input).toHaveValue('Bản nháp ở màn hình kết quả');expect(page.url()).toBe(before);
 });

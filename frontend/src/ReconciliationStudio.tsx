@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type RefObject } from "react";
 import {
   ArrowDownToLine,
   CheckCheck,
@@ -128,6 +128,7 @@ export function ReconciliationStudio({
   onOpenExceptions?: (id: string) => void;
   panel?: { docked: boolean; onClose: () => void; returnFocus: RefObject<HTMLElement | null> };
 }) {
+  const scrollHelpId = useId();
   const [catalogue, setCatalogue] = useState<Catalogue[]>([]),
     [runs, setRuns] = useState<Run[]>([]);
   const [runId, setRunId] = useState(
@@ -1611,7 +1612,11 @@ export function ReconciliationStudio({
                 </div>
                 {exportNotice && <Notice>{exportNotice}</Notice>}
                 {detailLoading && <Spinner />}
-                <div className="table-scroll" tabIndex={0} aria-label="Bảng kết quả có thể cuộn">
+                <p id={scrollHelpId} className="result-scroll-help">
+                  Cuộn ngang trong bảng để xem chênh lệch và mở bằng chứng.
+                </p>
+                <div className="table-scroll" tabIndex={0} aria-label="Bảng kết quả có thể cuộn"
+                  aria-describedby={scrollHelpId}>
                   <table
                     className="result-table"
                     aria-label={
@@ -1699,7 +1704,7 @@ export function ReconciliationStudio({
                               <td className="numeric-cell">
                                 {g.comparisons.map((c) => (
                                   <div key={c.metric_id}>
-                                    {c.delta ?? "N/A"} {c.currency}
+                                    {formatDecimal(c.delta ?? "N/A")} {c.currency}
                                   </div>
                                 ))}
                               </td>
@@ -1827,7 +1832,7 @@ export function ReconciliationStudio({
                       {snapshot.monetary.map((m) => (
                         <p key={m.metric_id}>
                         {metricName(m.metric_id)} ({m.currency}): chênh lệch có dấu{" "}
-                          {m.signed_variance}, tuyệt đối {m.absolute_variance};{" "}
+                        {formatDecimal(m.signed_variance)}, tuyệt đối {formatDecimal(m.absolute_variance)}.{" "}
                           {m.comparable_groups} nhóm so sánh được.
                         </p>
                       ))}

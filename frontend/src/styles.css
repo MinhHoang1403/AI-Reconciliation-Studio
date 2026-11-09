@@ -2030,6 +2030,10 @@ pre {
 }
 .result-ledger-heading { border-bottom: 1px solid var(--surface-border); }
 .result-data { min-width: 0; }
+.result-scroll-help { display: none; }
+@media (max-width: 768px) {
+  .result-scroll-help { display: block; margin: .5rem 0; color: var(--text-muted); }
+}
 .result-delivery { border-block-start: 1px solid var(--surface-border); }
 .result-delivery p { margin: .25rem 0 0; color: var(--text-muted); }
 .result-delivery .rule-actions { margin: 0; }
