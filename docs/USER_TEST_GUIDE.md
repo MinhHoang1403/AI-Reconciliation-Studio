@@ -2,9 +2,17 @@
 
 Tài liệu dành cho người mới, dùng ứng dụng local tại <http://127.0.0.1:18180>. Chỉ dùng dữ liệu tổng hợp trong bài thực hành. Giữ riêng dự án thử nghiệm với dữ liệu đang sử dụng thật.
 
+## Tự kiểm thử nhanh trên Studio local
+
+1. Tạo dự án TEST, tải hai tệp trong bộ thực hành ở mục 3. Dùng ba tệp ở mục 13 nếu muốn kiểm đối soát qua nhiều nguồn.
+2. Mở **Dữ liệu** và chọn sheet. Đổi **Lớp dữ liệu** sang **Giá trị gốc**, rồi kiểm một mã có số 0 đầu. Duyệt ánh xạ ở **Xác nhận cột**, bấm **Chuẩn hóa dữ liệu** và kiểm cùng mã ở lớp **Đã chuẩn hóa**.
+3. Mở **AI Assistant** và yêu cầu đối soát hai tệp theo tên. Xác nhận kỳ, khóa và ý nghĩa số tiền trong thẻ. Chỉ duyệt quy tắc sau khi kiểm đủ các dữ kiện trên thẻ.
+4. Từ kết quả, mở một ngoại lệ và bấm **Xem bằng chứng** để kiểm hai phía. Vào **Báo cáo**, xuất XLSX hoặc CSV và đối chiếu kỳ, trạng thái xác minh và số tiền với bảng. Thử lại thao tác mở bằng chứng và nút xuất khi thu hẹp cửa sổ.
+5. Vào **Cài đặt → Quản lý dự án** để xem tác động của một dự án TEST. Ở Studio đang chứa dữ liệu hiện có, kiểm rằng chỉ có thao tác quản lý vòng đời theo quyền. Phép kiểm xóa vật lý đã chạy trên schema và kho tệp TEST riêng. Kết quả kiểm tên xác nhận, trạng thái chờ và ba tệp bị xóa có trong [trạng thái triển khai](IMPLEMENTATION_STATUS.md).
+
 ## 1. Hiểu giao diện trước khi bắt đầu
 
-Ảnh minh họa bên dưới lưu bản giao diện trước đợt complete-product-interface. Các thao tác trong hướng dẫn đã cập nhật theo ứng viên mới. Trạng thái đang chạy xem tại IMPLEMENTATION_STATUS.
+Ảnh minh họa bên dưới ghi lại một phiên bản giao diện trước. Các thao tác trong hướng dẫn theo ứng viên hiện hành. Xem [trạng thái triển khai](IMPLEMENTATION_STATUS.md) để biết kết quả nghiệm thu.
 
 ![Thanh bên, chọn dự án, công cụ hội thoại và ô nhập](images/user-guide/giao-dien.png)
 
@@ -20,7 +28,7 @@ Tài liệu dành cho người mới, dùng ứng dụng local tại <http://127
 | Tệp đã tải | Biểu tượng tệp trên thanh công cụ Chat | Mở danh sách tệp, chọn sheet, xem dữ liệu gốc, bản chuẩn hóa hoặc dòng lỗi |
 | Đổi ngữ cảnh phân tích | Biểu tượng thanh trượt cạnh nút tệp | Chọn kết quả đối soát để các câu hỏi tiếp theo dùng đúng kết quả |
 | Hội thoại mới | Biểu tượng hội thoại có dấu cộng | Bắt đầu yêu cầu riêng; không xóa tệp và kết quả cũ |
-| Tùy chọn hội thoại | Dấu ba chấm trên thanh công cụ Chat | Chọn trợ lý cho tin nhắn mới, chế độ hội thoại, thiết lập thủ công hoặc xóa hội thoại |
+| Tùy chọn hội thoại | Dấu ba chấm trên thanh công cụ Chat | Chọn trợ lý cho tin nhắn mới, mở thiết lập thủ công hoặc xóa hội thoại |
 | Dấu cộng | Bên trái ô nhập ở cuối Chat | Đính kèm CSV hoặc XLSX; có thể chọn nhiều tệp |
 | Ô nhập | Cuối vùng Chat | Nhập yêu cầu. Enter gửi; Shift+Enter xuống dòng; bộ gõ tiếng Việt vẫn dùng bình thường |
 | Nút gửi | Mũi tên bên phải ô nhập | Gửi một yêu cầu; nút chờ khi yêu cầu trước đang tiếp nhận |
@@ -30,7 +38,7 @@ Tài liệu dành cho người mới, dùng ứng dụng local tại <http://127
 | Xem dòng gốc | Cột Nguồn trong bảng | Kiểm tra đúng dòng và tệp gốc, bao gồm mã có số 0 đầu |
 | Xem kết quả | Thẻ kết quả trong Chat | Mở báo cáo, trạng thái, quy tắc và các nhóm kết quả |
 | Biểu đồ | Trong phản hồi phân tích hoặc báo cáo | Đọc phân bố theo phạm vi được ghi bên cạnh; kiểm tra đơn vị, kỳ và nguồn |
-| Xuất CSV / Xuất XLSX | Trang báo cáo | Tạo báo cáo từ kết quả đã lưu; sau đó bấm “Tải báo cáo” |
+| Xuất CSV / Xuất XLSX | Sau bảng trên trang Báo cáo | Tạo tệp cho toàn bộ lượt đối soát đang chọn. Khi sẵn sàng, bấm **Tải báo cáo**. |
 
 Khi gửi câu mới, Chat đưa bạn xuống nội dung mới nhất. Khi AI thêm bảng hoặc tiến độ và bạn đang ở cuối, Chat tiếp tục theo dõi. Nếu bạn cuộn lên đọc tin cũ, Chat giữ vị trí; bấm **Tin nhắn mới · Xuống cuối** khi muốn quay về. **Xem tin nhắn cũ hơn** bổ sung lịch sử mà không kéo bạn xuống cuối.
 
@@ -38,13 +46,15 @@ Khi gửi câu mới, Chat đưa bạn xuống nội dung mới nhất. Khi AI t
 
 1. Chọn dự án rồi mở **Dữ liệu → Tải dữ liệu**. Chọn tệp và bấm nút tải.
 2. Chọn tệp hoặc sheet vừa tải. Sau khi đọc xong, dùng **Lớp dữ liệu** để chọn **Giá trị gốc**, **Tự chuẩn bị**, **Đã chuẩn hóa** hoặc **Cảnh báo / lỗi**. Dùng **Xem nguồn** để truy về dòng gốc.
-3. Khi cần xác nhận nghĩa của cột, mở **Xác nhận cột**. Sau khi duyệt và chuẩn hóa, chọn **Đã chuẩn hóa** trong bộ chọn **Lớp dữ liệu** để xem bản dùng tiếp cho đối soát.
+3. Khi cần xác nhận nghĩa của cột, mở **Xác nhận cột**. Sau khi duyệt, bấm **Chuẩn hóa dữ liệu** cạnh bộ chọn bảng. Khi xử lý xong, chọn **Đã chuẩn hóa** trong **Lớp dữ liệu** để xem bản dùng tiếp cho đối soát.
 
 Chủ không gian có thể mở **Tự áp dụng cho lần tải tương thích** tại mapping đã duyệt và có bản chuẩn hóa không lỗi. Quyền này áp dụng trong cùng dự án và phạm vi nghiệp vụ. Tên tệp có thể đổi một kỳ như `2026_10` thành `2026_11`. Hệ thống kiểm cách ghép cột và toàn bảng khi tải lại. Nếu phát hiện thay đổi cần xác nhận, bạn vẫn có bản tự chuẩn bị và bản nháp để kiểm tra.
 
 Trong Chat, chọn một tệp có một bảng làm ngữ cảnh rồi gửi **“Xem bản tự chuẩn bị”** hoặc **“Đếm số dòng dữ liệu tự chuẩn bị”**. Hai yêu cầu này dùng dữ liệu đã lưu và không cần gọi model. Nếu chưa có bản tự chuẩn bị hoặc đang chọn nhiều nguồn, hệ thống hướng dẫn chọn lại. Ý nghĩa tiền và điều kiện đối soát vẫn cần được xác nhận ở bước nghiệp vụ.
 
 ### Hoàn thành một lượt đối soát trong Chat
+
+Dùng cùng ô nhập để hỏi dữ kiện đã xác minh và giao việc. Studio chọn cách xử lý theo yêu cầu. Khi cần quyết định nghiệp vụ, đọc thẻ xác nhận và duyệt riêng.
 
 1. Tạo dự án và đính kèm các tệp bằng dấu cộng. Có thể để trống ô hỏi rồi bấm gửi. Chờ bảng xem trước và thẻ **Quyết định cần xác nhận**.
 2. Trên từng thẻ, xác nhận mỗi dòng là gì, cột mã dùng làm khóa, múi giờ và ý nghĩa khoản tiền. Mở phần chi tiết nếu cần chỉnh cách đọc ngày hoặc số. Khi mọi thẻ đã đủ dữ kiện, nút **Duyệt 3 nguồn và chuẩn hóa** duyệt các thẻ đã điền trong một lượt bấm.
@@ -324,8 +334,8 @@ Nếu yêu cầu vừa lọc một bảng mới vừa xuất tệp trong cùng c
 Để tải báo cáo của toàn bộ lần đối soát:
 
 1. Mở kết quả vừa đối soát, kiểm tra kỳ và trạng thái xác minh.
-2. Mở **Xuất báo cáo**, đọc phạm vi rồi bấm **Xuất XLSX** hoặc **Xuất CSV**. Chờ tạo xong; không tải một liên kết cũ trước khi công việc hoàn tất.
-3. Bấm **Tải báo cáo**, chọn nơi lưu.
+2. Sau bảng, đọc phạm vi ở mục **Xuất báo cáo** rồi bấm **Xuất XLSX** hoặc **Xuất CSV**.
+3. Khi tệp sẵn sàng, bấm **Tải báo cáo** và chọn nơi lưu.
 4. Mở XLSX trong Excel. Kiểm tra phần Summary và các bảng chi tiết: đúng lần chạy, kỳ, tiền tệ, số nhóm và chênh lệch.
 5. Với bộ A, kiểm tra 000004, 000011, ô thiếu tiền của 000010 và nhóm trùng 000002. Không kỳ vọng ô thiếu tự thành 0.
 6. Kiểm tra mã có số 0 đầu. Nếu mở CSV bằng Excel làm mất số 0, nhập CSV với cột mã kiểu văn bản; đối chiếu tệp gốc và XLSX trước khi kết luận hệ thống mất mã.
@@ -443,12 +453,14 @@ Lượt Smart Mapping Qwen đã thành công ngày 05/11/2026 được giữ t�
 
 ![Qwen đã chuẩn hóa ba nguồn sau các quyết định riêng](images/user-guide/qwen-mapping-completed.png)
 
-Nếu một nguồn lỗi tạo đề xuất, các thẻ đã tạo trước đó vẫn có thể duyệt. Đọc tên nguồn và thông báo của đúng job, dùng **Mở dữ liệu để ghép cột thủ công** cho phần còn lại. Không có fallback cloud tự động. Đổi model chỉ áp dụng cho lần gửi sau; lần gửi chưa rõ phản hồi giữ payload và model ban đầu. Các lượt Gemini lịch sử từng có HTTP 503; trạng thái hiện hành và kết quả HTTP 200/400 nằm ở đầu [báo cáo triển khai](IMPLEMENTATION_STATUS.md). Không suy độ ổn định hiện tại từ một lượt lịch sử hoặc quy toàn bộ lỗi cho khóa API.
+Nếu một nguồn lỗi tạo đề xuất, các thẻ đã tạo trước đó vẫn có thể duyệt. Đọc thông báo của đúng nguồn và dùng **Mở dữ liệu để ghép cột thủ công** cho phần còn lại. Studio giữ lựa chọn model của lần gửi khi chưa rõ máy chủ đã tiếp nhận hay chưa. Đổi model áp dụng cho yêu cầu mới. Kết quả kiểm provider theo từng đợt nằm trong [báo cáo triển khai](IMPLEMENTATION_STATUS.md).
 
 ## Quản lý dự án và nguồn
 
 Chủ không gian mở bộ chọn dự án rồi chọn **Quản lý dự án**, hoặc mở **Quản lý nguồn** trong Dữ liệu. Có thể tìm theo tên, chuyển giữa danh sách đang dùng, lưu trữ và đã xóa mềm.
 
-Mở **Quản lý** tại mục cần thay đổi để xem phụ thuộc và công việc đang xử lý. Hệ thống cung cấp thao tác phù hợp. Nguồn có bản chuẩn hóa hoặc kết quả đối soát cần được giữ cùng lịch sử và có thể lưu trữ. Khi xóa mềm mục được phép, mục đó rời danh sách và đường dẫn thông thường. Có thể vào danh sách đã xóa để khôi phục. Lưu trữ hoặc xóa dự án yêu cầu nhập lại đúng tên.
+Mở **Quản lý** tại mục cần thay đổi để xem phụ thuộc và công việc đang xử lý. Dùng **Lưu trữ** để ngừng dùng một mục trong công việc mới và giữ lịch sử. Khi hệ thống cho phép, **Đưa vào Thùng rác** gỡ mục khỏi danh sách và đường dẫn thông thường. Mở danh sách đã xóa để khôi phục. Lưu trữ hoặc đưa dự án vào Thùng rác yêu cầu nhập lại đúng tên.
 
-Nếu có công việc chưa kết thúc, hoàn tất hoặc dừng công việc rồi tải lại phần tác động. Nếu trạng thái đã đổi trong lúc bạn xác nhận, xem lại trước khi gửi tiếp. Không gian làm việc là phạm vi phân quyền, không có nút xóa.
+**Xem tác động khi xóa vĩnh viễn** chỉ có trong schema và kho TEST cô lập đã xác minh. Chủ không gian xem trước số nguồn, lượt đối soát, báo cáo và tệp, sau đó nhập đúng tên để xác nhận. Trạng thái **Đang xóa** còn chờ xử lý tệp. Chỉ **Đã xóa vĩnh viễn** xác nhận công việc hoàn tất. Nút này ẩn ở Studio chứa dữ liệu hiện có. Workspace `demo` được bảo vệ.
+
+Nếu có công việc chưa kết thúc, đợi hoàn tất hoặc dừng công việc rồi tải lại phần tác động. Nếu trạng thái đã đổi trong lúc bạn xác nhận, xem lại trước khi gửi tiếp. Chủ không gian TEST mở **Cài đặt** để xem tác động khi xóa cả không gian.

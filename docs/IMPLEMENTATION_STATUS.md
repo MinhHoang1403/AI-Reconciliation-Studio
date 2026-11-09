@@ -1,5 +1,72 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Hoàn thiện sản phẩm theo hành trình — 09/11/2026
+
+**Trạng thái `NOT_READY` cho nghiệm thu toàn bộ.** Ứng viên local phục vụ các luồng đã kiểm. Hai hành trình Chat ba nguồn chưa giảm thao tác so với W1–W5. Đợt này chỉ thay trực tiếp các điểm vào chuẩn hóa, xuất báo cáo, điều phối Chat và quản lý vòng đời. Thiếu đánh giá đối chiếu UX đầy đủ giữa mọi hành trình, phép đo hiệu năng đầu cuối cùng điều kiện và kiểm thiết bị thật. Chủ dự án chưa nghiệm thu.
+
+Nhánh `codex/studio-product-completion` tiếp tục từ `2802a35`. Phạm vi gồm xóa vĩnh viễn trên TEST cô lập, cách làm việc trong Chat, đường chuẩn hóa trực tiếp từ bảng đã duyệt và trình bày báo cáo theo bảng bằng chứng. `origin/main` ở `6403129`. Các commit `797e728`, `f36f4e9`, `07d1b37`, `d861263`, `15245af`, `11116f5`, `1852d5f`, `76265d2` và `51a2536` đã được đẩy lên nhánh ứng viên, chưa hợp nhất vào `main`. Commit `51a2536` chỉ bổ sung kiểm thử. Repository chưa có workflow GitHub Actions.
+
+| Hành trình | Thay đổi | Kết quả và giới hạn |
+| --- | --- | --- |
+| Quản lý | Thùng rác có nhãn riêng. Xóa vĩnh viễn lập danh mục nguồn, dự án hoặc workspace TEST. | Owner xem tác động và xác nhận đúng tên. Xóa metadata và lưu biên nhận trong cùng giao dịch. Worker kiểm checksum, tiếp tục dọn tệp sau lỗi và chỉ báo xong khi tệp thuộc phạm vi đã vắng mặt. API và giao diện khóa trên dữ liệu hiện có. Workspace `demo` được bảo vệ. |
+| Dữ liệu | Hiện **Chuẩn hóa dữ liệu** cạnh bộ chọn bảng khi đã duyệt ánh xạ và chưa có bản chuẩn hóa hiện hành. | Bỏ bước mở khu vực tạo bản chuẩn hóa để bắt đầu xử lý. Các yêu cầu đọc chi tiết và xem trước cũ được hủy khi đổi phạm vi hoặc tải lại. |
+| Báo cáo | Bảng, bộ lọc và đường mở bằng chứng nằm trước khu xuất báo cáo và biểu đồ. | Xuất CSV/XLSX toàn lượt mở trực tiếp. Chỉ báo mẫu số, kỳ và trạng thái xác minh lấy từ backend. Bảng cuộn nội bộ ở màn hình hẹp. |
+| Chat | Một ô giao việc gửi `AUTO`. Backend chọn tuyến dữ kiện xác định cho câu hỏi rõ và chuyển yêu cầu thao tác qua Agent. | Giữ hợp đồng cũ cho client và biên nhận đang chờ. Cùng một kiểm tra chặn sửa nguồn, xóa vĩnh viễn, tự duyệt và bỏ qua tiền tệ trước khi chuyển model hoặc thực thi. Phê duyệt nghiệp vụ vẫn riêng. |
+
+### Số đo và cổng nghiệm thu
+
+- Dùng cùng một lượt TEST cho bản trước và ứng viên Nginx. Tại 320/390/768/1366/1440/1920 px, số lần mở điều khiển trước khi bấm nút xuất giảm từ một xuống không. Mép trên của bảng ở 390 px chuyển từ y=857 lên y=731. Ở 1440 px, từ y=714 lên y=621. Không tràn toàn trang ở sáu chiều rộng. Chromium zoom trang thật ở 200% làm viewport CSS giảm từ 1.422 xuống 711 px. Báo cáo, Assistant, Dữ liệu và Cài đặt giữ focus ở điều khiển đã chọn và không tràn trang. Quét cây trợ năng ở 24 trạng thái đại diện trên 390 và 1440 px không thấy điều khiển khả dụng, lấy được focus mà thiếu tên. Chưa có kiểm screen reader, Safari hoặc Android thật.
+- Hai bài ba nguồn trong Chat ở 1440 px dùng lần lượt 29 lượt bấm và 23 trường, 33 lượt bấm và 14 trường. Mỗi bài giữ hai lần phê duyệt. Cùng hai kịch bản ở mốc W1–W5 đã dùng 29 và 33 lượt bấm. Mốc trước W1–W5 dùng 28 và 32 lượt bấm, với cùng số trường. Lần chạy cuối trên ứng viên đi từ tải đến kết quả xác minh trong 15,81 và 17,19 giây. Mẫu W1–W5 ghi 18,54 và 16,25 giây. Mỗi cặp chỉ có một lần chạy ở điều kiện tải khác nhau. Giảm thao tác ở đường chuẩn hóa thủ công và mở nút xuất báo cáo chưa chuyển thành mức giảm trên hai bài Chat này.
+- Đo độ trễ sẵn sàng của bảng trong lúc có test khác đang chạy cho kết quả biến động. Chưa dùng số đo đó để kết luận về hiệu năng dựng trang. Sáu tệp JS/CSS trước nén tăng từ 1.151.737 lên 1.156.462 byte. Các ảnh và mẫu đo tổng hợp nằm trong `runtime/product-completion/`, ngoài Git.
+- PostgreSQL phá hủy dùng schema UUID và kho tệp tạm có marker khớp danh tính cơ sở dữ liệu. Chín ca kiểm quyền owner/editor/viewer, chặn ngoài workspace, bảo vệ demo, xóa nguồn có bản chuẩn hóa và hai lượt đối soát, workspace TEST, yêu cầu lặp, gửi đồng thời với upload, chặn khi đối soát còn chạy, gián đoạn dọn tệp, tệp thiếu/sai checksum, tham chiếu JSON ngoài phạm vi và tệp dùng chung. Chromium 390 px dùng giao diện Nginx và chuyển toàn bộ API vào FastAPI trên schema TEST. Trình duyệt kiểm tên xác nhận, trạng thái đang xóa và trạng thái đã xóa sau khi tiếp tục. Truy vấn trực tiếp và kiểm kê kho xác nhận ba tệp TEST đã xóa, nguồn đối chứng còn đúng checksum. Dữ liệu thật xóa vĩnh viễn là **0**. Bản sao lưu nằm ngoài danh mục xóa.
+- Hai oracle tài chính hiện có đạt qua API sau triển khai, gồm checksum nguồn và XLSX readback. Oracle độc lập bổ sung cho lô hoàn tiền kiểm số âm, đúng ngưỡng dung sai và khác tiền tệ. Hai nhóm so được cho tổng có dấu -1,04 VND và tổng tuyệt đối 1,04 VND.
+- Đánh giá xác định giữ đúng intent và các tham số cho 48/52 câu thuộc hai bộ hồi quy đọc. Bốn câu cần bộ định tuyến có kiểu. Mẫu Ollama riêng gồm bốn yêu cầu trên catalogue tổng hợp, không thực thi tool. Trước sửa bộ chặn đạt 2/4, sau sửa đạt 3/4. Lượt gọi Ollama giảm từ bốn xuống ba, với p50/p95 lần lượt 11,54/28,27 và 11,33/19,25 giây. Câu xóa bị chặn trước model. Câu không dấu chỉ tên tệp không tồn tại bị validator từ chối ở tầng đánh giá, còn trong luồng Agent thật lỗi ngữ nghĩa đi vào bước hỏi bổ sung. Kích thước mẫu và trạng thái nóng/lạnh của model giới hạn so sánh độ trễ. Bài đánh giá live Gemini theo kế hoạch chưa chạy.
+- Phát lại bộ 10 câu tiếng Việt qua Agent trên hai dự án TEST, có đáp án từ dữ liệu ngày tổng hợp và oracle đối soát bảo trì. Cả mốc trước và ứng viên đạt 10/10. Mỗi mốc có 6 câu xác định và 4 lượt Ollama, 0 lượt Gemini. Ứng viên trả đúng bằng chứng, tổng đối soát, CSV theo bảng đã hiển thị và dừng hỏi bổ sung cho một yêu cầu lọc và xuất ghép. Độ trễ đầu cuối bốn ca có gọi model là 9,00/10,37 giây trước và 8,59/21,84 giây sau ở p50/p95. Mẫu sau có lần gọi đầu 24,17 giây. Bộ này là hồi quy của fixture có sẵn, tách khỏi mẫu bốn câu ở trên.
+- Lần chạy Chromium đầu phát sinh một lượt Gemini ngoài ý định ở ca mất phản hồi. Câu tóm tắt có UUID thử nghiệm nối ở cuối nên đi qua model. Backend từ chối kết quả vì tham chiếu nguồn sai. Ca đã dùng câu hỏi xác định và kiểm sổ lượt gọi, đồng thời giữ xác nhận gửi lại đúng khóa và đúng công việc.
+- Lần chạy toàn bộ Chromium trên Nginx đạt **150/150** trong 16,5 phút. Bộ ca gồm hành trình thực trên dữ liệu tổng hợp và các ca mô phỏng hợp đồng. Worker chặn cloud trong lúc chạy. Sổ Gemini trước và sau cùng là 636. Cấu hình ban đầu của Worker được phục hồi và phiên loopback đạt phép kiểm sau đó.
+- Toàn bộ Python/PostgreSQL trên image ứng viên đạt **814/814** trong 249,11 giây. Lần chạy chung với Chromium có một ca Hypothesis bị ngưỡng thời gian sinh input chặn. Lượt riêng giữ bộ assertions, tái dùng seed báo lỗi và đạt. Một cảnh báo còn lại đến từ `starlette.testclient` và thư viện HTTP.
+- TypeScript, ESLint, build production và kiểm repository đạt. Kiểm repository gồm đường dẫn Markdown và dấu hiệu bí mật đã biết. Các ca thu hẹp cửa sổ, bàn phím, focus, điều hướng Back và lịch sử nằm trong bộ Chromium.
+- Ca khôi phục Worker 75.000 dòng trên ứng viên dừng bằng `SIGKILL` giữa bước chuẩn hóa. Hệ thống lấy lại lease, lần thử thứ hai công bố đúng một bản chuẩn hóa, Agent đến `COMPLETED`. Thời gian toàn ca trước và sau lần lượt 19,375 và 17,110 giây, mỗi mốc một lần thử, 0 lượt cloud. Bốn dịch vụ được kiểm lại khi healthcheck hoàn tất sau khi khởi động.
+
+Phần điều phối thay đổi tại `assistant_api.py`, `agent_intents.py` và `agent_jobs.py`. Cả đường xác định và bộ biên dịch dùng cùng kiểm tra cấm thao tác. Hợp đồng cũ vẫn xử lý client và biên nhận đã lưu. `worker.py` dùng cùng cách nhận boolean khi lấy và khi thực thi công việc. `App.tsx` hủy yêu cầu đọc ở phạm vi cũ. Xóa vĩnh viễn có bảng biên nhận riêng để khôi phục thao tác trên tệp sau giao dịch PostgreSQL. Đợt này giữ nguyên stack và lockfiles.
+
+### Phiên bản đang chạy
+
+| Thành phần | OCI revision | Image ID local |
+| --- | --- | --- |
+| Backend và Worker | `76265d2a7a44a97b863811eea57d1b13c4cd77d0` | `sha256:24045049e460be6a91232da1885ea352460ab67c7577f696e460fecaaade1272` |
+| Frontend | `76265d2a7a44a97b863811eea57d1b13c4cd77d0` | `sha256:70990773412a1ba1650a968948fa12b4e52009d85ff4224930f4431805b4fe56` |
+| PostgreSQL | `postgres:18.3-alpine` | `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` |
+
+Bốn dịch vụ khỏe ở <http://127.0.0.1:18180>. Hai container Backend/Worker khớp 58 tệp nguồn. Sáu tệp JS/CSS qua Nginx khớp checksum trong image. PostgreSQL giữ cùng container và volume, ở migration cộng thêm `add_purge_receipts`. API khóa xóa vĩnh viễn trên schema hiện hành, với 0 biên nhận trong schema này. Đã quay lui về Backend/Worker `5855585` và Frontend `3b012ce` rồi quay lại ứng viên. Các lần kiểm sau chuyển image đối chiếu metadata, phê duyệt, hiện vật và byte tệp. Khi chuyển sang `76265d2`, phép kiểm lặp lại trên 11.144 artifact, 951 artifact lượt đối soát và 1.730 tệp xuất. Sao lưu ngoài volume đã được kiểm phục hồi ở mốc trước, trên cùng máy. Lần triển khai này dùng lại bằng chứng sao lưu đó và chụp dấu vân tay dữ liệu ngay trước khi chuyển image.
+
+### Hiệu năng trước và sau
+
+Mỗi đường HTTP lấy 25 mẫu qua cùng cổng Nginx. Các số là p50/p95 theo mili giây. Hai thời điểm có số dự án và mức tải khác nhau.
+
+| Phép đo | Trước | Ứng viên |
+| --- | --- | --- |
+| `/api/ready` | 4,92 / 5,90 | 5,27 / 6,42 |
+| `/api/projects?limit=20` | 53,79 / 64,23 | 55,35 / 60,76 |
+| Trang gốc | 1,36 / 1,78 | 1,22 / 1,57 |
+| Tổng JS/CSS trước nén | 1.151.737 byte | 1.156.462 byte |
+| Image Backend/Worker | 156.439.159 byte | 156.446.277 byte |
+| Image Frontend | 25.886.783 byte | 25.887.655 byte |
+
+Mẫu sau chạy lúc hàng đợi trống. PostgreSQL có 168.089.279 byte, truy vấn đọc 20 định danh dự án đạt 1,354/3,800 ms từ container Backend. Mẫu Docker tại một thời điểm cho RAM Backend/Frontend/PostgreSQL/Worker là 208/12,51/166,4/100,9 MiB và CPU là 0,20/0,00/3,97/0,22%. Chưa có mẫu PostgreSQL và RAM container trước cùng điều kiện.
+
+Benchmark tách riêng khỏi HTTP và browser. Mỗi cỡ dùng ba lượt với cùng script, dữ liệu tổng hợp và máy Windows. Ô thời gian là p50/p95 quan sát theo mili giây, trước → sau. RAM là đỉnh tiến trình theo MiB, trước → sau, lần lượt cho nền tảng dữ liệu và đối soát.
+
+| Số dòng | Đọc | Phân tích cấu trúc | Chuẩn hóa và ghi | Ghép | Xác minh | RAM dữ liệu / đối soát |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1.000 | 18,97/99,58 → 19,58/107,98 | 16,18/34,14 → 15,84/30,76 | 41,48/83,82 → 35,20/87,75 | 27,16/29,77 → 26,93/27,65 | 16,13/16,85 → 13,47/14,08 | 78,64 → 78,55 / 39,05 → 38,98 |
+| 10.000 | 31,99/40,05 → 32,50/32,52 | 139,02/142,34 → 134,75/135,58 | 259,35/266,72 → 228,08/236,47 | 267,95/281,71 → 283,12/400,64 | 297,59/328,85 → 222,23/240,21 | 94,11 → 94,56 / 89,89 → 89,76 |
+| 50.000 | 59,11/59,44 → 59,98/63,49 | 715,69/746,17 → 673,27/736,18 | 1.192,81/1.585,19 → 1.198,25/1.388,55 | 1.466,25/1.584,08 → 1.502,38/1.658,76 | 1.190,14/1.239,06 → 1.185,03/1.250,84 | 175,02 → 174,09 / 317,95 → 319,09 |
+
+Mã đọc, phân tích, chuẩn hóa, ghép và xác minh cùng các script benchmark khớp giữa hai revision. P95 ghép 10.000 dòng tăng ở mẫu ba lượt, cùng lúc p95 xác minh giảm. Kết quả mô tả dao động quan sát được. Chưa có mẫu tải lên và xuất đầu cuối ghép cặp hoặc đủ lần lặp để kết luận về tốc độ hệ thống.
+
+Kịch bản §41 của kế hoạch vẫn ghi mở thẳng **Tổng quan**. Phép kiểm dùng điểm vào **AI Assistant** và sáu mục điều hướng đã chốt tại D01 và `Rules.md` §9.1. [Kế hoạch dự án](PROJECT_PLAN.md) · [Quyết định D01–D10](ui-redesign/OPEN_DECISIONS.md) · [Hướng dẫn tự kiểm thử](USER_TEST_GUIDE.md).
+
 ## Kiểm toán vận hành và dữ liệu — 09/11/2026
 
 Mốc kiểm tra ban đầu là ứng viên từ `codex/complete-product-interface` tại cổng loopback. Bốn dịch vụ healthy, Alembic ở `add_resource_lifecycle`. Image Backend/Worker mang revision `2764664`, Frontend mang revision `3b012ce`. Sáu tệp JS/CSS phục vụ qua Nginx có SHA-256 khớp image. `origin/main` ở `6403129`. Nhánh nghiên cứu đã nằm trong lịch sử main, hai nhánh giao diện còn thay đổi chưa hợp nhất vào main.
