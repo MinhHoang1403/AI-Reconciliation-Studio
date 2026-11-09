@@ -1,12 +1,34 @@
 # Trạng thái triển khai và nghiệm thu
 
-## Đại tu UX trên nhánh ứng viên — 09/11/2026
+## Ứng viên UX đang chạy local — 09/11/2026
 
-W1–W5 được triển khai trực tiếp trên Frontend theo D01–D10. Chủ dự án miễn prototype W0 riêng và chuyển các phép đo sang bản ứng viên. Theo dõi thay đổi, kết quả kiểm thử và giới hạn trong [biên bản kiểm toán ứng viên](INTERFACE_REDESIGN_AUDIT.md#w1w5). Đây là cổng kỹ thuật trước nghiệm thu của chủ dự án. Nhánh triển khai tách khỏi `main`.
+W1–W5 chạy tại `http://127.0.0.1:18180` trên một Docker Compose. Chủ dự án miễn prototype W0 riêng và chuyển các phép đo sang bản ứng viên. Nhánh `codex/full-interface-redesign` tách khỏi `main`. Chủ dự án chưa nghiệm thu giao diện.
+
+| Thành phần | OCI revision hoặc vai trò | Image ID local |
+| --- | --- | --- |
+| Frontend ứng viên | `3165f1a7223636256c832e57db617ea3758bbfd1` | `sha256:f416072ce968375d71aa3e914d6bdcc61020ddae97f7d3bdc8509329df75b62a` |
+| Backend / Worker | `1d7f4909a3aa5d6c0a79cdddb88cb4303119e701` | `sha256:f01c2838644c3d9e92b063b9a6fa99a9f1d232c4a66b8948eeb9ba5f4a2a447e` |
+| Frontend rollback đã thử | `accepted-main-1d7f490` | `sha256:c92db9ce467b05bf1b1d40c8c588327f91447d1bd5e0f62b7f17e11ed18c2be8` |
+
+Bốn service healthy. Sáu tài nguyên JavaScript/CSS qua Nginx khớp SHA-256 với production build đã kiểm thử. Chỉ thay container Frontend trong lượt triển khai, rollback và quay lại ứng viên. Backend, Worker, PostgreSQL, 42 volume trên host và 27 container ngoài dự án khớp inventory trước rollout.
+
+Backup `backup_f547b5f2681f4bb9ae95416359cd2d3c` đã khôi phục thử 24 bảng trên schema cô lập và đối chiếu checksum 12.542 tệp trên host. Snapshot nghiệp vụ khớp trước/sau triển khai, rollback và vòng browser chỉ đọc. 9.741 artifact, 847 lượt đối soát và 1.566 bản xuất có sẵn từ đầu nhiệm vụ được giữ nguyên trong đối chiếu sau suite TEST.
+
+Chi tiết hồi quy, oracle, quyền và kiểm toán hình ảnh ở [biên bản kiểm toán ứng viên](INTERFACE_REDESIGN_AUDIT.md#w1w5). Receipt local tại `runtime/ui-redesign-20261109/`, gồm manifest image, proof từng lần recreate, bản kiểm backup và đối chiếu tài nguyên.
+
+### Quay về Frontend ổn định
+
+Đã thử các thao tác dưới đây trên cùng Compose project và với image rollback trong bảng. Lần quay lại ứng viên cũng chỉ thay Frontend.
+
+```powershell
+docker image tag ai-reconciliation-studio-frontend:accepted-main-1d7f490 ai-reconciliation-studio-frontend:local
+docker compose up -d --no-build --no-deps --wait frontend
+./tools/verify-local.ps1
+```
 
 ## Khôi phục local, release Docker và chốt hướng UX — 09/11/2026
 
-**Bản hiện hành.** Application source `1d7f4909a3aa5d6c0a79cdddb88cb4303119e701`. Bản này dùng đúng đầu vào đã nghiệm thu; các lớp filesystem của hai image build lại khớp bản ngay trước đó. Build dùng ba digest base đã ghi trong bản build trước, lockfiles hiện hành và không đổi dependency. Nhãn revision image chỉ mã ứng dụng. SHA tài liệu được xác minh riêng bằng Git; không yêu cầu nhãn Docker đổi theo commit Markdown.
+**Mốc trước khi triển khai UX.** Application source `1d7f4909a3aa5d6c0a79cdddb88cb4303119e701`. Bản này dùng đúng đầu vào đã nghiệm thu. Các lớp filesystem của hai image build lại khớp bản ngay trước đó. Build dùng ba digest base đã ghi trong bản build trước và lockfiles hiện hành. Nhãn revision image chỉ mã ứng dụng. SHA tài liệu được xác minh riêng bằng Git.
 
 | Bộ image | OCI revision | Backend / Worker | Frontend |
 | --- | --- | --- | --- |

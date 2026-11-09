@@ -1,6 +1,6 @@
 # Quyết định UX đã được phê duyệt
 
-Ngày 09/11/2026 (giờ Việt Nam), chủ dự án phê duyệt **phương án A cho D01–D10** trong chỉ thị khôi phục local, củng cố release Docker và đồng bộ tài liệu. Bảng giữ các phương án không được chọn và tiêu chí nghiệm thu để truy vết. D03 và D08 được duyệt với điều chỉnh bên dưới. Trạng thái prototype là **PENDING_VALIDATION**. Triển khai giao diện là **NOT_STARTED** và cần nhiệm vụ riêng.
+Ngày 09/11/2026 (giờ Việt Nam), chủ dự án phê duyệt **phương án A cho D01–D10** trong chỉ thị khôi phục local, củng cố release Docker và đồng bộ tài liệu. Bảng giữ các phương án không được chọn và tiêu chí nghiệm thu để truy vết. D03 và D08 được duyệt với điều chỉnh bên dưới. Chỉ thị triển khai sau đó miễn W0 riêng và chuyển phép đo sang ứng viên W1–W5. Xem [kế hoạch nghiệm thu](IMPLEMENTATION_AND_ACCEPTANCE_PLAN.md) và [biên bản ứng viên](../INTERFACE_REDESIGN_AUDIT.md#w1w5).
 
 | ID · Vấn đề | Phương án A | Phương án B | Phương án được duyệt và lý do | Điều kiện nghiệm thu |
 | --- | --- | --- | --- | --- |
@@ -15,4 +15,4 @@ Ngày 09/11/2026 (giờ Việt Nam), chủ dự án phê duyệt **phương án 
 | D09 · Kiến trúc component · OWNER_APPROVED | Dùng primitives hiện có, thống nhất styles và hợp nhất mẫu hiển thị dần. | Đưa bộ UI mới để đổi một lượt, nhiều phụ thuộc và hồi quy overlay/role. | A. Giữ React, Radix, TanStack, ECharts, Lucide. Một contract qua nhiều bề mặt. Mọi thay đổi thư viện là quyết định riêng. | So phạm vi diff, API, bundle, accessibility và độ dễ tái dùng trước rollout. |
 | D10 · Bằng chứng và xuất · OWNER_APPROVED | Giữ hai scope được hỗ trợ, cảnh báo bằng chứng chưa đầy đủ, từ chối scope chưa có. | Mở rộng thêm export toàn bộ tập lọc/row selection và phân trang mọi thành viên evidence. | A ở đợt UX. B chỉ sau yêu cầu riêng, API có phạm vi/quyền/snapshot và oracle read-back. | Người dùng đọc đúng phạm vi trước khi xuất và nhận biết evidence bị giới hạn; không ngụ ý toàn tập khi chỉ xem trang ghim. |
 
-Cả mười quyết định đã chốt về hướng. Số đo, khả năng tìm lối thủ công, chữ tiếng Việt, bàn phím, zoom 200% và hiệu quả sử dụng tiếp tục được kiểm trong prototype/UAT. Bất biến tài chính, quyền duyệt, workspace scope, provider policy và raw lineage thuộc hợp đồng dự án.
+Cả mười quyết định đã chốt về hướng. Các phép đo kỹ thuật thực hiện trên ứng viên thật. Hiệu quả sử dụng và thử nghiệm thiết bị thực thuộc UAT của chủ dự án. Bất biến tài chính, quyền duyệt, workspace scope, provider policy và raw lineage thuộc hợp đồng dự án.
