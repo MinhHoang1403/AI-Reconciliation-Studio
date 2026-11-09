@@ -358,6 +358,68 @@ def test_failed_source_soft_delete_preserves_raw_artifact_and_supports_restore(p
     assert client.get(f"/api/datasets/{did}/artifacts").status_code == 200
 
 
+@pytest.mark.parametrize("first", ["archive", "enqueue"])
+def test_project_lifecycle_and_job_submission_serialize_in_both_orders(pg, first):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from studio.access import Actor
+    from studio.errors import DomainError
+    from studio.repository import enqueue_job
+    from studio.resource_lifecycle import LifecycleChange, change_resource, lock_project
+
+    client, factory, _ = pg
+    name = "TEST Lifecycle concurrency"
+    pid = project(client, name)
+    actor = Actor(id="test-owner", workspace_id="demo", role="owner")
+    started = Event()
+
+    def submit():
+        with factory() as db:
+            db.execute(text("SET LOCAL lock_timeout = '5s'"))
+            started.set()
+            try:
+                if first == "archive":
+                    enqueue_job(db, "demo", pid, "parse", "lifecycle-race", {})
+                    db.commit()
+                else:
+                    change_resource(
+                        db, actor, "project", pid,
+                        LifecycleChange(
+                            action="archive", expected_state="active",
+                            expected_version=0, confirmation=name,
+                        ),
+                    )
+            except DomainError as error:
+                return error.code
+        return "unexpected-success"
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with factory() as db:
+            lock_project(db, pid)
+            if first == "enqueue":
+                enqueue_job(db, "demo", pid, "parse", "lifecycle-race", {})
+            future = pool.submit(submit)
+            assert started.wait(timeout=5)
+            if first == "archive":
+                change_resource(
+                    db, actor, "project", pid,
+                    LifecycleChange(
+                        action="archive", expected_state="active",
+                        expected_version=0, confirmation=name,
+                    ),
+                )
+            else:
+                db.commit()
+        assert future.result(timeout=10) == (
+            "PROJECT_ARCHIVED" if first == "archive" else "RESOURCE_LIFECYCLE_CONFLICT"
+        )
+    with factory() as db:
+        assert len(list(db.scalars(select(JobRow).where(JobRow.project_id == pid)))) == (
+            0 if first == "archive" else 1
+        )
+
+
 def test_project_classification_owner_audit_conflict_and_scope(pg):
     """Classification changes metadata only; owner, workspace and stale-write gates remain real."""
     from studio.database import AuditRow, ProjectRow
