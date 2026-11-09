@@ -906,6 +906,9 @@ def test_worker_skip_locked_fencing_and_restart_recovery(pg):
     with factory() as db:
         from studio.errors import DomainError
 
+        current_lease = db.get(JobRow, second_claim[0]).lease_until
+        worker._renew_lease(db, *first_claim)
+        assert db.get(JobRow, second_claim[0]).lease_until == current_lease
         with pytest.raises(DomainError, match="JOB_LEASE_LOST"):
             worker._fence(db, *first_claim)
     worker.process_job(*second_claim)
@@ -921,6 +924,57 @@ def test_worker_skip_locked_fencing_and_restart_recovery(pg):
         )
         assert [a.status for a in attempts] == ["FAILED", "SUCCEEDED"]
         assert len(list(db.scalars(select(TableRow)))) == 1
+
+
+def test_worker_heartbeats_and_renews_during_long_native_job(pg, monkeypatch):
+    from threading import Event
+    from types import SimpleNamespace
+
+    client, factory, worker = pg
+    item = upload(client, project(client))
+    start = now()
+    elapsed = 0
+    beats = []
+    started, release, finished = Event(), Event(), Event()
+
+    class EndWorkerLoop(Exception):
+        pass
+
+    def process(job_id, token, *, native_only=False):
+        assert not native_only
+        started.set()
+        assert release.wait(15)
+        with factory() as db:
+            job = worker._fence(db, job_id, token)
+            worker._finish(db, job, {})
+            db.commit()
+        finished.set()
+
+    def sleep(_seconds):
+        nonlocal elapsed
+        if elapsed >= 340:
+            release.set()
+            assert finished.wait(15)
+            raise EndWorkerLoop
+        assert started.wait(15)
+        elapsed += 20
+
+    monkeypatch.setattr(
+        worker, "Path", lambda _: SimpleNamespace(touch=lambda: beats.append(elapsed))
+    )
+    monkeypatch.setattr(worker, "time", SimpleNamespace(monotonic=lambda: elapsed, sleep=sleep))
+    monkeypatch.setattr(worker, "wait", lambda _futures, *, timeout: sleep(timeout), raising=False)
+    monkeypatch.setattr(worker, "now", lambda: start + timedelta(seconds=elapsed))
+    monkeypatch.setattr(worker.settings, "worker_lease_seconds", 300)
+    monkeypatch.setattr(worker, "process_job", process)
+    with pytest.raises(EndWorkerLoop):
+        worker.main()
+
+    assert beats[-1] == 340
+    assert max(b - a for a, b in zip(beats, beats[1:], strict=False)) <= 20
+    with factory() as db:
+        job = db.get(JobRow, item["job_id"])
+        assert job.status == "SUCCEEDED" and job.attempts == 1 and job.lease_until is None
 
 
 def test_parse_failure_never_publishes_artifact(pg):

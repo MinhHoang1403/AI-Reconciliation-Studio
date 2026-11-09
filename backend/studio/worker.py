@@ -3,7 +3,7 @@
 import logging
 import time
 from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, get_args
@@ -234,7 +234,12 @@ def claim_job(
 
 
 def _fence(db: Session, job_id: str, token: str) -> JobRow:
-    job = db.scalar(select(JobRow).where(JobRow.id == job_id).with_for_update())
+    job = db.scalar(
+        select(JobRow)
+        .where(JobRow.id == job_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if (
         job is None
         or job.status != "RUNNING"
@@ -1135,6 +1140,19 @@ def process_job(job_id: str, token: str, *, native_only: bool = False) -> None:
             db.commit()
 
 
+def _renew_lease(db: Session, job_id: str, token: str) -> None:
+    """Chỉ gia hạn lượt đang sở hữu, không chờ giao dịch công bố giữ khóa."""
+    job = db.scalar(
+        select(JobRow)
+        .where(JobRow.id == job_id, JobRow.status == "RUNNING", JobRow.claim_token == token)
+        .with_for_update(skip_locked=True)
+    )
+    current = now()
+    if job is not None and job.lease_until is not None and job.lease_until > current:
+        job.lease_until = current + timedelta(seconds=settings.worker_lease_seconds)
+        db.commit()
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -1146,25 +1164,44 @@ def main() -> None:
     with SessionFactory() as db:
         resume_prepared_reviews(db)
         db.commit()
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="studio-inference") as executor:
-        inference: Future[None] | None = None
+    with (
+        ThreadPoolExecutor(max_workers=1, thread_name_prefix="studio-inference") as inference_pool,
+        ThreadPoolExecutor(max_workers=1, thread_name_prefix="studio-native") as native_pool,
+    ):
+        running: dict[str, tuple[Future[None], tuple[str, str]]] = {}
+        next_renewal = time.monotonic()
         while True:
             heartbeat.touch()
-            if inference is not None and inference.done():
-                inference.result()
-                inference = None
+            for lane, (future, _) in list(running.items()):
+                if future.done():
+                    future.result()
+                    del running[lane]
+            if time.monotonic() >= next_renewal:
+                for _, claim in running.values():
+                    with SessionFactory() as db:
+                        _renew_lease(db, *claim)
+                next_renewal = time.monotonic() + min(20, settings.worker_lease_seconds / 4)
+            # Giữ thứ tự dispatch cũ: một lượt xử lý dữ liệu và một lượt suy luận.
+            # Vòng chính vẫn phục vụ heartbeat và lease khi xử lý dữ liệu kéo dài.
+            native = running.get("native")
+            if native is not None:
+                wait((native[0],), timeout=settings.worker_poll_seconds)
+                continue
             with SessionFactory() as db:
-                claimed = claim_job(db, inference_busy=inference is not None)
+                claimed = claim_job(db, inference_busy="inference" in running)
                 job = db.get(JobRow, claimed[0]) if claimed else None
                 native_only = job is not None and db.info.get("native_dispatch_job_id") == job.id
                 needs_inference = job is not None and _needs_inference(job) and not native_only
             if not claimed:
                 time.sleep(settings.worker_poll_seconds)
             elif needs_inference:
-                assert inference is None
-                inference = executor.submit(process_job, *claimed)
+                assert "inference" not in running
+                running["inference"] = (inference_pool.submit(process_job, *claimed), claimed)
             else:
-                process_job(*claimed, native_only=native_only)
+                running["native"] = (
+                    native_pool.submit(process_job, *claimed, native_only=native_only),
+                    claimed,
+                )
 
 
 if __name__ == "__main__":
