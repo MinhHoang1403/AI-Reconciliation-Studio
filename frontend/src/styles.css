@@ -1903,7 +1903,7 @@ pre {
 .evidence-record { background: var(--canvas); border-block-start: 1px solid var(--surface-border); border-radius: 0; }
 .mapping-facts { margin-block: 12px; }
 .mapping-facts legend, .density-preference legend { font-size: 13px; font-weight: 650; }
-.reconciliation-studio { gap: 12px; }
+.reconciliation-studio { gap: 12px; grid-template-columns: minmax(0, 1fr); }
 .reconciliation-toolbar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
 .reconciliation-toolbar .icon-button { margin-inline-start: auto; }
 .reconciliation-studio .run-history { padding: 0; }
@@ -1953,6 +1953,7 @@ pre {
   padding-block: .8rem;
 }
 .result-ledger-heading { border-bottom: 1px solid var(--surface-border); }
+.result-data { min-width: 0; }
 .result-delivery { border-block-start: 1px solid var(--surface-border); }
 .result-delivery p { margin: .25rem 0 0; color: var(--text-muted); }
 .result-delivery .rule-actions { margin: 0; }

@@ -504,9 +504,11 @@ test("Planner UI accepts sources with no common key and presents review-only sug
 });
 
 for (const size of [
+  { width: 320, height: 760 },
   { width: 390, height: 844 },
   { width: 768, height: 1024 },
   { width: 1366, height: 768 },
+  { width: 1440, height: 900 },
   { width: 1920, height: 1080 },
 ]) {
   test(`reconciliation results responsive ${size.width}`, async ({ page }) => {
@@ -526,6 +528,7 @@ for (const size of [
     await expect(
       page.getByRole("button", { name: "Xem bằng chứng", exact: true }).first(),
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Xuất XLSX", exact: true })).toBeVisible();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
