@@ -3,6 +3,7 @@
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import func, select, text
 from studio.database import AuditRow, CanonicalRow, ReconciliationContractRow, RunRow
 from test_postgres import approve, drain, pg, project, upload  # noqa: F401, F811
@@ -141,8 +142,8 @@ def test_lifecycle_migration_preserves_existing_approved_canonical(pg):  # noqa:
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 1
         assert db.scalar(select(func.count()).select_from(RunRow)) == 0
-        assert (
-            db.scalar(text("SELECT version_num FROM alembic_version")) == "add_purge_receipts"
+        assert db.scalar(text("SELECT version_num FROM alembic_version")) == (
+            ScriptDirectory.from_config(config).get_current_head()
         )
     canonical = before["canonical_datasets"][0]
     preview = client.get(
