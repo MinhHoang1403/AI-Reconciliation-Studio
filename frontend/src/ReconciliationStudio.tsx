@@ -7,8 +7,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import * as echarts from "echarts/core";
-import { PieChart } from "echarts/charts";
-import { TooltipComponent } from "echarts/components";
+import { BarChart } from "echarts/charts";
+import { GridComponent, TooltipComponent } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 import { api, apiPages, ApiError } from "./api";
 import { ReconciliationEvidence } from "./ReconciliationEvidence";
@@ -31,7 +31,8 @@ import { errorText, type Job } from "./types";
 import type { AssistantContext } from "./assistantTypes";
 
 echarts.use([
-  PieChart,
+  BarChart,
+  GridComponent,
   TooltipComponent,
   SVGRenderer,
 ]);
@@ -63,17 +64,21 @@ function StatusChart({ counts }: { counts: Record<string, number> }) {
   useEffect(() => {
     if (!root.current) return;
     const chart = echarts.init(root.current, undefined, { renderer: "svg" });
+    const entries = Object.entries(counts);
     chart.setOption({
-      tooltip: { trigger: "item" },
-      color: statusChartColors,
+      animation: false,
+      grid: { top: 8, bottom: 25, left: 8, right: 12 },
+      tooltip: { trigger: "item", confine: true },
+      xAxis: { type: "value", minInterval: 1 },
+      yAxis: { type: "category", inverse: true, show: false, data: entries.map(([name]) => label(name)) },
       series: [
         {
-          type: "pie",
-          radius: ["48%", "72%"],
-          label: { show: false },
-          data: Object.entries(counts).map(([name, value]) => ({
+          type: "bar",
+          barMaxWidth: 20,
+          data: entries.map(([name, value], index) => ({
             name: label(name),
             value,
+            itemStyle: { color: statusChartColors[index % statusChartColors.length] },
           })),
         },
       ],
@@ -1408,7 +1413,10 @@ export function ReconciliationStudio({
             </label>
             {run && <Badge status={run.status} />}
           </div>
-            {!!runSources.length && <p className="run-sources"><strong title={runSources[0]}>{runSources[0]}</strong><span aria-label="đối soát với">↔</span><strong title={runSources[1]}>{runSources[1]}</strong></p>}
+            {!!runSources.length && <dl className="run-sources">
+              <div><dt>Nguồn tham chiếu</dt><dd>{runSources[0]}</dd></div>
+              <div><dt>Nguồn đối ứng</dt><dd>{runSources[1]}</dd></div>
+            </dl>}
             {snapshot && <>
               <p className="run-period">
                 <strong>Kỳ đối soát</strong> {snapshot.period_start} đến trước {snapshot.period_end} · {snapshot.timezone}

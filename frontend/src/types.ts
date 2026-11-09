@@ -186,6 +186,7 @@ export interface WorkspaceSettings {
   ai_task_allowances?: Record<"agent" | "planner" | "assistant", {workspace_used:number; configured_ceiling:number | null; remaining:number | null}>;
   agent_cloud_enabled?: boolean;
   assistant_cloud_enabled?: boolean;
+  workspace_id?: string;
   workspace_name: string;
   qwen_configured: boolean;
   qwen_model: string;

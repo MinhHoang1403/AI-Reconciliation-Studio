@@ -16,6 +16,38 @@ test.afterEach(({ page }) => {
 
 test.describe.configure({ mode: "serial" });
 const providerMode = process.env.STUDIO_EXPECT_AI_PROVIDER || "MANUAL";
+
+test("[LOCAL] create, switch and rename a workspace from Settings", async ({ page }) => {
+  await page.goto("/#page=settings");
+  await expect(page.getByRole("heading", { name: "Cài đặt không gian làm việc" })).toBeVisible();
+  const before = await (await page.request.get("/api/session")).json();
+  const name = `Không gian TEST ${crypto.randomUUID().slice(0, 8)}`;
+  const manage = page.getByRole("button", { name: "Quản lý không gian làm việc" });
+  const dialog = page.getByRole("dialog", { name: "Quản lý không gian làm việc" });
+
+  await manage.click();
+  await dialog.getByRole("button", { name: "Tạo không gian", exact: true }).click();
+  await dialog.getByLabel("Tên không gian làm việc").fill(name);
+  await dialog.getByRole("button", { name: "Tạo", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("Đã tạo.");
+  await dialog.getByRole("button", { name: "Chuyển không gian" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByText(name, { exact: true })).toBeVisible();
+  const after = await (await page.request.get("/api/session")).json();
+  expect(after.workspace_id).not.toBe(before.workspace_id);
+  expect((await (await page.request.get("/api/projects")).json()).total).toBe(0);
+
+  await manage.click();
+  await dialog.getByRole("button", { name: "Đổi tên không gian hiện tại" }).click();
+  await dialog.getByLabel("Tên không gian làm việc").fill(`${name} đã đổi`);
+  await dialog.getByRole("button", { name: "Lưu tên" }).click();
+  await expect(dialog.getByRole("status")).toContainText("Đã lưu tên mới.");
+  await dialog.getByLabel("Không gian có quyền truy cập").selectOption(before.workspace_id);
+  await dialog.getByRole("button", { name: "Chuyển không gian" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(manage).toBeVisible();
+  expect((await (await page.request.get("/api/session")).json()).workspace_id).toBe(before.workspace_id);
+});
 const projectName = `Kiểm thử giao diện · ${providerMode}`;
 const projectScope = `E2E_${providerMode}_INTEGRITY · chỉ dữ liệu tổng hợp, không xóa lịch sử`;
 const runMarker = randomUUID();
@@ -453,7 +485,7 @@ test("cached document evidence remains readable after parser allowance is closed
     await expect(
       page.getByRole("button", { name: "Chuẩn hóa dữ liệu", exact: true }),
     ).toHaveCount(0);
-    await page.getByRole("button", { name: "Nguồn dữ liệu", exact: true }).click();
+    await page.getByRole("button", { name: "Về danh mục nguồn", exact: true }).click();
   }
   await page.setViewportSize({ width: 390, height: 844 });
   expect(

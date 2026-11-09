@@ -29,7 +29,7 @@ import {
   X,
 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { api, ApiError } from "./api";
+import { api, ApiError, setApiWorkspace } from "./api";
 import { WorkspaceSettings as WorkspaceSettingsPanel } from "./WorkspaceSettings";
 import { ProjectSelector } from "./ProjectSelector";
 import { ProjectHistory } from "./ProjectHistory";
@@ -351,6 +351,8 @@ export function App() {
           actor_id?: string;
           workspace_id?: string;
         }>("/session", { signal });
+        if (!mounted) return;
+        setApiWorkspace(actor.workspace_id);
         const s = await api<WorkspaceSettings>("/settings", { signal });
         const savedId =
           locationRef.current.projectId ||
@@ -1061,6 +1063,10 @@ export function App() {
         if (event.key === "Tab" || event.key === "Escape") setFocusMode("keyboard");
       }}
     >
+      <a className="skip-to-work" href="#main-content" onClick={event => {
+        event.preventDefault();
+        document.getElementById("main-content")?.focus();
+      }}>Đến nội dung chính</a>
       {sidebar && (
         <button
           className="sidebar-scrim"
@@ -1083,6 +1089,7 @@ export function App() {
           </button>}
         </div>
         <nav aria-label="Điều hướng chính">
+          <span className="navigation-group-label" aria-hidden="true">Công việc</span>
           <button
             aria-label="AI Assistant"
             title="AI Assistant"
@@ -1126,6 +1133,7 @@ export function App() {
               <span>{label}</span>
             </button>
           ))}
+          <span className="navigation-group-label navigation-group-secondary" aria-hidden="true">Không gian làm việc</span>
           <button disabled={!ready} aria-label="Lịch sử" title="Lịch sử" aria-expanded={assistantHistoryOpen} onClick={event => {
             assistantHistoryTrigger.current = window.matchMedia("(max-width: 900px)").matches
               ? document.querySelector<HTMLElement>(".menu-button") : event.currentTarget;
@@ -1197,6 +1205,7 @@ export function App() {
         </header>
         <main
           id="main-content"
+          tabIndex={-1}
           className={page === "assistant" ? "assistant-main" : ""}
           inert={restoringLocation || undefined}
         >
@@ -1490,8 +1499,8 @@ export function App() {
           )}
           {ready && projectId && summary && page === "data" && (
             <>
-              <div className="data-workspace source-workspace">
-                  {(!selectedDataset || sourceListOpen) && <section className="source-inventory" aria-busy={projectLoading}>
+              <div className={`source-workspace${selectedDataset && !sourceListOpen ? " has-source-detail" : ""}`}>
+                  <section className="source-inventory" aria-label="Danh mục nguồn" aria-busy={projectLoading}>
                     <div className="panel-heading">
                       <h2>
                         Nguồn dữ liệu{" "}
@@ -1502,18 +1511,27 @@ export function App() {
                     </div>
                     <label className="search-input inventory-search">
                       <Search size={17} aria-hidden="true" />
-                      <input type="search" aria-label="Tìm nguồn dữ liệu" placeholder="Tìm nguồn theo tên…" maxLength={200}
+                      <input id="source-search" type="search" aria-label="Tìm nguồn dữ liệu" placeholder="Tìm nguồn theo tên…" maxLength={200}
                         value={datasetSearch} onChange={event => { setDatasetSearch(event.target.value); setDatasetOffset(0); }} />
                     </label>
                     {projectLoading && <Spinner />}
                     {datasets.length ? <ul className="inventory-rows dataset-list">
                       {datasets.map(source => <li key={source.id} className="inventory-row">
-                        <button className="source-name" onClick={() => chooseDataset(source)}>
+                        <button className="source-name" aria-current={selectedDataset?.id === source.id ? "true" : undefined}
+                          onClick={event => {
+                            const inventory = event.currentTarget.closest(".source-inventory");
+                            chooseDataset(source);
+                            requestAnimationFrame(() => {
+                              if (inventory?.getClientRects().length === 0) {
+                                document.getElementById("source-title")?.focus();
+                              }
+                            });
+                          }}>
                           <FileSpreadsheet size={18} aria-hidden="true" /><span>{source.name}</span>
                         </button>
                         <Badge status={source.status} />
                         <time dateTime={source.created_at}>{new Date(source.created_at).toLocaleDateString("vi-VN")}</time>
-                        {actorRole === "owner" && <button className="icon-button" aria-label={`Quản lý ${source.name}`}
+                        {actorRole === "owner" && selectedDataset?.id !== source.id && <button className="icon-button" aria-label={`Quản lý ${source.name}`}
                           onClick={event => openManagement({ kind: "datasets", projectId, id: source.id }, event.currentTarget)}><MoreHorizontal size={18} /></button>}
                       </li>)}
                     </ul> : !projectLoading && <div className="empty-state">
@@ -1550,7 +1568,7 @@ export function App() {
                         </div>
                       </div>
                     )}
-                  </section>}
+                  </section>
                   {selectedDataset && !sourceListOpen && (
                     <section className="detail-panel source-sheet">
                       <button type="button" className="text-button source-back" onClick={() => {
@@ -1558,14 +1576,15 @@ export function App() {
                         setSelectedSource(null);
                         setDatasetId("");
                         navigate("data", null);
+                        requestAnimationFrame(() => document.getElementById("source-search")?.focus());
                       }}>
-                        <ChevronLeft size={16} /> Nguồn dữ liệu
+                        <ChevronLeft size={16} /> Về danh mục nguồn
                       </button>
                       <div className="panel-heading">
-                        <div>
-                          <h2>{selectedDataset.name}</h2>
+                        <div className="source-title">
+                          <h2 id="source-title" tabIndex={-1}>{selectedDataset.name}</h2>
+                          <Badge status={selectedDataset.status} />
                         </div>
-                        <Badge status={selectedDataset.status} />
                         {actorRole === "owner" && <button className="icon-button" aria-label={`Quản lý ${selectedDataset.name}`}
                           onClick={event => openManagement({ kind: "datasets", projectId, id: selectedDataset.id }, event.currentTarget)}><MoreHorizontal size={18} /></button>}
                       </div>

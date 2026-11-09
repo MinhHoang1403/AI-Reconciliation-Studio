@@ -174,6 +174,15 @@ def authenticate(request: Request, db: Session) -> Actor:
     return Actor(session.actor_id, session.workspace_id, membership.role)
 
 
+def require_workspace_scope(request: Request, actor: Actor) -> None:
+    """Reject a stale browser tab after the shared session switches workspace."""
+    expected = request.headers.get("x-studio-workspace")
+    if expected is not None and expected != actor.workspace_id:
+        raise DomainError(
+            "WORKSPACE_CHANGED", "Không gian làm việc đã thay đổi. Tải lại Studio.", 409
+        )
+
+
 def require_editor(actor: Actor, db: Session, resource_id: str = "workspace") -> None:
     if actor.role not in {"owner", "editor"}:
         db.add(

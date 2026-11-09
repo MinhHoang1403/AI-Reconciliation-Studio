@@ -1,4 +1,7 @@
 import { Files, FolderOpen, PanelTop, ShieldCheck, UserRound } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { api } from "./api";
+import { Modal, Notice, Spinner } from "./components";
 import type { WorkspaceSettings as Settings } from "./types";
 import { PermanentDeletion } from "./PermanentDeletion";
 
@@ -8,6 +11,116 @@ const roles: Record<string, string> = {
   viewer: "Chỉ xem",
 };
 
+type WorkspaceChoice = { id: string; name: string; role: string };
+
+function WorkspaceManager({ current, role, onRename }: {
+  current: WorkspaceChoice;
+  role: string;
+  onRename: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [choices, setChoices] = useState<WorkspaceChoice[] | null>(null);
+  const [selected, setSelected] = useState(current.id);
+  const [action, setAction] = useState<"create" | "rename" | null>(null);
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  const [pending, setPending] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const submitting = useRef(false);
+  const createRequest = useRef<{ name: string; key: string } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    void api<WorkspaceChoice[]>("/workspaces", { signal: controller.signal })
+      .then(rows => { if (!controller.signal.aborted) setChoices(rows); })
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Chưa tải được danh sách.");
+      });
+    return () => controller.abort();
+  }, [open]);
+
+  async function save() {
+    if (submitting.current) return;
+    submitting.current = true;
+    setPending(true);
+    setError("");
+    setStatus("");
+    try {
+      if (!action) {
+        await api("/workspaces/current", { method: "POST", body: JSON.stringify({ id: selected }) });
+        const lastProject = localStorage.getItem("studio.project");
+        if (lastProject) localStorage.setItem(`studio.project.${current.id}`, lastProject);
+        const nextProject = localStorage.getItem(`studio.project.${selected}`);
+        if (nextProject) localStorage.setItem("studio.project", nextProject);
+        else localStorage.removeItem("studio.project");
+        window.history.replaceState(null, "", "#page=settings");
+        window.location.reload();
+        return;
+      }
+      const body = action === "create" ? { name } : { name, expected_name: current.name };
+      if (action === "create" && createRequest.current?.name !== name) {
+        createRequest.current = { name, key: crypto.randomUUID() };
+      }
+      const saved = await api<WorkspaceChoice>(
+        action === "create" ? "/workspaces" : "/workspaces/current/name",
+        { method: action === "create" ? "POST" : "PATCH", body: JSON.stringify(body),
+          headers: action === "create" && createRequest.current
+            ? { "Idempotency-Key": createRequest.current.key }
+            : undefined },
+      );
+      createRequest.current = null;
+      setChoices(rows => [...(rows ?? []).filter(row => row.id !== saved.id), saved]);
+      setSelected(saved.id);
+      if (action === "rename") onRename(saved.name);
+      setStatus(action === "create" ? "Đã tạo. Chọn Chuyển không gian để mở." : "Đã lưu tên mới.");
+      setAction(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Chưa thể hoàn tất thao tác.");
+    } finally {
+      submitting.current = false;
+      setPending(false);
+    }
+  }
+
+  return <>
+    <button className="text-button" ref={trigger} onClick={() => {
+      setChoices(null);
+      setSelected(current.id);
+      setError("");
+      setStatus("");
+      setAction(null);
+      setOpen(true);
+    }}>Quản lý không gian làm việc</button>
+    <Modal title="Quản lý không gian làm việc" open={open} returnFocus={trigger}
+      onOpenChange={next => { if (!pending) setOpen(next); }}>
+      {error && <Notice tone="error">{error}</Notice>}
+      {status && <Notice tone="success">{status}</Notice>}
+      {!choices && !error && <Spinner />}
+      {choices && <form onSubmit={event => { event.preventDefault(); void save(); }}>
+        {action ? <label>Tên không gian làm việc
+          <input value={name} maxLength={200} required disabled={pending} onChange={event => setName(event.target.value)} />
+        </label> : <label>Không gian có quyền truy cập
+          <select value={selected} disabled={pending} onChange={event => setSelected(event.target.value)}>
+            {choices.map(row => <option key={row.id} value={row.id}>{row.name} · {roles[row.role] ?? row.role}</option>)}
+          </select>
+        </label>}
+        <div className="modal-actions">
+          {action ? <button type="button" className="button secondary" disabled={pending} onClick={() => setAction(null)}>Hủy</button>
+            : role === "owner" && <>
+              <button type="button" className="button secondary" disabled={pending} onClick={() => { setName(""); setAction("create"); }}>Tạo không gian</button>
+              <button type="button" className="button secondary" disabled={pending} onClick={() => { setName(current.name); setAction("rename"); }}>Đổi tên không gian hiện tại</button>
+            </>}
+          <button className="button primary" disabled={pending || (action ? !name.trim() : selected === current.id)}>
+            {action === "create" ? "Tạo" : action === "rename" ? "Lưu tên" : "Chuyển không gian"}
+          </button>
+        </div>
+      </form>}
+    </Modal>
+  </>;
+}
+
 export function WorkspaceSettings({ settings: s, role, tableDensity, onDensityChange, onManageProjects }: {
   settings: Settings;
   role: string;
@@ -15,6 +128,7 @@ export function WorkspaceSettings({ settings: s, role, tableDensity, onDensityCh
   onDensityChange: (value: "comfortable" | "compact") => void;
   onManageProjects?: (trigger: HTMLButtonElement) => void;
 }) {
+  const [workspaceName, setWorkspaceName] = useState(s.workspace_name);
   const external = s.policy.mode === "CLOUD_ALLOWED" && s.policy.allow_external_ai;
   const available = external && s.agent_cloud_enabled && s.gemini_configured
     && s.gemini_requests_remaining !== 0 && s.ai_task_allowances?.agent?.remaining !== 0;
@@ -23,11 +137,12 @@ export function WorkspaceSettings({ settings: s, role, tableDensity, onDensityCh
     <section aria-labelledby="settings-account">
       <h2 id="settings-account"><UserRound size={18} aria-hidden="true" /> Tài khoản và không gian làm việc</h2>
       <dl className="settings-rows">
-        <div><dt>Không gian làm việc</dt><dd>{s.workspace_name}</dd></div>
+        <div><dt>Không gian làm việc</dt><dd>{workspaceName}</dd></div>
         <div><dt>Quyền của bạn</dt><dd>{roles[role] ?? "Chưa xác minh"}</dd></div>
       </dl>
       {onManageProjects && <button className="text-button" onClick={event => onManageProjects(event.currentTarget)}><FolderOpen size={17} /> Quản lý dự án</button>}
-      {role === "owner" && <PermanentDeletion kind="workspace" />}
+      {s.workspace_id && <WorkspaceManager current={{ id: s.workspace_id, name: workspaceName, role }}
+        role={role} onRename={setWorkspaceName} />}
     </section>
     <section aria-labelledby="settings-privacy">
       <h2 id="settings-privacy"><ShieldCheck size={18} aria-hidden="true" /> AI và quyền riêng tư</h2>
@@ -60,5 +175,6 @@ export function WorkspaceSettings({ settings: s, role, tableDensity, onDensityCh
         <div><dt>Số dòng tối đa mỗi bảng</dt><dd>{s.max_rows.toLocaleString("vi-VN")} dòng</dd></div>
       </dl>
     </section>
+    {role === "owner" && <PermanentDeletion kind="workspace" />}
   </section>;
 }

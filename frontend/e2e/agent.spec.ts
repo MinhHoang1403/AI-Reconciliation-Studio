@@ -9,7 +9,17 @@ test("Agent landing without a project does not create metadata or call cloud",as
   await expect(page.getByRole("heading",{name:"Bạn muốn xử lý dữ liệu gì?"})).toBeVisible();
   await expect(page.getByText("Chọn hoặc tạo dự án để xem dữ liệu.",{exact:false})).toHaveCount(0);
   await expect(page.getByRole("button",{name:"Đính kèm CSV hoặc Excel"})).toBeEnabled();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Đến nội dung chính" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("main")).toBeFocused();
+  const prepare = page.getByRole("button", { name: /Chuẩn hóa dữ liệu/ });
+  await prepare.focus();
+  await expect(prepare).toBeFocused();
+  await prepare.press("Enter");
+  await expect(page.getByLabel("Câu hỏi cho AI Assistant", { exact: true })).toHaveValue(/đề xuất cách chuẩn hóa/);
   await page.getByLabel("Câu hỏi cho AI Assistant",{exact:true}).fill("Đối soát giúp tôi");
+  await expect(prepare).toBeDisabled();
   await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();
   await expect(page.getByRole("alert")).toContainText("Tải CSV/Excel lên");
   expect(mutations).toEqual([]);

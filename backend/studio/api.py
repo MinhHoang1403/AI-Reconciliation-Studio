@@ -2,13 +2,15 @@
 
 import hashlib
 import json
+import re
 import shutil
 import tempfile
 from collections.abc import Generator
 from datetime import date
 from decimal import Decimal
+from pathlib import PurePosixPath
 from typing import Annotated, Any
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import polars as pl
 from fastapi import Depends, FastAPI, File, Form, Header, Query, Request, Response, UploadFile
@@ -24,6 +26,7 @@ from studio.access import (
     bootstrap_session,
     require_editor,
     require_owner,
+    require_workspace_scope,
     session_token_hash,
 )
 from studio.config import settings
@@ -66,9 +69,11 @@ from studio.database import (
     DatasetRow,
     JobRow,
     MappingRow,
+    MembershipRow,
     ProjectRow,
     SchemaRow,
     SessionFactory,
+    SessionRow,
     TableRow,
     VersionRow,
     WorkspaceRow,
@@ -155,7 +160,9 @@ DB = Annotated[Session, Depends(database)]
 
 
 def current_actor(request: Request, db: DB) -> Actor:
-    return authenticate(request, db)
+    actor = authenticate(request, db)
+    require_workspace_scope(request, actor)
+    return actor
 
 
 CurrentActor = Annotated[Actor, Depends(current_actor)]
@@ -297,6 +304,139 @@ class ProjectClassificationInput(Contract):
     expected_classification: ProjectClassification
 
 
+class DatasetNameInput(Contract):
+    name: str = Field(min_length=1, max_length=255)
+    expected_name: str = Field(min_length=1, max_length=255)
+
+
+class WorkspaceInput(Contract):
+    name: str = Field(min_length=1, max_length=200)
+
+
+class WorkspaceNameInput(WorkspaceInput):
+    expected_name: str = Field(min_length=1, max_length=200)
+
+
+class WorkspaceChoice(Contract):
+    id: str = Field(min_length=1, max_length=64)
+
+
+class WorkspaceSummary(Contract):
+    id: str
+    name: str
+    role: str
+
+
+def workspace_label(name: str) -> str:
+    label = name.strip()
+    if not label or re.search(r"[\x00-\x1f]", label):
+        raise DomainError("INVALID_WORKSPACE_NAME", "Tên không gian làm việc không hợp lệ.")
+    return label
+
+
+@app.get("/api/workspaces", response_model=list[WorkspaceSummary])
+def member_workspaces(db: DB, actor: CurrentActor) -> list[WorkspaceSummary]:
+    rows = db.execute(
+        select(WorkspaceRow, MembershipRow.role)
+        .join(MembershipRow, MembershipRow.workspace_id == WorkspaceRow.id)
+        .where(MembershipRow.actor_id == actor.id)
+        .order_by(WorkspaceRow.name, WorkspaceRow.id)
+    )
+    return [WorkspaceSummary(id=row.id, name=row.name, role=role) for row, role in rows]
+
+
+@app.post("/api/workspaces", status_code=201, response_model=WorkspaceSummary)
+def create_workspace(
+    body: WorkspaceInput,
+    db: DB,
+    actor: CurrentActor,
+    request_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=128)] = None,
+) -> WorkspaceSummary:
+    require_owner(actor, db, actor.workspace_id)
+    name = workspace_label(body.name)
+    workspace_id = (
+        str(uuid5(NAMESPACE_URL, f"studio:workspace:{actor.id}:{request_key}"))
+        if request_key
+        else identifier()
+    )
+    if request_key:
+        lock_key = int.from_bytes(
+            hashlib.sha256(workspace_id.encode()).digest()[:8], "big", signed=True
+        )
+        db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
+        existing = db.get(WorkspaceRow, workspace_id)
+        if existing is not None:
+            membership = db.get(MembershipRow, (workspace_id, actor.id))
+            if membership is None or existing.name != name:
+                raise DomainError(
+                    "WORKSPACE_CREATE_CONFLICT", "Yêu cầu tạo không gian đã đổi.", 409
+                )
+            return WorkspaceSummary(id=existing.id, name=existing.name, role=membership.role)
+    row = WorkspaceRow(
+        id=workspace_id, name=name, policy=WorkspacePolicy().model_dump()
+    )
+    db.add(row)
+    db.flush()
+    db.add(MembershipRow(workspace_id=row.id, actor_id=actor.id, role="owner"))
+    db.add(
+        AuditRow(
+            workspace_id=row.id, actor_id=actor.id, action="WORKSPACE_CREATED", resource_id=row.id
+        )
+    )
+    db.commit()
+    return WorkspaceSummary(id=row.id, name=row.name, role="owner")
+
+
+@app.patch("/api/workspaces/current/name", response_model=WorkspaceSummary)
+def rename_workspace(body: WorkspaceNameInput, db: DB, actor: CurrentActor) -> WorkspaceSummary:
+    require_owner(actor, db, actor.workspace_id)
+    row = db.get(WorkspaceRow, actor.workspace_id, with_for_update=True)
+    assert row is not None
+    name = workspace_label(body.name)
+    if row.name != name:
+        if row.name != body.expected_name:
+            raise DomainError(
+                "WORKSPACE_NAME_CONFLICT", "Tên đã thay đổi. Tải lại Studio trước khi đổi tên.", 409
+            )
+        row.name = name
+        db.add(
+            AuditRow(
+                workspace_id=row.id,
+                actor_id=actor.id,
+                action="WORKSPACE_RENAMED",
+                resource_id=row.id,
+            )
+        )
+        db.commit()
+    return WorkspaceSummary(id=row.id, name=row.name, role=actor.role)
+
+
+@app.post("/api/workspaces/current", response_model=WorkspaceSummary)
+def switch_workspace(
+    body: WorkspaceChoice, request: Request, db: DB, actor: CurrentActor
+) -> WorkspaceSummary:
+    token = request.cookies.get("studio_session")
+    session = (
+        db.get(SessionRow, session_token_hash(token), populate_existing=True, with_for_update=True)
+        if token
+        else None
+    )
+    if session is None or session.actor_id != actor.id or session.expires_at <= now():
+        raise DomainError("AUTH_REQUIRED", "Cần phiên trình duyệt hợp lệ để đổi không gian.", 401)
+    if session.workspace_id != actor.workspace_id:
+        raise DomainError(
+            "WORKSPACE_CHANGED", "Không gian làm việc đã thay đổi. Tải lại Studio.", 409
+        )
+    membership = db.get(MembershipRow, (body.id, actor.id))
+    row = db.get(WorkspaceRow, body.id) if membership else None
+    if row is None or membership is None:
+        raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy không gian làm việc.", 404)
+    if session.workspace_id != row.id:
+        session.workspace_id = row.id
+        db.commit()
+    return WorkspaceSummary(id=row.id, name=row.name, role=membership.role)
+
+
 @app.get("/api/projects", response_model=ProjectList)
 def projects(
     db: DB,
@@ -376,6 +516,40 @@ def project_lifecycle(
 
 @app.get("/api/datasets/{dataset_id}/lifecycle", response_model=LifecycleImpact)
 def dataset_impact(dataset_id: str, db: DB, actor: CurrentActor) -> LifecycleImpact:
+    return resource_impact(db, actor, "dataset", dataset_id)
+
+
+@app.patch("/api/datasets/{dataset_id}/name", response_model=LifecycleImpact)
+def rename_dataset(
+    dataset_id: str, body: DatasetNameInput, db: DB, actor: CurrentActor
+) -> LifecycleImpact:
+    """Change the display label under the existing project write lock."""
+    require_owner(actor, db, dataset_id)
+    row = get_scoped(db, DatasetRow, dataset_id, actor)
+    name = body.name.strip()
+    if (
+        not name
+        or re.search(r"[/\\:\x00-\x1f]", name)
+        or PurePosixPath(name).suffix.lower() != PurePosixPath(row.name).suffix.lower()
+    ):
+        raise DomainError(
+            "INVALID_DATASET_NAME", "Tên nguồn phải hợp lệ và giữ nguyên phần mở rộng."
+        )
+    if row.name != name:
+        if row.name != body.expected_name:
+            raise DomainError(
+                "DATASET_NAME_CONFLICT", "Tên nguồn đã thay đổi. Tải lại trước khi đổi tên.", 409
+            )
+        row.name = name
+        db.add(
+            AuditRow(
+                workspace_id=actor.workspace_id,
+                actor_id=actor.id,
+                action="DATASET_RENAMED",
+                resource_id=dataset_id,
+            )
+        )
+        db.commit()
     return resource_impact(db, actor, "dataset", dataset_id)
 
 
@@ -1213,7 +1387,7 @@ def download_source(dataset_id: str, db: DB, actor: CurrentActor) -> FileRespons
         raise DomainError("ARTIFACT_CHECKSUM_FAILED", "Tệp nguồn không khớp checksum đã lưu.", 409)
     return FileResponse(
         path,
-        filename=dataset.name,
+        filename=artifact.metadata_json.get("filename") or dataset.name,
         media_type="application/octet-stream",
         headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
     )

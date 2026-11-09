@@ -1,6 +1,6 @@
 import { HistoryRows } from "./ProjectHistory";
 import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense, type RefObject } from "react";
-import { MessageSquarePlus, ArrowUp, Trash2, Plus, MoreHorizontal, Sparkles, X, LoaderCircle, Files, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, ArrowUp, ChartNoAxesColumn, Files, FileSpreadsheet, Layers3, LoaderCircle, MessageSquarePlus, MoreHorizontal, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { AgentWorkflowPanel } from "./AgentWorkflowPanel";
 import type { Review } from "./agentTypes";
 import { api, ApiError } from "./api";
@@ -28,6 +28,13 @@ import type {
 
 const AssistantDataDrawer = lazy(() => import("./AssistantDataDrawer").then(m => ({default:m.AssistantDataDrawer})));
 const ReconciliationStudio = lazy(() => import("./ReconciliationStudio").then(m => ({default:m.ReconciliationStudio})));
+
+const starterTasks = [
+  { title: "Chuẩn hóa dữ liệu", description: "Kiểm tra cột và chuẩn bị bảng", prompt: "Kiểm tra các nguồn đã chọn và đề xuất cách chuẩn hóa dữ liệu.", command: "PREPARE_NORMALIZATION", icon: FileSpreadsheet },
+  { title: "Đối soát các tệp", description: "Xác định nguồn, kỳ và quy tắc", prompt: "Tôi muốn đối soát các nguồn trong dự án. Hãy làm rõ nguồn và kỳ cần so sánh.", command: null, icon: Layers3 },
+  { title: "Tra cứu thông tin", description: "Tìm giá trị trong nguồn đã chọn", prompt: "Tra cứu dữ liệu trong nguồn đang chọn.", command: null, icon: Search },
+  { title: "Phân tích kết quả", description: "Đọc chỉ số và ngoại lệ đã xác minh", prompt: "Tóm tắt kết quả đối soát đang xem và những ngoại lệ cần kiểm tra.", command: "SUMMARIZE_RESULTS", icon: ChartNoAxesColumn },
+];
 
 const composerModels = [
   { id: "GEMINI", name: "Gemini 3.5 Flash Lite" },
@@ -295,7 +302,10 @@ export function AssistantStudio({
   const draftKey = useRef(draftKeyFor(initialContext));
   function restoreDraft(scope: AssistantContext, id?: string) {
     draftKey.current = draftKeyFor(scope, id);
-    setText(sessionStorage.getItem(draftKey.current) || "");
+    const draft = sessionStorage.getItem(draftKey.current) || "";
+    const draftTask = sessionStorage.getItem(`${draftKey.current}.task`);
+    setText(draft);
+    setCommand(starterTasks.find(task => task.title === draftTask && task.prompt === draft)?.command ?? null);
     setReviewReply(null);
     if(id){try{const saved=JSON.parse(sessionStorage.getItem(replyKeyFor(scope,id))||"null");
       if(saved&&typeof saved.id==="string"&&typeof saved.nonce==="string"&&typeof saved.fingerprint==="string"&&typeof saved.workflowId==="string")setReviewReply(saved);
@@ -561,7 +571,9 @@ export function AssistantStudio({
         const accepted=await api<{job_id:string}>(`/agent/workflows/${reviewReply.workflowId}/replies`,{method:"POST",body,headers:{"Idempotency-Key":key}});
         if(!alive.current||request!==sequence.current)return;
         sessionStorage.removeItem(storage);sessionStorage.removeItem(storage+".request");
-        sessionStorage.removeItem(draftKey.current);setReviewReply(null);setText("");
+        sessionStorage.removeItem(draftKey.current);
+        sessionStorage.removeItem(`${draftKey.current}.task`);
+        setReviewReply(null);setText("");
         await refreshMessages(conversation.id,request);await waitForAnswer(accepted.job_id,conversation.id,request);return;
       }
       if(files.length){
@@ -623,6 +635,9 @@ export function AssistantStudio({
         const previousDraft = draftKey.current;
         draftKey.current = draftKeyFor(context, active.id);
         sessionStorage.setItem(draftKey.current, text);
+        const draftTask = sessionStorage.getItem(`${previousDraft}.task`);
+        if (draftTask) sessionStorage.setItem(`${draftKey.current}.task`, draftTask);
+        sessionStorage.removeItem(`${previousDraft}.task`);
         sessionStorage.removeItem(previousDraft);
         sessionStorage.removeItem(`${previousDraft}.create`);
       }
@@ -663,6 +678,7 @@ export function AssistantStudio({
       setText("");
       setCommand(null);
       sessionStorage.removeItem(draftKey.current);
+      sessionStorage.removeItem(`${draftKey.current}.task`);
       await refreshMessages(active.id, request);
       await loadHistory();
       await waitForAnswer(accepted.job_id, active.id, request);
@@ -743,6 +759,7 @@ export function AssistantStudio({
       await api(`/conversations/${conversation.id}`, { method: "DELETE" });
       if (alive.current) {
         sessionStorage.removeItem(draftKey.current);
+        sessionStorage.removeItem(`${draftKey.current}.task`);
         newConversation();
         await loadHistory();
       }
@@ -883,7 +900,12 @@ export function AssistantStudio({
                 </button>
               )}
               {!loading && !messages.length && (
-                <div className="agent-empty"><Sparkles size={25} aria-hidden="true"/><h2>Bạn muốn xử lý dữ liệu gì?</h2><p>Đính kèm CSV hoặc Excel, hoặc hỏi về dữ liệu trong dự án.</p></div>
+                <div className="agent-empty">
+                  <h2>Bạn muốn xử lý dữ liệu gì?</h2>
+                  <p>{context.project_id
+                    ? "Chọn một việc để bắt đầu, hoặc đính kèm tệp CSV/XLSX và nhập yêu cầu của bạn."
+                    : "Đính kèm CSV/XLSX để bắt đầu. Chọn dự án để tra cứu dữ liệu hoặc đọc kết quả đã lưu."}</p>
+                </div>
               )}
               {messages.filter((message,index)=>message.role!=="assistant"||!message.workflow_id||!messages.slice(index+1).some(next=>next.role==="assistant"&&next.workflow_id===message.workflow_id)).map((message) => (
                 <article
@@ -1066,6 +1088,28 @@ export function AssistantStudio({
               {draftNotice}
             </p>
           )}
+          {!loading && !messages.length && (
+            <ul className="agent-prompts" aria-label="Việc có thể làm với Assistant">
+              {starterTasks.map(({ title, description, prompt, command: action, icon: Icon }, index) => (
+                <li key={title}>
+                  <button type="button" className="assistant-task"
+                    disabled={busy || !!reviewReply || (!context.project_id && index > 1)
+                      || (!!text.trim() && !starterTasks.some(task => task.prompt === text))}
+                    onClick={() => {
+                      setText(prompt);
+                      setCommand(action);
+                      sessionStorage.setItem(draftKey.current, prompt);
+                      sessionStorage.setItem(`${draftKey.current}.task`, title);
+                      composerInput.current?.focus();
+                    }}>
+                    <Icon size={20} aria-hidden="true" />
+                    <span><strong>{title}</strong><small>{description}</small></span>
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <form
             className={`assistant-composer ${reviewReply?"is-review-reply":""}`}
             onDragOver={event=>{event.preventDefault();}}
@@ -1089,6 +1133,7 @@ export function AssistantStudio({
                   setText(event.target.value);
                   setCommand(null);
                   sessionStorage.setItem(draftKey.current, event.target.value);
+                  sessionStorage.removeItem(`${draftKey.current}.task`);
                 }}
                 onKeyDown={event=>{
                   if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){
@@ -1117,7 +1162,6 @@ export function AssistantStudio({
             </button>
             </div>
           </form>
-          {!messages.length&&<div className="agent-prompts">{[["Chuẩn hóa dữ liệu","PREPARE_NORMALIZATION"],["Đối soát các file",null],["Tra cứu thông tin",null],["Phân tích kết quả","SUMMARIZE_RESULTS"]].map(([title,action])=><button className="text-button" key={title} onClick={()=>{setText(title!);setCommand(action);composerInput.current?.focus();}}>{title}</button>)}</div>}
         </div>
         {dataContext && <Suspense fallback={<Spinner />}>
           <AssistantDataDrawer key={`${dataContext.project_id}:${dataContext.dataset_id || ""}`}

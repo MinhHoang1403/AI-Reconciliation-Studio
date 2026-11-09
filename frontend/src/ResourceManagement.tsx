@@ -40,6 +40,7 @@ export function ResourceManagement({ target, onClose, onChanged, returnFocus }: 
   const [impact, setImpact] = useState<Impact | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [confirmation, setConfirmation] = useState("");
+  const [newName, setNewName] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [purgePending, setPurgePending] = useState(false);
   const [busy, setBusy] = useState(true);
@@ -101,13 +102,44 @@ export function ResourceManagement({ target, onClose, onChanged, returnFocus }: 
     }
   }
 
+  async function rename() {
+    if (!impact || newName === null || !newName.trim() || submitting.current) return;
+    submitting.current = true;
+    const controller = new AbortController();
+    request.current = controller;
+    setPending(true);
+    setError("");
+    try {
+      const renamed = await api<Impact>(`/datasets/${encodeURIComponent(impact.id)}/name`, {
+        method: "PATCH",
+        signal: controller.signal,
+        body: JSON.stringify({ name: newName, expected_name: impact.name }),
+      });
+      if (controller.signal.aborted) return;
+      setImpact(renamed);
+      setNewName(null);
+      setResult("Đã đổi tên hiển thị.");
+      onChanged(renamed.id, renamed.project_id, renamed.state);
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        setError(err instanceof Error ? err.message : "Chưa thể đổi tên nguồn.");
+      }
+    } finally {
+      submitting.current = false;
+      if (!controller.signal.aborted) setPending(false);
+    }
+  }
+
   return <Modal title={`Quản lý ${object}`} open wide returnFocus={returnFocus}
     onOpenChange={open => { if (!open && !pending && !purgePending) onClose(); }}>
     {id && <button className="text-button" disabled={pending || purgePending} onClick={() => {
-      setId(""); setAction(null); setConfirmation(""); setResult("");
+      setId(""); setAction(null); setConfirmation(""); setNewName(null); setResult("");
     }}><ArrowLeft size={16} /> Danh sách {object}</button>}
     {result && <Notice tone="success">{result}</Notice>}
-    {error && <Notice tone="error">{error} <button className="text-button" onClick={() => setRefresh(n => n + 1)}>Kiểm tra lại</button></Notice>}
+    {error && <Notice tone="error">{error} <button className="text-button" onClick={() => {
+      setNewName(null);
+      setRefresh(n => n + 1);
+    }}>Kiểm tra lại</button></Notice>}
     {!id && <div className="resource-management">
       <div className="workspace-toolbar">
         <label>Danh sách<select value={filter} onChange={event => { setFilter(event.target.value as State); setOffset(0); }}>
@@ -135,7 +167,17 @@ export function ResourceManagement({ target, onClose, onChanged, returnFocus }: 
         <p>Có dữ liệu hoặc lịch sử liên quan. Có thể lưu trữ để ngừng dùng trong công việc mới và giữ kết quả đã lưu.</p>}
       {!project && !impact.allowed.length && !impact.running_jobs && !impact.open_work &&
         <Notice>Khôi phục dự án trước khi thay đổi trạng thái của nguồn này.</Notice>}
-      {!action ? <><div className="modal-actions">
+      {newName !== null ? <form className="management-confirm" onSubmit={event => { event.preventDefault(); void rename(); }}>
+        <p>Tên mới chỉ dùng để hiển thị trong Studio. Giữ phần mở rộng của tệp.</p>
+        <label>Tên hiển thị<input value={newName} maxLength={255} required disabled={pending}
+          onChange={event => setNewName(event.target.value)} /></label>
+        <div className="modal-actions">
+          <button type="button" className="button secondary" disabled={pending} onClick={() => setNewName(null)}>Hủy</button>
+          <button className="button primary" disabled={pending || !newName.trim() || newName.trim() === impact.name}>Lưu tên</button>
+        </div>
+      </form> : !action ? <><div className="modal-actions">
+        {!project && impact.state === "active" && <button className="button secondary" disabled={purgePending}
+          onClick={() => setNewName(impact.name)}>Đổi tên hiển thị</button>}
         {impact.allowed.includes("archive") && <button className="button secondary" disabled={purgePending} onClick={() => setAction("archive")}><Archive size={16} /> Lưu trữ</button>}
         {impact.allowed.includes("delete") && <button className="button secondary" disabled={purgePending} onClick={() => setAction("delete")}><Trash2 size={16} /> Đưa vào Thùng rác</button>}
         {impact.allowed.includes("restore") && <button className="button primary" disabled={purgePending} onClick={() => setAction("restore")}><RotateCcw size={16} /> Khôi phục</button>}

@@ -320,6 +320,85 @@ def test_dataset_lifecycle_retains_tables_blocks_work_and_hides_archived_sources
     assert client.get(f"/api/datasets?project_id={pid}").json()["total"] == 1
 
 
+def test_workspace_management_keeps_policy_membership_and_stale_tab_scoped(pg):
+    client, factory, _ = pg
+    old_project = project(client)
+    origin = {"X-Studio-Workspace": "demo", "Idempotency-Key": "create-test-workspace"}
+    created = client.post("/api/workspaces", json={"name": "  Kho TEST  "}, headers=origin)
+    assert created.status_code == 201
+    choice = created.json()
+    workspace_id = choice["id"]
+    assert choice["name"] == "Kho TEST"
+    assert choice["role"] == "owner"
+    replay = client.post("/api/workspaces", json={"name": "Kho TEST"}, headers=origin)
+    assert replay.json() == choice
+    assert {row["id"] for row in client.get("/api/workspaces").json()} == {"demo", workspace_id}
+    assert client.post("/api/workspaces/current", json={"id": "unavailable"}).status_code == 404
+
+    switch = client.post("/api/workspaces/current", json={"id": workspace_id}, headers=origin)
+    assert switch.json() == choice
+    stale = client.post(
+        "/api/projects", json={"name": "Stale tab", "business_scope": "test"}, headers=origin
+    )
+    assert stale.status_code == 409
+    assert stale.json()["code"] == "WORKSPACE_CHANGED"
+    assert client.get(f"/api/projects/{old_project}").status_code == 404
+    assert client.get("/api/projects").json()["total"] == 0
+    policy = client.get("/api/settings").json()["policy"]
+    assert policy["mode"] == "LOCAL_ONLY"
+    assert policy["external_request_budget"] == 0
+    path = "/api/workspaces/current/name"
+    assert client.patch(path, json={"name": "Kho mới", "expected_name": "Kho TEST"}).json()[
+        "name"
+    ] == "Kho mới"
+    stale_name = client.patch(path, json={"name": "Tên cũ", "expected_name": "Kho TEST"})
+    assert stale_name.status_code == 409
+
+    with factory() as db:
+        db.get(MembershipRow, (workspace_id, "test-owner")).role = "viewer"
+        db.commit()
+    assert client.post("/api/workspaces", json={"name": "Không có quyền"}).status_code == 403
+    assert client.patch(path, json={"name": "Cấm", "expected_name": "Kho mới"}).status_code == 403
+    assert client.post("/api/workspaces/current", json={"id": "demo"}).status_code == 200
+    assert client.get(f"/api/projects/{old_project}").status_code == 200
+
+
+def test_source_rename_preserves_original_download_and_rejects_stale_name(pg):
+    from studio.database import AuditRow
+
+    client, factory, worker = pg
+    pid = project(client, "TEST source display name")
+    source = upload(client, pid)
+    drain(factory, worker)
+    detail = f"/api/datasets/{source['id']}"
+    before = client.get(detail).json()
+    download = client.get(f"{detail}/download")
+    body = {"name": "Sổ giao dịch.csv", "expected_name": before["name"]}
+
+    invalid = client.patch(f"{detail}/name", json={**body, "name": "../unsafe.csv"})
+    assert invalid.json()["code"] == "INVALID_DATASET_NAME"
+    wrong_extension = client.patch(f"{detail}/name", json={**body, "name": "unsafe.xlsx"})
+    assert wrong_extension.json()["code"] == "INVALID_DATASET_NAME"
+    renamed = client.patch(f"{detail}/name", json=body)
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == body["name"]
+    assert client.patch(f"{detail}/name", json=body).status_code == 200
+    stale = client.patch(f"{detail}/name", json={**body, "name": "Another.csv"})
+    assert stale.status_code == 409
+    assert client.get(detail).json() == {**before, "name": body["name"]}
+    after_download = client.get(f"{detail}/download")
+    assert after_download.content == download.content
+    assert after_download.headers["content-disposition"] == download.headers["content-disposition"]
+
+    with factory() as db:
+        assert len(list(db.scalars(select(AuditRow).where(
+            AuditRow.resource_id == source["id"], AuditRow.action == "DATASET_RENAMED"
+        )))) == 1
+        db.get(MembershipRow, ("demo", "test-owner")).role = "viewer"
+        db.commit()
+    assert client.patch(f"{detail}/name", json=body).status_code == 403
+
+
 def test_failed_source_soft_delete_preserves_raw_artifact_and_supports_restore(pg):
     from studio.database import VersionRow
     from studio.storage import checksum, storage_path
