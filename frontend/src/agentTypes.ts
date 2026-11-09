@@ -24,6 +24,7 @@ export type NormalizationDraft = {
 export type SharedMappingFacts = {
     revision: number;
     reviewKeys: string[];
+    business_key: string;
     entity_kind: string;
     grain: string;
     timezone: string;

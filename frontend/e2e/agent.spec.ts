@@ -211,15 +211,16 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
     await common.getByLabel('Múi giờ dùng chung',{exact:true}).selectOption('UTC');
     await common.getByLabel('Cơ sở tiền dùng chung',{exact:true}).selectOption(basis);
     await common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true}).fill(metric);
+    await common.getByLabel('Cột khóa chung (tùy chọn)',{exact:true}).selectOption(keyHeader);
     await page.reload();
     await expect(common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true})).toHaveValue(metric);
     await apply.click();
-    manualFields+=5;
+    manualFields+=6;
     for(const name of names){
       const card=cards.filter({hasText:name});
       await expect(card.getByRole('textbox',{name:'Loại giao dịch',exact:true})).toHaveValue(entity);
       await expect(card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true})).toHaveValue(grain);
-      await card.getByRole('checkbox',{name:keyHeader,exact:true}).check();manualFields++;
+      await expect(card.getByRole('checkbox',{name:keyHeader,exact:true})).toBeChecked();
     }
   }else{
   for(const name of names){

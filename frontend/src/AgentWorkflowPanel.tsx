@@ -19,19 +19,26 @@ const tools: Record<string, string> = { parse: "Đọc dữ liệu", propose_map
 function CommonMappingFacts({reviews, storageKey, disabled, onApply}: {
     reviews:Review[];storageKey:string;disabled:boolean;onApply:(facts:Omit<SharedMappingFacts,"revision">)=>void;
 }) {
-    const empty={entity_kind:"",grain:"",timezone:"",amount_basis:"",semantic_metric:""};
+    const empty={entity_kind:"",grain:"",timezone:"",amount_basis:"",semantic_metric:"",business_key:""};
     const [fields,setFields]=useState(()=>{
         try {const saved=JSON.parse(sessionStorage.getItem(storageKey)||"null");
-            if(saved && Object.keys(empty).every(key=>typeof saved[key]==="string")) return {...empty,...saved} as typeof empty;
+            if(saved && Object.keys(empty).every(key=>typeof saved[key]==="string" ||
+                (key==="business_key" && saved[key]===undefined))) return {...empty,...saved} as typeof empty;
         }catch{/* A malformed local draft cannot supply business facts. */}
         return empty;
     });
     useEffect(()=>{try{sessionStorage.setItem(storageKey,JSON.stringify(fields));}catch{/* Private storage may be unavailable. */}},[fields,storageKey]);
-    const ready=Object.values(fields).every(value=>value.trim()&&value.trim().toLowerCase()!=="unknown");
+    const keyNames=reviews.map(review=>(review.normalization_draft?.fields??[])
+        .filter(field=>field.data_type==="string").map(field=>field.name));
+    const commonKeys=[...new Set(keyNames[0])].filter(name=>keyNames.every(names=>
+        names.filter(candidate=>candidate===name).length===1));
+    const {business_key,...required}=fields;
+    const selectedKey=commonKeys.includes(business_key)?business_key:"";
+    const ready=Object.values(required).every(value=>value.trim()&&value.trim().toLowerCase()!=="unknown");
     function edit(key:keyof typeof fields,value:string){setFields(previous=>({...previous,[key]:value}));}
     return <details className="agent-shared-facts" open><summary>Nhập một lần cho các nguồn có cùng nghiệp vụ</summary>
         <section aria-label="Thông tin chung cho các nguồn">
-            <p>Chỉ dùng khi mỗi dòng, ý nghĩa khoản tiền và múi giờ giống nhau. Các khóa vẫn được chọn riêng; lựa chọn đã có trong từng thẻ được giữ nguyên.</p>
+            <p>Chỉ dùng khi mỗi dòng, ý nghĩa khoản tiền và múi giờ giống nhau. Lựa chọn đã có trong từng thẻ được giữ nguyên.</p>
             <ul>{reviews.map(review=><li key={review.id}>{review.resource_label}: {review.normalization_draft?.fields.filter(field=>field.data_type==="decimal").map(field=>field.name).join(", ")}</li>)}</ul>
             <div className="agent-form-grid">
             <label>Loại dữ liệu dùng chung<input value={fields.entity_kind} maxLength={100} disabled={disabled} onChange={event=>edit("entity_kind",event.target.value)}/></label>
@@ -39,9 +46,12 @@ function CommonMappingFacts({reviews, storageKey, disabled, onApply}: {
             <label>Múi giờ dùng chung<select aria-label="Múi giờ dùng chung" value={fields.timezone} disabled={disabled} onChange={event=>edit("timezone",event.target.value)}><option value="">Chọn theo quy ước nguồn</option><option value="UTC">UTC</option><option value="Asia/Ho_Chi_Minh">Việt Nam</option></select></label>
             <label>Cơ sở tiền dùng chung<select aria-label="Cơ sở tiền dùng chung" value={fields.amount_basis} disabled={disabled} onChange={event=>edit("amount_basis",event.target.value)}><option value="">Chưa xác định</option><option value="gross">Trước khấu trừ / gross</option><option value="net">Sau khấu trừ / net</option><option value="paid">Đã thanh toán / paid</option><option value="expected">Dự kiến / expected</option><option value="fee">Phí / fee</option></select></label>
             <label>Khoản tiền dùng chung là gì?<input value={fields.semantic_metric} maxLength={100} disabled={disabled} onChange={event=>edit("semantic_metric",event.target.value)}/></label>
+            {commonKeys.length>0&&<label>Cột khóa chung (tùy chọn)<select aria-label="Cột khóa chung (tùy chọn)" value={selectedKey} disabled={disabled} onChange={event=>edit("business_key",event.target.value)}>
+                <option value="">Chọn khóa riêng trong từng nguồn</option>{commonKeys.map(name=><option key={name}>{name}</option>)}
+            </select></label>}
             </div>
             <p>Dùng nút bên dưới khi bạn đã xác nhận thông tin đúng cho các nguồn liệt kê. Sau đó, xem từng nguồn trước khi duyệt chuẩn hóa.</p>
-            <button type="button" className="button secondary" disabled={disabled||!ready} onClick={()=>onApply({...fields,reviewKeys:reviews.map(review=>`${review.id}:${review.nonce}:${review.fingerprint}`)})}>Xác nhận và điền vào bản nháp</button>
+            <button type="button" className="button secondary" disabled={disabled||!ready} onClick={()=>onApply({...fields,business_key:selectedKey,reviewKeys:reviews.map(review=>`${review.id}:${review.nonce}:${review.fingerprint}`)})}>Xác nhận và điền vào bản nháp</button>
         </section>
     </details>;
 }

@@ -199,18 +199,23 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
             sharedFacts.revision<=appliedSharedRevision.current ||
             !sharedFacts.reviewKeys.includes(`${review.id}:${review.nonce}:${review.fingerprint}`)) return;
         appliedSharedRevision.current=sharedFacts.revision;
-        setDraft(previous => previous ? {
-            ...previous,
-            entity_kind: previous.entity_kind === "unknown" ? sharedFacts.entity_kind : previous.entity_kind,
-            grain: previous.grain === "unknown" ? sharedFacts.grain : previous.grain,
-            fields: previous.fields.map(field => ({...field,
-                ...(field.data_type === "date" && !field.timezone ? {timezone:sharedFacts.timezone} : {}),
-                ...(field.data_type === "decimal" ? {
-                    amount_basis: field.amount_basis || sharedFacts.amount_basis,
-                    semantic_metric: field.semantic_metric || sharedFacts.semantic_metric,
-                } : {}),
-            })),
-        } : previous);
+        setDraft(previous => {
+            if (!previous) return previous;
+            const key = previous.fields.some(field=>field.business_key) ? "" : sharedFacts.business_key;
+            return {
+                ...previous,
+                entity_kind: previous.entity_kind === "unknown" ? sharedFacts.entity_kind : previous.entity_kind,
+                grain: previous.grain === "unknown" ? sharedFacts.grain : previous.grain,
+                fields: previous.fields.map(field => ({...field,
+                    ...(key && field.data_type === "string" && field.name === key ? {business_key:true} : {}),
+                    ...(field.data_type === "date" && !field.timezone ? {timezone:sharedFacts.timezone} : {}),
+                    ...(field.data_type === "decimal" ? {
+                        amount_basis: field.amount_basis || sharedFacts.amount_basis,
+                        semantic_metric: field.semantic_metric || sharedFacts.semantic_metric,
+                    } : {}),
+                })),
+            };
+        });
     }, [sharedFacts, canEdit, review.id, review.nonce, review.fingerprint, review.kind, review.state]);
     const [plan, setPlan] = useState(cached?.plan ?? review.plan ?? null);
     const [assessment,setAssessment]=useState<MappingAssessment|null>(null);
