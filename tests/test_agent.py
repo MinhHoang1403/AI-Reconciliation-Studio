@@ -725,6 +725,9 @@ def test_read_and_export_sequence_does_not_execute_only_one_clause(goal, compoun
         ("Bản tự chuẩn bị của tệp này có bao nhiêu hàng?", True),
         ("Lọc các chứng từ thiếu đối ứng.", True),
         ("Cho biết số nhóm thiếu đối ứng trong lần chạy hiện tại.", True),
+        ("Chỉ liệt kê các mã đơn khi kho bằng HN01.", True),
+        ("Tìm các dòng có mã kho đúng bằng HN01.", True),
+        ("Chỉ chuẩn hóa dữ liệu của nguồn đang chọn.", False),
         ("Nêu tổng quan kết quả đã xác minh.", True),
         ("Khoản ở vị trí thứ hai trong bảng đó vì sao chưa ghép được?", True),
         ("Chuẩn hóa nguồn rồi đếm số dòng.", False),
@@ -1685,6 +1688,33 @@ def test_payment_population_guard_handles_unpaid_and_grouping_paraphrases_withou
         validate(payload, "Cho xem giao dịch chưa thanh toán")
     payload["query"]["filters"] = [dict(field_id="payment_status", op="eq", value="UNPAID")]
     assert validate(payload, "Cho xem giao dịch chưa thanh toán").query.filters[0].value == "UNPAID"
+
+
+def test_exact_value_request_cannot_be_widened_to_substring_search():
+    from studio.agent_intents import compile_routing
+
+    cat = routing_catalogue()
+    cat.context.dataset_id = cat.datasets[0].id
+    query = dict(
+        source_ref="canonical-1",
+        select_fields=["order_id"],
+        filters=[dict(field_id="shop_id", op="contains", value="HN01")],
+        aggregations=[],
+        group_by=[],
+        currency_field=None,
+    )
+
+    def route():
+        return compile_routing(
+            json.dumps(dict(intents=[dict(intent="QUERY_DATA", query=query)])),
+            ["Tìm mã đơn có shop_id đúng bằng HN01."],
+            cat,
+        )[0]
+
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        route()
+    query["filters"][0]["op"] = "eq"
+    assert route().query.filters[0].value == "HN01"
 
 
 def test_routing_schema_is_small_transport_contract_and_domain_query_shape_stays_compatible():

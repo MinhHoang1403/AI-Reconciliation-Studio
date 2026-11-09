@@ -205,7 +205,7 @@ def explicit_read_request(goal: str) -> bool:
     money or a source; the model/compiler still choose and validate those slots.
     """
     text = _without_current_run_prefix(plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal)))
-    polite = r"(?:(?:hay|vui long|cho toi|toi muon|toi can|xin|giup toi)\s+)*"
+    polite = r"(?:(?:hay|vui long|cho toi|toi muon|toi can|xin|giup toi|chi)\s+)*"
     clauses = re.split(r"[.!?;\n]|\b(?:roi|sau do|va)\b", text)
     write = any(
         re.match(polite + r"(?:chuan hoa|doi soat|so sanh|lap|tao|de xuat)\b", c.strip())
@@ -222,7 +222,7 @@ def explicit_read_request(goal: str) -> bool:
         )
         or any(
             re.match(
-                polite + r"(?:xem|mo|liet ke|loc|hien|dem|lay|sap|xep|cho biet|"
+                polite + r"(?:xem|mo|liet ke|loc|tim|hien|dem|lay|sap|xep|cho biet|"
                 r"(?:neu )?tong quan|tom tat|giai thich|show|list|filter|count|"
                 r"summarize|explain)\b",
                 c.strip(),
@@ -689,6 +689,16 @@ def validate_intents(
             if q.project_id != catalogue.context.project_id:
                 raise DomainError("AI_INVALID_SOURCE", "Query sai project.")
             language = plain_question(goal)
+            # A typed proposal may not widen an explicit equality into substring search.
+            if (
+                q.source_kind == "CANONICAL"
+                and re.search(r"\b(?:dung bang|bang dung|exactly equals)\b", language)
+                and not any(predicate.op == "eq" for predicate in q.filters)
+            ):
+                raise DomainError(
+                    "QUERY_SEMANTICS_REQUIRED",
+                    "Yêu cầu cần so khớp giá trị chính xác. Hãy xác nhận cột và giá trị lọc.",
+                )
             layers = explicit_read_layers([goal])
             if layers and q.source_kind not in layers:
                 raise DomainError(
@@ -2411,6 +2421,7 @@ def interpret_requests(
                 "điều kiện (như chưa thanh toán thay đã thanh toán), không giữ bộ lọc mâu thuẫn. "
                 "Không suy gross=net, order=paid, không bịa tháng từ run thiếu trường ngày. "
                 "Mỗi query phải khai báo filters, aggregations, group_by, currency_field; "
+                "So sánh đúng bằng dùng eq, không dùng contains. Giữ nguyên chuỗi mã có số 0 đầu. "
                 "null_policy chỉ nhận PRESERVE, result_scope chỉ nhận ALL_MATCHING. "
                 "Giới hạn cứng: select_fields tối đa 20; filters 8; aggregations 5; "
                 "group_by 3; sort 3; limit 1–50. Không đặt toàn bộ fields vào group_by. "
@@ -2580,6 +2591,7 @@ def interpret_requests(
             "row previews MUST have filters=[], aggregations=[], group_by=[], sort=[], "
             "select_fields=[], offset=0, limit=20, currency_field=null and metric_id=null. "
             "Only add a predicate, count, sorting or paging when the user requests it. "
+            "Use eq for exact equality, and preserve case, accents and leading zeros in IDs. "
             "Never invent is_null filters or counts for a request to see raw rows. "
             "Exports require export_scope: DISPLAYED_QUERY for the current displayed/filtered "
             "table, FULL_RUN for a whole-run report. The server pins the previous query; "
