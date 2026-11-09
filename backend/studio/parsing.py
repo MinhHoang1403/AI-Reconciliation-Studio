@@ -24,7 +24,7 @@ from studio.config import Settings
 from studio.contracts import Contract, SourceColumn, WorkspacePolicy
 from studio.errors import DomainError
 
-PARSER_REVISION = "tabular-2"
+PARSER_REVISION = "tabular-3"
 MAIN_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 REL_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 
@@ -189,11 +189,6 @@ def _csv(path: Path, parse_config: ParseConfig, config: Settings) -> list[Parsed
             source_rows.append(previous_line + 1)
             rows.append(list(record))
             previous_line = reader.line_num
-        if (
-            len(rows) > config.max_rows + 30
-            or max((len(r) for r in rows), default=0) > config.max_columns
-        ):
-            raise DomainError("TABLE_LIMIT_EXCEEDED", "Bảng vượt giới hạn số dòng hoặc cột.")
         requested = parse_config.header_row
         if requested is not None:
             # CSV quoted newline làm số bản ghi khác số dòng vật lý. Cùng đơn vị
@@ -204,6 +199,9 @@ def _csv(path: Path, parse_config: ParseConfig, config: Settings) -> list[Parsed
                 )
             requested = source_rows.index(requested) + 1
         head, warnings = _header_index(rows, requested)
+        data_rows = len(rows) - head - 1
+        if data_rows > config.max_rows:
+            raise DomainError("TABLE_LIMIT_EXCEEDED", "Bảng vượt giới hạn số dòng hoặc cột.")
         columns, more = _columns(rows[head])
         # Polars preserves quoted empty string versus absent/null. No numeric inference.
         frame = pl.read_csv(
@@ -216,7 +214,7 @@ def _csv(path: Path, parse_config: ParseConfig, config: Settings) -> list[Parsed
             row_index_offset=head + 2,
             raise_if_empty=True,
         )
-        if frame.height != len(rows) - head - 1:
+        if frame.height != data_rows:
             raise DomainError(
                 "CSV_ROW_COUNT_MISMATCH", "Có dòng trống hoặc cấu trúc CSV cần xác nhận."
             )
@@ -258,8 +256,6 @@ def _xlsx(path: Path, parse_config: ParseConfig, config: Settings) -> list[Parse
                     raise DomainError(
                         "TABLE_LIMIT_EXCEEDED", "Sheet vượt giới hạn số dòng hoặc cột."
                     )
-                # Inspect structure with fastexcel; monetary values still use XML lexemes.
-                reader.load_sheet(name, header_row=None, n_rows=30, dtypes="string")
                 target = targets[sheet_node.attrib[f"{REL_NS}id"]]
                 target = (
                     target.lstrip("/")
@@ -299,8 +295,12 @@ def _xlsx(path: Path, parse_config: ParseConfig, config: Settings) -> list[Parse
                             {"cell": address, "date_serial": value, "format": pycell.number_format}
                         )
                     values[address] = value
-                if max_row == 0:
+                # Formatting alone can create XML cells in a template sheet.
+                # Formula cells without a cached result still carry evidence.
+                if not metadata and not any(value is not None for value in values.values()):
                     continue
+                # Inspect structure with fastexcel; monetary values still use XML lexemes.
+                reader.load_sheet(name, header_row=None, n_rows=30, dtypes="string")
                 from openpyxl.utils import get_column_letter
 
                 rows = [
@@ -308,6 +308,10 @@ def _xlsx(path: Path, parse_config: ParseConfig, config: Settings) -> list[Parse
                     for r in range(1, max_row + 1)
                 ]
                 head, head_warnings = _header_index(rows, parse_config.header_row)
+                if max_row - head - 1 > config.max_rows:
+                    raise DomainError(
+                        "TABLE_LIMIT_EXCEEDED", "Sheet vượt giới hạn số dòng hoặc cột."
+                    )
                 columns, column_warnings = _columns(rows[head])
                 if ws.merged_cells:
                     warnings.append("MERGED_CELLS_REVIEW")
@@ -343,8 +347,9 @@ def parse_to_artifacts(
     path: Path, inspection: FileInspection, parse_config: ParseConfig, config: Settings
 ) -> list[ParsedFrame]:
     """F03: read immutable local source; preserve all post-header rows and raw cell strings."""
-    if hashlib.sha256(path.read_bytes()).hexdigest() != inspection.sha256:
-        raise DomainError("RAW_CHECKSUM_MISMATCH", "Checksum tệp nguồn đã thay đổi.")
+    with path.open("rb") as stream:
+        if hashlib.file_digest(stream, "sha256").hexdigest() != inspection.sha256:
+            raise DomainError("RAW_CHECKSUM_MISMATCH", "Checksum tệp nguồn đã thay đổi.")
     if inspection.extension == ".csv":
         return _csv(path, parse_config, config)
     if inspection.extension == ".xlsx":

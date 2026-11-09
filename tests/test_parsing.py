@@ -3,6 +3,7 @@ import io
 import zipfile
 
 import openpyxl
+import polars as pl
 import pytest
 from studio.contracts import WorkspacePolicy
 from studio.errors import DomainError
@@ -143,6 +144,41 @@ def test_csv_multiline_quoted_cell_keeps_physical_start_row(tmp_path, config):
     parsed = parse_to_artifacts(path, inspection, ParseConfig(), config)[0]
     assert parsed.frame["_source_row"].to_list() == [2, 4]
     assert parsed.frame["c2"][0] == "line one\nline two"
+
+
+def test_csv_rejects_post_header_limit_before_loading_frame(tmp_path, config, monkeypatch):
+    path = tmp_path / "over-limit.csv"
+    raw = b"id,value\n001,10\n002,20\n003,30\n"
+    path.write_bytes(raw)
+    limits = config.model_copy(update={"max_rows": 2})
+    inspection = inspect_upload(io.BytesIO(raw), path.name, "text/csv", limits)
+
+    def unexpected_read(*args, **kwargs):
+        pytest.fail("CSV frame allocation must follow the row limit check")
+
+    monkeypatch.setattr(pl, "read_csv", unexpected_read)
+    with pytest.raises(DomainError, match="TABLE_LIMIT_EXCEEDED") as error:
+        parse_to_artifacts(path, inspection, ParseConfig(), limits)
+    assert error.value.code == "TABLE_LIMIT_EXCEEDED"
+
+
+def test_xlsx_ignores_empty_formatted_sheet_before_valid_data(tmp_path, config):
+    path = tmp_path / "formatted-empty.xlsx"
+    book = openpyxl.Workbook()
+    empty = book.active
+    empty.title = "Mẫu trống"
+    empty["B4"].number_format = "0.00"
+    transactions = book.create_sheet("Giao dịch")
+    transactions.append(["ID", "Số tiền"])
+    transactions.append(["000123", "10.50"])
+    book.save(path)
+
+    with path.open("rb") as stream:
+        inspection = inspect_upload(stream, path.name, "application/octet-stream", config)
+    (parsed,) = parse_to_artifacts(path, inspection, ParseConfig(), config)
+
+    assert parsed.sheet == "Giao dịch"
+    assert parsed.frame.to_dicts() == [{"_source_row": 2, "c1": "000123", "c2": "10.50"}]
 
 
 @pytest.mark.parametrize("extension", ["csv", "xlsx"])
