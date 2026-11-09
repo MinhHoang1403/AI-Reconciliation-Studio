@@ -51,7 +51,7 @@ test("Assistant is a scoped page; draft survives history, reload and project swi
 });
 const state = async () =>
   JSON.parse(
-    await readFile("../runtime/reconciliation-acceptance.json", "utf8"),
+    await readFile(process.env.STUDIO_RECONCILIATION_RECEIPT || "../runtime/reconciliation-acceptance.json", "utf8"),
   ) as State;
 
 test("latest report link wins while the local session is still loading", async ({page}) => {

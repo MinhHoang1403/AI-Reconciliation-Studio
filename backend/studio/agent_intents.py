@@ -1344,6 +1344,8 @@ def resolve_named_reconciliation(goal: str, catalogue: IntentCatalogue) -> Agent
     )
 
 
+CANONICAL_ROW_TERMS = ("dong da chuan hoa", "hang da chuan hoa", "ban ghi da chuan hoa")
+
 LAYER_TERMS: dict[str, QuerySourceKind] = {
     "du lieu goc": "RAW_PREVIEW",
     "bang goc": "RAW_PREVIEW",
@@ -1357,6 +1359,7 @@ LAYER_TERMS: dict[str, QuerySourceKind] = {
     "du lieu da chuan hoa": "CANONICAL",
     "bang da chuan hoa": "CANONICAL",
     "ban da chuan hoa": "CANONICAL",
+    **dict.fromkeys(CANONICAL_ROW_TERMS, "CANONICAL"),
 }
 
 
@@ -1389,6 +1392,8 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
     )
     count = re.fullmatch(
         r"(?:hay )?dem (?:so )?(?:ban ghi|dong|hang) (?:trong |cua )?(" + layer + r")", normalized
+    ) or re.fullmatch(
+        r"(?:hay )?dem (?:so )?(" + "|".join(CANONICAL_ROW_TERMS) + r")", normalized
     )
     count_after = re.fullmatch(
         r"(" + layer + r")(?: (?:cua|trong) (?:nguon|tep|file) "

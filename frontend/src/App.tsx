@@ -1063,7 +1063,7 @@ export function App() {
         if (event.key === "Tab" || event.key === "Escape") setFocusMode("keyboard");
       }}
     >
-      <a className="skip-to-work" href="#main-content" onClick={event => {
+      <a className="skip-to-work" href="#main-content" inert={sidebar || undefined} onClick={event => {
         event.preventDefault();
         document.getElementById("main-content")?.focus();
       }}>Đến nội dung chính</a>

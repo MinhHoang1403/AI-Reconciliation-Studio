@@ -160,9 +160,10 @@ nav {
   border-radius: var(--control-radius);
   color: white;
   background: var(--accent-hover);
-  transform: translateY(-200%);
+  clip-path: inset(50%);
+  pointer-events: none;
 }
-.skip-to-work:focus { transform: none; }
+.skip-to-work:focus { clip-path: none; pointer-events: auto; }
 nav button,
 .settings-nav,
 .future-nav {

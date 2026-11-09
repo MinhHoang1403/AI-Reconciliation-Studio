@@ -1,0 +1,16 @@
+[
+  {"id":"PQ01","goal":"Mở dữ liệu gốc trong tệp Phiếu kho tháng 11.xlsx để tôi đối chiếu.","context":"project","intent":"QUERY_DATA","source":"RAW_PREVIEW","ref":"stock"},
+  {"id":"PQ02","goal":"Đếm số dòng đã chuẩn hóa của nguồn đang mở.","context":"stock","intent":"QUERY_DATA","source":"CANONICAL","ref":"stock-approved","count":true},
+  {"id":"PQ03","goal":"Cho tôi xem bản tự chuẩn bị của Sổ phí tháng 11.csv.","context":"project","intent":"QUERY_DATA","source":"PREPARED","ref":"fees"},
+  {"id":"PQ04","goal":"Liệt kê các bản ghi có lỗi ngày của nguồn hiện tại.","context":"stock","intent":"QUERY_DATA","source":"PREPARED_FINDINGS","ref":"stock"},
+  {"id":"PQ05","goal":"Trong lần đối soát này hãy liệt kê 4 nhóm lệch tiền lớn nhất.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","ref":"run","filter":"AMOUNT_MISMATCH","limit":4},
+  {"id":"PQ06","goal":"Ở kết quả hiện tại, cho xem các nhóm lệch tiền.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","ref":"run","filter":"AMOUNT_MISMATCH"},
+  {"id":"PQ07","goal":"Đếm các giao dịch thiếu đối ứng ở kết quả hiện tại.","context":"run","intent":"QUERY_DATA","source":"VERIFIED_RUN","ref":"run","filter":"UNMATCHED","count":true},
+  {"id":"PQ08","goal":"Cho tôi biết tổng chênh lệch tuyệt đối của lần đối soát đang mở.","context":"run","intent":"SUMMARIZE_RESULTS","ref":"run"},
+  {"id":"PQ09","goal":"Xuất kết quả đối soát đang mở thành tệp CSV.","context":"run","intent":"EXPORT_RESULT","ref":"run","format":"csv"},
+  {"id":"PQ10","goal":"Xuất đúng bảng vừa hiển thị thành file Excel.","context":"ranked","intent":"EXPORT_RESULT","ref":"run","format":"xlsx"},
+  {"id":"PQ11","goal":"Vì sao nhóm thứ 3 trong bảng vừa hiển thị bị lệch?","context":"ranked","intent":"EXPLAIN_RESULT","ref":"run","position":3},
+  {"id":"PQ12","goal":"Tải lại bảng vừa hiển thị dưới dạng CSV.","context":"switched-run","intent":"CLARIFY"},
+  {"id":"PQ13","goal":"Mở dữ liệu gốc của tệp Phiếu kho tháng 09.xlsx.","context":"project","intent":"CLARIFY"},
+  {"id":"PQ14","goal":"Đếm số giao dịch thiếu đối ứng giúp tôi.","context":"project","intent":"CLARIFY"}
+]

@@ -29,7 +29,7 @@ type State = {
 };
 async function state() {
   return JSON.parse(
-    await readFile("../runtime/reconciliation-acceptance.json", "utf8"),
+    await readFile(process.env.STUDIO_RECONCILIATION_RECEIPT || "../runtime/reconciliation-acceptance.json", "utf8"),
   ) as State;
 }
 

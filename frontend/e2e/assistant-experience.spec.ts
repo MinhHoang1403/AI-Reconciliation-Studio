@@ -1,6 +1,6 @@
 import { test } from "./project-selection";
 import {expect} from "@playwright/test";
-import {mkdir} from "node:fs/promises";
+import {mkdir, readFile} from "node:fs/promises";
 import {createHash} from "node:crypto";
 
 test('[MOCK CONTRACT] single-source context can explicitly return to project data without a write',async({page})=>{
@@ -348,24 +348,37 @@ test('Chat files drawer previews and downloads original bytes without leaving co
 });
 
 
+async function deliveryFixture() {
+  const s = JSON.parse(await readFile(
+    process.env.STUDIO_RECONCILIATION_RECEIPT || "../runtime/reconciliation-acceptance.json", "utf8",
+  ));
+  return {
+    project_id: s.project_id as string,
+    run_id: s.runs.delivery.run_id as string,
+    snapshot: s.runs.delivery.snapshot,
+    sources: ["shipments.csv", "delivery-confirmations.csv"].map(name => ({
+      id: s.sources[name].dataset_id as string, name,
+    })),
+  };
+}
+
 test('Persisted canonical and error previews stay inside the chat files drawer',async({page})=>{
-  const fs=await import('node:fs/promises');
-  const s=JSON.parse(await fs.readFile('../runtime/agent-live-delivery.json','utf8'));
-  await page.addInitScript(s=>{localStorage.setItem('studio.project',s.project_id);localStorage.setItem(`studio.conversation.${s.project_id}`,s.conversation_id);},s);
+  const s = await deliveryFixture();
+  await page.addInitScript(id => localStorage.setItem("studio.project", id), s.project_id);
   await page.goto('/');
   const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await expect(input).toBeEnabled();await input.fill('Giữ nguyên bản nháp kiểm tra nguồn');
   const before=page.url();await page.getByRole('button',{name:'Tệp đã tải',exact:true}).click();
   const drawer=page.getByRole('dialog',{name:'Tệp và dữ liệu',exact:true});
-  await drawer.getByRole('button',{name:new RegExp(s.attachments.items[0].name)}).click();
-  const artifacts=await(await page.request.get(`/api/datasets/${s.attachments.items[0].id}/artifacts`)).json();
+  await drawer.getByRole('button',{name:s.sources[0].name}).click();
+  const artifacts=await(await page.request.get(`/api/datasets/${s.sources[0].id}/artifacts`)).json();
   await drawer.getByLabel('Phiên bản chuẩn hóa',{exact:true}).selectOption(artifacts.canonical_datasets[0].id);
   await expect(drawer.getByLabel('Phiên bản chuẩn hóa',{exact:true})).toHaveValue(artifacts.canonical_datasets[0].id);
-  await drawer.getByRole('button',{name:new RegExp(s.attachments.items[0].name)}).click();
+  await drawer.getByRole('button',{name:s.sources[0].name}).click();
   await expect(drawer.getByLabel('Phiên bản chuẩn hóa',{exact:true})).toHaveValue(artifacts.canonical_datasets[0].id);
   await drawer.getByRole('button',{name:'Đã chuẩn hóa',exact:true}).click();
   await expect(drawer.getByRole('table')).toContainText('000702');
   await drawer.getByRole('button',{name:'Dòng lỗi',exact:true}).click();await expect(drawer).toContainText('0 dòng khớp điều kiện');
-  await drawer.getByRole('button',{name:new RegExp(s.attachments.items[1].name)}).click();
+  await drawer.getByRole('button',{name:s.sources[1].name}).click();
   await expect(drawer.getByLabel('Phiên bản chuẩn hóa',{exact:true})).toHaveValue('');
   await expect(drawer.getByRole('button',{name:'Dữ liệu gốc',exact:true})).toHaveAttribute('aria-pressed','true');
   await expect(drawer.getByRole('table')).toContainText('000704');
@@ -374,7 +387,7 @@ test('Persisted canonical and error previews stay inside the chat files drawer',
 });
 
 test('[MOCK conversation, LIVE read] verified report opens in chat and preserves draft',async({page})=>{
-  const fs=await import('node:fs/promises');const s=JSON.parse(await fs.readFile('../runtime/agent-live-delivery.json','utf8'));
+  const s={...await deliveryFixture(),conversation_id:"overlay-conversation"};
   const context={project_id:s.project_id,run_id:s.run_id};
   await page.addInitScript(s=>{localStorage.setItem('studio.project',s.project_id);localStorage.setItem(`studio.conversation.${s.project_id}`,s.conversation_id);},s);
   await page.route(url=>url.pathname===`/api/conversations/${s.conversation_id}`,route=>route.fulfill({json:{conversation:{id:s.conversation_id,context,title:'Synthetic result overlay'},items:[{id:'overlay-answer',job_id:'overlay-job',role:'assistant',text:'',context,workflow_id:'overlay-workflow',created_at:'2026-11-02T00:00:00Z'}],has_more:false}}));

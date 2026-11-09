@@ -2943,8 +2943,27 @@ def test_native_unequal_amount_read_respects_approved_tolerance_and_rounding():
     assert resolve_run_read(goal, cat) is None
 
 
+@pytest.mark.parametrize("noun", ["dòng", "hàng", "bản ghi"])
+def test_counting_normalized_rows_cannot_read_a_different_layer(noun):
+    from studio.agent_intents import explicit_read_layers, resolve_layer_listing
+
+    cat = catalogue()
+    goal = f"Đếm số {noun} đã chuẩn hóa của nguồn đang mở."
+    assert explicit_read_layers([goal]) == {"CANONICAL"}
+    intent = resolve_layer_listing(goal, cat)
+    assert intent is not None and intent.query is not None
+    assert intent.query.source_kind == "CANONICAL"
+    assert intent.query.source_id == "canonical"
+    assert [aggregation.op for aggregation in intent.query.aggregations] == ["count"]
+
+
 @pytest.mark.parametrize(
-    "fixture_file,total", [("agent-read-holdout.json", 32), ("agent-vietnamese-reads.json", 20)]
+    "fixture_file,total",
+    [
+        ("agent-read-holdout.json", 32),
+        ("agent-vietnamese-reads.json", 20),
+        ("agent-product-quality-holdout.json", 14),
+    ],
 )
 def test_inventory_read_holdout_reports_native_coverage_and_checks_resolved_slots(
     fixture_file, total
@@ -3012,7 +3031,7 @@ def test_inventory_read_holdout_reports_native_coverage_and_checks_resolved_slot
             if case.get("format"):
                 assert intent.export_format == case["format"], case["id"]
             assert intent.result_position == case.get("position"), case["id"]
-    assert len(misses) <= 16
+    assert len(misses) <= min(16, total - 1)
     print(json.dumps({"native_correct": len(cases) - len(misses), "typed_router_required": misses}))
 
 

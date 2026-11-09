@@ -7,6 +7,7 @@ an unknown delivery. State and downloaded reports stay under ignored runtime.
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -16,7 +17,11 @@ from uuid import uuid4
 import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
-STATE = ROOT / "runtime" / "reconciliation-acceptance.json"
+STATE = Path(
+    os.environ.get(
+        "STUDIO_RECONCILIATION_RECEIPT", ROOT / "runtime" / "reconciliation-acceptance.json"
+    )
+)
 sys.path.insert(0, str(ROOT / "backend"))
 
 
@@ -234,8 +239,19 @@ def main() -> None:
             )
             entry = state.setdefault("runs", {}).setdefault(name, {"plan": plan})
             if "run_id" not in entry:
+                # The manual oracle marks one invalid row in internal-sales.csv.
+                # Inspect the exact revisions before acknowledging partial inputs.
+                canonical_inputs = [get(f"/canonical-datasets/{ref}") for ref in (a, b)]
+                expected_invalid = [int(file == "internal-sales.csv") for file in (left, right)]
+                assert [item["invalid_count"] for item in canonical_inputs] == expected_invalid
+                assert [item["quality_status"] for item in canonical_inputs] == [
+                    "PARTIAL" if count else "READY" for count in expected_invalid
+                ]
                 proposal = post("/reconciliation-plans", dict(project_id=project_id, plan=plan))
-                rule = post(f"/reconciliation-contracts/{proposal['id']}/approve")
+                rule = post(
+                    f"/reconciliation-contracts/{proposal['id']}/approve",
+                    {"invalid_rows_reviewed": any(expected_invalid)},
+                )
                 accepted = post("/reconciliation-runs", dict(contract_id=rule["id"]))
                 entry.update(
                     run_id=accepted["run_id"], job_id=accepted["job_id"], contract_id=rule["id"]
@@ -264,7 +280,7 @@ def main() -> None:
                 info = get("/exports/" + exported["export_id"])
                 response = client.get(info["download_url"])
                 response.raise_for_status()
-                destination = ROOT / "runtime" / f"reconciliation-{name}.{format}"
+                destination = STATE.parent / f"reconciliation-{name}.{format}"
                 destination.write_bytes(response.content)
                 entry[format + "_export_id"] = exported["export_id"]
             save()
