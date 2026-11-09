@@ -10,6 +10,13 @@
 - Lưu trữ chặn công việc mới và giữ quyền đọc lịch sử trong cùng không gian làm việc. Xóa mềm ẩn khỏi đường dẫn thông thường và chỉ áp dụng khi kiểm tra phụ thuộc cho phép. Tệp gốc, phiên bản, dữ liệu kiểm toán và kho tệp tiếp tục được giữ. Nguồn có liên kết với ánh xạ, bản chuẩn hóa hoặc kết quả có đường lưu trữ.
 - Khóa giao dịch theo dự án tuần tự hóa thay đổi với thao tác tạo việc. Công việc đang chạy/chờ/thử lại hoặc workflow chưa kết thúc chặn chuyển trạng thái.
 - Revision `add_resource_lifecycle` thêm cột metadata. Bản Backend cũ chỉ được dùng khi không có dự án/nguồn đang lưu trữ hoặc xóa mềm. Dùng cổng tương thích trong `tools/rollback.ps1` và giữ schema, volume, audit nguyên vẹn.
+- `PATCH /api/datasets/{id}/name` đổi tên hiển thị của nguồn đang hoạt động. Owner gửi `name` và `expected_name`, giữ phần mở rộng. Tên đã thay đổi trả 409. Gửi lại tên đích đã lưu trả trạng thái hiện tại. Tệp tải xuống tiếp tục dùng tên trong metadata tệp gốc nếu có. SHA-256, revision và bản chuẩn hóa giữ nguyên.
+
+## Không gian làm việc local
+
+- `GET /api/workspaces` liệt kê các không gian theo membership của tài khoản. `POST /api/workspaces` tạo không gian với quyền owner cho người tạo, chính sách `LOCAL_ONLY` và ngân sách ngoài bằng 0. Gửi lại cùng `Idempotency-Key` và tên trả cùng không gian.
+- `POST /api/workspaces/current` nhận `id` và đổi phạm vi phiên trình duyệt sau khi xác minh membership đích. `PATCH /api/workspaces/current/name` nhận `name` và `expected_name` và chỉ owner hiện tại có quyền. Các thay đổi tên và tạo không gian ghi audit.
+- Sau khi xác minh phiên, ứng dụng gửi `X-Studio-Workspace` trên các yêu cầu API. Tab còn giữ phạm vi cũ sau khi phiên đổi không gian nhận `WORKSPACE_CHANGED` và cần tải lại. Header là điều kiện chống ghi nhầm phạm vi. Phiên và membership vẫn quyết định quyền.
 
 ### Xóa vĩnh viễn trên TEST cô lập
 

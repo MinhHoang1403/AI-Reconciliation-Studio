@@ -1,5 +1,50 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Ứng viên theo Master Prompt — 09/11/2026
+
+**Chưa đạt `READY_FOR_OWNER_ACCEPTANCE`.** Ứng viên làm việc trên `codex/studio-product-quality`, xuất phát từ `c9caf8e` và tag `studio-clean-baseline`. Kiểm thử dữ liệu ghi trên schema PostgreSQL TEST và kho tệp riêng, trong cùng Compose project. Các cổng còn mở gồm chất lượng suy luận trên tập câu mới, đích giảm thao tác trong Chat và xóa vĩnh viễn ở phạm vi local thật.
+
+### Ma trận nghiệm thu
+
+| Mã | Mục tiêu và tiền điều kiện | Kiểm và oracle | Trạng thái |
+| --- | --- | --- | --- |
+| G0 | Đồng bộ Git, image và PostgreSQL trước thao tác | `main` ở `c9caf8e`, ứng dụng nền `76265d2`, bốn dịch vụ healthy, ba API nền HTTP 200, dữ liệu nghiệp vụ public trống | PASS nền |
+| G1 | Đọc CSV/XLSX có giới hạn và bảo toàn dòng | `parsing.py`, hồi quy CSV quá hạn, workbook có sheet mẫu trống, kiểm SHA và chuẩn hóa | PASS ca sửa |
+| G2 | Giữ bản tự chuẩn bị, ánh xạ được duyệt và canonical khác nhau | Bộ PostgreSQL, trình duyệt mở đúng nguồn và đối chiếu oracle thủ công | PASS các luồng đã chạy |
+| G3 | Đối soát theo hợp đồng và xác minh độc lập | Ba ca Shopee, TikTok, giao vận trên API thật. Chênh lệch tuyệt đối lần lượt 10,00, 0,00 và 2,75 VND theo oracle tổng hợp | PASS oracle |
+| G4 | Đọc đúng nguồn, hiểu yêu cầu và giữ phê duyệt | T40, xác nhận trong Chat và tập `agent-product-quality-holdout.json`. Kiểm tách tuyến xác định và Ollama local | PARTIAL. Chưa đạt ngưỡng ngôn ngữ của Master Prompt |
+| G5 | Bảng, bằng chứng và báo cáo dùng cùng kết quả | Xuất CSV/XLSX trên ba lượt tổng hợp. Bảng trước biểu đồ, nhãn nguồn tách riêng, số đếm có bản văn bản | PASS luồng xuất đã kiểm |
+| G6 | Tái thiết kế và đo thao tác | Chromium, ảnh đối chiếu, kiểm hai skill. Đổi nguồn desktop 2 → 1 lần bấm. Mobile 2 → 2. Hai bài Chat ba nguồn 29/33 lần bấm và 23/14 trường | PARTIAL. Hai bài Chat chưa đạt đích 23/26 lần bấm và 18/11 trường |
+| G7 | Quản lý không gian, nguồn và xóa đúng phạm vi | API/UI tạo, chuyển, đổi tên không gian. Đổi tên nguồn giữ file gốc. Role, membership, chống ghi từ tab cũ và gửi lặp được kiểm trên PostgreSQL TEST | PARTIAL. Xóa vĩnh viễn chỉ trong TEST. Manifest hiện vẫn đọc nhiều bảng |
+| G8 | Hồi quy, hiệu năng và khôi phục | Ruff, mypy, TypeScript, ESLint, build, scan bí mật và liên kết. Benchmark tổng hợp và diễn tập sao lưu, phục hồi schema riêng | PARTIAL ở mức phát hành |
+
+### Bằng chứng thiết kế
+
+UI UX Pro Max được tra ở chế độ hệ thống thiết kế và các mục Empty States, Disabled States, Table Handling, Focus Not Obscured và biểu đồ so sánh. Giữ yêu cầu nền sáng, xanh dương và font hệ thống của chủ dự án. Áp dụng bằng hướng dẫn ở màn trống, ràng buộc tác vụ theo dự án, cuộn nội bộ bảng, danh mục cạnh chi tiết, cùng số nhóm bằng chữ và thanh ngang.
+
+Impeccable được dùng theo chế độ Operate, `new-work`, `craft-floor`, critique tách đánh giá thiết kế và bằng chứng kỹ thuật, sau đó kiểm lại ứng viên. Chỉ dẫn không dừng xin duyệt từng bước được áp dụng khi chọn bố cục. Ứng viên nhóm tác vụ theo mục đích, đưa phạm vi nguồn vào đầu kết quả và giữ vị trí focus khi đổi nguồn. Kiểm toán phát hiện nút tác vụ mất focus ở chiều cao thấp, khả năng ghi đè nháp và mất lệnh mẫu khi tải lại. Các điểm này được xử lý bằng vùng cuộn ở màn thấp, bảo vệ nháp và lưu lệnh cùng phạm vi nháp. [Định hướng thiết kế](../DESIGN.md) · [Quy chuẩn thành phần](ui-redesign/DESIGN_SYSTEM_BLUEPRINT.md).
+
+Chụp và đo ở 320/390/768/1366/1440/1920 CSS px. Chromium zoom thật 200% giảm viewport từ 1.422 xuống 711 CSS px. Báo cáo, Assistant, Dữ liệu và Cài đặt giữ focus trên điều khiển kiểm thử và không tràn ngang. Chưa thử thiết bị vật lý hoặc trình đọc màn hình. Nghiên cứu tham khảo cách phân tách chuẩn bị và đối soát, truy ngoại lệ có nhật ký và tôn trọng bước duyệt. [Duco](https://support.du.co/hc/en-us/articles/31787826069789-Best-practice-reconciliation-setup) · [FloQast](https://get.floqast.com/hubfs/FloQast_Data%20Sheet_Reconciliation%20Automation_March%202024.pdf) · [BlackLine](https://www.blackline.com/products/financial-close/transaction-matching/) · [WCAG 2.2](https://www.w3.org/TR/WCAG22/).
+
+Benchmark tổng hợp ba mẫu mỗi cỡ 1.000, 10.000 và 50.000 dòng, hai luồng Polars và 0 cloud. Ở 50.000 dòng, p50 parse từ 62,74 xuống 62,21 ms. Peak tiến trình từ 174,50 lên 174,99 MiB. Một mẫu 75.000 dòng đọc trong 312 ms, peak khoảng 223 MiB, trong lúc có kiểm thử khác. Matching 50.000 bản ghi trên hai phía có p50 1.689 ms và xác minh 1.266 ms. Số mẫu và tải chạy nền chỉ cho phép ghi mức quan sát.
+
+### Hồi quy và giới hạn
+
+- Lượt Chromium rộng trên `e9f0fb7` có 147 PASS và 3 FAIL. Hai ca mở dữ liệu đã lưu còn trỏ vào biên nhận của schema cũ. Ca hành trình CSV/XLSX dùng selector cũ cho nhãn nguồn. Sau khi sửa fixture và selector, cả ba ca đạt. Lượt chọn lọc trên `429d2f4` đạt 12/12, gồm kiểm workspace, drawer dữ liệu, kết quả đã xác minh, CSV/XLSX và sáu chiều rộng. Ca đọc PDF/DOCX đã lưu là NOT_RUN vì dữ liệu cache của ca thuộc môi trường cũ.
+- Tập câu hỏi mới có 14 ca, đánh giá intent và tham số trước thực thi. Lượt batch trên bản đầu đạt 5/14 gồm ba ca xác định. Lượt từng câu sau sửa kiểm tầng chuẩn hóa đạt 7/14. Phát lại sau khi ràng buộc tệp đích và phạm vi lượt đang mở đạt 8/14, gồm sáu ca xác định. Phép phát lại dùng lại câu đã thấy. Chưa đạt 90% và chưa có số đo hoàn thành toàn workflow cho tập này. Chỉ Ollama `qwen3:8b` local được gọi trong đợt đánh giá. Qwen công ty và Gemini là NOT_RUN.
+- Kiểm thử local riêng đổi tên nguồn qua giao diện và tải lại đúng tên ban đầu với SHA-256 khớp. Hai bài Chat ba nguồn mỗi bài giữ hai phê duyệt. Thời gian tải đến xác minh quan sát lần lượt 12,47 và 14,07 giây, một mẫu mỗi bài.
+- Build thành công với cảnh báo một chunk biểu đồ 502,72 kB trước nén. Không thay ngưỡng cảnh báo. Giới hạn khả dụng của xóa vĩnh viễn và xác nhận tác động giữ theo hợp đồng TEST.
+- Bộ Backend/PostgreSQL đạt 824 PASS, một cảnh báo deprecation Starlette TestClient. Nội dung Backend khớp bản ứng dụng `4ba988b`. Ở lượt trước, mười ca Qwen mock thừa hưởng cờ Qwen OFF của stack TEST. Cấu hình mock nay độc lập với cờ runtime và mười ca đã chạy trong bộ đạt 824.
+- Rà soát cuối bổ sung chỉ dẫn cuộn ngang để tìm chênh lệch và bằng chứng, tách hai nút quản lý trong Cài đặt và dùng cùng định dạng Decimal tiếng Việt cho chênh lệch trong báo cáo. Vòng Chromium cuối đạt 8/8 trên image `4ba988b`. Lượt đầu của vòng này dùng selector trùng bảng lịch sử và bảng kết quả. Lượt đạt dùng tên trợ năng của bảng kết quả và giữ nguyên oracle. Impeccable kiểm lại ảnh đúng màn hình và chấp nhận các bản sửa UX này.
+
+### Docker và bàn giao
+
+Image ứng viên `4ba988b` đã chạy ở cổng 18180 với schema TEST. OCI revision, SHA mã Backend và nội dung asset qua Nginx đã được đối chiếu trong các lượt dựng. Sau recreate, đọc lại ba snapshot chỉ số và hai tệp nguồn với SHA-256 khớp. Kiểm sao lưu và phục hồi metadata trên schema riêng đạt. Bản sao host khớp SHA-256 với manifest. Các biên nhận nằm trong thư mục runtime của đợt này.
+
+Do các cổng nghiệm thu còn mở, Studio tại cổng 18180 đã trở về image nền `76265d2`. Bốn dịch vụ healthy và kiểm loopback, phiên, quyền, settings và project đều đạt sau khôi phục. Backend và Worker dùng lại schema `public`, kho artifact gốc và đúng volumes trước kiểm thử. Migration còn `add_purge_receipts`. Public có một workspace và không có dự án, nguồn, artifact hay job nghiệp vụ. Image TEST giữ tag `candidate-4ba988b` cho Backend và Frontend. Schema và dữ liệu tổng hợp được giữ riêng để đối chiếu biên nhận. `origin/main` ở `c9caf8e`.
+
+Biên nhận TEST, ảnh trước/sau và kết quả câu hỏi theo từng ca được giữ dưới `runtime/studio-product-quality/`, ngoài Git. Hướng dẫn kiểm các thao tác chính nằm trong [hướng dẫn sử dụng](USER_TEST_GUIDE.md#kiểm-ứng-viên-studio-product-quality).
+
 ## Chuẩn bị nền sạch trước phát hành — 09/11/2026
 
 **`CLEAN_BASELINE_READY_FOR_OWNER_REVIEW`.** Studio local phục vụ nền nghiệp vụ trống sau khi thực thi danh mục đã được chủ dự án phê duyệt. Mốc này bàn giao để chủ dự án xem xét nền sạch.

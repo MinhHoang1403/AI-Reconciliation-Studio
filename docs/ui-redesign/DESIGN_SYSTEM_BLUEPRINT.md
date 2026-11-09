@@ -1,5 +1,13 @@
 # Quy chuẩn thiết kế Calm Financial Workspace
 
+## Bố cục theo công việc trên nhánh studio-product-quality
+
+Đợt này thay cấu trúc bố cục theo Master Prompt. Sáu lối vào vẫn có ích cho đường thao tác thủ công và được chia thành nhóm công việc và nhóm không gian. Assistant mở bằng danh mục tác vụ, dẫn tới cùng một ô soạn. Các việc cần dự án hiện điều kiện ngay tại màn chào. Khi người dùng đã nhập, nút mẫu không ghi đè bản nháp. Tab đi tới liên kết bỏ qua điều hướng trước.
+
+Dữ liệu có danh mục và bảng chi tiết cạnh nhau từ 1366 CSS px, với hàng được chọn có dấu nhận biết và focus ở lại danh mục. Ở khổ hẹp, mở riêng chi tiết và đưa focus tới tên nguồn. Bảng rộng vẫn cuộn nội bộ. Trong kết quả, hai phía có nhãn riêng và biểu đồ thanh dùng cùng số đếm với danh sách văn bản. Cài đặt gom quyền quản lý và tùy chọn theo bốn nhóm, rồi mới đến thao tác phá hủy nếu Backend cấp khả năng.
+
+[Định hướng thiết kế](../../DESIGN.md) · [Kết quả đo và kiểm toán](../IMPLEMENTATION_STATUS.md).
+
 ## Bố cục ứng viên trên nhánh complete-product-interface
 
 Các màn hình tác nghiệp dùng cùng nền sáng `#F8FAFC`, xanh hành động `#2563EB`, mặt bảng trắng, đường phân cách mảnh và chữ hệ thống hỗ trợ tiếng Việt. Trục đọc hội thoại giữ mốc 760 CSS px. Sidebar mở rộng 212 px, thu gọn 64 px và chuyển drawer khi hẹp. Một bộ chọn dự án trong header thay cho các bộ chọn lặp trên màn hình.

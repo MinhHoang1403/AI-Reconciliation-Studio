@@ -528,7 +528,8 @@ for (const size of [
     const scrollHelp = page.getByText("Cuộn ngang trong bảng để xem chênh lệch và mở bằng chứng.");
     if (size.width <= 768) await expect(scrollHelp).toBeVisible();
     else await expect(scrollHelp).toBeHidden();
-    await expect(page.locator(".result-table")).toContainText("2,75 VND");
+    await expect(page.getByRole("table", { name: "Chi tiết đối soát", exact: true }))
+      .toContainText("2,75 VND");
     await expect(
       page.getByRole("button", { name: "Xem bằng chứng", exact: true }).first(),
     ).toBeVisible();
