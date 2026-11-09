@@ -359,7 +359,10 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   await expect(repeatUpload).not.toBeVisible();
   await expect(page.getByRole("cell", { name: "Parcel A repeat", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Tự chuẩn bị", exact: true }).click();
-  await page.getByRole("button", { name: "Xem bản chuẩn hóa đã duyệt", exact: true }).click();
+  const canonicalLayer = page.getByRole("group", { name: "Lớp dữ liệu", exact: true })
+    .getByRole("button", { name: "Chuẩn hóa", exact: true });
+  await canonicalLayer.click();
+  await expect(canonicalLayer).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("cell", { name: "Parcel A repeat", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: /2026-11-01/ })).toBeVisible();
   expect(

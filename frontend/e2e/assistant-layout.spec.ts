@@ -76,8 +76,7 @@ for(const width of [390,768,1366,1440,1920]){
       }
       if(name==="sidebar"){
         const menu=page.getByRole("button",{name:"Mở điều hướng",exact:true});if(await menu.isVisible())await menu.click();
-        await expect(page.locator('.sidebar nav').getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử']);
-        await expect(page.locator('.sidebar').getByRole('button',{name:'Cài đặt',exact:true})).toHaveCount(1);
+        await expect(page.locator('.sidebar nav').getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử','Cài đặt']);
         await page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true}).focus();
         await expect(page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true})).toBeFocused();
       }
@@ -179,11 +178,14 @@ test("[MOCK CONTRACT] result panel retains the selected run and filter across it
     if (path === "/api/projects/visual-project") return route.fulfill({ json: { id: "visual-project", name: "Visual project", workspace_id: "visual" } });
     if (path === "/api/conversations/visual-conversation") return route.fulfill({ json: {
       conversation: { ...conversation, context: runContext },
-      items: [{ id: "run-message", role: "assistant", text: "", workflow_id: "run-workflow", created_at: conversation.created_at }],
+      items: [{ id: "run-message", job_id: "run-job", role: "assistant", text: "", context: runContext, workflow_id: "run-workflow", created_at: conversation.created_at }],
+      has_more: false,
     } });
     if (path === "/api/agent/workflows/run-workflow") return route.fulfill({ json: {
-      id: "run-workflow", state: "COMPLETED", context: runContext,
-      detail: { intent: { intent: "SUMMARIZE_RESULTS" }, steps: [], reviews: [], blocks: [{ type: "verified_facts", result: { snapshot } }] },
+      id: "run-workflow", conversation_id: conversation.id, state: "COMPLETED",
+      context: runContext, updated_at: conversation.created_at,
+      detail: { intent: { intent: "SUMMARIZE_RESULTS" }, model_calls: 0, steps: [], reviews: [],
+        blocks: [{ type: "facts", result: { run: runs[0], snapshot, group: null }, answer: null }] },
     } });
     if (path === "/api/runs") return route.fulfill({ json: { items: runs, total: runs.length } });
     const run = runs.find(row => path === `/api/runs/${row.id}`);

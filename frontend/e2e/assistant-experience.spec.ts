@@ -289,7 +289,8 @@ for(const width of [390,768,1366,1440,1920]){
     await expect(page.getByRole('heading',{name:'Bạn muốn xử lý dữ liệu gì?'})).toBeVisible();
     if(width<900)await page.getByRole('button',{name:'Mở điều hướng',exact:true}).click();
     const nav=page.locator('.sidebar');
-    await expect(nav.getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử','Cài đặt']);
+    await expect(nav.locator('nav').getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử','Cài đặt']);
+    if(width<900)await expect(nav.getByRole('button',{name:'Đóng điều hướng',exact:true})).toBeFocused();
     for(const name of ['Tổng quan','Ngoại lệ','Kết quả'])await expect(nav.getByRole('button',{name,exact:true})).toHaveCount(0);
     await mkdir('../runtime/assistant-experience',{recursive:true});
     await page.screenshot({path:`../runtime/assistant-experience/after-${width}.png`,fullPage:true});
