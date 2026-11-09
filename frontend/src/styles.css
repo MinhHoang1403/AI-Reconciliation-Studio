@@ -1407,7 +1407,15 @@ pre {
   .masthead-scope .project-trigger { flex: 1; }
   .masthead-scope .project-trigger,
   .workspace-picker { min-height: 44px; }
-  .workspace-picker strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
+  .masthead-scope .project-test-badge { display: none; }
+  .masthead-scope :is(.workspace-picker, .project-trigger) strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+  }
   .masthead-brand { gap: 6px; }
   .brand { gap: 6px; font-size: 13px; }
   .brand-symbol { flex-basis: 27px; height: 27px; }

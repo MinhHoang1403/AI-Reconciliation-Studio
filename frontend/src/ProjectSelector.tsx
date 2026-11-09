@@ -184,6 +184,7 @@ export function ProjectSelector({
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`Dự án: ${project?.name || "Chọn dự án"}`}
+        aria-description={project?.classification === "TEST" ? "Dự án thử nghiệm" : undefined}
         onClick={() => {
           invalidate();
           setOpen(true);

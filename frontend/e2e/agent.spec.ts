@@ -337,6 +337,11 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
     expect(bank.monetary[0].signed_variance).toBe('-0.01');
     expect(bank.monetary[0].absolute_variance).toBe('0.01');
     receipts.bank_run_id=bankRun;
+    await send('Xuất báo cáo Excel của lần đối soát này');
+    const bankFile=page.waitForEvent('download');
+    await work.getByRole('link',{name:/Tải.*XLSX/i}).click();
+    await (await bankFile).saveAs(`${folder}/bank.xlsx`);
+    receipts.bank_export_file='bank.xlsx';
   }
   expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBe(before.gemini_requests_used);
   expect(errors).toEqual([]);
