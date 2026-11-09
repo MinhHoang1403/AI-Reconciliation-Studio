@@ -140,9 +140,13 @@ export function WorkspaceSettings({ settings: s, role, tableDensity, onDensityCh
         <div><dt>Không gian làm việc</dt><dd>{workspaceName}</dd></div>
         <div><dt>Quyền của bạn</dt><dd>{roles[role] ?? "Chưa xác minh"}</dd></div>
       </dl>
-      {onManageProjects && <button className="text-button" onClick={event => onManageProjects(event.currentTarget)}><FolderOpen size={17} /> Quản lý dự án</button>}
-      {s.workspace_id && <WorkspaceManager current={{ id: s.workspace_id, name: workspaceName, role }}
-        role={role} onRename={setWorkspaceName} />}
+      {(onManageProjects || s.workspace_id) && <div className="settings-actions">
+        {onManageProjects && <button className="text-button" onClick={event => onManageProjects(event.currentTarget)}>
+          <FolderOpen size={17} aria-hidden="true" /> Quản lý dự án
+        </button>}
+        {s.workspace_id && <WorkspaceManager current={{ id: s.workspace_id, name: workspaceName, role }}
+          role={role} onRename={setWorkspaceName} />}
+      </div>}
     </section>
     <section aria-labelledby="settings-privacy">
       <h2 id="settings-privacy"><ShieldCheck size={18} aria-hidden="true" /> AI và quyền riêng tư</h2>

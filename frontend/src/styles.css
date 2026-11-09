@@ -2062,6 +2062,8 @@ pre {
 .settings-rows > div { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr); gap: .6rem; padding: .35rem 0; }
 .settings-rows dt { font-weight: 550; }
 .settings-rows dd { margin: 0; color: var(--text-muted); overflow-wrap: anywhere; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin-top: .75rem; }
+.settings-actions > button { min-height: 2.5rem; text-align: start; }
 .settings-register summary { cursor: pointer; padding-block: .6rem; color: var(--accent-hover); }
 .density-preference input[type="radio"] { inline-size: 1rem; block-size: 1rem; min-height: 0; margin: 0; padding: 0; flex: none; }
 .density-preference { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 0; border: 0; }

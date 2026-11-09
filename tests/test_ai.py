@@ -97,7 +97,16 @@ def unknown_proposal():
     }
 
 
-def test_T09_qwen_invalid_json_retry_bounded(config, profile, schema):
+@pytest.fixture
+def qwen_config(config):
+    """Mock transport exercises the provider even when the running stack disables Qwen."""
+    config.qwen_enabled = True
+    config.qwen_base_url = "https://synthetic.test/v1"
+    config.qwen_model = "knowledge"
+    return config
+
+
+def test_T09_qwen_invalid_json_retry_bounded(qwen_config, profile, schema):
     calls = []
 
     def transport(request):
@@ -106,10 +115,10 @@ def test_T09_qwen_invalid_json_retry_bounded(config, profile, schema):
         assert request.url.path == "/prefix/v1/chat/completions"
         return httpx.Response(200, json={"choices": [{"message": {"content": "{broken"}}]})
 
-    config.qwen_base_url = "https://synthetic.test/prefix/v1/"
+    qwen_config.qwen_base_url = "https://synthetic.test/prefix/v1/"
     with httpx.Client(transport=httpx.MockTransport(transport)) as client:
         with pytest.raises(DomainError, match="AI_INVALID_JSON"):
-            QwenProvider(config, client).propose(profile, schema)
+            QwenProvider(qwen_config, client).propose(profile, schema)
     assert len(calls) == 2
 
 
@@ -122,45 +131,42 @@ def test_T09_qwen_invalid_json_retry_bounded(config, profile, schema):
         (400, "QWEN_HTTP_ERROR", 1),
     ],
 )
-def test_qwen_http_contract(status, expected, count, config, profile, schema):
+def test_qwen_http_contract(status, expected, count, qwen_config, profile, schema):
     calls = []
 
     def transport(request):
         calls.append(request)
         return httpx.Response(status, json={"sensitive": "must not escape"})
 
-    config.qwen_base_url = "https://synthetic.test/v1"
     with httpx.Client(transport=httpx.MockTransport(transport)) as client:
         with pytest.raises(DomainError, match=expected):
-            QwenProvider(config, client).propose(profile, schema)
+            QwenProvider(qwen_config, client).propose(profile, schema)
     assert len(calls) == count
 
 
-def test_qwen_timeout_bounded(config, profile, schema):
+def test_qwen_timeout_bounded(qwen_config, profile, schema):
     calls = []
 
     def transport(request):
         calls.append(request)
         raise httpx.ReadTimeout("synthetic")
 
-    config.qwen_base_url = "https://synthetic.test/v1"
     with httpx.Client(transport=httpx.MockTransport(transport)) as client:
         with pytest.raises(DomainError, match="QWEN_UNAVAILABLE"):
-            QwenProvider(config, client).propose(profile, schema)
+            QwenProvider(qwen_config, client).propose(profile, schema)
     assert len(calls) == 1  # Read timeout: delivery is unknown, so never resend blindly.
 
 
 @pytest.mark.parametrize(
     "task", ["classify_dataset", "infer_grain", "propose_mapping", "suggest_transformation"]
 )
-def test_qwen_unknown_and_tasks(task, config, profile, schema):
+def test_qwen_unknown_and_tasks(task, qwen_config, profile, schema):
     def transport(request):
         assert json.loads(request.content)["model"] == "knowledge"
         return httpx.Response(200, json=model_response(unknown_proposal()))
 
-    config.qwen_base_url = "https://synthetic.test/v1"
     with httpx.Client(transport=httpx.MockTransport(transport)) as client:
-        result = QwenProvider(config, client).propose(profile, schema, task)
+        result = QwenProvider(qwen_config, client).propose(profile, schema, task)
     assert result.status == "UNKNOWN"
 
 
