@@ -34,7 +34,7 @@ Trong bản giao diện mới, bộ chọn **Trợ lý cho tin nhắn mới** n�
 2. Dùng **AI Assistant** để nêu mục tiêu và bổ sung dữ kiện. Duyệt cách ghép cột hoặc quy tắc mới khi cần.
 3. Mở **Đối soát** để chạy quy tắc đã duyệt. Vào **Báo cáo** để xem kết quả, bằng chứng và tải Excel.
 4. Dùng **Lịch sử** để tiếp tục công việc. Mở **Cài đặt** để xem quyền, chính sách chia sẻ và chọn mật độ bảng.
-5. Trong bản giao diện mới, chủ không gian có thể mở **Quản lý dự án** hoặc **Quản lý nguồn**, xem tác động, rồi lưu trữ hoặc xóa mềm nếu được phép. Chọn danh sách **Đã lưu trữ** hoặc **Đã xóa khỏi danh sách** để khôi phục.
+5. Chủ không gian có thể mở **Quản lý dự án** hoặc **Quản lý nguồn**, xem tác động rồi lưu trữ hoặc **Đưa vào Thùng rác** khi được phép. Dùng danh sách tương ứng trong trình quản lý để khôi phục.
 
 Ví dụ yêu cầu:
 

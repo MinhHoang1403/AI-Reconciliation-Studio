@@ -10,7 +10,7 @@ Khi stack healthy nhưng bootstrap trả `LOCAL_DEMO_NOT_VERIFIED`, ưu tiên `.
 
 1. Chạy Ruff, mypy, TypeScript, ESLint và production build; kiểm bí mật và liên kết bằng `python tools/check_repository.py` trong môi trường Python của dự án.
 2. Chạy `./tools/test-postgres.ps1 -All -Source` trước triển khai, hoặc `-All` để kiểm image đang chạy. Các ca PostgreSQL dùng schema cô lập trên server hiện có; không chạy trên dữ liệu nghiệp vụ.
-3. Chạy `npm --prefix frontend run test:e2e` tuần tự, một runner, retries 0. Chờ tác vụ AI kết thúc trước khi chạy. Kiểm candidate dùng `STUDIO_FRONTEND_DIST=1`; nghiệm thu Docker bỏ biến này.
+3. Chạy `npm --prefix frontend run test:e2e` tuần tự, một runner, retries 0. Bộ này ghi dữ liệu, nên phải xác minh Backend và Worker dùng schema TEST cùng kho tệp riêng trước khi chạy. Giữ cùng Compose project và chặn provider ngoài phạm vi test. `STUDIO_FRONTEND_DIST=1` chỉ đổi nơi trình duyệt lấy tệp frontend. Khi kiểm qua Nginx, bỏ biến này.
 4. Trước đổi image, chờ queue hết tác vụ và tạo backup/restore bằng lệnh dưới. Không ghi dữ liệu qua UI trong lúc chụp backup. Công cụ tự từ chối nếu metadata thay đổi; giữ cả receipt thất bại.
 
 Ca `agent.spec.ts` với tên `Three new inventory sources` thao tác thật từ upload ba tệp đến duyệt gộp, xem raw/prepared, xác nhận kỳ, đối soát, biểu đồ, giải thích, bằng chứng và hai dạng xuất. Có thể đặt `STUDIO_JOURNEY_WIDTH` thành 390/768/1366/1440/1920 rồi chạy riêng ca này để kiểm cả hành trình tại từng kích thước. Chạy tuần tự để các phép đo thao tác không bị ảnh hưởng bởi runner khác. Receipts nằm ở `runtime/automation-inventory/<id>/receipt.json`.

@@ -1,5 +1,58 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Chuẩn bị nền sạch trước phát hành — 09/11/2026
+
+**`CLEANUP_AWAITING_OWNER_APPROVAL`.** Studio tiếp tục phục vụ dữ liệu hiện hành. Phạm vi xóa đã có danh mục, backup và diễn tập. Việc xóa dữ liệu hiện hành cần xác nhận theo dấu vân tay của danh mục.
+
+Đợt này kiểm kê và chuẩn bị dọn môi trường hiện có. Mốc source ứng viên là `b61c858`, còn image ứng dụng dùng đúng các đầu vào từ `76265d2`. Chênh lệch giữa hai mốc chỉ gồm tài liệu và một ca kiểm thử Python. `origin/main` giữ `6403129` vì thay đổi sản phẩm từ ứng viên vẫn chờ nghiệm thu. Các nhánh thiết kế, triển khai giao diện và kiểm toán độ tin cậy đều là tổ tiên của nhánh ứng viên. Kho Git chưa cấu hình GitHub Actions.
+
+### Sao lưu, phạm vi và diễn tập
+
+- Backup mới khôi phục **25 bảng** trong schema riêng và đối chiếu **14.068 tệp**. Bản sao trên host khớp SHA-256 với manifest. Kích thước metadata là 130.971.836 byte và tệp nghiệp vụ là 701.221.180 byte. Bản trên host và bản trong volume cùng nằm trên máy chạy Studio.
+- PostgreSQL 18.3 giữ database `studio`, schema `public` và migration `add_purge_receipts`. Kiểm kê theo ID, quan hệ khóa ngoại, tham chiếu JSON, checksum từng tệp và sổ hạn mức AI. Danh mục chi tiết, ID, các bản sao và biên nhận vận hành nằm trong `runtime/pre-release-cleanup/`, ngoài Git.
+- Phạm vi dự kiến gồm 1.151 dự án và hai workspace phụ. Trong số đó có 17 dự án cần chủ dự án xác nhận phạm vi TEST, gồm 12 dự án TEST ở workspace phụ, 3 `UNKNOWN` và 2 `WORK`. Hai dự án được đánh dấu giữ trong đợt kiểm toán trước đều mang nhãn TEST và có mặt trong danh mục lần này theo yêu cầu mới. Danh mục giữ workspace demo, membership owner, phiên demo, chính sách AI, sổ hạn mức, audit demo và năm tệp bằng chứng UAT ngoài thư mục nghiệp vụ. Toàn bộ audit được giữ trong backup.
+- Bản sao cô lập đã chạy cả đường quay lui giao dịch và đường xóa. Các bảng nghiệp vụ về 0, dọn đủ 14.068 tệp và tiếp tục được từ danh mục sau khi mô phỏng gián đoạn dọn tệp. Một ca trên schema trống độc lập đã kiểm đăng nhập owner, tạo dự án, tải CSV, đọc bản gốc, chuẩn hóa giữ mã có số 0 đầu và dọn đúng dữ liệu smoke. Sau ca kiểm, các bảng nghiệp vụ và kho tệp TEST trở lại trống.
+
+| Dữ liệu | PostgreSQL hiện hành tại mốc kiểm kê | Bản sao sau diễn tập |
+| --- | ---: | ---: |
+| Workspace | 3 | 1 |
+| Dự án | 1.151 | 0 |
+| Nguồn và phiên bản nguồn | 2.821 mỗi loại | 0 |
+| Bảng nguồn | 2.872 | 0 |
+| Ánh xạ | 5.038 | 0 |
+| Bản chuẩn hóa | 2.160 | 0 |
+| Lượt đối soát | 966 | 0 |
+| Ngoại lệ | 12.648 | 0 |
+| Báo cáo | 1.759 | 0 |
+| Hội thoại | 2.461 | 0 |
+| Công việc | 15.806 | 0 |
+| Hàng metadata artifact | 11.343 | 0 |
+| Tệp nghiệp vụ | 14.068 | 0 |
+
+Số 0 trong bảng là kết quả trên bản sao. Kiểm lại sau khi trả Studio về `public` cho thấy dấu vân tay cả 25 bảng và 14.068 tệp hiện hành vẫn khớp danh mục. Phiên đăng nhập demo có thể đổi do bootstrap và vẫn được giữ. Xác nhận xóa phải dùng SHA-256 của danh mục cùng danh sách ID cố định, sau đó kiểm lại tính toàn vẹn và dấu vết thay đổi ngay trước thực thi.
+
+### Source và tài liệu
+
+Kiểm file Git, đồ thị import tĩnh, các điểm import động, entry point API/Worker, migrations, build inputs và fixtures. Chưa có module hoặc dependency đủ căn cứ để bỏ. Hướng dẫn E2E nay yêu cầu Backend/Worker trỏ vào schema và kho tệp TEST riêng. README dùng đúng nhãn Thùng rác. Các biên bản triển khai cũ, bộ oracle, script rollback, dependency cài đặt và bằng chứng kiểm thử được giữ.
+
+Lệnh xóa đệ quy nhiều thư mục cache ban đầu bị chính sách thực thi chặn. Sau khi chuyển sáu mục có thể tái tạo vào một thư mục riêng và xác minh lại từng mục, đã dọn đúng thư mục này, gồm 58 tệp và 30.176.523 byte. Các phép kiểm đã tạo lại bản build đang dùng. Bản sao kho tệp dùng riêng cho Chromium cũng đã được dọn sau khi gỡ mount TEST.
+
+### Hồi quy và Docker
+
+TypeScript, ESLint, build production, Ruff trong phạm vi công cụ liên quan, kiểm dấu hiệu bí mật và đường dẫn Markdown đều đạt. Python/PostgreSQL đạt **814/814**. Chromium qua Nginx đạt **150/150** trong 18,4 phút. Lượt Chromium dùng cùng Compose, tạm gắn Backend/Worker vào schema UUID và kho tệp TEST riêng với các provider tắt. Khi kết thúc đã trả đúng cấu hình `public`, xác minh phiên owner và dọn bản sao TEST.
+
+| Bộ image | Revision | Image ID và digest local |
+| --- | --- | --- |
+| Backend và Worker hiện hành | `76265d2` | `sha256:24045049e460be6a91232da1885ea352460ab67c7577f696e460fecaaade1272` |
+| Frontend hiện hành | `76265d2` | `sha256:70990773412a1ba1650a968948fa12b4e52009d85ff4224930f4431805b4fe56` |
+| Backend và Worker rollback | `5855585` | `sha256:0db1f26bb1e2d56cd19b02d7e74cbff04dfea23df92b695560c703ed1d3c188d` |
+| Frontend rollback | `5855585` | `sha256:35ebdd7e11e7c01f9e42e0a7ac14000af0e6566c105ef5fb5bdd8f592d0d9892` |
+| PostgreSQL 18.3 Alpine | `18.3-alpine` | `sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7` |
+
+Đã chạy bộ rollback rồi trở lại ứng viên trên migration `add_purge_receipts`. Cả hai lần khớp snapshot PostgreSQL và byte của 14.068 tệp. Cùng PostgreSQL container và hai volume gốc phục vụ sau khi quay lại ứng viên. 58 tệp nguồn trong mỗi container Backend/Worker và sáu tệp JS/CSS qua Nginx khớp image/source đã ghi.
+
+Đã gỡ chín image Studio không còn container tham chiếu, kể cả container đã dừng. Giữ bộ hiện hành và đúng một bộ rollback, cùng PostgreSQL. Kiểm lại 27 container ngoài Studio, 42 volume và các network của host cho kết quả khớp. `docker system df` ghi 45 → 36 image và dung lượng image hiển thị 25,38 → 25,37 GB. Dung lượng trống ổ C tăng khoảng 29,6 MB trong khoảng đo, đồng thời có dọn cache cục bộ nên phần tăng không thể quy riêng cho Docker. Cả bốn dịch vụ, phiên owner, phép mở Studio bằng Chromium và hai bộ đối chiếu tài chính kèm XLSX readback đều đạt sau cleanup.
+
 ## Hoàn thiện sản phẩm theo hành trình — 09/11/2026
 
 **Trạng thái `NOT_READY` cho nghiệm thu toàn bộ.** Ứng viên local phục vụ các luồng đã kiểm. Hai hành trình Chat ba nguồn chưa giảm thao tác so với W1–W5. Đợt này chỉ thay trực tiếp các điểm vào chuẩn hóa, xuất báo cáo, điều phối Chat và quản lý vòng đời. Thiếu đánh giá đối chiếu UX đầy đủ giữa mọi hành trình, phép đo hiệu năng đầu cuối cùng điều kiện và kiểm thiết bị thật. Chủ dự án chưa nghiệm thu.
