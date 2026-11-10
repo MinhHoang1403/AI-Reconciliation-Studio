@@ -1,4 +1,7 @@
-param([ValidatePattern('^([a-f0-9]{7,40})?$')][string]$ReleaseRevision = '')
+param(
+    [ValidatePattern('^([a-f0-9]{7,40})?$')][string]$ReleaseRevision = '',
+    [switch]$VerifyOnly
+)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $taskImages = @{}
@@ -19,6 +22,10 @@ $taskSupportsNullable = ($taskConfigSource -join "`n") -match 'external_ai_reque
 $taskLifecycleSource = git ls-tree --name-only $taskBackendRevision backend/studio/resource_lifecycle.py
 if ($LASTEXITCODE -ne 0) { throw 'Cannot verify lifecycle compatibility from repository history.' }
 $taskSupportsLifecycle = $taskLifecycleSource -eq 'backend/studio/resource_lifecycle.py'
+$taskReservationMigration = 'backend/migrations/versions/retain_purged_reservations.py'
+$taskReservationSource = git ls-tree --name-only $taskBackendRevision $taskReservationMigration
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify reservation ledger compatibility from repository history.' }
+$taskSupportsRetainedReservations = $taskReservationSource -eq $taskReservationMigration
 # Chỉ các migrations additive đã review; không downgrade DB hoặc suy compatibility tổng quát.
 $taskGuard = @'
 import sys
@@ -33,22 +40,31 @@ with SessionFactory() as db:
         )), 'Restore the audited finite environment before using a pre-nullable rollback image; retain all request history'
         assert db.scalar(text("SELECT count(*) FROM workspaces WHERE policy->'external_request_budget' = 'null'::jsonb")) == 0, 'Restore compatible finite workspace policy from the audited backup; never reset the request ledger'
     revision=db.scalar(text('SELECT version_num FROM alembic_version'))
-    assert revision in {'create_reconciliation','create_conversations','create_agent_workflows','add_resource_lifecycle','add_purge_receipts'}, 'Unknown schema: compatibility review required'
-    if revision == 'add_purge_receipts':
+    purge_revisions = {'add_purge_receipts', 'retain_purged_reservations'}
+    lifecycle_revisions = purge_revisions | {'add_resource_lifecycle'}
+    workflow_revisions = lifecycle_revisions | {'create_agent_workflows'}
+    assert revision in workflow_revisions | {'create_reconciliation', 'create_conversations'}, 'Unknown schema: compatibility review required'
+    if revision == 'retain_purged_reservations':
+        assert sys.argv[3] == 'True', 'Rollback image must retain provider reservations after workspace purge'
+    if revision in purge_revisions:
         assert not db.scalar(text('SELECT EXISTS (SELECT 1 FROM purge_receipts WHERE completed_at IS NULL)')), 'Finish pending filesystem deletion before rollback'
-    if revision in {'add_resource_lifecycle','add_purge_receipts'} and sys.argv[2] != 'True':
+    if revision in lifecycle_revisions and sys.argv[2] != 'True':
         for table in ('projects', 'datasets'):
             assert not db.scalar(text(f'SELECT EXISTS (SELECT 1 FROM {table} WHERE archived_at IS NOT NULL OR deleted_at IS NOT NULL)')), 'Inactive data requires a lifecycle-aware backend; roll back frontend only'
     assert db.scalar(text("SELECT count(*) FROM jobs WHERE status IN ('QUEUED','RUNNING','RETRYABLE_FAILURE')")) == 0, 'Wait for active jobs'
-    if revision in {'create_agent_workflows','add_resource_lifecycle','add_purge_receipts'}:
+    if revision in workflow_revisions:
         assert db.scalar(text("SELECT count(*) FROM agent_workflows WHERE state IN ('CREATED','RUNNING')")) == 0, 'Wait for workflows to settle'
         # Reviews remain untouched; resumption requires a compatible accepted source.
         print('Agent reviews are retained; resumption depends on the selected accepted source')
     assert db.scalar(text("SELECT count(*) FROM workspaces WHERE id='demo'")) == 1
     print('PASS compatible additive schema and no active jobs', revision)
 '@
-$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle"
+$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle" "$taskSupportsRetainedReservations"
 if ($LASTEXITCODE -ne 0) { throw 'Rollback compatibility gate failed.' }
+if ($VerifyOnly) {
+    Write-Output "Verified rollback images for $taskBackendRevision against the current deployment."
+    return
+}
 # Giữ schema hiện hành đã qua compatibility gate; không chạy upgrade/downgrade.
 # Khởi tạo proof riêng rồi chạy API của image đã chọn trong cùng Compose hiện có.
 $taskStartup = "import os,secrets; from studio.config import settings; assert len(settings.session_secret.get_secret_value())>=32; settings.instance_path.parent.mkdir(parents=True,exist_ok=True); settings.instance_path.write_text(secrets.token_urlsafe(32)); settings.demo_proof_path.unlink(missing_ok=True); os.execvp('uvicorn',['uvicorn','studio.api:app','--host','0.0.0.0','--port','8000','--no-proxy-headers','--no-access-log'])"
