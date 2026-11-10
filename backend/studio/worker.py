@@ -1095,7 +1095,7 @@ def process_job(job_id: str, token: str, *, native_only: bool = False) -> None:
             transient = provider_retry or (code == "WORKER_INTERNAL_ERROR" and job.attempts < 3)
             job.status = "RETRYABLE_FAILURE" if transient else "BLOCKED" if blocked else "FAILED"
             if code in GEMINI_RETRYABLE_ERRORS:
-                job.result = {"provider_retry_safe": retry_after is not None}
+                job.result = {"provider_retry_safe": True} if retry_after is not None else None
             job.error_code, job.lease_until = code, None
             job.available_at = now() + timedelta(
                 seconds=retry_after if retry_after is not None else 5 * job.attempts

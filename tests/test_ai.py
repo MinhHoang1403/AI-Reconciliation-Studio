@@ -580,7 +580,9 @@ def test_explicit_unlimited_configuration_is_local_only(value):
 
 
 @pytest.mark.parametrize("error", [None, 403, 429, "timeout", "cloud-off", "missing-key"])
-def test_unlimited_keeps_provider_permissions_receipts_and_bounded_delivery(config, error):
+def test_unlimited_keeps_provider_permissions_receipts_and_bounded_delivery(
+    config, error, monkeypatch
+):
     from pydantic import SecretStr
     from studio.ai_gateway import GeminiProvider
 
@@ -592,6 +594,12 @@ def test_unlimited_keeps_provider_permissions_receipts_and_bounded_delivery(conf
         mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=None
     )
     calls = []
+    reservations = []
+    monkeypatch.setattr("studio.ai_gateway.time.sleep", lambda _: None)
+
+    def reserve():
+        reservations.append(True)
+        return True
 
     def transport(request):
         calls.append(request)
@@ -625,7 +633,7 @@ def test_unlimited_keeps_provider_permissions_receipts_and_bounded_delivery(conf
                 provider.request_typed(
                     [{"content": "test"}, {"content": "synthetic"}],
                     policy,
-                    lambda: True,
+                    reserve,
                     json.loads,
                     max_attempts=2,
                 )
@@ -639,10 +647,11 @@ def test_unlimited_keeps_provider_permissions_receipts_and_bounded_delivery(conf
                 provider.request_typed(
                     [{"content": "test"}, {"content": "synthetic"}],
                     policy,
-                    lambda: True,
+                    reserve,
                     json.loads,
                     max_attempts=2,
                 )
-        assert len(calls) == (0 if error in {"cloud-off", "missing-key"} else 1)
+        expected = 0 if error in {"cloud-off", "missing-key"} else 2 if error == 429 else 1
+        assert len(calls) == len(reservations) == expected
     finally:
         provider.close()
