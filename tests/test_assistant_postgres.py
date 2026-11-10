@@ -90,10 +90,12 @@ def conversation(client, context, key="conversation"):
     return response.json()["id"]
 
 
-def ask(client, conversation_id, context, question="Vì sao lệch?", key="question"):
+def ask(
+    client, conversation_id, context, question="Vì sao lệch?", key="question", *, mode="LEGACY"
+):
     return client.post(
         "/api/assistant/messages",
-        json=dict(conversation_id=conversation_id, context=context, text=question),
+        json=dict(conversation_id=conversation_id, context=context, text=question, mode=mode),
         headers={"Idempotency-Key": key},
     )
 
@@ -159,6 +161,45 @@ def test_auto_routing_keeps_actions_and_compound_requests_on_agent(
         assert job.kind == kind
         if kind == "agent":
             assert job.payload["command"] == command
+
+
+def test_project_chat_followup_reads_its_single_completed_run_and_replays(pg):  # noqa: F811
+    from studio.database import AgentWorkflowRow, JobRow
+
+    client, factory, worker = pg
+    pid, _, _, queued = create_approved_run(pg)
+    drain(factory, worker)
+    run_id = queued["run_id"]
+    context = dict(project_id=pid)
+    cid = conversation(client, context)
+    parent = ask(
+        client, cid, context, "Chuẩn hóa rồi đối soát và xuất Excel.", key="parent", mode="AUTO"
+    )
+    assert parent.status_code == 202
+    with factory() as db:
+        job = db.get(JobRow, parent.json()["job_id"])
+        job.status = "SUCCEEDED"
+        db.add(AgentWorkflowRow(
+            workspace_id="demo", project_id=pid, conversation_id=cid, actor_id="test-owner",
+            parent_job_id=job.id, goal="synthetic compound workflow", fingerprint="synthetic",
+            state="COMPLETED", context={**context, "run_id": run_id},
+            detail={"sequence_progress": {
+                "sequence": {"pairs": [{"left_dataset_id": "left", "right_dataset_id": "right"}]},
+                "pair_index": 1, "stage": "EXPORT",
+            }},
+        ))
+        db.commit()
+    first = ask(client, cid, context, "Tóm tắt kết quả đối soát", key="followup", mode="AUTO")
+    assert first.status_code == 202, first.text
+    drain(factory, worker)
+    same = ask(client, cid, context, "Tóm tắt kết quả đối soát", key="followup", mode="AUTO")
+    assert same.json() == {**first.json(), "status": "SUCCEEDED"}
+    conversation_state = client.get(f"/api/conversations/{cid}").json()
+    assert conversation_state["conversation"]["context"]["run_id"] is None
+    answer = conversation_state["items"][-1]["answer"]
+    assert answer["status"] == "ANSWERED"
+    assert answer["request_count"] == 0
+    assert answer["fact_set"]["context"]["run_id"] == run_id
 
 
 def test_conversation_queue_idempotency_cursor_cache_and_scope(pg):  # noqa: F811

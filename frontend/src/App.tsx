@@ -703,9 +703,11 @@ export function App() {
     setSearch("");
     setView(pendingTarget?.canonical_id ? "errors" : "raw");
     setPreview(null);
+  }, [tableId, datasetId, pendingTarget?.canonical_id]);
+  useEffect(() => {
     void loadDetails().catch((err) => setError(err.message));
     return () => detailRequest.current?.abort();
-  }, [loadDetails]);
+  }, [loadDetails, selectedDataset?.status]);
 
   useEffect(() => {
     if (!tableId || (["canonical", "errors"].includes(view) && !canonicalId)) {

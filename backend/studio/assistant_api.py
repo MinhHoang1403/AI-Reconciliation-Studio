@@ -15,6 +15,7 @@ from studio.assistant import explicit_fact_question
 from studio.assistant_tools import read_tool, scoped_context
 from studio.config import ModelChoice, settings
 from studio.contracts import WorkspacePolicy
+from studio.contracts.agent import SequenceProgress
 from studio.contracts.assistant import (
     AssistantAnswer,
     AssistantContext,
@@ -33,6 +34,7 @@ from studio.database import (
     ConversationRow,
     JobRow,
     MessageRow,
+    RunRow,
     TraceRow,
     WorkspaceRow,
     now,
@@ -75,6 +77,41 @@ def conversation_view(row: ConversationRow) -> ConversationView:
         created_at=row.created_at,
         archived=row.archived,
     )
+
+
+def followup_context(
+    db: Session, actor: Actor, conversation: ConversationRow, context: AssistantContext
+) -> AssistantContext:
+    """Read the single verified result of this conversation's completed workflow."""
+    if any((context.run_id, context.dataset_id, context.group_id, context.case_id)):
+        return context
+    workflow = db.scalar(
+        select(AgentWorkflowRow)
+        .where(
+            AgentWorkflowRow.workspace_id == actor.workspace_id,
+            AgentWorkflowRow.project_id == conversation.project_id,
+            AgentWorkflowRow.conversation_id == conversation.id,
+            AgentWorkflowRow.actor_id == actor.id,
+            AgentWorkflowRow.state == "COMPLETED",
+            AgentWorkflowRow.detail.has_key("sequence_progress"),  # noqa: W601
+        )
+        .order_by(AgentWorkflowRow.created_at.desc(), AgentWorkflowRow.id.desc())
+        .limit(1)
+    )
+    if not workflow:
+        return context
+    progress = SequenceProgress.model_validate(workflow.detail["sequence_progress"])
+    if len(progress.sequence.pairs) != 1 or progress.pair_index != 1:
+        return context
+    run_id = workflow.context.get("run_id")
+    run = db.get(RunRow, run_id) if run_id else None
+    if (
+        not run or run.workspace_id != actor.workspace_id
+        or run.project_id != conversation.project_id
+        or run.status not in {"VERIFIED", "PARTIAL_VERIFIED"}
+    ):
+        return context
+    return context.model_copy(update={"run_id": run.id})
 
 
 def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]) -> APIRouter:
@@ -329,6 +366,13 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         )
         agent = body.mode == "AGENT" or (body.mode == "AUTO" and not auto_read)
         model_choice = None if auto_read else body.model_choice
+        context = body.context.model_dump()
+        if auto_read:
+            context = (
+                existing.context
+                if existing
+                else followup_context(db, actor, row, body.context).model_dump()
+            )
         if existing is None:
             check_model_choice(db, actor, model_choice, legacy=not agent)
             pending = db.scalar(
@@ -355,7 +399,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                 conversation_id=row.id,
                 message_id=ident,
                 actor_id=actor.id,
-                context=body.context.model_dump(),
+                context=context,
                 question_sha256=hashlib.sha256(body.text.encode()).hexdigest(),
             )
             | (
@@ -373,7 +417,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                     job_id=job.id,
                     role="user",
                     text=body.text,
-                    context=body.context.model_dump(),
+                    context=context,
                 )
             )
         db.commit()
