@@ -31,11 +31,15 @@ INTENT_REVISION = "agent-intent-65"
 def requests_reconciliation_sequence(goal: str) -> bool:
     """Identify a normalize, reconcile and Excel request without assigning business slots."""
     text = re.sub(r'"[^"]+"|“[^”]+”', "", goal)
+    clause = r"(?:^|[.!?;,\n]|\b(?:va|roi|sau do|tiep theo)\b)\s*"
+    polite = r"(?:(?:hay|vui long|toi muon|giup toi|xin|kiem tra)\s+)*"
     return bool(
         _denied_request(goal) is None
-        and _explicit_request(text, r"\bchuan hoa\b")
-        and _explicit_request(text, r"\bdoi soat\b")
-        and _explicit_request(text, r"\b(?:xuat|tai|luu)\b.{0,48}\b(?:excel|xlsx)\b")
+        and _explicit_request(text, clause + polite + r"chuan hoa\b")
+        and _explicit_request(text, clause + polite + r"doi soat\b")
+        and _explicit_request(
+            text, clause + polite + r"(?:xuat|tai|luu)\b.{0,48}\b(?:excel|xlsx)\b"
+        )
     )
 
 

@@ -3243,3 +3243,18 @@ def test_export_storage_rejects_an_unpinned_or_different_query(mismatched):
         state.export_query = query.model_copy(update={"offset": 1})
     with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
         save(SimpleNamespace(), state)
+@pytest.mark.parametrize(
+    "goal, expected",
+    [
+        ("Hãy kiểm tra và chuẩn hóa ba nguồn. Sau đó đối soát hai cặp và xuất Excel.", True),
+        ("Chuẩn hóa ba bảng rồi đối soát từng cặp, sau đó tải báo cáo XLSX.", True),
+        ("Xuất Excel kết quả đối soát đã chuẩn hóa.", False),
+        ("Không chuẩn hóa ba bảng. Đối soát hai cặp và xuất Excel.", False),
+    ],
+)
+def test_compound_routing_requires_each_operation_to_be_requested(goal, expected):
+    from studio.agent_intents import requests_reconciliation_sequence
+
+    assert requests_reconciliation_sequence(goal) is expected
+
+
