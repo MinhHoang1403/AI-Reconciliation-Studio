@@ -1,5 +1,21 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Ứng viên phát hành và hoàn thiện giao diện — 10/11/2026
+
+Mã ứng dụng `34c05b4` trên `codex/studio-product-quality`. Các ca dùng một Docker Compose, qua Nginx tại cổng 18180, với schema và kho tệp TEST riêng trước khi đưa ứng viên vào `studio.public`.
+
+| Phạm vi | Bằng chứng |
+| --- | --- |
+| Chat nhiều bước | Gemini xử lý yêu cầu chuẩn hóa ba nguồn rồi đối soát hai cặp theo thứ tự. Chromium kiểm duyệt ánh xạ, duyệt riêng mỗi quy tắc, tải lại giữa hai cặp và nhận hai XLSX. Hai khoản chênh lệch có dấu là `50.00` và `-0.01` VND. Mỗi XLSX có một dòng lệch, một ngoại lệ và hai dòng bằng chứng đúng cặp. Snapshot trong mỗi tệp khớp API. |
+| Gemini | Tập khóa 128/130 (98,5%), với 104 ca không gọi model và 26 ca có gọi model. Hai ca lệch oracle đều yêu cầu đọc báo cáo từ dự án không có quyền. Hệ thống từ chối và bộ chấm chờ hỏi lại. Không có 429 hoặc 503 cuối cùng trong lượt này. Ca mô phỏng kiểm 503/429, tôn trọng thời gian chờ và tiếp tục cùng job mà không nhân lần ghi. |
+| Tài chính | Bán hàng, ngân hàng/công nợ, doanh thu thuần và lương thực nhận chạy qua cùng Matcher và Verifier trong Chromium. Doanh thu lệch `-5.00` VND, lương lệch `20.00` VND, với bản ghi trùng và thiếu đối ứng được phân loại riêng. Các oracle độc lập so nguồn, nhóm, tiền và đọc lại CSV/XLSX. Shopee, TikTok và giao nhận cũng khớp cả snapshot lẫn checksum của sáu báo cáo. |
+| App Shell | Nhận diện và tài khoản local vào hai đầu sidebar. Header giữ hai bộ chọn 38 px trên desktop và 44 px trên màn hẹp. Tên đầy đủ có trong hộp thoại và thuộc tính trợ năng. Grid giữ sidebar từ 0 đến 900 px khi nội dung cuộn ở 1366×900. Trước sửa, đáy sidebar dịch từ 900 lên 836 px khi cuộn. Hoạt động xử lý thu gọn, vẫn có nút cập nhật trực tiếp và trạng thái từng tác vụ. |
+| Kiểm giao diện | UI UX Pro Max áp dụng hướng dẫn điều hướng bàn phím, focus không bị che và cách đọc tên dài. Impeccable dùng `polish` và `craft-floor` trong chế độ Operate để rà thứ bậc, khoảng cách, trạng thái và tính nhất quán. Kiểm bản render ở 320, 390, 768, 1366, 1440, 1920 px và zoom Chromium 200%. Hai hành trình tồn kho và bảo trì vẫn là 23 click, 10 trường nhập và hai lượt duyệt. |
+| Hồi quy | Backend/PostgreSQL 844 PASS trên `7a50e23`. Lượt Chromium toàn bộ ghi 144 PASS, 4 lỗi và 8 ca tuần tự chưa chạy. Sau khi sửa link báo cáo cũ, giữ nút cập nhật công việc và đổi kiểm tra vị trí header theo bố cục đã yêu cầu, nhóm giao diện liên quan 9/9 và nhóm Dữ liệu 10/10 PASS trên bản build sửa. TypeScript, ESLint và Vite build PASS. |
+| An toàn và phục hồi | Chromium xóa một nguồn trong hai nguồn TEST, kiểm nguồn còn lại, rồi xóa dự án và workspace phụ. Worker nhận lại lease sau SIGKILL giữa chuẩn hóa 75.000 dòng, công bố đúng một bản và tiếp tục Agent. Backup `backup_35224c3dc6df48fdb6f4b2965987a05f` từ `studio.public` đã thử khôi phục và kiểm checksum bản sao ngoài volume. |
+
+Biên nhận vận hành và ảnh trước/sau nằm ở `runtime/studio-product-quality/`, ngoài Git. Các biên bản bên dưới ghi trạng thái tại thời điểm từng lượt nghiệm thu.
+
 ## Gemini First và quản lý dữ liệu — 10/11/2026
 
 **`NOT_READY`.** Source ứng viên `2f0a10f50b27ca663b44d60577d347e53c3aa3d5` trên `codex/studio-product-quality`. Yêu cầu gộp chuẩn hóa, đối soát hai cặp và xuất Excel vẫn dừng ở làm rõ sau khi người dùng nêu thứ tự các cặp. Docker Desktop từng dừng giữa lượt đánh giá. Sau khi engine hoạt động trở lại, tám ca gián đoạn được chạy lại với cùng oracle, rồi hoàn tất lượt Chromium toàn bộ.
