@@ -37,6 +37,9 @@ test("[MOCK CONTRACT] desktop shell holds navigation and account while long data
       name: `Nguồn tổng hợp ${index}.csv`, status: "PARSED", created_at: "2026-11-03",
     })),
   } }));
+  await page.route("**/api/jobs?**", route => route.fulfill({ json: {
+    items: [{ id: "shell-job", kind: "report", status: "RUNNING" }],
+  } }));
   await page.goto("/#page=data");
   await expect(page.getByText("Nguồn tổng hợp 24.csv", { exact: true })).toBeAttached();
   const sidebar = page.locator(".sidebar");
@@ -63,6 +66,12 @@ test("[MOCK CONTRACT] desktop shell holds navigation and account while long data
     expect(await account.boundingBox()).toEqual(accountPosition);
     expect(await header.boundingBox()).toEqual(headerPosition);
   }
+  const activity = page.getByRole("button", { name: /Hoạt động xử lý.*1 đang xử lý/ });
+  await expect(activity).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: "Cập nhật trạng thái xử lý" })).toBeVisible();
+  await activity.click();
+  await expect(activity).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#project-jobs")).toBeVisible();
   await scroll.evaluate(element => { element.scrollTop = element.scrollHeight; });
   await sidebar.getByRole("button", { name: "Báo cáo", exact: true }).click();
   await expect(page).toHaveURL(/page=reports/);

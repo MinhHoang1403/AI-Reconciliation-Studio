@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   ArrowRight,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
@@ -88,6 +89,7 @@ export function App() {
   const [location, setLocation] = useState(readLocation);
   const { page, context: assistantContext } = location;
   const [assistantHistoryOpen, setAssistantHistoryOpen] = useState(false);
+  const [openActivityProject, setOpenActivityProject] = useState("");
   const assistantHistoryTrigger = useRef<HTMLElement | null>(null);
   const locationRef = useRef(location);
   const navigationSequence = useRef(0);
@@ -1973,47 +1975,57 @@ export function App() {
             jobs.length > 0 &&
             page !== "settings" &&
             page !== "assistant" && (
-              <details className="panel jobs-panel" key={projectId}>
-                <summary>
-                  <strong>Hoạt động xử lý</strong>
-                  <span>{activeJobs ? `${activeJobs} đang xử lý` : `${Math.min(jobs.length, 6)} hoạt động gần đây`}</span>
-                </summary>
-                <div className="jobs-actions">
+              <section className="panel jobs-panel" aria-label="Hoạt động xử lý">
+                <div className="jobs-panel-bar">
                   <button
-                    className="text-button"
+                    className="jobs-disclosure"
+                    aria-expanded={openActivityProject === projectId}
+                    aria-controls="project-jobs"
+                    onClick={() => setOpenActivityProject(current => current === projectId ? "" : projectId)}
+                  >
+                    <ChevronDown size={15} aria-hidden="true" />
+                    <strong>Hoạt động xử lý</strong>
+                    <span>{activeJobs ? `${activeJobs} đang xử lý` : `${Math.min(jobs.length, 6)} hoạt động gần đây`}</span>
+                  </button>
+                  <button
+                    className="icon-button"
+                    title="Cập nhật trạng thái xử lý"
+                    aria-label="Cập nhật trạng thái xử lý"
                     disabled={busy}
                     onClick={() => void run(changed)}
                   >
-                    Cập nhật trạng thái xử lý
+                    <RefreshCw size={16} aria-hidden="true" />
                   </button>
                 </div>
-                {jobs.slice(0, 6).map((j) => (
-                  <div className="job-row" key={j.id}>
-                    <span className="job-icon">
-                      {j.kind === "mapping" ? (
-                        <Sparkles size={17} />
-                      ) : (
-                        <Layers3 size={17} />
-                      )}
-                    </span>
-                    <div>
-                      <strong>
-                        {j.kind === "mapping" &&
-                        j.result?.source === "APPROVED_TEMPLATE"
-                          ? "Gợi ý từ mẫu đã duyệt"
-                          : jobKind[j.kind] || j.kind}
-                      </strong>
-                      {j.error_code && (
-                        <p className="job-error">
-                          {errorText[j.error_code] ||
-                            `Xử lý bị chặn: ${j.error_code}`}
-                        </p>
-                      )}
+                <div id="project-jobs" hidden={openActivityProject !== projectId}>
+                  {jobs.slice(0, 6).map((j) => (
+                    <div className="job-row" key={j.id}>
+                      <span className="job-icon">
+                        {j.kind === "mapping" ? (
+                          <Sparkles size={17} />
+                        ) : (
+                          <Layers3 size={17} />
+                        )}
+                      </span>
+                      <div>
+                        <strong>
+                          {j.kind === "mapping" &&
+                          j.result?.source === "APPROVED_TEMPLATE"
+                            ? "Gợi ý từ mẫu đã duyệt"
+                            : jobKind[j.kind] || j.kind}
+                        </strong>
+                        {j.error_code && (
+                          <p className="job-error">
+                            {errorText[j.error_code] ||
+                              `Xử lý bị chặn: ${j.error_code}`}
+                          </p>
+                        )}
+                      </div>
+                      <Badge status={j.status} />
                     </div>
-                    <Badge status={j.status} />
-                  </div>
-                ))}
-              </details>
+                  ))}
+                </div>
+              </section>
             )}
         </main>
       </div>

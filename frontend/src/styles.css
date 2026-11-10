@@ -1129,25 +1129,30 @@ details p {
 .jobs-panel {
   margin-top: 24px;
 }
-.jobs-panel > summary {
+.jobs-panel-bar {
+  display: flex;
+  align-items: center;
+  padding-inline: 8px;
+}
+.jobs-disclosure {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  text-align: start;
   min-height: 44px;
   gap: 8px;
-  padding: 8px 14px;
+  padding: 8px 6px;
+  border-radius: var(--control-radius);
   color: var(--ink);
   flex-wrap: wrap;
 }
-.jobs-panel > summary > strong { font-size: 13px; }
-.jobs-panel > summary > span {
-  margin-inline-start: auto;
+.jobs-disclosure > strong { font-size: 13px; }
+.jobs-disclosure > span {
   font-size: 12px;
   color: var(--text-muted);
 }
-.jobs-panel > summary:hover { background: var(--canvas); }
-.jobs-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 14px;
-}
+.jobs-disclosure[aria-expanded="false"] > svg { transform: rotate(-90deg); }
+.jobs-disclosure:hover { background: var(--canvas); }
 .job-row {
   display: flex;
   align-items: flex-start;
