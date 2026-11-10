@@ -18,6 +18,7 @@ test.describe.configure({ mode: "serial" });
 const providerMode = process.env.STUDIO_EXPECT_AI_PROVIDER || "MANUAL";
 
 test("[LOCAL] create, switch and rename a workspace from the masthead", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/#page=settings");
   await expect(page.getByRole("heading", { name: "Cài đặt không gian làm việc" })).toBeVisible();
   const before = await (await page.request.get("/api/session")).json();
@@ -26,7 +27,9 @@ test("[LOCAL] create, switch and rename a workspace from the masthead", async ({
   const dialog = page.getByRole("dialog", { name: "Quản lý không gian làm việc" });
 
   await manage.click();
-  await dialog.getByRole("button", { name: "Tạo không gian", exact: true }).click();
+  const create = dialog.getByRole("button", { name: "Tạo không gian", exact: true });
+  await expect(create).toBeInViewport();
+  await create.click();
   await dialog.getByLabel("Tên không gian làm việc").fill(name);
   await dialog.getByRole("button", { name: "Tạo", exact: true }).click();
   await expect(dialog.getByRole("status")).toContainText("Đã tạo.");
