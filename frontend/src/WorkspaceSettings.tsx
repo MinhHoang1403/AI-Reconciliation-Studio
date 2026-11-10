@@ -1,4 +1,4 @@
-import { ChevronDown, Files, FolderOpen, PanelTop, ShieldCheck, UserRound } from "lucide-react";
+import { ChevronDown, Files, FolderOpen, Layers3, PanelTop, ShieldCheck, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { Modal, Notice, Spinner } from "./components";
@@ -92,7 +92,7 @@ export function WorkspaceManager({ current, onRename }: {
       setStatus("");
       setAction(null);
       setOpen(true);
-    }}><strong>{current.name}</strong><ChevronDown size={15} aria-hidden="true" /></button>
+    }}><Layers3 size={15} aria-hidden="true" /><strong>{current.name}</strong><ChevronDown size={14} aria-hidden="true" /></button>
     <Modal title="Quản lý không gian làm việc" open={open} returnFocus={trigger}
       onOpenChange={next => { if (!pending) setOpen(next); }}>
       {error && <Notice tone="error">{error}</Notice>}
@@ -105,6 +105,7 @@ export function WorkspaceManager({ current, onRename }: {
           <select value={selected} disabled={pending} onChange={event => setSelected(event.target.value)}>
             {choices.map(row => <option key={row.id} value={row.id}>{row.name} · {roles[row.role] ?? row.role}</option>)}
           </select>
+          <span className="workspace-selected-name">{choices.find(row => row.id === selected)?.name}</span>
         </label>}
         <div className="modal-actions">
           {action ? <button type="button" className="button secondary" disabled={pending} onClick={() => setAction(null)}>Hủy</button>

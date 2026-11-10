@@ -105,48 +105,43 @@ svg {
   flex-shrink: 0;
 }
 .app-shell {
-  --navigation-width: 188px;
-  --masthead-height: 64px;
-  min-height: 100dvh;
+  --navigation-width: 208px;
+  --masthead-height: 56px;
+  --scope-control-height: 38px;
+  height: min(100dvh, var(--assistant-viewport-height, 100dvh));
   display: grid;
   grid-template-columns: var(--navigation-width) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
 }
 .app-shell.is-navigation-compact { --navigation-width: 64px; }
 .sidebar {
-  width: var(--navigation-width);
-  position: sticky;
-  top: 0;
-  align-self: start;
-  height: calc(100dvh - var(--masthead-height));
+  grid-column: 1;
+  grid-row: 1 / -1;
+  min-height: 0;
   background: var(--surface-raised);
-  padding: 16px 10px;
+  padding: 0 10px;
   border-inline-end: 1px solid var(--surface-border);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   z-index: 20;
 }
 .sidebar-heading {
   display: flex;
   align-items: center;
-  padding: 0 9px;
-  margin-block-end: 12px;
-  min-height: 36px;
-  color: var(--text-muted);
-  font-size: .85rem;
+  padding-inline: 8px;
+  min-height: var(--masthead-height);
 }
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  font-weight: 700;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 650;
   line-height: 1.25;
 }
 .brand-symbol {
-  flex: 0 0 32px;
-  height: 32px;
+  flex: 0 0 29px;
+  height: 29px;
   display: grid;
   place-items: center;
   color: #fff;
@@ -154,18 +149,22 @@ svg {
   border-radius: 9px;
 }
 .brand-label { white-space: nowrap; }
-nav {
+.sidebar nav {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 4px;
 }
+.sidebar nav > button { flex-shrink: 0; }
 .navigation-group-label {
   padding: .2rem .75rem .35rem;
   color: var(--text-muted);
   font-size: .75rem;
   font-weight: 650;
 }
-.navigation-group-secondary { margin-top: 1.1rem; }
+.navigation-group-secondary { margin-top: 12px; }
 .skip-to-work {
   position: fixed;
   z-index: 40;
@@ -216,21 +215,19 @@ nav .active > svg { color: #2563eb; }
   padding: 1px 4px;
 }
 .sidebar-bottom {
-  margin-top: auto;
-  padding-top: 26px;
+  border-top: 1px solid var(--surface-border);
+  padding: 12px 6px;
 }
 .settings-nav {
   width: 100%;
 }
 .profile {
-  margin-top: 14px;
-  padding: 18px 6px 0;
   display: flex;
   align-items: center;
   gap: 10px;
 }
-.profile > span,
-.avatar {
+.profile > span {
+  flex-shrink: 0;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -250,58 +247,77 @@ nav .active > svg { color: #2563eb; }
   color: var(--text-muted);
 }
 .main-shell {
+  grid-column: 2;
+  grid-row: 2;
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 .topbar {
-  grid-column: 1 / -1;
+  grid-column: 2;
+  grid-row: 1;
   min-height: var(--masthead-height);
   background: var(--surface-raised);
   border-bottom: 1px solid var(--surface-border);
   padding: 8px var(--space-5);
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) max-content;
-  gap: var(--space-5);
+  gap: var(--space-3);
   align-items: center;
 }
-.masthead-brand,
+.masthead-navigation,
 .masthead-scope {
   display: flex;
   min-width: 0;
   gap: var(--space-3);
   align-items: center;
 }
-.masthead-scope { border-inline-start: 1px solid var(--surface-border); padding-inline-start: var(--space-5); }
-.masthead-scope .project-trigger { min-height: 42px; max-width: 22rem; width: auto; }
-.workspace-picker {
+.masthead-scope { gap: var(--space-2); }
+.masthead-scope :is(.workspace-picker, .project-trigger) {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
-  max-width: min(18rem, 45%);
-  min-height: 42px;
-  padding-inline: 10px;
+  min-height: var(--scope-control-height);
+  padding: 4px 9px;
   border: 1px solid var(--surface-border);
   border-radius: var(--control-radius);
   background: var(--surface-raised);
+  color: var(--ink);
+  font-size: 13px;
   text-align: start;
 }
-.workspace-picker strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.workspace-picker:hover { background: var(--surface-hover); }
+.masthead-scope .workspace-picker { max-width: min(17rem, 48%); }
+.masthead-scope .project-trigger { max-width: 21rem; width: auto; }
+.masthead-scope strong { font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.masthead-scope :is(.workspace-picker, .project-trigger) > svg { color: var(--text-muted); }
+.masthead-scope :is(.workspace-picker, .project-trigger):hover,
+.masthead-scope :is(.workspace-picker, .project-trigger)[aria-expanded="true"] { background: var(--canvas); }
+.workspace-selected-name {
+  display: block;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  margin-top: 6px;
+}
 .shell-title { font-size: 15px; font-weight: 650; letter-spacing: -.015em; }
 .shell-context { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .navigation-toggle { min-width: 36px; min-height: 36px; }
 @media (min-width: 901px) {
   .is-navigation-compact .navigation-group-label { display: none; }
   .is-navigation-compact .navigation-group-secondary + button { margin-top: .85rem; }
-  .is-navigation-compact .sidebar { padding-inline: 9px; }
-  .is-navigation-compact :is(.sidebar-heading, .profile-label, nav button > span) { display: none; }
+  .is-navigation-compact .sidebar { padding-inline: 6px; }
+  .is-navigation-compact :is(.brand-label, .profile-label, nav button > span) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .is-navigation-compact .sidebar-heading { justify-content: center; padding-inline: 0; }
   .is-navigation-compact nav button { justify-content: center; padding-inline: 0; }
   .is-navigation-compact .profile { justify-content: center; padding-inline: 0; }
-}
-.topbar-end {
-  display: flex;
-  align-items: center;
-  gap: 22px;
 }
 .connection {
   font-size: 11px;
@@ -322,7 +338,7 @@ nav .active > svg { color: #2563eb; }
   display: none !important;
 }
 main {
-  padding: var(--space-8) var(--space-8) var(--space-8);
+  padding: var(--space-8);
   max-width: 1700px;
   margin: auto;
 }
@@ -1113,6 +1129,25 @@ details p {
 .jobs-panel {
   margin-top: 24px;
 }
+.jobs-panel > summary {
+  min-height: 44px;
+  gap: 8px;
+  padding: 8px 14px;
+  color: var(--ink);
+  flex-wrap: wrap;
+}
+.jobs-panel > summary > strong { font-size: 13px; }
+.jobs-panel > summary > span {
+  margin-inline-start: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.jobs-panel > summary:hover { background: var(--canvas); }
+.jobs-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 14px;
+}
 .job-row {
   display: flex;
   align-items: flex-start;
@@ -1312,7 +1347,7 @@ pre {
 }
 @media (max-width: 1200px) {
   main {
-    padding: 27px 25px 0;
+    padding: 27px 25px var(--space-6);
   }
   .topbar { padding-inline: 16px; gap: 14px; }
   .scope-label {
@@ -1336,6 +1371,7 @@ pre {
 @media (max-width: 900px) {
   .app-shell.is-navigation-compact,
   .app-shell { grid-template-columns: minmax(0, 1fr); }
+  .topbar, .main-shell { grid-column: 1; }
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
@@ -1376,9 +1412,7 @@ pre {
     gap: 12px;
   }
   .navigation-toggle { display: none; }
-  .sidebar-bottom {
-    padding-top: 15px;
-  }
+  .masthead-scope :is(.workspace-picker, .project-trigger) { min-height: 44px; }
 }
 @media (max-width: 600px) {
   .run-selector-label {
@@ -1396,33 +1430,15 @@ pre {
   .run-links > button[aria-label] { min-width: 32px; justify-content: center; }
   .result-kpis strong { line-height: 1.1; }
   main {
-    padding: 24px 16px 0;
+    padding: 24px 16px var(--space-4);
   }
   .topbar {
-    grid-template-columns: minmax(0, 1fr) max-content;
-    gap: 5px 8px;
+    gap: 8px;
     padding: 6px 12px;
   }
-  .masthead-scope { grid-row: 2; grid-column: 1 / -1; padding: 0; border: 0; }
-  .masthead-scope:empty { display: none; }
-  .masthead-scope .project-trigger { flex: 1; }
-  .masthead-scope .project-trigger,
-  .workspace-picker { min-height: 44px; }
+  .masthead-scope { gap: 6px; }
+  .masthead-scope :is(.workspace-picker, .project-trigger) { flex: 1; padding-inline: 7px; }
   .masthead-scope .project-test-badge { display: none; }
-  .masthead-scope :is(.workspace-picker, .project-trigger) strong {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    line-height: 1.2;
-  }
-  .masthead-brand { gap: 6px; }
-  .brand { gap: 6px; font-size: 13px; }
-  .brand-symbol { flex-basis: 27px; height: 27px; }
-  .topbar-end {
-    gap: 10px;
-  }
   .connection-label { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
   .page-heading { align-items: flex-start; gap: 10px; flex-wrap: wrap; }
   h1 {
@@ -1623,6 +1639,9 @@ pre {
     font-size: 11px;
   }
 }
+@media (max-width: 360px) {
+  .masthead-scope :is(.workspace-picker, .project-trigger) > svg:first-child { display: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;
@@ -1673,7 +1692,6 @@ pre {
 @media(max-width:600px){.rule-grid,.evidence-sides{grid-template-columns:1fr}.pair-row{grid-template-columns:1fr}.result-filters{flex-direction:column}.reconciliation-studio .card{padding-block:16px}.reconciliation-studio .section-heading{flex-wrap:wrap;gap:12px}.rule-actions .button{width:100%}}
 
 /* Assistant is part of the app shell. History, transcript and composer have independent space. */
-.app-shell:has(.assistant-main) { min-height: 0; height: min(100dvh, var(--assistant-viewport-height, 100dvh)); }
 .main-shell:has(.assistant-main) { min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--surface-raised); }
 .assistant-main { padding: 8px 28px 12px; width: 100%; max-width: none; display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .assistant-main .page-heading { margin-bottom: 12px; }

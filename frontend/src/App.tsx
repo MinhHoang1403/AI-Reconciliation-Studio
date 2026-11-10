@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -235,6 +236,7 @@ export function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const modalFocus = useRef<HTMLElement | null>(null);
   const navigation = useRef<HTMLElement | null>(null);
+  const pageScroll = useRef<HTMLDivElement>(null);
   const projectSequence = useRef(0);
   const refreshController = useRef<AbortController | null>(null);
   const selectedDataset =
@@ -245,6 +247,11 @@ export function App() {
   const table = tables.find((t) => t.id === tableId);
   const currentCanonical = canonicals.find((c) => c.id === canonicalId);
   const activeMapping = mappings.find((m) => m.id === table?.active_mapping_id);
+  const activeJobs = jobs.filter(job => ["QUEUED", "RUNNING", "RETRYABLE_FAILURE"].includes(job.status)).length;
+
+  useLayoutEffect(() => {
+    if (pageScroll.current) pageScroll.current.scrollTop = 0;
+  }, [page, projectId]);
 
   useEffect(() => {
     if (page !== "assistant") return;
@@ -1071,7 +1078,7 @@ export function App() {
         document.getElementById("main-content")?.focus();
       }}>Đến nội dung chính</a>
       <header className="topbar studio-masthead" inert={sidebar || undefined}>
-        <div className="masthead-brand">
+        <div className="masthead-navigation">
           <button
             className="icon-button menu-button"
             aria-label="Mở điều hướng"
@@ -1089,10 +1096,6 @@ export function App() {
           >
             {compactNavigation ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
           </button>
-          <div className="brand" aria-label="AI Reconciliation Studio">
-            <span className="brand-symbol"><Layers3 size={18} aria-hidden="true" /></span>
-            <span className="brand-label">Reconciliation Studio</span>
-          </div>
         </div>
         <div className="masthead-scope" role="group" aria-label="Phạm vi làm việc">
           {ready && workspace?.workspace_id && <WorkspaceManager key={workspace.workspace_id}
@@ -1109,10 +1112,9 @@ export function App() {
         <div className="topbar-end">
           <span className={`connection ${ready ? "connected" : bootstrapError ? "disconnected" : "connecting"}`} role="status" aria-label="Trạng thái kết nối"
             title={ready ? "Hệ thống đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}>
-            <span />
+            <span aria-hidden="true" />
             <span className="connection-label">{ready ? "Đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}</span>
           </span>
-          <button className="avatar" aria-label="Tài khoản và cài đặt" onClick={() => setPage("settings")}>LC</button>
         </div>
       </header>
       {sidebar && (
@@ -1130,7 +1132,10 @@ export function App() {
         aria-label={sidebar ? "Điều hướng" : undefined}
       >
         <div className="sidebar-heading">
-          <strong>Điều hướng</strong>
+          <div className="brand" title="Reconciliation Studio">
+            <span className="brand-symbol"><Layers3 size={17} aria-hidden="true" /></span>
+            <span className="brand-label">Reconciliation Studio</span>
+          </div>
           {sidebar && <button className="icon-button sidebar-close" aria-label="Đóng điều hướng" onClick={() => setSidebar(false)}>
             <X size={20} aria-hidden="true" />
           </button>}
@@ -1179,7 +1184,7 @@ export function App() {
               <span>{label}</span>
             </button>
           ))}
-          <span className="navigation-group-label navigation-group-secondary" aria-hidden="true">Không gian làm việc</span>
+          <span className="navigation-group-label navigation-group-secondary" aria-hidden="true">Quản lý</span>
           <button disabled={!ready} aria-label="Lịch sử" title="Lịch sử" aria-expanded={assistantHistoryOpen} onClick={event => {
             assistantHistoryTrigger.current = window.matchMedia("(max-width: 900px)").matches
               ? document.querySelector<HTMLElement>(".menu-button") : event.currentTarget;
@@ -1201,7 +1206,7 @@ export function App() {
           </button>
         </nav>
         <div className="sidebar-bottom">
-          <div className="profile">
+          <div className="profile" title="Người dùng local">
             <span aria-hidden="true">LC</span>
             <div className="profile-label">
               <strong>Người dùng local</strong>
@@ -1213,7 +1218,7 @@ export function App() {
           </div>
         </div>
       </aside>
-      <div className="main-shell" inert={sidebar || undefined}>
+      <div className="main-shell" ref={pageScroll} inert={sidebar || undefined}>
         <main
           id="main-content"
           tabIndex={-1}
@@ -1968,11 +1973,12 @@ export function App() {
             jobs.length > 0 &&
             page !== "settings" &&
             page !== "assistant" && (
-              <section className="panel jobs-panel">
-                <div className="panel-heading">
-                  <div>
-                    <h2>Hoạt động xử lý</h2>
-                  </div>
+              <details className="panel jobs-panel" key={projectId}>
+                <summary>
+                  <strong>Hoạt động xử lý</strong>
+                  <span>{activeJobs ? `${activeJobs} đang xử lý` : `${Math.min(jobs.length, 6)} hoạt động gần đây`}</span>
+                </summary>
+                <div className="jobs-actions">
                   <button
                     className="text-button"
                     disabled={busy}
@@ -2007,7 +2013,7 @@ export function App() {
                     <Badge status={j.status} />
                   </div>
                 ))}
-              </section>
+              </details>
             )}
         </main>
       </div>

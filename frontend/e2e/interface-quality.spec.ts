@@ -28,6 +28,93 @@ const projects = (count: number): Project[] =>
     workspace_id: "synthetic",
   }));
 
+test("[MOCK CONTRACT] desktop shell holds navigation and account while long data scrolls", async ({ page }) => {
+  await fixture(page, projects(1), "project-000");
+  await page.route("**/api/datasets?**", route => route.fulfill({ json: {
+    total: 25,
+    items: Array.from({ length: 25 }, (_, index) => ({
+      id: `shell-source-${index}`, project_id: "project-000",
+      name: `Nguồn tổng hợp ${index}.csv`, status: "PARSED", created_at: "2026-11-03",
+    })),
+  } }));
+  await page.goto("/#page=data");
+  await expect(page.getByText("Nguồn tổng hợp 24.csv", { exact: true })).toBeAttached();
+  const sidebar = page.locator(".sidebar");
+  const account = sidebar.getByText("Người dùng local", { exact: true });
+  const header = page.getByRole("banner");
+  const scroll = page.locator(".main-shell");
+  const initial = await sidebar.boundingBox();
+  const headerPosition = await header.boundingBox();
+  const accountPosition = await account.boundingBox();
+  expect(initial?.y).toBe(0);
+  expect(initial?.height).toBe(900);
+  await expect(sidebar.getByText("Reconciliation Studio", { exact: true })).toBeVisible();
+  await expect(header.getByText("Reconciliation Studio", { exact: true })).toHaveCount(0);
+  for (const portion of [0.5, 1, 0]) {
+    const moved = await scroll.evaluate((element, ratio) => {
+      const range = element.scrollHeight - element.clientHeight;
+      element.scrollTop = range * ratio;
+      return { range, scrolled: element.scrollTop, body: window.scrollY };
+    }, portion);
+    expect(moved.range).toBeGreaterThan(0);
+    expect(Math.abs(moved.scrolled - moved.range * portion)).toBeLessThanOrEqual(1);
+    expect(moved.body).toBe(0);
+    expect(await sidebar.boundingBox()).toEqual(initial);
+    expect(await account.boundingBox()).toEqual(accountPosition);
+    expect(await header.boundingBox()).toEqual(headerPosition);
+  }
+  await scroll.evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await sidebar.getByRole("button", { name: "Báo cáo", exact: true }).click();
+  await expect(page).toHaveURL(/page=reports/);
+  expect(await scroll.evaluate(element => element.scrollTop)).toBe(0);
+  await page.getByRole("button", { name: "Thu gọn thanh điều hướng" }).click();
+  await expect(sidebar.getByRole("button", { name: "Dữ liệu", exact: true })).toHaveAttribute("title", "Dữ liệu");
+  expect(await sidebar.boundingBox()).toMatchObject({ width: 64, height: 900 });
+  await page.setViewportSize({ width: 768, height: 500 });
+  await expect(sidebar).toBeHidden();
+  const menu = page.getByRole("button", { name: "Mở điều hướng", exact: true });
+  await menu.press("Enter");
+  await expect(sidebar.getByRole("button", { name: "Đóng điều hướng" })).toBeFocused();
+  await expect(sidebar.getByText("Reconciliation Studio", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeFocused();
+});
+
+test("[MOCK CONTRACT] scope names stay accessible and picker focus returns at 320px", async ({ page }) => {
+  const [project] = projects(1);
+  project.name = "Dự án đối chiếu dài của bộ phận kiểm soát doanh thu và thanh toán";
+  project.classification = "TEST";
+  const workspace = "Không gian đối chiếu của các bộ phận tài chính và vận hành";
+  await fixture(page, [project], project.id);
+  await page.route("**/api/settings", route => route.fulfill({ json: {
+    workspace_id: "synthetic", workspace_name: workspace,
+    mapping_ai_provider: "GEMINI",
+    policy: { allow_external_ai: false },
+    max_upload_bytes: 20971520, max_upload_files: 10, max_rows: 100000,
+  } }));
+  await page.route("**/api/workspaces", route => route.fulfill({ json: [
+    { id: "synthetic", name: workspace, role: "owner" },
+  ] }));
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/#page=settings");
+  const workspaceButton = page.getByRole("button", { name: "Quản lý không gian làm việc" });
+  const projectButton = page.getByRole("button", { name: `Dự án: ${project.name}` });
+  await expect(workspaceButton).toHaveAttribute("title", workspace);
+  await expect(projectButton).toHaveAttribute("title", project.name);
+  expect((await workspaceButton.boundingBox())?.height).toBe(44);
+  expect((await projectButton.boundingBox())?.height).toBe(44);
+  await workspaceButton.press("Enter");
+  await expect(page.getByRole("dialog").locator(".workspace-selected-name")).toHaveText(workspace);
+  await page.keyboard.press("Escape");
+  await expect(workspaceButton).toBeFocused();
+  await projectButton.press("Enter");
+  await expect(page.getByRole("combobox", { name: "Tìm dự án" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(projectButton).toBeFocused();
+  await expect(projectButton).toHaveAttribute("data-project-id", project.id);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+});
+
 test("[MOCK CONTRACT] keyboard focus stays visible when a long mobile dialog wraps", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await fixture(page, projects(25), "project-000");

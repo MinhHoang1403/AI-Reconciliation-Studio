@@ -190,7 +190,7 @@ export function ProjectSelector({
           setOpen(true);
         }}
       >
-        <FolderOpen size={17} />
+        <FolderOpen size={15} aria-hidden="true" />
         <span>
           {showLabel&&<small className="project-picker-caption">Dự án</small>}
           <strong>{project?.name || "Chọn dự án"}</strong>
@@ -198,7 +198,7 @@ export function ProjectSelector({
         {project?.classification === "TEST" && (
           <span className="project-test-badge" title="Dự án dùng để thử nghiệm">Thử nghiệm</span>
         )}
-        <ChevronDown size={16} />
+        <ChevronDown size={14} aria-hidden="true" />
       </button>
       <Modal
         title="Chọn dự án"
