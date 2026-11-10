@@ -2128,6 +2128,13 @@ pre {
 .density-preference { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 0; border: 0; }
 .density-preference label { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; }
 .density-preference input { accent-color: #2563eb; }
+@media (pointer: coarse), (max-width: 600px) {
+  .modal-heading > .icon-button,
+  .settings-actions > button,
+  .settings-register summary,
+  .density-preference label { min-height: 44px; }
+  .modal-heading > .icon-button { min-width: 44px; }
+}
 @media (min-width: 901px) {
   :root[data-table-density="compact"] .table-scroll :is(th, td) { padding-block: 7px; }
 }

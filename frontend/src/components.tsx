@@ -81,6 +81,17 @@ export function Modal({
         <Dialog.Content
           className={`modal${wide ? " modal-wide" : ""}${placement === "context" ? " modal-context" : ""}`}
           aria-describedby={undefined}
+          onFocusCapture={(event) => {
+            const modal = event.currentTarget;
+            const control = event.target;
+            if (!(control instanceof HTMLElement) || control === modal) return;
+            const bounds = modal.getBoundingClientRect();
+            const item = control.getBoundingClientRect();
+            // Radix wraps focus with preventScroll; keep the focused control visible.
+            if (item.top < bounds.top || item.bottom > bounds.bottom) {
+              control.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }
+          }}
           onCloseAutoFocus={(event) => {
             if (shouldRestoreFocus && !shouldRestoreFocus()) {
               event.preventDefault();

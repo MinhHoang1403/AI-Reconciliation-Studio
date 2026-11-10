@@ -28,6 +28,27 @@ const projects = (count: number): Project[] =>
     workspace_id: "synthetic",
   }));
 
+test("[MOCK CONTRACT] keyboard focus stays visible when a long mobile dialog wraps", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await fixture(page, projects(25), "project-000");
+  await page.goto("/#page=settings");
+  const trigger = page.getByRole("button", { name: "Quản lý dự án", exact: true });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Quản lý dự án" });
+  const close = dialog.getByRole("button", { name: "Đóng", exact: true });
+  const next = dialog.getByRole("button", { name: "Trang sau", exact: true });
+  await expect(next).not.toBeInViewport();
+  await close.focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(next).toBeFocused();
+  await expect(next).toBeInViewport();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await expect(close).toBeInViewport();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+});
+
 test("[MOCK CONTRACT] project lifecycle previews impact and restores the hidden project", async ({ page }) => {
   const [sample] = projects(1);
   sample.classification = "TEST";
