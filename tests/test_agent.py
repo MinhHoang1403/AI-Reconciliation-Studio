@@ -2327,6 +2327,7 @@ def test_typed_full_run_export_cannot_ignore_explicit_displayed_reference():
         "Trong các giao dịch sai tiền, chỉ lấy trường hợp đã xử lý xong",
         "Liệt kê nhóm lệch tiền đang giải quyết",
         "Trong các nhóm lệch tiền, chỉ lấy trường hợp đã được xử lý xong",
+        "Hiển thị các khoản đã xử lý nhưng vẫn thiếu đối ứng",
     ],
 )
 def test_group_read_needing_different_period_or_exception_grain_clarifies(goal):
@@ -2852,6 +2853,7 @@ def test_compound_source_mutations_cannot_be_downgraded_to_a_partial_read(goal, 
     "goal, expected",
     [
         ("Mở bảng gốc trong tệp “Nhập kho.xlsx”", ("RAW_PREVIEW", "inventory", False)),
+        ("Đọc bảng gốc để kiểm tra tên cột", ("RAW_PREVIEW", "table", False)),
         ("Bản tự chuẩn bị có bao nhiêu bản ghi?", ("PREPARED", "table", True)),
         (
             "Hãy đếm bản ghi trong bản đã chuẩn hóa của tệp đang mở",

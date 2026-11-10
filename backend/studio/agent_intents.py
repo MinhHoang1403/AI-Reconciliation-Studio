@@ -1214,7 +1214,10 @@ def resolve_run_filter_clarification(goal: str, catalogue: IntentCatalogue) -> A
         return None
     text = plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal))
     if not (
-        re.search(r"\b(?:xem|liet ke|tim|loc|lay|dem|bao nhieu|tong)\b", text)
+        (
+            explicit_read_request(goal)
+            or re.search(r"\b(?:xem|liet ke|tim|loc|lay|dem|bao nhieu|tong)\b", text)
+        )
         and re.search(r"\b(?:giao dich|nhom|khoan|don|ban ghi)\b", text)
         and re.search(r"\b(?:doi ung|lech tien|sai tien|chenh lech)\b", text)
     ):
@@ -1435,8 +1438,9 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
         normalized = re.sub(source_suffix, "", normalized)
     layer = "|".join(re.escape(term) for term in LAYER_TERMS)
     view = re.fullmatch(
-        r"(?:cho toi |cho |hay )?(?:xem(?: truoc| lai)?|mo|liet ke) (" + layer + r")"
-        r"(?: de (?:kiem tra|danh gia|biet) chat luong(?: (?:cot|du lieu))?)?",
+        r"(?:cho toi |cho |hay )?(?:xem(?: truoc| lai)?|mo|liet ke|doc) (" + layer + r")"
+        r"(?: de (?:kiem tra|kiem lai|danh gia|biet) "
+        r"(?:chat luong(?: (?:cot|du lieu))?|tieu de|ten cot))?",
         normalized,
     )
     count = re.fullmatch(
