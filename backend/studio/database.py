@@ -189,7 +189,7 @@ class AttemptRow(Base):
 class AuditRow(Base):
     __tablename__ = "audit_events"
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
-    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    workspace_id: Mapped[str | None] = mapped_column(ForeignKey("workspaces.id"), index=True)
     actor_id: Mapped[str] = mapped_column(String(64))
     action: Mapped[str] = mapped_column(String(80))
     resource_id: Mapped[str] = mapped_column(String(64), index=True)

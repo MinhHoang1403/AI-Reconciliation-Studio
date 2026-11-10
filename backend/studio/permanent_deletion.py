@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from studio.access import Actor, _demo_allowed, require_owner
 from studio.config import settings
 from studio.contracts import Contract
-from studio.database import Base, DatasetRow, ProjectRow, PurgeReceiptRow, now
+from studio.database import Base, DatasetRow, MembershipRow, ProjectRow, PurgeReceiptRow, now
 from studio.errors import DomainError
 from studio.resource_lifecycle import lock_project, missing
 from studio.storage import checksum, storage_path
@@ -56,6 +56,7 @@ RESERVATIONS = {
     "GEMINI_REQUEST_RESERVED",
     "AGENT_REQUEST_RESERVED",
     "ASSISTANT_REQUEST_RESERVED",
+    "RECONCILIATION_PLANNER_ATTEMPT",
     "LLAMAPARSE_DOCUMENT_RESERVED",
 }
 UUID_IN_REFERENCE = re.compile(r"(?<![\w-])[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}(?![\w-])")
@@ -379,8 +380,6 @@ def _manifest(db: Session, actor: Actor, kind: PurgeKind, resource_id: str, root
 
     removed = {name: list(items.values()) for name, items in selected.items()}
     reservations = [row for row in removed["audit_events"] if row["action"] in RESERVATIONS]
-    if reservations and kind == "workspace":
-        raise DomainError("PURGE_BUDGET_HISTORY", "Không gian còn biên nhận chi phí cần giữ.", 409)
     removed["audit_events"] = [row for row in removed["audit_events"] if row not in reservations]
 
     files: dict[str, str] = {}
@@ -462,6 +461,7 @@ def _manifest(db: Session, actor: Actor, kind: PurgeKind, resource_id: str, root
         target["name"],
         files,
         sorted(absent),
+        sorted(row["id"] for row in reservations),
         {
             key: sorted(json.dumps(row, sort_keys=True, default=str) for row in items)
             for key, items in removed.items()
@@ -482,8 +482,25 @@ def _manifest(db: Session, actor: Actor, kind: PurgeKind, resource_id: str, root
 def preview(db: Session, actor: Actor, kind: PurgeKind, resource_id: str) -> PurgeImpact:
     root = purge_root(db)
     require_owner(actor, db, resource_id)
-    _lock_scope(db, actor, kind, resource_id)
-    return _manifest(db, actor, kind, resource_id, root).impact
+    target = _purge_target_actor(db, actor, kind, resource_id)
+    _lock_scope(db, target, kind, resource_id)
+    return _manifest(
+        db, _purge_target_actor(db, actor, kind, resource_id), kind, resource_id, root
+    ).impact
+
+
+def _purge_target_actor(db: Session, actor: Actor, kind: PurgeKind, resource_id: str) -> Actor:
+    if kind != "workspace" or resource_id == actor.workspace_id:
+        return actor
+    role = db.scalar(
+        select(MembershipRow.role).where(
+            MembershipRow.workspace_id == resource_id,
+            MembershipRow.actor_id == actor.id,
+        )
+    )
+    if role != "owner":
+        raise missing()
+    return Actor(actor.id, resource_id, role)
 
 
 def _status(receipt: PurgeReceiptRow) -> PurgeStatus:
@@ -512,7 +529,9 @@ def status(
     if receipt is None:
         raise missing()
     if actor is not None:
-        if (receipt.workspace_id, receipt.actor_id) != (actor.workspace_id, actor.id):
+        if receipt.actor_id != actor.id or (
+            receipt.kind != "workspace" and receipt.workspace_id != actor.workspace_id
+        ):
             raise missing()
     elif not (
         receipt.kind == "workspace"
@@ -559,15 +578,17 @@ def confirm(
 ) -> PurgeStatus:
     root = purge_root(db)
     require_owner(actor, db, resource_id)
-    _lock_scope(db, actor, kind, resource_id)
     receipt = db.get(PurgeReceiptRow, body.fingerprint)
+    if receipt is None:
+        target = _purge_target_actor(db, actor, kind, resource_id)
+        _lock_scope(db, target, kind, resource_id)
+        receipt = db.get(PurgeReceiptRow, body.fingerprint)
     if receipt is not None:
-        if (receipt.workspace_id, receipt.actor_id, receipt.kind, receipt.resource_id) != (
-            actor.workspace_id,
+        if (receipt.actor_id, receipt.kind, receipt.resource_id) != (
             actor.id,
             kind,
             resource_id,
-        ):
+        ) or (kind != "workspace" and receipt.workspace_id != actor.workspace_id):
             raise missing()
         if not receipt.confirmation_hash or not hmac.compare_digest(
             receipt.confirmation_hash, _confirmation_hash(body)
@@ -575,6 +596,7 @@ def confirm(
             raise DomainError("PURGE_CONFIRMATION_STALE", "Xác nhận không khớp biên nhận.", 409)
         db.commit()
         return finish_files(db, receipt.id)
+    actor = _purge_target_actor(db, actor, kind, resource_id)
     manifest = _manifest(db, actor, kind, resource_id, root)
     if body.confirmation != manifest.impact.name or body.fingerprint != manifest.impact.fingerprint:
         raise DomainError(
@@ -585,7 +607,14 @@ def confirm(
         db.execute(
             audit.update()
             .where(audit.c.id == row["id"])
-            .values(resource_id=hashlib.sha256(row["resource_id"].encode()).hexdigest())
+            .values(
+                resource_id=hashlib.sha256(row["resource_id"].encode()).hexdigest(),
+                **(
+                    {"workspace_id": None, "actor_id": "purged-workspace"}
+                    if kind == "workspace"
+                    else {}
+                ),
+            )
         )
     for table in reversed(_business_tables()):
         columns = list(table.primary_key)

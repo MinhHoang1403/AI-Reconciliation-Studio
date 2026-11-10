@@ -107,10 +107,11 @@ test("[MOCK CONTRACT] permanent deletion confirms the exact name and waits for v
   await page.getByRole("button", { name: "Quản lý dự án", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Quản lý dự án" });
   await dialog.getByRole("button", { name: `Quản lý ${sample.name}`, exact: true }).click();
-  await dialog.getByRole("button", { name: "Xem tác động khi xóa vĩnh viễn" }).click();
+  await dialog.getByRole("button", { name: "Xóa vĩnh viễn", exact: true }).click();
   const confirm = dialog.getByRole("button", { name: "Xác nhận xóa vĩnh viễn" });
   await expect(confirm).toBeDisabled();
   await expect(dialog.getByText("Tệp sẽ xóa", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Nhập đúng tên dự án")).toBeFocused();
   await dialog.getByLabel("Nhập đúng tên dự án").fill(sample.name);
   await confirm.click();
   await expect(dialog.getByText(/Đang xóa dự án/)).toBeVisible();

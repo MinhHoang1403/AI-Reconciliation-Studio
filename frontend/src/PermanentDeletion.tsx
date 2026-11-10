@@ -38,8 +38,13 @@ export function PermanentDeletion({ kind, resourceId, onDeleted, onPending }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const request = useRef(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const confirmationInput = useRef<HTMLInputElement>(null);
   const done = useRef(onDeleted);
   useEffect(() => { done.current = onDeleted; }, [onDeleted]);
+  useEffect(() => {
+    if (impact) confirmationInput.current?.focus();
+  }, [impact]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -126,25 +131,26 @@ export function PermanentDeletion({ kind, resourceId, onDeleted, onPending }: {
     {error && <p>{error}</p>}
   </Notice>;
 
-  return <section aria-label="Xóa vĩnh viễn" aria-busy={busy}>
+  return <section className="permanent-deletion" aria-label="Xóa vĩnh viễn" aria-busy={busy}>
     {error && <Notice tone="error">{error}</Notice>}
     {impact ? <div className="management-confirm">
       <h4>Xóa vĩnh viễn {impact.name}</h4>
-      <p>Báo cáo và bằng chứng liên quan sẽ mất quyền truy cập. Mục này sẽ không thể khôi phục từ Thùng rác. Bản sao lưu có thể tiếp tục được giữ riêng.</p>
+      <p>Các mục liệt kê bên dưới sẽ bị xóa. Bạn không thể khôi phục từ Thùng rác. Bản sao lưu được giữ riêng.</p>
       <dl>{Object.entries(impactLabels).filter(([key]) => (impact.counts[key] ?? 0) > 0)
         .map(([key, title]) => <div key={key}><dt>{title}</dt><dd>{impact.counts[key].toLocaleString("vi-VN")}</dd></div>)}</dl>
       {impact.missing_files > 0 && <Notice tone="warning">{impact.missing_files} tệp trong danh mục đã vắng mặt.</Notice>}
-      <label>Nhập đúng tên {label}<input value={name} maxLength={255} disabled={busy}
+      <label>Nhập đúng tên {label}<input ref={confirmationInput} value={name} maxLength={255} disabled={busy}
         onChange={event => setName(event.target.value)} /></label>
       <div className="modal-actions">
         <button type="button" className="button secondary" disabled={busy} onClick={() => {
           setImpact(null); setName(""); setError("");
+          requestAnimationFrame(() => trigger.current?.focus());
         }}>Hủy</button>
         <button type="button" className="button danger" disabled={busy || name !== impact.name}
           onClick={() => void confirm()}>{busy ? "Đang xóa…" : "Xác nhận xóa vĩnh viễn"}</button>
       </div>
-    </div> : <button type="button" className="text-button" disabled={busy} onClick={() => void preview()}>
-      <Trash2 size={16} aria-hidden="true" /> {busy ? "Đang xem tác động…" : "Xem tác động khi xóa vĩnh viễn"}
+    </div> : <button ref={trigger} type="button" className="text-button" disabled={busy} onClick={() => void preview()}>
+      <Trash2 size={16} aria-hidden="true" /> {busy ? "Đang xem tác động…" : "Xóa vĩnh viễn"}
     </button>}
   </section>;
 }

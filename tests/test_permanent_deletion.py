@@ -16,6 +16,7 @@ from studio.access import session_token_hash
 from studio.config import settings
 from studio.database import (
     ArtifactRow,
+    AuditRow,
     ConversationRow,
     DatasetRow,
     ExportRow,
@@ -329,6 +330,43 @@ def test_purge_isolated_workspace_with_projects_and_sessions(isolated_purge):
     with factory() as db:
         assert db.get(WorkspaceRow, workspace_id) is None
         assert db.get(WorkspaceRow, "demo") is not None
+
+
+def test_owner_purges_other_workspace_from_demo_and_retains_provider_ledger(isolated_purge):
+    client, factory, _, _ = isolated_purge
+    created = client.post("/api/workspaces", json={"name": "Synthetic workspace with AI"})
+    assert created.status_code == 201
+    workspace_id = created.json()["id"]
+    target_id = str(uuid4())
+    with factory() as db:
+        record = AuditRow(
+            workspace_id=workspace_id,
+            actor_id="test-owner",
+            action="GEMINI_REQUEST_RESERVED",
+            resource_id=target_id,
+        )
+        db.add(record)
+        db.get(MembershipRow, (workspace_id, "test-owner")).role = "viewer"
+        db.commit()
+        audit_id = record.id
+    endpoint = f"/api/permanent-deletion/workspace/{workspace_id}"
+    assert client.get(endpoint).status_code == 404
+    with factory() as db:
+        db.get(MembershipRow, (workspace_id, "test-owner")).role = "owner"
+        db.commit()
+    body, _ = request_body(client, endpoint)
+    response = client.post(endpoint, json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "DELETED"
+    assert client.post(endpoint, json=body).json() == response.json()
+    assert client.get("/api/settings").json()["workspace_name"] == "Không gian làm việc local"
+    with factory() as db:
+        assert db.get(WorkspaceRow, workspace_id) is None
+        assert db.get(WorkspaceRow, "demo") is not None
+        reservation = db.get(AuditRow, audit_id)
+        assert reservation.workspace_id is None and reservation.actor_id == "purged-workspace"
+        assert reservation.action == "GEMINI_REQUEST_RESERVED"
+        assert reservation.resource_id != target_id
 
 
 def test_purge_rejects_json_reference_from_another_project(isolated_purge):

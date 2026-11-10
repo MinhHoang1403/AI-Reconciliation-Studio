@@ -1995,6 +1995,9 @@ pre {
 .management-list > li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .7rem 0; border-bottom: 1px solid var(--surface-border); overflow-wrap: anywhere; }
 .management-impact, .management-confirm { display: grid; gap: .85rem; margin-top: 1rem; overflow-wrap: anywhere; }
 .management-impact ul { margin: 0; }
+.permanent-deletion { border-top: 1px solid var(--surface-border); margin-top: 1rem; padding-top: .75rem; }
+.permanent-deletion > .text-button { min-height: 2.75rem; color: #991b1b; }
+.permanent-deletion .management-confirm { margin-top: 0; }
 .button.danger { color: #991b1b; background: #fff1f2; border: 1px solid #fecdd3; }
 .button.danger:hover { background: #ffe4e6; }
 .review-heading, .review-approval, .mapping-facts { border: 0; padding: 1rem 0; min-width: 0; }

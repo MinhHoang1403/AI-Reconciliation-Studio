@@ -117,6 +117,15 @@ export function WorkspaceManager({ current, onRename }: {
           </button>
         </div>
       </form>}
+      {!action && current.role === "owner" && selected !== current.id && selected !== "demo"
+        && choices?.some(row => row.id === selected && row.role === "owner") &&
+        <PermanentDeletion key={selected} kind="workspace" resourceId={selected} onPending={setPending}
+          onDeleted={() => {
+            setChoices(rows => rows?.filter(row => row.id !== selected) ?? null);
+            setSelected(current.id);
+            setStatus("Đã xóa vĩnh viễn không gian đã chọn.");
+            localStorage.removeItem(`studio.project.${selected}`);
+          }} />}
     </Modal>
   </>;
 }
