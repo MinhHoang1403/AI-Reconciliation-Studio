@@ -33,14 +33,20 @@ EXPECTED_STATES = dict(
 )
 
 
-def verify_test_scope(schema: str) -> None:
+def verify_test_scope(schema: str, gemini: bool) -> None:
     if not re.fullmatch(r"test_[0-9a-f]{32}", schema):
         raise SystemExit("A UUID TEST schema is required.")
     probe = (
         "from studio.config import settings; from studio.database import SessionFactory; "
         "from studio.permanent_deletion import purge_root; "
-        "assert not settings.allow_external_ai and not settings.allow_cloud_parsing "
-        "and not settings.ollama_url; print(purge_root(SessionFactory()).name)"
+        "assert not settings.allow_cloud_parsing and not settings.ollama_url; "
+        + (
+            "assert settings.allow_external_ai and settings.agent_cloud_enabled "
+            "and settings.gemini_api_key.get_secret_value(); "
+            if gemini
+            else "assert not settings.allow_external_ai; "
+        )
+        + "print(purge_root(SessionFactory()).name)"
     )
     actual = subprocess.check_output(
         ["docker", "compose", "exec", "-T", "backend", "python", "-c", probe],
@@ -51,16 +57,22 @@ def verify_test_scope(schema: str) -> None:
         raise SystemExit("The running backend does not match the requested TEST schema.")
 
 
-def ask(client: httpx.Client, conversation: str, context: dict, goal: str) -> dict:
+def ask(client: httpx.Client, conversation: str, context: dict, goal: str, gemini: bool) -> dict:
     response = client.post(
         "/api/assistant/messages",
-        json=dict(conversation_id=conversation, context=context, mode="AGENT", text=goal),
+        json=dict(
+            conversation_id=conversation,
+            context=context,
+            mode="AGENT",
+            text=goal,
+            **({"model_choice": "GEMINI"} if gemini else {}),
+        ),
         headers={"Idempotency-Key": str(uuid4())},
     )
     if response.status_code != 202:
         return {"http": response.status_code, "error": response.json().get("code")}
     job_id = response.json()["job_id"]
-    deadline = time.monotonic() + 40
+    deadline = time.monotonic() + (130 if gemini else 40)
     while time.monotonic() < deadline:
         job = client.get(f"/api/jobs/{job_id}").raise_for_status().json()
         if job["status"] in {"FAILED", "BLOCKED", "CANCELLED"}:
@@ -104,7 +116,7 @@ def export_readback(client: httpx.Client, block: dict, entry: dict, file_format:
     return bool(json.loads(stored) == entry["snapshot"])
 
 
-def measure(case: dict, oracle: dict) -> dict[str, Any]:
+def measure(case: dict, oracle: dict, gemini: bool) -> dict[str, Any]:
     started = time.monotonic()
     context = {"project_id": oracle["project_id"]}
     source = oracle["sources"].get(case.get("source"))
@@ -122,10 +134,10 @@ def measure(case: dict, oracle: dict) -> dict[str, Any]:
         )
         conversation = response.raise_for_status().json()["id"]
         if case.get("setup"):
-            setup = ask(client, conversation, context, case["setup"])
+            setup = ask(client, conversation, context, case["setup"], gemini)
             if setup.get("state") != "COMPLETED":
                 return dict(ok=False, error="SETUP_FAILED", cause=setup.get("error"))
-        flow = ask(client, conversation, context, case["goal"])
+        flow = ask(client, conversation, context, case["goal"], gemini)
         detail = flow.get("detail", {})
         intent = detail.get("intent") or {}
         query = intent.get("query") or {}
@@ -185,6 +197,9 @@ def main() -> None:
     parser.add_argument("--finance-receipt", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--cases", nargs="+", help="Optional smoke IDs. Default is all 130.")
+    parser.add_argument(
+        "--gemini", action="store_true", help="Send synthetic TEST cases to Gemini."
+    )
     args = parser.parse_args()
     cases = json.loads(FIXTURE.read_text(encoding="utf-8"))
     assert Counter(c["category"] for c in cases) == COUNTS
@@ -192,7 +207,7 @@ def main() -> None:
     if args.cases:
         assert set(args.cases) <= {c["id"] for c in cases}
         cases = [c for c in cases if c["id"] in args.cases]
-    verify_test_scope(args.schema)
+    verify_test_scope(args.schema, args.gemini)
     oracle = json.loads(args.finance_receipt.read_text(encoding="utf-8"))
     with httpx.Client(base_url=ORIGIN, timeout=10) as client:
         client.get("/api/session").raise_for_status()
@@ -201,7 +216,7 @@ def main() -> None:
 
     def run_case(case: dict) -> dict:
         try:
-            result = measure(case, oracle)
+            result = measure(case, oracle, args.gemini)
         except (httpx.HTTPError, KeyError, ValueError) as exc:
             result = dict(ok=False, error=type(exc).__name__)
         return {"id": case["id"], "category": case["category"], **result}

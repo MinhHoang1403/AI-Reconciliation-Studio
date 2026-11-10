@@ -888,6 +888,8 @@ def test_status_questions_are_read_only_variants(goal):
         "Dữ liệu đã chuẩn hóa, sau đó xuất báo cáo",
         "Tự động duyệt các cột đã chuẩn hóa",
         "Tổng số tiền đã thanh toán là bao nhiêu?",
+        "Trong dữ liệu đã chuẩn hóa, xem mã đơn và ngày giao dịch.",
+        "Liệt kê các dòng có mã đơn trống trong nguồn chưa chuẩn hóa.",
     ],
 )
 def test_status_shortcut_never_hijacks_actions_or_analytics(goal):

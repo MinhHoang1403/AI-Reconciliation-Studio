@@ -49,13 +49,18 @@ def asks_processing_status(goal: str) -> bool:
         ),
         text,
     )
-    question = re.search(r"\b(?:chua|da|file nao|nguon nao|kiem tra trang thai|co can)\b", text)
+    question = re.search(
+        r"\b(?:kiem tra trang thai|co can xac nhan cot)\b"
+        r"|\b(?:file|nguon|tep) nao\b[^.!?;]*\b(?:chua|da)\b"
+        r"|\bchua\s*[?.!]*$",
+        text,
+    )
     writes = re.search(
         r"\b(?:de xuat|chuan bi|thiet lap|thuc hien|tao|cap nhat|chinh sua|dieu chinh|"
         r"tiep tuc|lam sach|chuyen doi|hay chuan hoa|chuan hoa .*giup|"
         r"tien hanh|chay doi soat|xuat bao cao|"
         r"duyet|bo qua|tu dong|sau do|roi .*doi soat|va .*doi soat|"
-        r"bao nhieu|tong tien|tong so|bieu do|loc|sap xep|giai thich)\b",
+        r"bao nhieu|tong tien|tong so|bieu do|loc|sap xep|giai thich|liet ke|tim|dem)\b",
         text,
     )
     return bool(subject and status and question and not writes)
