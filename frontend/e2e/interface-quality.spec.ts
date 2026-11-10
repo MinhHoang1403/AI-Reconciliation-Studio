@@ -196,6 +196,31 @@ test("[MOCK CONTRACT] keyboard focus stays visible when a long mobile dialog wra
   await expect(trigger).toBeFocused();
 });
 
+for (const width of [390, 1440]) {
+  test(`source search separates click and keyboard focus at ${width}px`, async ({ page }) => {
+    await fixture(page, projects(1), "project-000");
+    await page.setViewportSize({ width, height: 620 });
+    await page.goto("/#page=data");
+    const search = page.getByRole("searchbox", { name: "Tìm nguồn dữ liệu" });
+    await expect(search).toBeVisible();
+    const before = await search.boundingBox();
+    const background = await search.evaluate(element => getComputedStyle(element).backgroundColor);
+    await search.click();
+    await expect(search).toBeFocused();
+    await expect(search).toHaveCSS("outline-style", "none");
+    await expect(search).toHaveCSS("box-shadow", "none");
+    await expect(search).not.toHaveCSS("background-color", background);
+    expect(await search.boundingBox()).toEqual(before);
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(search).toBeFocused();
+    await expect(search).toHaveCSS("box-shadow", /0px -2px 0px 0px inset/);
+    expect(await search.boundingBox()).toEqual(before);
+    await search.click();
+    await expect(search).toHaveCSS("box-shadow", "none");
+  });
+}
+
 test("[MOCK CONTRACT] project lifecycle previews impact and restores the hidden project", async ({ page }) => {
   const [sample] = projects(1);
   sample.classification = "TEST";
@@ -1223,15 +1248,16 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     expect(bounds.y).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(900);
-    const focusStyle = await search.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return {
-        style: style.outlineStyle,
-        width: parseFloat(style.outlineWidth),
-      };
-    });
-    expect(focusStyle.style).not.toBe("none");
-    expect(focusStyle.width).toBeGreaterThanOrEqual(2);
+    await expect(search).toHaveCSS("outline-style", "none");
+    await expect(search).toHaveCSS("box-shadow", /0px -2px 0px 0px inset/);
+    const searchBounds = await search.boundingBox();
+    await search.click();
+    await expect(search).toHaveCSS("box-shadow", "none");
+    expect(await search.boundingBox()).toEqual(searchBounds);
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(search).toBeFocused();
+    await expect(search).toHaveCSS("box-shadow", /0px -2px 0px 0px inset/);
     const contrast = await dialog.evaluate((element) => {
       const luminance = (color: string) => {
         const channels = color

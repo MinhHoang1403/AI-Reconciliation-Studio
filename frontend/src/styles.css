@@ -26,7 +26,7 @@
   --overlay-radius: 14px;
   --shadow-surface: 0 2px 12px #0f172a05;
   --shadow-overlay: 0 16px 56px #0f172a1a;
-  --focus-ring: var(--accent-hover);
+  --focus-mark: var(--ink);
   --text-muted: #475569;
   font-family: system-ui, "Segoe UI", Arial, sans-serif;
   color: var(--ink);
@@ -63,15 +63,29 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible,
-summary:focus-visible,
-[tabindex]:focus-visible {
-  outline: 2px solid var(--focus-ring);
+/* Text fields can match :focus-visible after a click. Read the input mode
+   from the shell at the document level so Radix portals use it as well. */
+:is(button, a, input, textarea, select, summary, [tabindex]):focus {
+  outline: none;
+}
+:where(:root:has(.app-shell[data-focus-mode="keyboard"]))
+  :is(button, a, input, textarea, select, summary, [tabindex]):focus-visible:not(:where(.assistant-composer textarea, input[type="checkbox"], input[type="radio"])) {
+  box-shadow: inset 0 -2px var(--focus-mark);
+}
+:where(:root:has(.app-shell[data-focus-mode="keyboard"]))
+  input:is([type="checkbox"], [type="radio"]):focus-visible {
+  outline: 2px solid var(--focus-mark);
   outline-offset: 2px;
+}
+:is(.primary, .composer-send, .skip-to-work) {
+  --focus-mark: var(--surface-raised);
+}
+@media (forced-colors: active) {
+  :where(:root:has(.app-shell[data-focus-mode="keyboard"]))
+    :is(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
 }
 a {
   color: inherit;
@@ -264,9 +278,9 @@ svg {
   min-width: 0;
   min-height: var(--scope-control-height);
   padding: 4px 9px;
-  border: 1px solid var(--surface-border);
+  border: 1px solid transparent;
   border-radius: var(--control-radius);
-  background: var(--surface-raised);
+  background: var(--surface-subtle);
   color: var(--ink);
   font-size: 13px;
   text-align: start;
@@ -275,8 +289,8 @@ svg {
 .masthead-scope .project-trigger { max-width: 21rem; width: auto; }
 .masthead-scope strong { font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .masthead-scope :is(.workspace-picker, .project-trigger) > svg { color: var(--text-muted); }
-.masthead-scope :is(.workspace-picker, .project-trigger):hover,
-.masthead-scope :is(.workspace-picker, .project-trigger)[aria-expanded="true"] { background: var(--canvas); }
+.masthead-scope :is(.workspace-picker, .project-trigger):hover { background: var(--surface-hover); }
+.masthead-scope :is(.workspace-picker, .project-trigger)[aria-expanded="true"] { background: var(--accent-soft); }
 .workspace-selected-name {
   display: block;
   color: var(--text-muted);
@@ -440,7 +454,10 @@ main {
 .project-option strong, .project-option span, .project-option small { display: block; }
 .project-option span { margin-top: 3px; font-size: 12px; color: #475569; }
 .project-option small { margin-top: 3px; font-size: 10px; color: var(--text-muted); }
-.project-option.highlighted { background: var(--surface-subtle); box-shadow: inset 2px 0 0 #2563eb; }
+.project-option.highlighted { background: var(--accent-soft); }
+.project-option.highlighted strong { color: var(--accent-hover); }
+:where(:root:has(.app-shell[data-focus-mode="keyboard"]))
+  .project-option.highlighted strong { text-decoration: underline; text-underline-offset: 3px; }
 .project-option.highlighted small { color: #475569; }
 .project-test-filter { margin-top: 12px; }
 .project-classification { border-top: 1px solid var(--surface-border); margin-top: 12px; padding-top: 12px; }
@@ -624,8 +641,7 @@ main {
   background: var(--surface-sidebar);
 }
 .dataset-item.dataset-selected {
-  background: var(--surface-subtle);
-  box-shadow: inset 2px 0 0 #2563eb;
+  background: var(--accent-soft);
 }
 .file-type {
   padding: 9px;
@@ -742,7 +758,6 @@ main {
 }
 .tabs .selected {
   color: #1d4ed8;
-  border-color: #2563eb;
   font-weight: 600;
 }
 .tab-content {
@@ -918,14 +933,17 @@ label > select {
 }
 input,
 select {
-  background: var(--surface-raised);
-  border: 1px solid var(--control-border);
+  background: var(--surface-subtle);
+  border: 1px solid transparent;
   border-radius: 8px;
   min-height: 37px;
   padding: 8px 11px;
   width: 100%;
   color: #334155;
   font-size: 13px;
+}
+:is(input:not([type="checkbox"], [type="radio"]), select, textarea):focus {
+  background: var(--surface-hover);
 }
 input::placeholder {
   color: var(--text-muted);
@@ -1020,9 +1038,9 @@ input[type="checkbox"] {
   min-height: 40px;
   width: 100%;
   padding: 6px 10px;
-  border: 1px solid var(--control-border);
+  border: 1px solid transparent;
   border-radius: var(--control-radius);
-  background: var(--surface-raised);
+  background: var(--surface-subtle);
   text-align: left;
 }
 .mapping-target-trigger span { min-width: 0; overflow-wrap: anywhere; }
@@ -1779,8 +1797,6 @@ pre {
 .claim-label { font-weight: 600; }
 .claim-label.verified_fact { color: #166534; }
 .claim-label.hypothesis, .claim-label.insufficient_evidence { color: #92400e; }
-/* Chromium marks text inputs focus-visible even after a pointer click. Keyboard
-   navigation gets a persistent inset underline, never an outer composer frame. */
 .assistant-composer {
   flex-shrink: 0;
   display: grid;
@@ -1799,9 +1815,10 @@ pre {
 }
 .assistant-composer > label { display: block; font-size: inherit; min-width: 0; grid-column: 2; grid-row: 1; }
 .assistant-composer textarea { display: block; width: 100%; min-width: 0; height: 40px; min-height: 40px; max-height: 180px; padding: 8px 4px; border: 0; border-radius: 6px; background: transparent; resize: none; line-height: 24px; color: #262626; }
-.assistant-composer:hover { background: #fff; border-color: #9ca3af; }
-.app-shell[data-focus-mode="keyboard"] .assistant-composer:has(textarea:focus) { box-shadow: var(--shadow-composer), inset 0 -2px 0 var(--focus-ring); }
-.assistant-composer textarea:focus-visible { outline: none; }
+.assistant-composer textarea:focus { background: var(--surface-subtle); }
+.app-shell[data-focus-mode="keyboard"] .assistant-composer:has(textarea:focus-visible) {
+  box-shadow: var(--shadow-composer), inset 0 -2px var(--focus-mark);
+}
 .assistant-composer textarea::placeholder { color: #6b7280; font-weight: 400; }
 .assistant-composer > .icon-button { grid-column: 1; grid-row: 1; width: 40px; height: 40px; padding: 0; border-radius: 50%; }
 .composer-actions { grid-column: 3; grid-row: 1; display: flex; gap: 6px; align-items: center; }
@@ -1835,7 +1852,7 @@ pre {
   text-align: start;
   color: var(--accent-hover);
 }
-.assistant-task:hover, .assistant-task:focus-visible { background: var(--accent-soft); }
+.assistant-task:hover { background: var(--accent-soft); }
 .assistant-task:disabled { opacity: .58; cursor: not-allowed; background: transparent; }
 .assistant-task strong, .assistant-task small { display: block; }
 .assistant-task strong { color: var(--ink); font-size: .925rem; }
@@ -1960,7 +1977,6 @@ pre {
 }
 @media (max-height: 650px) {
   .is-welcome .assistant-conversation { justify-content: safe center; overflow-y: auto; padding-bottom: 0; }
-  .is-welcome:has(.assistant-composer textarea:focus) :is(.agent-empty, .agent-prompts) { display: none; }
 }
 @media (max-width: 520px) {
   .agent-prompts { grid-template-columns: minmax(0, 1fr); margin-bottom: 1rem; }
@@ -2024,7 +2040,7 @@ pre {
 .source-workflow, .workspace-tabs { display: flex; flex-wrap: wrap; gap: .35rem 1rem; border-bottom: 1px solid var(--surface-border); }
 .source-workflow { margin: 0 1.25rem 1rem; }
 .source-workflow .button, .workspace-tabs button { min-height: 3rem; border: 0; border-radius: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-muted); padding: .55rem .2rem; }
-.source-workflow .button[aria-pressed="true"], .workspace-tabs button[aria-pressed="true"] { border-bottom-color: var(--accent); color: var(--accent-hover); font-weight: 670; }
+.source-workflow .button[aria-pressed="true"], .workspace-tabs button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-hover); font-weight: 670; }
 .workspace-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
 .management-list { padding: 0; margin: 1rem 0; list-style: none; border-top: 1px solid var(--surface-border); }
 .management-list > li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .7rem 0; border-bottom: 1px solid var(--surface-border); overflow-wrap: anywhere; }

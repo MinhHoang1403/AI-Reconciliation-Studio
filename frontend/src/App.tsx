@@ -1081,7 +1081,10 @@ export function App() {
       data-focus-mode={focusMode}
       onPointerDownCapture={() => setFocusMode("pointer")}
       onKeyDownCapture={event => {
-        if (event.key === "Tab" || event.key === "Escape") setFocusMode("keyboard");
+        const activation = (event.key === "Enter" || event.key === " ") &&
+          event.target instanceof HTMLElement &&
+          event.target.closest("button, a, summary, select, input[type='checkbox'], input[type='radio']");
+        if (event.key === "Tab" || event.key === "Escape" || activation) setFocusMode("keyboard");
       }}
     >
       <a className="skip-to-work" href="#main-content" inert={sidebar || undefined} onClick={event => {
