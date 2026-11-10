@@ -2,21 +2,21 @@
 
 ## Gemini First và quản lý dữ liệu — 10/11/2026
 
-**`NOT_READY`.** Source ứng viên `2f0a10f50b27ca663b44d60577d347e53c3aa3d5` trên `codex/studio-product-quality`. Yêu cầu gộp chuẩn hóa, đối soát hai cặp và xuất Excel vẫn dừng ở làm rõ sau khi người dùng nêu thứ tự các cặp. Docker Desktop chuyển sang `stopping` trong lượt nghiệm thu cuối, khiến lần kiểm Chromium toàn bộ và khôi phục bản nền chờ engine hoạt động.
+**`NOT_READY`.** Source ứng viên `2f0a10f50b27ca663b44d60577d347e53c3aa3d5` trên `codex/studio-product-quality`. Yêu cầu gộp chuẩn hóa, đối soát hai cặp và xuất Excel vẫn dừng ở làm rõ sau khi người dùng nêu thứ tự các cặp. Docker Desktop từng dừng giữa lượt đánh giá. Sau khi engine hoạt động trở lại, tám ca gián đoạn được chạy lại với cùng oracle, rồi hoàn tất lượt Chromium toàn bộ.
 
 | Phạm vi | Kết quả |
 | --- | --- |
 | Gemini | `gemini-3.5-flash-lite` xác minh qua API thật. Chat/Agent, Mapping và Planner đều có lượt live trên dữ liệu tổng hợp. Planner để lại phương án cần duyệt. Workspace mới được cấp policy Gemini theo cấu hình local đã xác minh và đã chạy Mapping live. Proof của cùng container giữ được phiên sau restart Backend/Worker. |
 | Giới hạn và LlamaParse | Giữ policy các workspace đã có. Trần nội bộ chấp nhận `unlimited` trong local opt-in. Giữ quyền từng tệp SHA-256, quota provider, audit, timeout và hàng rào gửi trùng. LlamaParse đã qua preflight tài khoản đọc riêng, chưa gửi tệp trong lượt này. Ghi nhận HTTP 429 và 503 thật của Google. |
-| Agent | Lượt đầy đủ trên dự án TEST mới trước bản sửa cuối đạt 125/130, gồm 82/84 tác vụ và 23/24 ca độc lập. Cùng oracle đã khóa. Lượt trên image `2f0a10f` ghi 118/130, gồm tám ca cuối gián đoạn do engine và bốn ca Gemini 503. Lượt 24 ca trên image mới chưa chạy vì engine trả HTTP 500 ở probe. |
+| Agent | Từ 69/130 khi provider tắt lên 125/130 (96,2%) trên image cuối, gồm 82/84 ca tác vụ và 22/24 (91,7%) ca độc lập. Giữ oracle đã khóa. Tám ca gián đoạn Docker được chạy lại riêng. Bốn ca 503 trong bộ 130 và một ca 503 trong tập độc lập giữ kết quả trượt. Trong 125 ca đạt, lượt chính có 104 ca xác định và 21 ca gọi Gemini. |
 | Qwen3:8B | Ollama 0.40.9, digest tiền tố `500a1f067a9f`. Thinking vẫn trượt 0/3 truy vấn so sánh chính xác và mất 64–78 giây mỗi ca. Đã gỡ khỏi lựa chọn/routing mới và giữ DTO cho lịch sử. Dừng phép đo mở rộng của 8B sau khi ba ca trọng yếu trượt lần cuối. |
 | Xóa vĩnh viễn | Chromium xóa nguồn TEST, dự án và workspace phụ từ demo. Kiểm trực tiếp PostgreSQL, ba tệp raw/parsed/prepared và biên nhận sau restart và sau lần tạo lại Backend. Thử thêm workspace dùng Gemini live và xác minh bản ghi tính lượt được tách khỏi workspace đã xóa. |
 | Giao diện | UI UX Pro Max áp dụng xác nhận tác động, phản hồi và focus. Hai tác nhân Impeccable đánh giá độc lập. Sửa nút tràn ở 320/390 px, focus khi cuộn modal, nhãn quyền chia sẻ và vùng chạm. 28 tổ hợp màn có dữ liệu, zoom trình duyệt 200% và các ca focus Chromium đã qua. Giữ 23 click, 10 trường và hai lần duyệt trên cả tồn kho lẫn bảo trì. |
-| Hệ thống | Backend/PostgreSQL 837 PASS trên image cuối. TypeScript, ESLint, Vite build, oracle Shopee/TikTok/giao nhận, checksum sáu CSV/XLSX và năm tệp nguồn PASS. Worker recovery SIGKILL 75.000 dòng đã qua trên image trước bản sửa định tuyến cuối. Chromium toàn bộ trên image cuối chưa có kết quả. |
+| Hệ thống | Backend/PostgreSQL 837 PASS và Chromium 152 PASS trong 11,6 phút trên image cuối. TypeScript, ESLint, Vite build, oracle Shopee/TikTok/giao nhận, checksum sáu CSV/XLSX và năm tệp nguồn PASS. Worker bị SIGKILL khi chuẩn hóa 75.000 dòng, lấy lại lease và chỉ công bố một bản chuẩn hóa. |
 
 Backend và Worker khớp SHA-256 của 57 tệp Python, image `sha256:39514708280826b044c2da5f50b5d7898fa7341f32d4e16e97ab9c59c8a32468`. Bảy tài sản Frontend phục vụ qua Nginx khớp image `sha256:c8a68090415d16be79bbb8030552aff10424c67e34566dace675001d820709da`. Backup `backup_61050848f3a04cb7865b187a43d1db8a` đã thử khôi phục và đối chiếu bản sao ngoài volume.
 
-Ứng viên dùng duy nhất Compose `ai-reconciliation-studio`, schema và kho tệp TEST tách khỏi `studio.public`. Override local `runtime/studio-product-quality/gemini-handoff-test.yaml` trỏ tag `candidate-2f0a10f`. Khi Docker hoạt động, dùng `docker compose -f compose.yaml -f runtime/studio-product-quality/gemini-handoff-test.yaml up -d --no-build --wait` rồi chạy `tools/verify-local.ps1` để kiểm cổng và phiên. Bản nền `76265d2` giữ tag rollback riêng.
+Ứng viên dùng duy nhất Compose `ai-reconciliation-studio`, schema và kho tệp TEST tách khỏi `studio.public`. Bản nền `76265d2` đã phục vụ lại trên cổng 18180. Cả bốn dịch vụ healthy, các kiểm tra HTTP và phiên local đều qua. `studio.public` dùng migration `add_purge_receipts` và kho tệp gốc. Override local `runtime/studio-product-quality/gemini-handoff-test.yaml` trỏ tag `candidate-2f0a10f`. Để mở thử, dùng `docker compose -f compose.yaml -f runtime/studio-product-quality/gemini-handoff-test.yaml up -d --no-build --wait` rồi chạy `tools/verify-local.ps1`. Để trở về bản nền, chạy `docker compose up -d --no-build --wait` và xác minh lại bằng cùng script.
 
 ## Tiếp tục Master Prompt — 10/11/2026
 
