@@ -1,5 +1,5 @@
 import { test } from "./project-selection";
-import { selectProject } from "./project-selection";
+import { chooseMappingTarget, selectProject } from "./project-selection";
 import { expect, type Page } from "@playwright/test";
 import { mkdir, readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -188,12 +188,8 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
     .fill("Một đơn hàng từ nguồn tổng hợp");
   await page.getByLabel("Chỉnh cột Order ID", {exact:true}).click();
   await page.getByLabel("Chỉnh cột Gross amount", {exact:true}).click();
-  await page
-    .getByLabel("Trường đích Order ID", { exact: true })
-    .fill("reference_id");
-  await page
-    .getByLabel("Trường đích Gross amount", { exact: true })
-    .fill("gross_amount");
+  await chooseMappingTarget(page, "Order ID", "reference_id");
+  await chooseMappingTarget(page, "Gross amount", "gross_amount");
   await page
     .getByLabel("Kiểu Gross amount", { exact: true })
     .selectOption("decimal");

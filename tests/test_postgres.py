@@ -809,6 +809,38 @@ def drain(factory, worker):
     pytest.fail("queue did not drain")
 
 
+def test_mapping_reproposal_joins_pending_job_and_replays_the_same_request(pg):
+    client, factory, worker = pg
+    source = upload(client, project(client))
+    with factory() as db:
+        claim = worker.claim_job(db)
+        assert claim is not None and claim[0] == source["job_id"]
+    worker.process_job(*claim)
+    table = client.get(f"/api/datasets/{source['id']}/tables").json()["items"][0]
+    route = f"/api/tables/{table['id']}"
+    pending = client.get(f"{route}/mappings").json()["job"]
+    assert pending["status"] == "QUEUED"
+    for key in ("join-one", "join-two"):
+        response = client.post(f"{route}/mapping-proposals", headers={"Idempotency-Key": key})
+        assert response.status_code == 202
+        assert response.json()["job_id"] == pending["id"]
+    with factory() as db:
+        job = db.get(JobRow, pending["id"])
+        assert job is not None
+        job.status = "BLOCKED"
+        job.error_code = "GEMINI_UNAVAILABLE"
+        db.commit()
+    assert client.get(f"{route}/mappings").json()["job"]["error_code"] == "GEMINI_UNAVAILABLE"
+    headers = {"Idempotency-Key": "one-explicit-retry"}
+    fresh = client.post(f"{route}/mapping-proposals", headers=headers).json()
+    assert fresh["job_id"] != pending["id"]
+    assert client.post(f"{route}/mapping-proposals", headers=headers).json() == fresh
+    with factory() as db:
+        job = db.get(JobRow, fresh["job_id"])
+        assert job is not None and job.payload == {"table_id": table["id"], "refresh": True}
+
+
+
 def approve(client, table_id):
     mapping = client.get(f"/api/tables/{table_id}/mappings").json()["items"][0]
     schema = mapping["schema"]

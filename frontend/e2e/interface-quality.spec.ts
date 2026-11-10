@@ -318,6 +318,128 @@ test("mapping form never exposes a previous sheet while the next profile is dela
   await expect(entity).toHaveValue('Ý nghĩa của nguồn B');
 });
 
+test("[MOCK CONTRACT] mapping jobs publish revisions, keep edited drafts and expire success only", async ({ page }) => {
+  await fixture(page, projects(1), "project-000");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const source = { id: "smart-source", project_id: "project-000", name: "Nguồn tổng hợp.csv", status: "NEEDS_MAPPING_REVIEW", created_at: "2026-11-10" };
+  const columns = ["Mã nghiệp vụ", "Ghi chú"].map((name, index) => ({
+    name, column_id: `c${index + 1}`, samples: ["0007"], row_count: 1, null_count: 0,
+    empty_count: 0, distinct_count: 1, duplicate_count: 0, type_candidates: ["string"],
+    identifier_candidate: index === 0, evidence_ids: [],
+  }));
+  const mapping = (revision: number) => ({
+    id: `revision-${revision}`, revision, status: revision === 1 ? "UNKNOWN" : "PROPOSED",
+    proposal_source: revision === 1 ? null : "GEMINI", decision: null,
+    proposal: {
+      status: "PROPOSED", entity_kind: revision === 1 ? "unknown" : "Giao dịch", grain: "unknown",
+      unresolved_questions: [], decisions: revision === 1 ? [] : [{
+        source_field: "c1", candidate_target: "reference_id", decision: "PROPOSED",
+        transformation_candidate: { op: "cast_string_preserve" }, unresolved_questions: [],
+      }],
+    },
+    schema: { id: "smart-schema", entity_kind: "unknown", grain: "unknown", business_key_fields: [],
+      fields: [
+        { id: "reference_id", name: "Mã tham chiếu", data_type: "string" },
+        { id: "description", name: "Mô tả", data_type: "string" },
+      ] },
+  });
+  let revision = 1;
+  let submissions = 0;
+  let status = "RUNNING";
+  const job = () => ({
+    id: `proposal-${submissions}`, status, kind: "mapping", attempts: 1,
+    error_code: status === "BLOCKED" ? "AI_CANNOT_APPROVE" : null,
+    result: status === "SUCCEEDED" ? { mapping_id: `revision-${revision}`, source: "GEMINI" } : null,
+  });
+  await page.route("**/api/**", route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/datasets") return route.fulfill({ json: { items: [source], total: 1 } });
+    if (path === "/api/datasets/smart-source") return route.fulfill({ json: source });
+    if (path.endsWith("/tables")) return route.fulfill({ json: { items: [{
+      id: "smart-table", sheet: "CSV", row_count: 1, active_mapping_id: null,
+      parsed: { columns: [], warnings: [], header_row: 1 },
+    }] } });
+    if (path.endsWith("/profile")) return route.fulfill({ json: { columns, row_count: 1, key_candidates: [] } });
+    if (path.endsWith("/mappings")) return route.fulfill({ json: {
+      items: Array.from({ length: revision }, (_, index) => mapping(revision - index)),
+      job: submissions ? job() : null,
+    } });
+    if (path.endsWith("/mapping-proposals")) {
+      submissions++;
+      status = "RUNNING";
+      return route.fulfill({ status: 202, json: { job_id: job().id, status } });
+    }
+    if (path.startsWith("/api/jobs/proposal-")) return route.fulfill({ json: job() });
+    if (path.endsWith("/artifacts")) return route.fulfill({ json: { canonical_datasets: [] } });
+    if (path.endsWith("/preview")) return route.fulfill({ json: { items: [], total: 0, columns: [] } });
+    return route.fallback();
+  });
+  await page.goto("/#page=data&project=project-000&dataset_id=smart-source");
+  await page.getByRole("button", { name: "Xác nhận cột", exact: true }).click();
+  const button = page.getByRole("button", { name: "Đề xuất lại" });
+  const picker = page.getByRole("combobox", { name: "Phiên bản ánh xạ", exact: true });
+  await button.click();
+  await expect(page.getByText("Đang phân tích dữ liệu…")).toBeVisible();
+  await expect(button).toBeDisabled();
+  await expect(picker).toHaveValue("revision-1");
+  await expect(page.getByText("Đã có đề xuất mới.", { exact: true })).toHaveCount(0);
+  revision = 2;
+  status = "SUCCEEDED";
+  await expect(picker).toHaveValue("revision-2");
+  const success = page.getByText("Đã có đề xuất mới.", { exact: true });
+  await expect(success).toBeVisible();
+  const visibleAt = Date.now();
+  await expect(success).toHaveCount(0, { timeout: 6500 });
+  expect(Date.now() - visibleAt).toBeGreaterThan(4400);
+
+  await page.getByLabel("Chỉnh cột Ghi chú", { exact: true }).click();
+  const target = page.getByRole("button", { name: "Trường đích Ghi chú", exact: true });
+  await target.click();
+  const dialog = page.getByRole("dialog", { name: "Chọn trường cho Ghi chú", exact: true });
+  const search = dialog.getByRole("combobox");
+  const dialogBounds = (await dialog.boundingBox())!;
+  expect(dialogBounds.x).toBeGreaterThanOrEqual(0);
+  expect(dialogBounds.x + dialogBounds.width).toBeLessThanOrEqual(390);
+  await search.fill("ma tham chieu");
+  await expect(dialog.getByRole("option")).toHaveAttribute("aria-disabled", "true");
+  await expect(dialog.getByText("Đã gán cho cột Mã nghiệp vụ")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(target).toBeFocused();
+  await expect(target).toContainText("Giữ nguyên trong nguồn gốc");
+  await target.click();
+  await search.fill("mo ta");
+  await search.press("Enter");
+  await expect(target).toBeFocused();
+  await expect(target).toContainText("Mô tả");
+  const bounds = await target.boundingBox();
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+
+  await button.click();
+  await expect(button).toBeDisabled();
+  revision = 3;
+  status = "SUCCEEDED";
+  await expect(page.getByRole("button", { name: "Mở đề xuất mới" })).toBeVisible();
+  await expect(picker).toHaveValue("revision-2");
+  await expect(target).toContainText("Mô tả");
+  await page.reload();
+  await expect(picker).toHaveValue("revision-2");
+  await page.getByRole("button", { name: "Mở đề xuất mới" }).click();
+  await expect(picker).toHaveValue("revision-3");
+  await picker.selectOption("revision-2");
+  await page.getByLabel("Chỉnh cột Ghi chú", { exact: true }).click();
+  await expect(target).toContainText("Mô tả");
+  await button.click();
+  await expect(button).toBeDisabled();
+  status = "BLOCKED";
+  const alert = page.getByRole("alert").filter({ hasText: "Không thể tạo đề xuất" });
+  await expect(alert).toContainText("AI trả về trạng thái không hợp lệ");
+  await expect(alert).not.toContainText("AI_CANNOT_APPROVE");
+  await expect(picker).toHaveValue("revision-2");
+  await page.waitForTimeout(5100);
+  await expect(alert).toBeVisible();
+  expect(submissions).toBe(3);
+});
+
 /** Browser-only API contract fixtures never create production projects or jobs. */
 async function fixture(page: Page, items: Project[], saved?: string) {
   await page.addInitScript((id) => {

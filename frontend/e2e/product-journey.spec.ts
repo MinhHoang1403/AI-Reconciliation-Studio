@@ -1,4 +1,4 @@
-import { assistantPanel, test } from "./project-selection";
+import { assistantPanel, chooseMappingTarget, test } from "./project-selection";
 import { openLegacyPage } from "./project-selection";
 import { expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
@@ -101,7 +101,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
         has: page.getByLabel(`Trường đích ${field}`, { exact: true }),
       });
       await row.locator(":scope > summary").click();
-      await row.getByLabel(`Trường đích ${field}`, { exact: true }).fill(field);
+      await chooseMappingTarget(page, field, field);
       await row
         .getByLabel(`Kiểu ${field}`, { exact: true })
         .selectOption(

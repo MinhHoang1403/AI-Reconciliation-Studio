@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, Query, Request, Respon
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import Field
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import Select, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from studio.access import (
@@ -1131,6 +1131,14 @@ def preview(
     }
 
 
+def table_mapping_jobs(table: TableRow) -> Select[tuple[JobRow]]:
+    return select(JobRow).where(
+        JobRow.workspace_id == table.workspace_id,
+        JobRow.kind == "mapping",
+        JobRow.payload["table_id"].astext == table.id,
+    )
+
+
 @app.get("/api/tables/{table_id}/mappings", response_model=MappingList)
 def mappings(table_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
     table = get_scoped(db, TableRow, table_id, actor)
@@ -1158,7 +1166,20 @@ def mappings(table_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
         assert schema is not None
         return schema.definition
 
+    latest_job = db.scalar(
+        table_mapping_jobs(table).order_by(JobRow.created_at.desc(), JobRow.id.desc()).limit(1)
+    )
+    origins = {
+        result["mapping_id"]: result.get("source")
+        for result in db.scalars(
+            table_mapping_jobs(table)
+            .with_only_columns(JobRow.result)
+            .where(JobRow.status == "SUCCEEDED")
+        )
+        if result and "mapping_id" in result
+    }
     return {
+        "job": JobView.model_validate(latest_job, from_attributes=True) if latest_job else None,
         "items": [
             {
                 "id": r.id,
@@ -1167,6 +1188,7 @@ def mappings(table_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
                 "proposal": r.proposal,
                 "decision": r.decision,
                 "schema": schema_definition(r.schema_id),
+                "proposal_source": origins.get(r.id),
                 "template_mapping_id": template_ids.get(r.id),
                 "reuse_enabled": r.id == table.active_mapping_id
                 and current_reuse_grant(db, r) is not None,
@@ -1174,7 +1196,7 @@ def mappings(table_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
                 and approved_reference(db, r, table),
             }
             for r in rows
-        ]
+        ],
     }
 
 
@@ -1245,13 +1267,32 @@ def propose(
     require_editor(actor, db, table_id)
     table = get_scoped(db, TableRow, table_id, actor)
     project = project_for_table(db, table)
+    db.refresh(table, with_for_update=True)
+    key = "mapping:" + idempotency_key
+    replay = db.scalar(
+        select(JobRow).where(
+            JobRow.workspace_id == actor.workspace_id, JobRow.idempotency_key == key
+        )
+    )
+    if not replay:
+        pending = db.scalar(
+            table_mapping_jobs(table)
+            .where(JobRow.status.in_(["QUEUED", "RUNNING", "RETRYABLE_FAILURE"]))
+            .order_by(JobRow.created_at.desc())
+            .limit(1)
+        )
+        if pending:
+            return {"job_id": pending.id, "status": pending.status}
+    payload: dict[str, Any] = {"table_id": table_id}
+    if replay is None or "refresh" in replay.payload:
+        payload["refresh"] = True
     job = enqueue_job(
         db,
         actor.workspace_id,
         project.id,
         "mapping",
-        "mapping:" + idempotency_key,
-        {"table_id": table_id},
+        key,
+        payload,
     )
     db.commit()
     return {"job_id": job.id, "status": job.status}

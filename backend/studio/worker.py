@@ -695,7 +695,9 @@ def _mapping(job_id: str, token: str) -> None:
             policy = WorkspacePolicy.model_validate(workspace.policy)
             workspace_id = job.workspace_id
             schema = default_schema(job.workspace_id, identifier())
-            template = _approved_mapping_draft(db, table, profile)
+            template = (
+                None if job.payload.get("refresh") else _approved_mapping_draft(db, table, profile)
+            )
             template_id = None
             if template is not None:
                 template_id, schema, proposal, _ = template

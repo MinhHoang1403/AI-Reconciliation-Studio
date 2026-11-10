@@ -86,7 +86,9 @@ def validate_mapping(
                 ambiguous or not field.semantic_metric or not field.amount_basis
             ):
                 decision.decision = MappingStatus.AMBIGUOUS
-                decision.unresolved_questions = ["Xác nhận định nghĩa số tiền, đơn vị và tiền tệ."]
+                decision.unresolved_questions = [
+                    "Xác nhận chỉ tiêu, cơ sở số tiền, đơn vị và tiền tệ."
+                ]
             if for_approval and not all(
                 value
                 and value.strip().casefold()

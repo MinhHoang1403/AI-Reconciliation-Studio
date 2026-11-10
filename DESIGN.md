@@ -15,3 +15,7 @@ Lấy nhịp từ mục lục hồ sơ và dấu chỉ mục. Nền sáng, chữ
 ## Tương tác
 
 Giữ điều khiển web quen thuộc, trạng thái focus rõ, nhãn đầy đủ cho nút chỉ có biểu tượng, và cuộn bảng bên trong vùng dữ liệu. Chi tiết hiển thị cạnh nội dung khi còn đủ chỗ và trở về một cột hoặc drawer khi hẹp. Không dùng chuyển động để biểu đạt trạng thái nghiệp vụ.
+
+Trong Xác nhận cột, hộp chọn Trường đích tìm theo tên tiếng Việt và dùng danh sách của cấu trúc đang xem. Mỗi lựa chọn cho biết kiểu dữ liệu. Trường đã gán có lý do vô hiệu hóa. Người dùng có thể giữ nguyên cột nguồn hoặc chủ động thêm trường vào cấu trúc. Hộp chọn hỗ trợ phím mũi tên, Enter và Escape.
+
+Đề xuất lại hiển thị tiến độ đến khi công việc kết thúc. Bản đề xuất mới tự mở khi biểu mẫu chưa chỉnh sửa. Nếu đã có thay đổi, Studio giữ bản nháp theo phiên bản và cho người dùng chọn mở bản mới. Thông báo thành công tạm thời tự ẩn sau 5 giây. Lỗi tác vụ và yêu cầu xác nhận nằm tại chỗ để người dùng xử lý.

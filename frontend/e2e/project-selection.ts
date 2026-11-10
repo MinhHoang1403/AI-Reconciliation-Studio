@@ -25,6 +25,17 @@ export function assistantPanel(page: Page, name: string) {
   return page.getByRole("dialog", label).or(page.getByRole("complementary", label));
 }
 
+/** Pick an existing field or explicitly extend the schema for business-specific fixtures. */
+export async function chooseMappingTarget(page: Page, column: string, id: string) {
+  await page.getByRole("button", { name: `Trường đích ${column}`, exact: true }).click();
+  const picker = page.getByRole("dialog", { name: `Chọn trường cho ${column}`, exact: true });
+  await picker.getByRole("combobox", { name: "Tìm trường đích" }).fill(id);
+  const field = picker.getByRole("option").and(picker.locator(`[data-target-id="${id}"]`));
+  if (await field.count()) await field.click();
+  else await picker.getByRole("button", { name: `Thêm trường “${id}” vào cấu trúc`, exact: true }).click();
+  await expect(picker).not.toBeVisible();
+}
+
 /** Các trang cũ là deep links dự phòng, không còn là menu chính của Assistant. */
 export async function openLegacyPage(page: Page, target: "home"|"data"|"reconcile"|"reports"|"exceptions") {
   await expect(page.getByRole('button',{name:'AI Assistant',exact:true,includeHidden:true})).toBeEnabled();

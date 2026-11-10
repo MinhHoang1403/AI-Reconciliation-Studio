@@ -192,6 +192,38 @@ def test_AI_cannot_self_approve(profile, schema, mapping):
         validate_ai_output(proposal.model_dump_json(), profile, schema)
 
 
+def test_gemini_mapping_response_schema_restricts_status_without_bypassing_validation(
+    config, profile, schema, mapping
+):
+    from pydantic import SecretStr
+
+    config.allow_external_ai = True
+    config.external_ai_request_budget = 1
+    config.gemini_api_key = SecretStr("synthetic-key")
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=1
+    )
+    proposal = SchemaProposal(
+        entity_kind="order", grain="order", status="PROPOSED", decisions=mapping.decisions
+    )
+
+    def transport(request):
+        grammar = json.loads(request.content)["generationConfig"]["responseJsonSchema"]
+        assert set(grammar["$defs"]["MappingStatus"]["enum"]) == {
+            "PROPOSED",
+            "UNKNOWN",
+            "AMBIGUOUS",
+        }
+        return httpx.Response(
+            200,
+            json={"candidates": [{"content": {"parts": [{"text": proposal.model_dump_json()}]}}]},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        with pytest.raises(DomainError, match="AI_CANNOT_APPROVE"):
+            GeminiProvider(config, client).propose(profile, schema, policy, lambda: True)
+
+
 def test_gemini_source_names_never_repaired_into_ids(config, profile, schema):
     from pydantic import SecretStr
 

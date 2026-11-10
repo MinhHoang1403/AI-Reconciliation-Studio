@@ -181,6 +181,7 @@ export function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [detailScope,setDetailScope]=useState("");
   const [mappings, setMappings] = useState<Mapping[]>([]);
+  const [mappingJob, setMappingJob] = useState<Job | null>(null);
   const [canonicals, setCanonicals] = useState<Canonical[]>([]);
   const [canonicalId, setCanonicalId] = useState("");
   const [view, setView] = useState<View>("raw");
@@ -207,7 +208,13 @@ export function App() {
   }, [tableDensity]);
   const [draftOwner, setDraftOwner] = useState("");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [success, setSuccessNotice] = useState<{ message: string } | null>(null);
+  const setSuccess = useCallback((message: string) => setSuccessNotice(message ? { message } : null), []);
+  useEffect(() => {
+    if (!success) return;
+    const timer = setTimeout(() => setSuccessNotice(null), 5000);
+    return () => clearTimeout(timer);
+  }, [success]);
   const [busy, setBusy] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
@@ -350,7 +357,7 @@ export function App() {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [setSuccess]);
 
   useEffect(() => {
     let mounted = true;
@@ -657,7 +664,7 @@ export function App() {
     const options = { signal: controller.signal };
     const details = await Promise.all([
       api<Profile>(`/tables/${tableId}/profile`, options),
-      api<{ items: Mapping[] }>(`/tables/${tableId}/mappings`, options),
+      api<{ items: Mapping[]; job?: Job | null }>(`/tables/${tableId}/mappings`, options),
       api<{ canonical_datasets: Canonical[] }>(
         `/datasets/${datasetId}/artifacts`, options,
       ),
@@ -675,6 +682,7 @@ export function App() {
     setProfile(p);
     setDetailScope(`${datasetId}:${tableId}`);
     setMappings(m.items);
+    setMappingJob(m.job ?? null);
     setCanonicals(a.canonical_datasets);
     const candidates = a.canonical_datasets.filter(
       (c) => c.source_table_id === tableId,
@@ -1296,7 +1304,7 @@ export function App() {
               </div>
             </Notice>
           )}
-          {success && <Notice tone="success">{success}</Notice>}
+          {success && <Notice tone="success">{success.message}</Notice>}
           {!ready && !bootstrapError && <Spinner />}
           {ready && !projectId && !["settings","assistant"].includes(page) && (
             <Notice>
@@ -1703,8 +1711,11 @@ export function App() {
                                 table={table}
                                 profile={profile}
                                 mappings={mappings}
+                                latestJob={mappingJob}
                                 busy={busy}
                                 run={run}
+                                onReload={loadDetails}
+                                onProposalAvailable={setSuccess}
                                 onApproved={async () => {
                                   await changed();
                                   setSuccess("Đã cập nhật ánh xạ.");

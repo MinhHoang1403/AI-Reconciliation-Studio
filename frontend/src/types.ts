@@ -146,6 +146,7 @@ export interface Proposal {
   unresolved_questions: string[];
 }
 export interface Mapping {
+  proposal_source?: string | null;
   template_mapping_id?: string | null;
   reuse_eligible?: boolean;
   reuse_enabled?: boolean;
@@ -286,6 +287,7 @@ export const errorText: Record<string, string> = {
   GEMINI_HTTP_ERROR:
     "Dịch vụ AI chưa chấp nhận yêu cầu. Bạn có thể tiếp tục xem dữ liệu và kiểm tra quyền sử dụng.",
   GEMINI_UNAVAILABLE: "Gemini hiện chưa thể xử lý yêu cầu. Nội dung và dữ liệu của bạn vẫn được giữ nguyên.",
+  AI_CANNOT_APPROVE: "AI trả về trạng thái không hợp lệ. Hãy đề xuất lại hoặc xác nhận các cột thủ công.",
   OLLAMA_UNAVAILABLE: "Qwen hiện chưa thể xử lý yêu cầu. Nội dung và dữ liệu của bạn vẫn được giữ.",
   OLLAMA_MODEL_MISSING: "Model Qwen được chọn chưa có trên máy.",
   OLLAMA_NOT_CONFIGURED: "Model Qwen được chọn chưa được cấu hình.",

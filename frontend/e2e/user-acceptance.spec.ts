@@ -1,4 +1,4 @@
-import { assistantPanel, openLegacyPage, test } from "./project-selection";
+import { assistantPanel, chooseMappingTarget, openLegacyPage, test } from "./project-selection";
 import {expect} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
@@ -57,7 +57,7 @@ for(const scenario of manifest.datasets){
         const header=f.headers[n],field=f.order[n];
         const row=manual.locator('.mapping-row').filter({has:page.getByLabel(`Trường đích ${header}`,{exact:true})});
         await row.locator(":scope > summary").click();
-        await row.getByLabel(`Trường đích ${header}`,{exact:true}).fill(field);
+        await chooseMappingTarget(page, header, field);
         await row.getByLabel(`Kiểu ${header}`,{exact:true}).selectOption(field==='amount'?'decimal':field==='event_date'?'date':'string');
         if(['scope','reference'].includes(field))await row.getByLabel('Thành phần khóa',{exact:true}).check();
         if(field==='event_date'){

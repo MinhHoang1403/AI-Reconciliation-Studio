@@ -98,6 +98,7 @@ class MappingView(Contract):
     proposal: SchemaProposal
     decision: MappingRevision | None
     schema_definition: SchemaDefinition = Field(alias="schema")
+    proposal_source: str | None = None
     template_mapping_id: str | None = None
     reuse_enabled: bool = False
     reuse_eligible: bool = False
@@ -106,10 +107,6 @@ class MappingView(Contract):
 class MappingReusePolicy(Contract):
     enabled: bool
     expected_enabled: bool
-
-
-class MappingList(Contract):
-    items: list[MappingView]
 
 
 class ArtifactList(Contract):
@@ -133,6 +130,11 @@ class JobView(Contract):
     attempts: int
     error_code: str | None
     result: dict[str, Any] | None
+
+
+class MappingList(Contract):
+    items: list[MappingView]
+    job: JobView | None = None
 
 
 class JobList(Contract):

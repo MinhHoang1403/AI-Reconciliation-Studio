@@ -1003,9 +1003,32 @@ input[type="checkbox"] {
 }
 .mapping-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
+.mapping-target-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.mapping-target-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background: var(--surface-raised);
+  text-align: left;
+}
+.mapping-target-trigger span { min-width: 0; overflow-wrap: anywhere; }
+.mapping-target-trigger:hover:not(:disabled) { background: var(--surface-hover); }
+.mapping-add-field { margin-top: 12px; overflow-wrap: anywhere; }
+.project-option[aria-disabled="true"] { cursor: not-allowed; }
 .inline-options {
   display: flex;
   gap: 18px;
