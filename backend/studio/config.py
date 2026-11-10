@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     session_secret: SecretStr = SecretStr("")
     session_ttl_seconds: int = Field(default=28800, ge=60, le=86400)
     local_demo_access: bool = False
-    demo_proof_path: Path = Path("/run/studio/demo-proof.json")
+    demo_proof_path: Path | None = None
     instance_path: Path = Path("/run/studio/instance")
     allowed_origins: str = "http://127.0.0.1:18180,http://localhost:18180"
     access_token: SecretStr = SecretStr("")
@@ -67,8 +67,8 @@ class Settings(BaseSettings):
     agent_query_timeout_seconds: float = Field(default=5.0, ge=0.1, le=30.0)
     llama_cloud_api_key: SecretStr = SecretStr("")
     allow_cloud_parsing: bool = False
-    cloud_parser_request_budget: int = Field(default=0, ge=0)
-    cloud_parser_credit_budget: int = Field(default=0, ge=0, le=20)
+    cloud_parser_request_budget: int | None = Field(default=0, ge=0)
+    cloud_parser_credit_budget: int | None = Field(default=0, ge=0, le=20)
     worker_lease_seconds: int = Field(default=300, ge=120)
     worker_poll_seconds: float = 1
 
@@ -77,6 +77,8 @@ class Settings(BaseSettings):
         "assistant_request_budget",
         "planner_request_budget",
         "agent_request_budget",
+        "cloud_parser_request_budget",
+        "cloud_parser_credit_budget",
         mode="before",
     )
     @classmethod
@@ -92,10 +94,21 @@ class Settings(BaseSettings):
                 self.assistant_request_budget,
                 self.planner_request_budget,
                 self.agent_request_budget,
+                self.cloud_parser_request_budget,
+                self.cloud_parser_credit_budget,
             )
         ):
             raise ValueError("Unlimited AI request ceilings require explicit local demo mode")
         return self
+
+    @property
+    def local_proof_file(self) -> Path:
+        return self.demo_proof_path or self.storage_root / ".local-demo-proof.json"
+
+    def parser_request_ceiling(self, workspace_ceiling: int) -> int | None:
+        if workspace_ceiling and self.cloud_parser_request_budget is None:
+            return None
+        return workspace_ceiling
 
     @property
     def agent_max_upload_files(self) -> int:

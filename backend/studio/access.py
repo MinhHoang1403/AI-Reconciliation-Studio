@@ -1,12 +1,13 @@
 """Backend authorization and host-verified local demo sessions.
 
 Auto-access needs a proof installed over trusted docker exec after host inspection.
-No Docker socket is mounted. Recreating the backend invalidates proof (tmpfs).
+No Docker socket is mounted. A signed proof survives a restart of the same containers.
 """
 
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import sys
 import urllib.request
@@ -69,24 +70,48 @@ def validate_deployment(containers: list[dict[str, Any]]) -> str:
 
 def activate_demo() -> None:
     # A rejected reconfiguration must also invalidate a previously valid activation.
-    settings.demo_proof_path.unlink(missing_ok=True)
-    frontend_id = validate_deployment(json.load(sys.stdin))
+    path = settings.local_proof_file
+    path.unlink(missing_ok=True)
+    containers = json.load(sys.stdin)
+    frontend_id = validate_deployment(containers)
     if not settings.local_demo_access:
         raise ValueError("local demo disabled")
+    instance = settings.instance_path.read_text()
+    backend_id = next(
+        c["Id"]
+        for c in containers
+        if c["Config"]["Labels"].get("com.docker.compose.service") == "backend"
+    )
+    if not re.fullmatch(r"[0-9a-f]{12,64}", instance) or not backend_id.startswith(instance):
+        raise ValueError("backend identity differs from host inspection")
     proof = {
-        "instance": settings.instance_path.read_text(),
+        "instance": instance,
         "frontend_id": frontend_id,
         "verified_at": now().isoformat(),
     }
-    settings.demo_proof_path.write_text(json.dumps(proof), encoding="utf-8")
+    payload = json.dumps(proof)
+    pending = path.with_name(path.name + "." + secrets.token_hex(8))
+    try:
+        pending.write_text(json.dumps({"payload": payload, "signature": proof_signature(payload)}))
+        pending.replace(path)
+    finally:
+        pending.unlink(missing_ok=True)
     print("Loopback deployment verified; local demo session enabled.")
+
+
+def proof_signature(payload: str) -> str:
+    return session_token_hash("studio-local-deployment:" + payload)
 
 
 def _demo_allowed() -> bool:
     if not settings.local_demo_access:
         return False
     try:
-        proof = json.loads(settings.demo_proof_path.read_text())
+        signed = json.loads(settings.local_proof_file.read_text())
+        payload = signed["payload"]
+        if not hmac.compare_digest(signed["signature"], proof_signature(payload)):
+            return False
+        proof = json.loads(payload)
         if proof["instance"] != settings.instance_path.read_text():
             return False
         # Published ports cannot change without recreating frontend. Bind the proof
@@ -97,7 +122,7 @@ def _demo_allowed() -> bool:
         return bool(
             len(frontend_instance) >= 12 and proof["frontend_id"].startswith(frontend_instance)
         )
-    except (OSError, KeyError, ValueError):
+    except (OSError, KeyError, ValueError, TypeError, AttributeError):
         return False
 
 
@@ -216,11 +241,25 @@ def require_owner(actor: Actor, db: Session, resource_id: str) -> None:
         )
 
 
+def default_local_workspace_policy() -> WorkspacePolicy:
+    if (
+        settings.local_demo_access
+        and settings.allow_external_ai
+        and settings.external_ai_request_budget is None
+    ):
+        return WorkspacePolicy(
+            mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=None
+        )
+    return WorkspacePolicy()
+
+
 def seed_demo(db: Session) -> None:
     if db.get(WorkspaceRow, "demo") is None:
         db.add(
             WorkspaceRow(
-                id="demo", name="Không gian làm việc local", policy=WorkspacePolicy().model_dump()
+                id="demo",
+                name="Không gian làm việc local",
+                policy=default_local_workspace_policy().model_dump(),
             )
         )
         db.flush()

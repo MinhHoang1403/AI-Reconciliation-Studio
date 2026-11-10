@@ -22,14 +22,16 @@ from sqlalchemy.orm import Session
 
 from studio.access import (
     Actor,
+    _demo_allowed,
     authenticate,
     bootstrap_session,
+    default_local_workspace_policy,
     require_editor,
     require_owner,
     require_workspace_scope,
     session_token_hash,
 )
-from studio.config import settings
+from studio.config import request_limit_reached, settings
 from studio.contracts import (
     CanonicalDataset,
     Contract,
@@ -80,7 +82,12 @@ from studio.database import (
     identifier,
     now,
 )
-from studio.document_parser import DOCUMENT_PARSER_REVISION, DocumentArtifact, DocumentExtraction
+from studio.document_parser import (
+    DOCUMENT_PARSER_REVISION,
+    DOCUMENT_RESERVED_CREDITS,
+    DocumentArtifact,
+    DocumentExtraction,
+)
 from studio.errors import DomainError
 from studio.mapping_reuse import (
     REUSE_DISABLED,
@@ -200,7 +207,6 @@ def permanent_deletion_confirm(
     session_hash = session_token_hash(token) if token else None
     return confirm_purge(db, actor, kind, resource_id, body, session_hash=session_hash)
 
-
 @app.get("/api/permanent-deletion-receipts/{receipt_id}", response_model=PurgeStatus)
 def permanent_deletion_status(receipt_id: str, request: Request, db: DB) -> PurgeStatus:
     try:
@@ -212,6 +218,7 @@ def permanent_deletion_status(receipt_id: str, request: Request, db: DB) -> Purg
         # Phiên cũ chỉ đọc được biên nhận đã ràng buộc sau khi workspace bị xóa.
         return purge_status(db, None, receipt_id, session_hash=session_token_hash(token))
     return purge_status(db, actor, receipt_id)
+
 
 from studio.reconciliation_api import build_router  # noqa: E402
 
@@ -372,9 +379,12 @@ def create_workspace(
                     "WORKSPACE_CREATE_CONFLICT", "Yêu cầu tạo không gian đã đổi.", 409
                 )
             return WorkspaceSummary(id=existing.id, name=existing.name, role=membership.role)
-    row = WorkspaceRow(
-        id=workspace_id, name=name, policy=WorkspacePolicy().model_dump()
+    policy = (
+        default_local_workspace_policy()
+        if actor.id == "demo-owner" and _demo_allowed()
+        else WorkspacePolicy()
     )
+    row = WorkspaceRow(id=workspace_id, name=name, policy=policy.model_dump())
     db.add(row)
     db.flush()
     db.add(MembershipRow(workspace_id=row.id, actor_id=actor.id, role="owner"))
@@ -894,8 +904,10 @@ def persist_uploads(
             )
         if document and (
             not settings.allow_cloud_parsing
-            or settings.cloud_parser_request_budget <= 0
-            or settings.cloud_parser_credit_budget < 6
+            or request_limit_reached(0, settings.cloud_parser_request_budget)
+            or request_limit_reached(
+                DOCUMENT_RESERVED_CREDITS - 1, settings.cloud_parser_credit_budget
+            )
         ):
             raise DomainError("CLOUD_PARSING_DISABLED", "PDF/DOCX chưa có allowance tạo job mới.")
         dataset = DatasetRow(

@@ -15,7 +15,7 @@ from typing import Any, Literal
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from studio.config import Settings
+from studio.config import Settings, request_limit_reached
 from studio.contracts import ArtifactRef, Contract, FileArtifact, WorkspacePolicy
 from studio.errors import DomainError
 
@@ -119,7 +119,7 @@ def parse_document(
         raise DomainError("LLAMAPARSE_KEY_MISSING", "Chưa cấu hình khóa LlamaParse.")
     if not 1 <= max_polls <= 60:
         raise DomainError("PARSER_POLL_LIMIT", "Giới hạn polling phải từ 1 đến 60.")
-    if resume_job_id is None and config.cloud_parser_request_budget <= 0:
+    if resume_job_id is None and request_limit_reached(0, config.cloud_parser_request_budget):
         raise DomainError("PARSER_BUDGET_EXHAUSTED", "Ngân sách parser toàn hệ thống bằng 0.")
     headers = {"Authorization": "Bearer " + config.llama_cloud_api_key.get_secret_value()}
     base = "https://api.cloud.llamaindex.ai/api/v2/parse"

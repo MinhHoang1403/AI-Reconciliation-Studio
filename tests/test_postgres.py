@@ -41,7 +41,7 @@ def test_local_session_reverification_and_expiry(pg, monkeypatch):
     client.cookies.clear()  # Only this isolated TestClient, never browser/application sessions.
     monkeypatch.setattr(settings, "access_token", SecretStr(""))
     monkeypatch.setattr(settings, "local_demo_access", True)
-    settings.instance_path.write_text("synthetic-boot")
+    settings.instance_path.write_text("c" * 12)
     identity = {"value": "a" * 12}
     monkeypatch.setattr(
         access.urllib.request,
@@ -58,7 +58,12 @@ def test_local_session_reverification_and_expiry(pg, monkeypatch):
     def verify():
         containers = [
             {
-                "Id": identity["value"] + "0" * 52 if service == "frontend" else service,
+                "Id": (
+                    identity["value"]
+                    if service == "frontend"
+                    else settings.instance_path.read_text()
+                )
+                + "0" * 52,
                 "Config": {
                     "Labels": {
                         "com.docker.compose.project": "ai-reconciliation-studio",
@@ -90,11 +95,19 @@ def test_local_session_reverification_and_expiry(pg, monkeypatch):
     cookie = client.cookies.get("studio_session")
     assert client.get("/api/session").status_code == 200
     assert client.cookies.get("studio_session") == cookie
+    monkeypatch.setattr(settings, "allow_external_ai", True)
+    monkeypatch.setattr(settings, "external_ai_request_budget", None)
+    created = client.post("/api/workspaces", json={"name": "AI local TEST"})
+    assert created.status_code == 201
+    with factory() as db:
+        policy = db.get(WorkspaceRow, created.json()["id"]).policy
+        assert policy["mode"] == "CLOUD_ALLOWED" and policy["external_request_budget"] is None
+        assert not policy["allow_cloud_parsing"]
     for change in ("frontend", "backend"):
         if change == "frontend":
             identity["value"] = "b" * 12
         else:
-            settings.instance_path.write_text("synthetic-reboot")
+            settings.instance_path.write_text("d" * 12)
         for path in ("/api/session", "/api/settings"):
             response = client.get(path)
             assert (

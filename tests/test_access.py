@@ -58,7 +58,16 @@ def test_wrong_frontend_port_rejected():
 
 @pytest.mark.parametrize(
     "failure",
-    ["none", "missing", "malformed", "backend_changed", "frontend_changed", "offline", "disabled"],
+    [
+        "none",
+        "missing",
+        "malformed",
+        "tampered",
+        "backend_changed",
+        "frontend_changed",
+        "offline",
+        "disabled",
+    ],
 )
 def test_proof_lifecycle_fails_closed(monkeypatch, tmp_path, failure):
     """A cookie cannot substitute for host proof bound to both live instances."""
@@ -66,8 +75,10 @@ def test_proof_lifecycle_fails_closed(monkeypatch, tmp_path, failure):
     monkeypatch.setattr(access.settings, "demo_proof_path", tmp_path / "proof")
     monkeypatch.setattr(access.settings, "local_demo_access", failure != "disabled")
     access.settings.instance_path.write_text("synthetic-instance")
+    payload = json.dumps({"instance": "synthetic-instance", "frontend_id": "a" * 64})
+    signature = "0" * 64 if failure == "tampered" else access.proof_signature(payload)
     access.settings.demo_proof_path.write_text(
-        json.dumps({"instance": "synthetic-instance", "frontend_id": "a" * 64})
+        json.dumps({"payload": payload, "signature": signature})
     )
     if failure == "missing":
         access.settings.demo_proof_path.unlink()

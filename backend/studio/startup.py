@@ -1,7 +1,7 @@
-"""Migrate once, seed the local principal, invalidate deployment proof, then serve API."""
+"""Migrate once, seed the local principal, then serve API for this container."""
 
 import os
-import secrets
+import socket
 
 from alembic import command
 from alembic.config import Config
@@ -19,8 +19,7 @@ def main() -> None:
     with SessionFactory() as db:
         seed_demo(db)
     settings.instance_path.parent.mkdir(parents=True, exist_ok=True)
-    settings.instance_path.write_text(secrets.token_urlsafe(32))
-    settings.demo_proof_path.unlink(missing_ok=True)
+    settings.instance_path.write_text(socket.gethostname())
     os.execvp(
         "uvicorn",
         [

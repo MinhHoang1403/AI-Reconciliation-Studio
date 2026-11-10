@@ -218,9 +218,7 @@ def reserve_gemini_request(db: Session, workspace_id: str, job_id: str, config: 
 def reserve_document_request(
     db: Session, workspace_id: str, file_id: str, config: Settings
 ) -> bool:
-    """Reserve at most 2 documents / 4 pages / 12 estimated credits, below the 20-credit cap.
-
-    Each reservation consumes a 2-page upper bound, including uncertain delivery/failure.
+    """Reserve a 2-page upper bound, including uncertain delivery/failure.
     The same raw file cannot be submitted again. Caller commits before POST.
     """
     from studio.document_parser import DOCUMENT_RESERVED_CREDITS
@@ -240,7 +238,6 @@ def reserve_document_request(
     reserved = select(AuditRow).where(AuditRow.action == "LLAMAPARSE_DOCUMENT_RESERVED")
     if db.scalar(reserved.where(AuditRow.resource_id == file_id)):
         return False
-    all_rows = list(db.scalars(reserved))
     raw = db.get(ArtifactRow, file_id)
     if raw is None or raw.workspace_id != workspace_id or raw.kind != "raw":
         return False
@@ -249,18 +246,30 @@ def reserve_document_request(
     extension = raw.metadata_json.get("extension")
     if extension not in {".pdf", ".docx"}:
         return False
-    for previous in all_rows:
-        prior_raw = db.get(ArtifactRow, previous.resource_id)
-        if prior_raw is None or prior_raw.metadata_json.get("extension") == extension:
-            return False  # this acceptance grants one PDF and one DOCX, never two of either
-    global_used = len(all_rows)
-    workspace_used = sum(r.workspace_id == workspace_id for r in all_rows)
-    if (
-        global_used >= min(2, config.cloud_parser_request_budget)
-        or workspace_used >= policy.parser_request_budget
-        or (global_used + 1) * DOCUMENT_RESERVED_CREDITS > config.cloud_parser_credit_budget
-    ):
+    workspace_ceiling = config.parser_request_ceiling(policy.parser_request_budget)
+    if workspace_ceiling == 0:
         return False
+    global_ceiling = config.cloud_parser_request_budget
+    credit_ceiling = config.cloud_parser_credit_budget
+    if global_ceiling is not None or credit_ceiling is not None:
+        all_rows = list(db.scalars(reserved))
+        global_used = len(all_rows)
+        workspace_used = sum(r.workspace_id == workspace_id for r in all_rows)
+        if (
+            request_limit_reached(
+                global_used, min(2, global_ceiling) if global_ceiling is not None else None
+            )
+            or request_limit_reached(workspace_used, workspace_ceiling)
+            or request_limit_reached(
+                (global_used + 1) * DOCUMENT_RESERVED_CREDITS - 1, credit_ceiling
+            )
+        ):
+            return False
+        if global_ceiling is not None:
+            for previous in all_rows:
+                prior_raw = db.get(ArtifactRow, previous.resource_id)
+                if prior_raw is None or prior_raw.metadata_json.get("extension") == extension:
+                    return False  # finite acceptance profile grants one PDF and one DOCX
     db.add(
         AuditRow(
             workspace_id=workspace_id,

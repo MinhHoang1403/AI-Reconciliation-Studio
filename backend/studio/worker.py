@@ -15,7 +15,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from studio.ai_gateway import PROMPT_REVISION, GeminiProvider, QwenProvider, manual_proposal
-from studio.config import settings
+from studio.config import request_limit_reached, settings
 from studio.contracts import (
     CanonicalDataset,
     DatasetProfile,
@@ -48,6 +48,7 @@ from studio.database import (
 )
 from studio.document_parser import (
     DOCUMENT_PARSER_REVISION,
+    DOCUMENT_RESERVED_CREDITS,
     DocumentArtifact,
     parse_document,
     verify_parser_account,
@@ -802,9 +803,11 @@ def _document(job_id: str, token: str) -> None:
         if not settings.llama_cloud_api_key.get_secret_value():
             raise DomainError("LLAMAPARSE_KEY_MISSING", "Chưa cấu hình khóa LlamaParse.")
         if not remote_id and (
-            settings.cloud_parser_request_budget <= 0
+            request_limit_reached(0, settings.cloud_parser_request_budget)
             or policy.parser_request_budget <= 0
-            or settings.cloud_parser_credit_budget < 6
+            or request_limit_reached(
+                DOCUMENT_RESERVED_CREDITS - 1, settings.cloud_parser_credit_budget
+            )
         ):
             raise DomainError("PARSER_BUDGET_EXHAUSTED", "Hết allowance parser cloud.")
 
