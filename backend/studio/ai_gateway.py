@@ -29,7 +29,7 @@ from studio.errors import DomainError
 from studio.profiling import find_mapping_candidates
 from studio.schema_mapping import validate_mapping
 
-PROMPT_REVISION = "schema-understanding-4"
+PROMPT_REVISION = "schema-understanding-5"
 TASK_IDS = {"classify_dataset", "infer_grain", "propose_mapping", "suggest_transformation"}
 
 
@@ -470,23 +470,42 @@ class GeminiProvider:
         policy: WorkspacePolicy,
         reserve_request: Callable[[], bool],
     ) -> SchemaProposal:
-        response_schema = SchemaProposal.model_json_schema()
-        definitions = response_schema["$defs"]
-        definitions["MappingStatus"]["enum"] = ["PROPOSED", "AMBIGUOUS", "UNKNOWN"]
-        # The provider only needs the draft shape. The local discriminated union
-        # still validates every transform parameter and rejects malformed decisions.
-        definitions["MappingDecision"]["properties"]["transformation_candidate"] = {
+        # Constrain the draft shape with Gemini's JSON Schema subset. The local
+        # contract still checks lengths, transform parameters and evidence.
+        string = {"type": "string"}
+        strings = {"type": "array", "items": string}
+        status = {"type": "string", "enum": ["PROPOSED", "AMBIGUOUS", "UNKNOWN"]}
+        decision_fields = {
+            "source_field": string,
+            "candidate_target": {"type": ["string", "null"]},
+            "decision": status,
+            "evidence_ids": strings,
+            "grain_assumption": string,
+            "transformation_candidate": {
+                "type": "object",
+                "properties": dict.fromkeys(("op", "locale", "format", "timezone"), string),
+                "required": ["op"],
+            },
+            "unresolved_questions": strings,
+            "reasoning": string,
+        }
+        response_schema = {
             "type": "object",
             "properties": {
-                "op": {"type": "string"},
-                "locale": {"type": "string"},
-                "format": {"type": "string"},
-                "timezone": {"type": "string"},
+                "entity_kind": string,
+                "grain": string,
+                "status": status,
+                "decisions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": decision_fields,
+                        "required": list(decision_fields),
+                    },
+                },
+                "unresolved_questions": strings,
             },
-            "required": ["op"],
-        }
-        response_schema["$defs"] = {
-            key: definitions[key] for key in ("MappingStatus", "MappingDecision")
+            "required": ["entity_kind", "grain", "status", "decisions", "unresolved_questions"],
         }
         proposal = self.request_typed(
             build_prompt(profile, schema, "propose_mapping"),

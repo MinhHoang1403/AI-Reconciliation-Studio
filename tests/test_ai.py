@@ -209,7 +209,10 @@ def test_gemini_mapping_response_schema_restricts_status_without_bypassing_valid
 
     def transport(request):
         grammar = json.loads(request.content)["generationConfig"]["responseJsonSchema"]
-        assert set(grammar["$defs"]["MappingStatus"]["enum"]) == {
+        properties = grammar["properties"]
+        decision = properties["decisions"]["items"]["properties"]
+        assert decision["decision"]["enum"] == properties["status"]["enum"]
+        assert set(decision["decision"]["enum"]) == {
             "PROPOSED",
             "UNKNOWN",
             "AMBIGUOUS",
