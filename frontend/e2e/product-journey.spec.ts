@@ -259,7 +259,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     .getByRole("button", { name: "Xem ngoại lệ", exact: true })
     .click();
   await expect(page.getByRole("dialog").locator(".evidence-comparison tbody tr").getByRole("cell"))
-    .toHaveText(["12.75", "10.00", "2.75", "VND"]);
+    .toHaveText(["12,75", "10,00", "2,75", "VND"]);
   await page.keyboard.press("Escape");
   await mismatch
     .getByRole("button", { name: "Hỏi vì sao lệch", exact: true })

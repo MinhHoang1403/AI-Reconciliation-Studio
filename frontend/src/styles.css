@@ -1825,7 +1825,7 @@ pre {
   box-shadow: var(--shadow-composer);
 }
 .assistant-composer > label { display: block; font-size: inherit; min-width: 0; grid-column: 2; grid-row: 1; }
-.assistant-composer textarea { display: block; width: 100%; min-width: 0; height: 40px; min-height: 40px; max-height: 180px; margin: 0; padding: 8px 4px; border: 0; border-radius: 6px; background: transparent; resize: none; line-height: 24px; color: #262626; }
+.assistant-composer textarea { display: block; width: 100%; min-width: 0; height: 40px; min-height: 40px; max-height: 180px; margin: 0; padding: 8px 4px; border: 0; border-radius: 6px; background: transparent; resize: none; font-size: inherit; line-height: 24px; color: #262626; }
 .app-shell[data-focus-mode="keyboard"] .assistant-composer:has(textarea:focus-visible) {
   box-shadow: var(--shadow-composer), inset 0 -2px var(--focus-mark);
 }

@@ -328,10 +328,15 @@ function ManualMappingStudio({
   const publishedJob = currentJob;
   const published = publishedJob?.status === "SUCCEEDED" &&
     mappings.find(item => !item.archived && item.id === publishedJob.result?.mapping_id);
+  function viewRevision(id: string) {
+    if (published) acceptedRevision.current = published.id;
+    chooseRevision(id);
+    setOfferedRevision("");
+  }
   useEffect(() => {
     if (!mapping || mapping.archived || !published || loadedKey !== storageKey || acceptedRevision.current === published.id) return;
-    if (published.revision < mapping.revision) return;
     acceptedRevision.current = published.id;
+    if (published.revision < mapping.revision) return;
     if (published.id !== mapping.id && dirty) {
       setOfferedRevision(published.id);
       return;
@@ -464,7 +469,7 @@ function ManualMappingStudio({
     return()=>{clearTimeout(timer);controller.abort();};
   },[bodySignature,invalid,table.id]);
   const management = <MappingVersions mappings={mappings} selected={mapping?.id}
-    canManage={Boolean(canManageReuse)} onView={chooseRevision}
+    canManage={Boolean(canManageReuse)} onView={viewRevision}
     onChange={async (id, action) => {
       if (id === mapping?.id) chooseRevision("");
       if (offeredRevision === id) setOfferedRevision("");
@@ -549,7 +554,7 @@ function ManualMappingStudio({
           Phiên bản ánh xạ
           <select
             value={mapping.id}
-            onChange={(e) => { chooseRevision(e.target.value); setOfferedRevision(""); }}
+            onChange={(e) => viewRevision(e.target.value)}
           >
             {(mapping.archived ? [mapping, ...visible] : visible).map((m) => (
               <option key={m.id} value={m.id}>
