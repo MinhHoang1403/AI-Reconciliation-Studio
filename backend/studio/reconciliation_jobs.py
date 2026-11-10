@@ -341,14 +341,21 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
         publish(proposal, provider_name)
     except DomainError as exc:
         outcome = exc.code
-        if exc.code != "AI_PLAN_MISSING":
+        if exc.code == "AI_PLAN_MISSING":
+            requirement = "Xác nhận khóa liên kết và chỉ tiêu cần đối soát."
+            reason = "Chưa có phương án từ AI. Có thể tiếp tục bằng cách xác nhận quy tắc."
+        elif exc.code in {"CARDINALITY_GRAIN_INVALID", "AGGREGATION_UNAPPROVED"}:
+            requirement = (
+                "Mỗi dòng ở hai nguồn đại diện cho gì? Xác nhận quan hệ 1:1, 1:N hoặc N:1."
+            )
+            reason = "Đề xuất của AI chưa phù hợp với đơn vị dữ liệu đã xác nhận."
+        else:
             raise
         publish(
             PlanProposal(
                 status="NEEDS_REVIEW",
-                missing_requirements=missing_confirmations(draft)
-                + ["Xác nhận khóa liên kết và chỉ tiêu cần đối soát."],
-                reasoning="Chưa có phương án từ AI. Có thể tiếp tục bằng cách xác nhận quy tắc.",
+                missing_requirements=missing + [requirement],
+                reasoning=reason,
             ),
             "DETERMINISTIC",
             exc.code,

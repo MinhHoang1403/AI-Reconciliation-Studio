@@ -354,9 +354,12 @@ def test_archiving_sources_retains_verified_run_evidence_and_export(pg):  # noqa
         headers={"Idempotency-Key": "archived-source"},
     )
     assert blocked.status_code == 409
-    assert client.post(
-        f"/api/projects/{pid}/lifecycle", json={**archive, "confirmation": "Synthetic delivery"}
-    ).json()["state"] == "archived"
+    assert (
+        client.post(
+            f"/api/projects/{pid}/lifecycle", json={**archive, "confirmation": "Synthetic delivery"}
+        ).json()["state"]
+        == "archived"
+    )
     assert client.get(f"/api/runs/{rid}/metrics").json() == metrics
     assert client.get(evidence_url).json() == evidence.json()
     assert client.get(download).content == export_before
@@ -838,8 +841,17 @@ def test_incompatible_planner_metadata_is_deterministic_review_without_provider_
         assert db.scalar(select(TraceRow.id).where(TraceRow.job_id == job.id)) is None
 
 
-@pytest.mark.parametrize("entry", ["scoped", "legacy", "chat"])
-def test_planner_scoped_candidate_or_missing_plan_review(pg, monkeypatch, entry):  # noqa: F811
+@pytest.mark.parametrize(
+    "entry,provider_code",
+    [
+        ("scoped", "AI_PLAN_MISSING"),
+        ("legacy", "AI_PLAN_MISSING"),
+        ("legacy", "CARDINALITY_GRAIN_INVALID"),
+        ("legacy", "AGGREGATION_UNAPPROVED"),
+        ("chat", "AI_PLAN_MISSING"),
+    ],
+)
+def test_planner_scoped_candidate_or_missing_plan_review(pg, monkeypatch, entry, provider_code):  # noqa: F811
     from studio import reconciliation_jobs
     from studio.access import Actor
     from studio.agent_tools import PlanAction, execute_tool
@@ -853,7 +865,7 @@ def test_planner_scoped_candidate_or_missing_plan_review(pg, monkeypatch, entry)
 
     def missing_plan(*_args):
         calls.append(True)
-        raise DomainError("AI_PLAN_MISSING", "Synthetic provider did not propose a plan.")
+        raise DomainError(provider_code, "Synthetic provider did not propose a valid plan.")
 
     monkeypatch.setattr(reconciliation_jobs, "propose_plan", missing_plan)
     request = (
@@ -898,9 +910,12 @@ def test_planner_scoped_candidate_or_missing_plan_review(pg, monkeypatch, entry)
     else:
         assert calls == ([True] if entry == "legacy" else [])
         assert draft["status"] == "NEEDS_REVIEW" and draft["plan"] is None
+        assert draft["suggestions"] is None
         assert job["result"].get("provider_error_code") == (
-            "AI_PLAN_MISSING" if entry == "legacy" else None
+            provider_code if entry == "legacy" else None
         )
+        if provider_code != "AI_PLAN_MISSING":
+            assert "1:1, 1:N hoặc N:1" in draft["missing_requirements"][-1]
         assert "period_start" in draft["missing_requirements"]
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(ReconciliationContractRow)) == 0

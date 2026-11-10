@@ -565,6 +565,9 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
             reason=(
                 "Chưa nhận được phương án từ AI. Bạn có thể thiết lập quy tắc trong Đối soát."
                 if result.get("provider_error_code") == "AI_PLAN_MISSING"
+                else "Hãy xác nhận mỗi dòng ở hai nguồn đại diện cho gì và quan hệ giữa hai nguồn."
+                if result.get("provider_error_code")
+                in {"CARDINALITY_GRAIN_INVALID", "AGGREGATION_UNAPPROVED"}
                 else "Quy tắc mới cần bạn kiểm tra và duyệt trước khi đối soát."
             ),
         )
