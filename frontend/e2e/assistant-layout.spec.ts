@@ -343,8 +343,13 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     const longProjectBox=(await projectPicker.boundingBox())!;
     if(width>=1366)expect(longProjectBox.width).toBeGreaterThan(shortProjectWidth);
     const controls=(await page.locator('.topbar-end').boundingBox())!;
-    if(width<=600)expect(longProjectBox.y).toBeGreaterThanOrEqual(controls.y+controls.height);
-    else expect(longProjectBox.x+longProjectBox.width).toBeLessThanOrEqual(controls.x);
+    expect(longProjectBox.x+longProjectBox.width).toBeLessThanOrEqual(controls.x);
+    if(width<=600){
+      const menu=(await page.getByRole('button',{name:'Mở điều hướng',exact:true}).boundingBox())!;
+      expect(longProjectBox.x).toBeGreaterThanOrEqual(menu.x+menu.width);
+      expect(longProjectBox.height).toBeGreaterThanOrEqual(44);
+      expect(Math.abs(longProjectBox.y+longProjectBox.height/2-(controls.y+controls.height/2))).toBeLessThanOrEqual(1);
+    }
     if(width<=600)expect(longProjectBox.height).toBeGreaterThanOrEqual(44);
     expect(longProjectBox.height).toBeLessThanOrEqual(width<=600?56:44);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
