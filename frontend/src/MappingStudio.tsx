@@ -66,7 +66,8 @@ function MappingTargetPicker({ column, draft, fields, occupied, suggestion, read
   const highlighted = enabled[active];
   const customId = fold(query.trim()).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
   const canAdd = /^[a-z][a-z0-9_]{0,63}$/.test(customId) &&
-    query.trim().length <= 120 && !fields.some(field => field.id === customId);
+    query.trim().length <= 120 && !fields.some(field =>
+      field.id === customId || fold(field.name).replaceAll("_", " ") === term);
   function choose(field: SchemaField | null) {
     onSelect(field);
     setOpen(false);

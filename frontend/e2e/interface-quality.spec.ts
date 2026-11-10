@@ -403,6 +403,7 @@ test("[MOCK CONTRACT] mapping jobs publish revisions, keep edited drafts and exp
   await search.fill("ma tham chieu");
   await expect(dialog.getByRole("option")).toHaveAttribute("aria-disabled", "true");
   await expect(dialog.getByText("Đã gán cho cột Mã nghiệp vụ")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /^Thêm trường/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(target).toBeFocused();
   await expect(target).toContainText("Giữ nguyên trong nguồn gốc");
