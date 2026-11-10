@@ -189,6 +189,10 @@ def main() -> None:
         *,
         multilingual: bool = False,
         expected_gate: str = "READY_OR_REVIEW",
+        entity: str = "reported_transaction",
+        metric: str = "reported_transaction_amount",
+        amount_basis: str = "gross",
+        domain_headers: tuple[tuple[str, str, str], tuple[str, str, str]] | None = None,
     ) -> None:
         names = [f"{name} nguồn A.csv", f"{name} nguồn B.xlsx"]
         files = []
@@ -213,6 +217,10 @@ def main() -> None:
                 if multilingual and index == 0
                 else dict(zip(FIELDS, FIELDS, strict=True))
             )
+            if domain_headers:
+                labels.update(
+                    zip(("reference", "event_date", "amount"), domain_headers[index], strict=True)
+                )
             path = OUTPUT / names[index]
             locale = "vi-VN" if multilingual and index == 0 else "en-US"
             write_table(
@@ -243,8 +251,9 @@ def main() -> None:
                 if cardinality == "ONE_TO_ONE"
                 else "approved transaction / transaction-part grouping",
                 keys=["scope", "reference"],
-                metric="reported_transaction_amount",
-                amount_basis="gross",
+                entity=entity,
+                metric=metric,
+                amount_basis=amount_basis,
                 currency="VND",
                 timezone="UTC",
                 period=["2026-10-01", "2026-11-01"],
@@ -318,6 +327,36 @@ def main() -> None:
     )
     d = [record(f"PT-{i:05}", f"{1000 + i}.56") for i in range(1, 31)]
     add("D Cấu trúc khác nhau", d, [dict(r) for r in d], multilingual=True)
+    add(
+        "D Doanh thu thuần",
+        [record("INV-001", "100.00"), record("INV-002", "-25.00"), record("INV-003", "80.00")],
+        [record("INV-001", "100.00"), record("INV-002", "-20.00"), record("INV-003", "80.00")],
+        entity="recognized_revenue",
+        metric="recognized_net_revenue",
+        amount_basis="net",
+        domain_headers=(
+            ("Mã chứng từ doanh thu", "Ngày ghi nhận", "Doanh thu thuần báo cáo"),
+            ("Mã hóa đơn", "Ngày hạch toán", "Doanh thu thuần ghi sổ"),
+        ),
+    )
+    add(
+        "D Lương thực nhận",
+        [record("EMP-001", "950.00"), record("EMP-002", "800.00"), record("EMP-003", "400.00")],
+        [
+            record("EMP-001", "950.00"),
+            record("EMP-002", "780.00"),
+            record("EMP-003", "400.00"),
+            record("EMP-003", "400.00"),
+            record("EMP-004", "350.00"),
+        ],
+        entity="payroll",
+        metric="net_salary_disbursement",
+        amount_basis="net",
+        domain_headers=(
+            ("Mã nhân viên", "Ngày lương", "Lương thực nhận đã duyệt"),
+            ("Mã người nhận", "Ngày chi lương", "Số tiền thực chi"),
+        ),
+    )
     e = [record("MO-HO-1", "55.00"), record("MO-HO-2", "66.00")]
     other = [dict(r, currency="USD") for r in e]
     add("E Không tương thích", e, other, expected_gate="BLOCKED_CURRENCY_NO_FX_GRAIN_BASIS_REVIEW")

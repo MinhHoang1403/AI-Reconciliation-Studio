@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
 
 type Row=Record<string,string>;
-type Scenario={name:string;files:{name:string;headers:string[];order:string[];locale:string;rows:number;sha256:string}[];cardinality:string;tolerance:string;raw:{left:Row[];right:Row[]};oracle:{groups:{key:string[];linkage:string;comparison:string;left_rows:number[];right_rows:number[];delta:string|null}[];signed_variance:string;absolute_variance:string;partitions:Record<string,{input:number;invalid:number[];out_of_scope:number[];in_scope:number[]}>}};
+type Scenario={name:string;entity:string;metric:string;amount_basis:string;files:{name:string;headers:string[];order:string[];locale:string;rows:number;sha256:string}[];cardinality:string;tolerance:string;raw:{left:Row[];right:Row[]};oracle:{groups:{key:string[];linkage:string;comparison:string;left_rows:number[];right_rows:number[];delta:string|null}[];signed_variance:string;absolute_variance:string;partitions:Record<string,{input:number;invalid:number[];out_of_scope:number[];in_scope:number[]}>}};
 const data='../runtime/demo-acceptance/data';
 const python=resolve('../.venv/Scripts/python.exe');
 execFileSync(python,['../tools/create-uat-fixtures.py']);
@@ -22,7 +22,7 @@ for(const scenario of manifest.datasets){
     const create=page.getByRole('dialog',{name:'Tạo dự án',exact:true});
     const name=`UAT ${scenario.name} ${crypto.randomUUID().slice(0,8)}`;
     await create.getByLabel('Tên dự án',{exact:true}).fill(name);
-    await create.getByLabel('Phạm vi nghiệp vụ',{exact:true}).fill(`Tổng hợp độc lập ${scenario.name}; giá trị báo cáo gross; kỳ 10/2026 UTC`);
+    await create.getByLabel('Phạm vi nghiệp vụ',{exact:true}).fill(`Tổng hợp độc lập ${scenario.name}; chỉ tiêu ${scenario.metric}; kỳ 10/2026 UTC`);
     await create.getByRole('button',{name:'Tạo dự án',exact:true}).click();await expect(create).not.toBeVisible();
     const projectId=(await page.locator('#project-select').getAttribute('data-project-id'))!;
     await page.locator('#project-select').click();await page.getByText('Phân loại dự án hiện tại',{exact:true}).click();
@@ -48,9 +48,9 @@ for(const scenario of manifest.datasets){
       const manualSummary=page.getByText('Tạo cách ghép cột thủ công riêng',{exact:true});
       await manualSummary.click();
       const manual=page.locator('details').filter({has:manualSummary}).locator('.mapping-studio');
-      await manual.getByLabel('Loại dữ liệu',{exact:true}).fill('reported_transaction');
+      await manual.getByLabel('Loại dữ liệu',{exact:true}).fill(scenario.entity);
       await page.getByRole('combobox',{name:'Bảng dữ liệu',exact:true}).selectOption(table.id);
-      await expect(manual.getByLabel('Loại dữ liệu',{exact:true})).toHaveValue('reported_transaction');
+      await expect(manual.getByLabel('Loại dữ liệu',{exact:true})).toHaveValue(scenario.entity);
       const detail=scenario.cardinality==='ONE_TO_MANY'?i===1:scenario.cardinality==='MANY_TO_ONE'?i===0:false;
       await manual.getByLabel('Mỗi dòng đại diện cho điều gì?',{exact:true}).fill(detail?'transaction_part':'transaction');
       for(let n=0;n<f.headers.length;n++){
@@ -65,8 +65,8 @@ for(const scenario of manifest.datasets){
         }
         if(field==='amount'){
           await row.getByLabel(`Locale ${header}`,{exact:true}).selectOption(f.locale);
-          await row.getByLabel(`Chỉ tiêu ${header}`,{exact:true}).fill('reported_transaction_amount');
-          await row.getByLabel(`Cơ sở ${header}`,{exact:true}).selectOption('gross');
+          await row.getByLabel(`Chỉ tiêu ${header}`,{exact:true}).fill(scenario.metric);
+          await row.getByLabel(`Cơ sở ${header}`,{exact:true}).selectOption(scenario.amount_basis);
           await row.getByLabel(`Tiền tệ ${header}`,{exact:true}).fill(scenario.name.startsWith('E ')&&i===1?'USD':'VND');
           await row.getByLabel(`Đơn vị ${header}`,{exact:true}).fill(scenario.name.startsWith('E ')&&i===1?'USD':'VND');
         }
