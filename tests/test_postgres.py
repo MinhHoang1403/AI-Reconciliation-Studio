@@ -884,6 +884,56 @@ def approve(client, table_id):
     return response.json(), mapping
 
 
+def test_mapping_lifecycle_preserves_references_and_revision_numbers(pg):
+    from studio.database import MappingRow, MembershipRow, SchemaRow
+
+    client, factory, worker = pg
+    source = upload(client, project(client))
+    drain(factory, worker)
+    dataset = f"/api/datasets/{source['id']}"
+    table = client.get(f"{dataset}/tables").json()["items"][0]["id"]
+    route = f"/api/tables/{table}"
+
+    def life(mapping_id):
+        return f"/api/mappings/{mapping_id}/lifecycle"
+
+    approved, draft = approve(client, table)
+    assert client.post(life(approved["id"]), json={"action": "delete"}).status_code == 200
+    assert client.get(f"{dataset}/tables").json()["items"][0]["active_mapping_id"] is None
+    assert client.get(dataset).json()["status"] == "NEEDS_MAPPING_REVIEW"
+    assert client.post(life(draft["id"]), json={"action": "delete"}).status_code == 200
+    with factory() as db:
+        assert db.get(MappingRow, draft["id"]) is None
+        assert db.get(SchemaRow, draft["schema"]["id"]) is not None
+    assert client.get(f"{route}/mappings").json()["items"] == []
+    assert client.post(f"{route}/mapping-draft").status_code == 201
+    fresh, _ = approve(client, table)
+    assert fresh["revision"] > approved["revision"]
+    response = client.post(
+        f"{dataset}/normalize", json={"mapping_id": fresh["id"]},
+        headers={"Idempotency-Key": "mapping-history-normalize"},
+    )
+    assert response.status_code == 202
+    assert client.get(life(fresh["id"])).json()["busy"]
+    assert client.post(life(fresh["id"]), json={"action": "archive"}).status_code == 409
+    assert client.post(life(fresh["id"]), json={"action": "delete"}).status_code == 409
+    drain(factory, worker)
+    preserved = client.get(f"{dataset}/artifacts").json()["canonical_datasets"][0]
+    impact = client.get(life(fresh["id"])).json()
+    assert impact["referenced"] and impact["allowed"] == ["archive"]
+    assert client.post(life(fresh["id"]), json={"action": "delete"}).status_code == 409
+    assert client.post(life(fresh["id"]), json={"action": "archive"}).status_code == 200
+    assert all(m["id"] != fresh["id"] for m in client.get(f"{route}/mappings").json()["items"])
+    archive = client.get(f"{route}/mappings?include_archived=true").json()["items"][0]
+    assert archive["id"] == fresh["id"] and archive["archived"]
+    assert client.get(f"{dataset}/artifacts").json()["canonical_datasets"] == [preserved]
+    with factory() as db:
+        db.get(MembershipRow, ("demo", "test-owner")).role = "viewer"
+        db.commit()
+    assert client.get(life(fresh["id"])).status_code == 403
+    assert client.post(life(fresh["id"]), json={"action": "delete"}).status_code == 403
+
+
 def test_postgres_migration_T02_T13_pipeline_and_idempotency(pg):
     client, factory, worker = pg
     pid = project(client)

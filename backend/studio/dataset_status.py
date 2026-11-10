@@ -13,6 +13,7 @@ from studio.contracts import Contract
 from studio.contracts.assistant import AssistantContext
 from studio.database import CanonicalRow, DatasetRow, MappingRow, TableRow, VersionRow
 from studio.errors import DomainError
+from studio.repository import mapping_archived
 from studio.resource_lifecycle import active_source
 
 
@@ -196,6 +197,7 @@ def read_processing_status(
                     MappingRow.workspace_id == actor.workspace_id,
                     MappingRow.source_table_id == table.id,
                     MappingRow.status.in_(["PROPOSED", "NEEDS_REVIEW"]),
+                    ~mapping_archived(),
                 )
                 .limit(1)
             )

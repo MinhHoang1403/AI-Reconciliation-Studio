@@ -62,7 +62,13 @@ from studio.database import (
 )
 from studio.errors import DomainError
 from studio.parsing import inspect_upload
-from studio.repository import enqueue_job, gemini_retry_confirmed, get_scoped, project_for_table
+from studio.repository import (
+    enqueue_job,
+    gemini_retry_confirmed,
+    get_scoped,
+    mapping_archived,
+    project_for_table,
+)
 
 
 def decide(
@@ -147,6 +153,7 @@ def decide(
             .where(
                 MappingRow.source_table_id == table.id,
                 MappingRow.workspace_id == actor.workspace_id,
+                ~mapping_archived(),
             )
             .order_by(MappingRow.revision.desc())
             .limit(1)

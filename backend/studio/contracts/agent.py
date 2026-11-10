@@ -45,7 +45,7 @@ class WorkflowPair(Contract):
 
 
 class ReconciliationSequence(Contract):
-    pairs: list[WorkflowPair] = Field(min_length=2, max_length=2)
+    pairs: list[WorkflowPair] = Field(min_length=1, max_length=2)
     period_start: date | None = None
     period_end: date | None = None
     timezone: str | None = None

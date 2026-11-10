@@ -3,7 +3,8 @@ import { Check, ChevronDown, Eye, Sparkles } from "lucide-react";
 import { api, ApiError } from "./api";
 import { ReviewCard } from "./ReviewCard";
 import type { Workflow } from "./agentTypes";
-import { Badge, Modal, Notice, Spinner } from "./components";
+import { Badge, Notice, Spinner } from "./components";
+import { MappingVersions } from "./MappingVersions";
 import type {
   DataType,
   Decision,
@@ -53,6 +54,8 @@ function MappingTargetPicker({ column, draft, fields, occupied, suggestion, read
   onSelect: (field: SchemaField | null) => void;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const search = useRef<HTMLInputElement>(null);
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -70,7 +73,8 @@ function MappingTargetPicker({ column, draft, fields, occupied, suggestion, read
       field.id === customId || fold(field.name).replaceAll("_", " ") === term);
   function choose(field: SchemaField | null) {
     onSelect(field);
-    setOpen(false);
+    panel.current?.hidePopover();
+    trigger.current?.focus({ preventScroll: true });
   }
   useEffect(() => {
     if (open && highlighted !== undefined)
@@ -80,12 +84,26 @@ function MappingTargetPicker({ column, draft, fields, occupied, suggestion, read
   return <div>
     <span className="mapping-target-label">Trường đích</span>
     <button type="button" ref={trigger} className="mapping-target-trigger"
-      aria-label={`Trường đích ${column}`} aria-haspopup="dialog" aria-expanded={open}
-      disabled={readOnly} onClick={() => { setQuery(""); setActive(0); setOpen(true); }}>
+      aria-label={`Trường đích ${column}`} aria-haspopup="listbox" aria-expanded={open}
+      popoverTarget={`${listId}-popup`} disabled={readOnly}
+      onClick={() => { setQuery(""); setActive(0); }}
+      onKeyDown={event => {
+        if (event.key === "ArrowDown" && !open) {
+          event.preventDefault();
+          event.currentTarget.click();
+        }
+      }}>
       <span>{draft.target ? draft.label : keepSourceLabel}</span><ChevronDown size={15} aria-hidden="true" />
     </button>
-    <Modal title={`Chọn trường cho ${column}`} open={open} onOpenChange={setOpen} returnFocus={trigger}>
-      <input autoFocus role="combobox" aria-label="Tìm trường đích" aria-expanded={open}
+    <div ref={panel} id={`${listId}-popup`} popover="auto" role="group"
+      aria-label={`Chọn trường cho ${column}`} className="mapping-target-popup"
+      onToggle={event => {
+        if (event.target !== event.currentTarget) return;
+        const next = event.newState === "open";
+        setOpen(next);
+        if (next) search.current?.focus({ preventScroll: true });
+      }}>
+      <input ref={search} role="combobox" aria-label="Tìm trường đích" aria-expanded={open}
         aria-controls={listId} aria-autocomplete="list"
         aria-activedescendant={highlighted !== undefined ? `${listId}-${highlighted?.id || "source"}` : undefined}
         maxLength={120} value={query} placeholder="Tìm theo tên, ví dụ: Mã tham chiếu"
@@ -116,11 +134,15 @@ function MappingTargetPicker({ column, draft, fields, occupied, suggestion, read
         })}
       </div>
       {!options.length && <p role="status">Không tìm thấy trường trong cấu trúc hiện tại.</p>}
-      {canAdd && <button type="button" className="button secondary mapping-add-field" onClick={() => choose({
-        id: customId, name: query.trim(), data_type: "string", required: false,
-        semantic_metric: null, amount_basis: null, currency: null, unit: null,
-      })}>Thêm trường “{query.trim()}” vào cấu trúc</button>}
-    </Modal>
+      <details className="mapping-add-field">
+        <summary>Thêm trường tùy chỉnh</summary>
+        {canAdd ? <button type="button" className="button secondary" onClick={() => choose({
+          id: customId, name: query.trim(), data_type: "string", required: false,
+          semantic_metric: null, amount_basis: null, currency: null, unit: null,
+        })}>Thêm trường “{query.trim()}” vào cấu trúc</button>
+          : <p>Nhập tên trường mới vào ô tìm kiếm.</p>}
+      </details>
+    </div>
   </div>;
 }
 
@@ -173,9 +195,10 @@ function ManualMappingStudio({
   mappings,
   latestJob,
   busy,
-  readOnly = false,
+  readOnly: viewerMode = false,
   run,
   onReload,
+  onRevisionChange,
   onProposalAvailable,
   onApproved,
   onEvidence,
@@ -190,6 +213,7 @@ function ManualMappingStudio({
   readOnly?: boolean;
   run: (task: () => Promise<void>) => Promise<void>;
   onReload: () => Promise<void>;
+  onRevisionChange: () => Promise<void>;
   onProposalAvailable: (message: string) => void;
   onApproved: () => Promise<void>;
   onEvidence: (id: string) => void;
@@ -202,7 +226,11 @@ function ManualMappingStudio({
     try { return sessionStorage.getItem(selectionKey) || ""; }
     catch { return ""; }
   });
-  const mapping = mappings.find((m) => m.id === selected) || mappings[0];
+  const [historyId, setHistoryId] = useState("");
+  const visible = mappings.filter(item => !item.archived);
+  const mapping = mappings.find(item => item.id === historyId) ||
+    visible.find(item => item.id === selected) || visible[0];
+  const readOnly = viewerMode || mapping?.archived;
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [entity, setEntity] = useState("");
   const [grain, setGrain] = useState("");
@@ -240,7 +268,7 @@ function ManualMappingStudio({
       let saved: {drafts: Draft[]; entity: string; grain: string; reviewed: boolean} | null = null;
       try {
         const value = JSON.parse(sessionStorage.getItem(storageKey) || "null");
-        if (value && Array.isArray(value.drafts) && value.drafts.length === profile.columns.length &&
+        if (!mapping.archived && value && Array.isArray(value.drafts) && value.drafts.length === profile.columns.length &&
             value.drafts.every((d: Draft, i: number) => d?.source === profile.columns[i].column_id) &&
             typeof value.entity === "string" && typeof value.grain === "string") saved = value;
       } catch { /* Use the immutable proposal if the tab cache is unavailable. */ }
@@ -251,12 +279,12 @@ function ManualMappingStudio({
       setReviewed(saved?.reviewed || false);
       setLoadedKey(storageKey);
     }
-  }, [mapping?.id, profile, table.id, storageKey]);
+  }, [mapping?.id, mapping?.archived, profile, table.id, storageKey]);
   useEffect(() => {
-    if (loadedKey !== storageKey) return;
+    if (loadedKey !== storageKey || mapping?.archived) return;
     try { sessionStorage.setItem(storageKey, JSON.stringify({drafts, entity, grain, reviewed})); }
     catch { /* Manual edits remain in memory if browser storage is unavailable. */ }
-  }, [loadedKey, storageKey, drafts, entity, grain, reviewed]);
+  }, [loadedKey, storageKey, drafts, entity, grain, reviewed, mapping?.archived]);
 
   useEffect(() => {
     if (!activeJob) return;
@@ -284,6 +312,11 @@ function ManualMappingStudio({
   }, [activeJob, onReload, retryWatch]);
 
   function chooseRevision(id: string) {
+    if (mappings.some(item => item.id === id && item.archived)) {
+      setHistoryId(id);
+      return;
+    }
+    setHistoryId("");
     setSelected(id);
     try { sessionStorage.setItem(selectionKey, id); } catch { /* Optional tab preference. */ }
   }
@@ -294,9 +327,9 @@ function ManualMappingStudio({
   );
   const publishedJob = currentJob;
   const published = publishedJob?.status === "SUCCEEDED" &&
-    mappings.find(item => item.id === publishedJob.result?.mapping_id);
+    mappings.find(item => !item.archived && item.id === publishedJob.result?.mapping_id);
   useEffect(() => {
-    if (!mapping || !published || loadedKey !== storageKey || acceptedRevision.current === published.id) return;
+    if (!mapping || mapping.archived || !published || loadedKey !== storageKey || acceptedRevision.current === published.id) return;
     if (published.revision < mapping.revision) return;
     acceptedRevision.current = published.id;
     if (published.id !== mapping.id && dirty) {
@@ -331,6 +364,7 @@ function ManualMappingStudio({
   }
 
   function change(source: string, patch: Partial<Draft>) {
+    if (readOnly) return;
     if (mapping) chooseRevision(mapping.id);
     setDrafts((rows) =>
       rows.map((r) => (r.source === source ? { ...r, ...patch } : r)),
@@ -404,7 +438,7 @@ function ManualMappingStudio({
     } finally { approving.current = false; }
   }
   const invalid =
-    loadedKey !== storageKey ||
+    Boolean(mapping?.archived) || loadedKey !== storageKey ||
     !entity.trim() ||
     !grain.trim() ||
     !drafts.some((d) => d.target) ||
@@ -429,11 +463,40 @@ function ManualMappingStudio({
     .catch(err=>{if(!controller.signal.aborted)setPreflightError(err instanceof Error?err.message:'Không kiểm tra được đề xuất.');});},400);
     return()=>{clearTimeout(timer);controller.abort();};
   },[bodySignature,invalid,table.id]);
+  const management = <MappingVersions mappings={mappings} selected={mapping?.id}
+    canManage={Boolean(canManageReuse)} onView={chooseRevision}
+    onChange={async (id, action) => {
+      if (id === mapping?.id) chooseRevision("");
+      if (offeredRevision === id) setOfferedRevision("");
+      if (action === "delete") {
+        try {
+          const key = `studio.manual-mapping.${draftOwner}.${table.id}.${id}`;
+          sessionStorage.removeItem(key);
+          sessionStorage.removeItem(`${key}.approval`);
+        } catch { /* Optional local draft storage. */ }
+      }
+      await onRevisionChange();
+      onProposalAvailable(action === "delete" ? "Đã xóa phiên bản ánh xạ." : "Đã ẩn phiên bản ánh xạ.");
+    }} />;
   if (!mapping)
     return (
-      <Notice>
-        Ánh xạ thủ công sẽ xuất hiện sau khi phân tích bảng hoàn tất.
-      </Notice>
+      <div className="mapping-studio">
+        <div className="section-heading">
+          <h2>Hiểu dữ liệu, xác nhận ý nghĩa</h2>{management}
+        </div>
+        {activeJob || submitting ? <Notice>Đang phân tích dữ liệu…</Notice> : <Notice>Chưa có phiên bản ánh xạ đang hiển thị.</Notice>}
+        {(proposalError || jobError) && <Notice tone="error">{proposalError || jobError}</Notice>}
+        {!viewerMode && <div className="modal-actions">
+          <button type="button" className="button secondary" disabled={busy || submitting || Boolean(activeJob)}
+            onClick={() => void requestProposal()}>Đề xuất lại</button>
+          <button type="button" className="button secondary" disabled={busy || submitting || Boolean(activeJob)}
+            onClick={() => void run(async () => {
+              const draft = await api<{mapping_id: string}>(`/tables/${table.id}/mapping-draft`, { method: "POST" });
+              chooseRevision(draft.mapping_id);
+              await onRevisionChange();
+            })}>Tạo bản nháp thủ công</button>
+        </div>}
+      </div>
     );
   const fields = new Map(mapping.schema.fields.map(field => [field.id, field]));
   const columnsById = new Map(profile.columns.map(column => [column.column_id, column]));
@@ -488,22 +551,24 @@ function ManualMappingStudio({
             value={mapping.id}
             onChange={(e) => { chooseRevision(e.target.value); setOfferedRevision(""); }}
           >
-            {mappings.map((m) => (
+            {(mapping.archived ? [mapping, ...visible] : visible).map((m) => (
               <option key={m.id} value={m.id}>
-                Lần {m.revision} · {statusText[m.status] || m.status}
+                Lần {m.revision} · {statusText[m.status] || m.status}{m.archived ? " · Đã ẩn" : ""}
               </option>
             ))}
           </select>
         </label>
         <Badge status={mapping.status} />
+        {management}
       </div>
+      {mapping.archived && <Notice>Phiên bản đã ẩn. Bạn đang xem lịch sử.</Notice>}
       {needsReview && <p className="muted">{aiSuggested ? `${mapping.proposal_source === "GEMINI" ? "Gemini" : "Qwen"} đã đề xuất ánh xạ. ` : ""}Cần bạn xác nhận các trường trước khi chuẩn hóa.</p>}
       {aiSuggested && !mapping.proposal.decisions.some(decision => decision.candidate_target) &&
         <Notice tone="warning">AI chưa xác định được trường phù hợp. Bạn có thể chọn trường thủ công sau khi xem nguồn.</Notice>}
       {mapping.template_mapping_id && (
         <Notice>Đã điền thông tin từ một mẫu từng được duyệt. Hãy kiểm tra trước khi dùng cho tệp này.</Notice>
       )}
-      {canManageReuse && (mapping.reuse_eligible || mapping.reuse_enabled) && (
+      {canManageReuse && !mapping.archived && (mapping.reuse_eligible || mapping.reuse_enabled) && (
         <details>
           <summary>Tự áp dụng cho lần tải tương thích</summary>
           <p>Áp dụng cho tệp cùng tên trong dự án này. Hệ thống kiểm tra cấu trúc, định dạng, khóa và tất cả các dòng trước khi chuẩn hóa theo mẫu đã duyệt.</p>
@@ -531,6 +596,7 @@ function ManualMappingStudio({
           Loại dữ liệu
           <input
             placeholder="Ví dụ: đơn hàng, vận đơn"
+            disabled={readOnly}
             value={entity}
             onChange={(e) => { chooseRevision(mapping.id); setEntity(e.target.value); }}
           />
@@ -539,6 +605,7 @@ function ManualMappingStudio({
           Mỗi dòng đại diện cho điều gì?
           <input
             placeholder="Ví dụ: một dòng sản phẩm của đơn hàng"
+            disabled={readOnly}
             value={grain}
             onChange={(e) => { chooseRevision(mapping.id); setGrain(e.target.value); }}
           />
@@ -561,6 +628,7 @@ function ManualMappingStudio({
             <input
               type="checkbox"
               checked={reviewed}
+              disabled={readOnly}
               onChange={(e) => { chooseRevision(mapping.id); setReviewed(e.target.checked); }}
             />
             Tôi đã kiểm tra các cảnh báo và vùng dữ liệu nguồn.
@@ -588,7 +656,7 @@ function ManualMappingStudio({
           );
           const rowId = `${registerId}-${d.source}`;
           return (
-            <details className="mapping-register-row" key={d.source}>
+            <details className="mapping-row mapping-register-row" key={d.source}>
               <summary aria-label={`Chỉnh cột ${col.name}`} aria-describedby={`${rowId}-target ${rowId}-status`}>
                 <span className="mapping-register-source">{col.name}</span>
                 <span id={`${rowId}-target`} className="mapping-register-target">
@@ -621,7 +689,7 @@ function ManualMappingStudio({
                   {col.null_count} giá trị thiếu · {col.distinct_count} giá trị phân biệt
                 </small>
               </div>
-              <div className="target-column">
+              <fieldset className="target-column" disabled={readOnly}>
                 <div className="mapping-fields">
                   <MappingTargetPicker column={col.name} draft={d} fields={[...fields.values()]}
                     occupied={occupied}
@@ -795,7 +863,7 @@ function ManualMappingStudio({
                     ))}
                   </details>
                 )}
-              </div>
+              </fieldset>
               </div>
             </details>
           );

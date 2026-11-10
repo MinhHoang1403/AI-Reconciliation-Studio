@@ -443,18 +443,27 @@ test("[MOCK CONTRACT] mapping jobs publish revisions, keep edited drafts and exp
   await page.getByLabel("Chỉnh cột Ghi chú", { exact: true }).click();
   const target = page.getByRole("button", { name: "Trường đích Ghi chú", exact: true });
   await target.click();
-  const dialog = page.getByRole("dialog", { name: "Chọn trường cho Ghi chú", exact: true });
+  const dialog = page.getByRole("group", { name: "Chọn trường cho Ghi chú", exact: true });
   const search = dialog.getByRole("combobox");
   const dialogBounds = (await dialog.boundingBox())!;
+  const anchorBounds = (await target.boundingBox())!;
   expect(dialogBounds.x).toBeGreaterThanOrEqual(0);
   expect(dialogBounds.x + dialogBounds.width).toBeLessThanOrEqual(390);
+  expect(Math.min(
+    Math.abs(dialogBounds.y - anchorBounds.y - anchorBounds.height),
+    Math.abs(anchorBounds.y - dialogBounds.y - dialogBounds.height),
+  )).toBeLessThanOrEqual(8);
   await search.fill("ma tham chieu");
   await expect(dialog.getByRole("option")).toHaveAttribute("aria-disabled", "true");
   await expect(dialog.getByText("Đã gán cho cột Mã nghiệp vụ")).toBeVisible();
+  await dialog.getByText("Thêm trường tùy chỉnh", { exact: true }).click();
   await expect(dialog.getByRole("button", { name: /^Thêm trường/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(target).toBeFocused();
   await expect(target).toContainText("Giữ nguyên trong nguồn gốc");
+  await target.click();
+  await page.getByText("Ý nghĩa của bảng", { exact: true }).click();
+  await expect(dialog).not.toBeVisible();
   await target.click();
   await search.fill("mo ta");
   await search.press("Enter");

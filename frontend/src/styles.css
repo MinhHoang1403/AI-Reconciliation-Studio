@@ -18,7 +18,7 @@
   --surface-subtle: #f3f4f6;
   --surface-hover: #e9ecf0;
   --surface-sidebar: #f2f6fb;
-  --control-border: #cbd0d8;
+  --control-border: #e5e7eb;
   --control-radius: 8px;
   --composer-radius: 30px;
   --chat-border: #d1d5db;
@@ -278,9 +278,9 @@ svg {
   min-width: 0;
   min-height: var(--scope-control-height);
   padding: 4px 9px;
-  border: 1px solid transparent;
+  border: 1px solid var(--control-border);
   border-radius: var(--control-radius);
-  background: var(--surface-subtle);
+  background: var(--surface-raised);
   color: var(--ink);
   font-size: 13px;
   text-align: start;
@@ -289,8 +289,8 @@ svg {
 .masthead-scope .project-trigger { max-width: 21rem; width: auto; }
 .masthead-scope strong { font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .masthead-scope :is(.workspace-picker, .project-trigger) > svg { color: var(--text-muted); }
-.masthead-scope :is(.workspace-picker, .project-trigger):hover { background: var(--surface-hover); }
-.masthead-scope :is(.workspace-picker, .project-trigger)[aria-expanded="true"] { background: var(--accent-soft); }
+.masthead-scope :is(.workspace-picker, .project-trigger):hover { background: var(--canvas); }
+.masthead-scope :is(.workspace-picker, .project-trigger)[aria-expanded="true"] > svg:last-child { color: var(--accent-hover); }
 .workspace-selected-name {
   display: block;
   color: var(--text-muted);
@@ -439,8 +439,8 @@ main {
   padding: 9px 12px;
   width: min(100%, 380px);
   min-width: 0;
-  background: var(--surface-subtle);
-  border: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--control-border);
   border-radius: var(--control-radius);
   text-align: left;
 }
@@ -928,20 +928,25 @@ label {
   display: block;
 }
 label > input,
-label > select {
+label > select,
+label > textarea {
   margin-top: 6px;
 }
-input,
-select {
-  background: var(--surface-subtle);
-  border: 1px solid transparent;
-  border-radius: 8px;
+:is(input:not([type="checkbox"], [type="radio"], [type="file"]), select, textarea) {
+  background: var(--surface-raised);
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
   min-height: 37px;
   padding: 8px 11px;
   width: 100%;
   color: #334155;
   font-size: 13px;
 }
+:is(input:not([type="checkbox"], [type="radio"], [type="file"]), select, textarea):hover:not(:disabled) {
+  border-color: var(--surface-border);
+}
+:is(input, select, textarea):disabled { color: var(--text-muted); }
+:is(input, select, textarea)[aria-invalid="true"] { border-color: #b91c1c; }
 input::placeholder {
   color: var(--text-muted);
   font-weight: 400;
@@ -1008,6 +1013,9 @@ input[type="checkbox"] {
   text-overflow: ellipsis;
 }
 .target-column {
+  margin: 0;
+  padding: 0;
+  border: 0;
   min-width: 0;
 }
 .mapping-fields, .decimal-fields {
@@ -1032,14 +1040,40 @@ input[type="checkbox"] {
   min-height: 40px;
   width: 100%;
   padding: 6px 10px;
-  border: 1px solid transparent;
+  border: 1px solid var(--control-border);
   border-radius: var(--control-radius);
-  background: var(--surface-subtle);
+  background: var(--surface-raised);
   text-align: left;
 }
 .mapping-target-trigger span { min-width: 0; overflow-wrap: anywhere; }
-.mapping-target-trigger:hover:not(:disabled) { background: var(--surface-hover); }
-.mapping-add-field { margin-top: 12px; overflow-wrap: anywhere; }
+.mapping-target-trigger:hover:not(:disabled) { background: var(--canvas); }
+.mapping-target-trigger:disabled { opacity: 1; color: var(--text-muted); }
+.mapping-target-popup {
+  position: fixed;
+  inset: auto 1rem 1rem;
+  margin: 0;
+  inline-size: min(22rem, calc(100vw - 2rem));
+  max-block-size: min(24rem, 50dvh);
+  padding: var(--space-2);
+  overflow: auto;
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background: var(--surface-raised);
+  color: var(--ink);
+  box-shadow: 0 4px 16px #0f172a12;
+}
+@supports (position-area: block-end span-inline-end) {
+  .mapping-target-popup {
+    inset: auto;
+    position-area: block-end span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    justify-self: start;
+    margin-block-start: 4px;
+    inline-size: min(calc(100vw - 2rem), max(15rem, anchor-size(width)));
+  }
+}
+.mapping-target-popup .project-options { max-block-size: min(13rem, 33dvh); margin-block-start: var(--space-2); }
+.mapping-add-field { margin-block-start: var(--space-2); overflow-wrap: anywhere; }
 .project-option[aria-disabled="true"] { cursor: not-allowed; }
 .inline-options {
   display: flex;
@@ -1786,12 +1820,12 @@ pre {
   margin-inline: auto;
   padding: 10px 12px;
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--control-border);
   border-radius: var(--composer-radius);
   box-shadow: var(--shadow-composer);
 }
 .assistant-composer > label { display: block; font-size: inherit; min-width: 0; grid-column: 2; grid-row: 1; }
-.assistant-composer textarea { display: block; width: 100%; min-width: 0; height: 40px; min-height: 40px; max-height: 180px; padding: 8px 4px; border: 0; border-radius: 6px; background: transparent; resize: none; line-height: 24px; color: #262626; }
+.assistant-composer textarea { display: block; width: 100%; min-width: 0; height: 40px; min-height: 40px; max-height: 180px; margin: 0; padding: 8px 4px; border: 0; border-radius: 6px; background: transparent; resize: none; line-height: 24px; color: #262626; }
 .app-shell[data-focus-mode="keyboard"] .assistant-composer:has(textarea:focus-visible) {
   box-shadow: var(--shadow-composer), inset 0 -2px var(--focus-mark);
 }
@@ -1882,7 +1916,7 @@ pre {
 .visually-hidden {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 .system-mini {display:flex;gap:7px;align-items:center;font-size:11px;color:var(--text-muted);padding:8px 12px;}
 .assistant-project-picker { min-width: 0; flex: 0 1 auto; max-width: 560px; }
-.assistant-project-picker .project-trigger { min-height: 36px; padding: 4px 8px; width: auto; max-width: 100%; min-width: 0; background: transparent; border-color: transparent; }
+.assistant-project-picker .project-trigger { min-height: 36px; padding: 4px 8px; width: auto; max-width: 100%; min-width: 0; }
 .assistant-project-picker .project-trigger .project-picker-caption { display: block; margin: 0 0 2px; font-size: 11px; line-height: 1.2; font-weight: 400; }
 .assistant-project-picker .project-trigger > span:first-of-type { min-width: 0; flex: 0 1 auto; }
 .assistant-project-picker .project-trigger strong { line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

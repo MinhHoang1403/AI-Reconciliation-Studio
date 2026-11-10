@@ -74,6 +74,7 @@ from studio.repository import (
     artifact_ref,
     create_mapping,
     enqueue_job,
+    mapping_archived,
     mapping_contract,
     project_for_table,
     reserve_document_request,
@@ -298,6 +299,7 @@ def _approved_mapping_draft(
                 MappingRow.workspace_id == table.workspace_id,
                 MappingRow.business_scope == project_for_table(db, table).business_scope,
                 MappingRow.status == "APPROVED",
+                ~mapping_archived(),
                 MappingRow.source_table_id != table.id,
                 VersionRow.parser_revision == current.parser_revision,
                 VersionRow.parse_config == current.parse_config,
@@ -327,6 +329,11 @@ def _approved_mapping_draft(
                 eligible.append((candidate, grant.id, resolved))
     if len(eligible) == 1:
         template, grant_id, (approved, bindings) = eligible[0]
+    locked = db.get(MappingRow, template.id, with_for_update={"read": True}, populate_existing=True)
+    if locked is None or locked.status != "APPROVED" or db.scalar(
+        select(mapping_archived()).where(MappingRow.id == template.id)
+    ):
+        return None
     old, schema = approved.mapping, approved.schema
     proposal = SchemaProposal(
         entity_kind=schema.entity_kind,
@@ -722,7 +729,8 @@ def _mapping(job_id: str, token: str) -> None:
                     proposal = provider.propose(profile, schema, policy, reserve)
                 else:
                     proposal = provider.propose(profile, schema)
-            db.rollback()
+            if not cached:
+                db.rollback()
             job = _fence(db, job_id, token)
             table = db.get(TableRow, job.payload["table_id"])
             assert table is not None

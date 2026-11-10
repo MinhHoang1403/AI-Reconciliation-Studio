@@ -78,6 +78,7 @@ from studio.database import (
 from studio.errors import DomainError, request_failure_message
 from studio.repository import (
     get_scoped,
+    mapping_archived,
     project_for_table,
     reserve_gemini_request,
     retrying_gemini_response,
@@ -999,6 +1000,7 @@ def execute_agent(
                     MappingRow.business_scope == project.business_scope,
                     MappingRow.signature == source_signature(profile),
                     MappingRow.status == "APPROVED",
+                    ~mapping_archived(),
                 )
                 .order_by(MappingRow.created_at.desc())
                 .limit(3)

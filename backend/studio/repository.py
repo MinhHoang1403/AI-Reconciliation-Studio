@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-from sqlalchemy import case, func, select, text
+from sqlalchemy import Integer, case, cast, func, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -37,6 +37,22 @@ from studio.database import (
 from studio.errors import GEMINI_RETRYABLE_ERRORS, DomainError
 from studio.profiling import default_schema, source_signature
 from studio.resource_lifecycle import active_project, active_source, guard_resource
+
+MAPPING_ARCHIVED = "ARCHIVE_MAPPING"
+REMOVED_MAPPING_REVISION = "REMOVED_MAPPING_REVISION:"
+
+
+def mapping_archived() -> ColumnElement[bool]:
+    return (
+        select(AuditRow.id)
+        .where(
+            AuditRow.workspace_id == MappingRow.workspace_id,
+            AuditRow.resource_id == MappingRow.id,
+            AuditRow.action == MAPPING_ARCHIVED,
+        )
+        .correlate(MappingRow)
+        .exists()
+    )
 
 
 def project_classification_expression() -> ColumnElement[str]:
@@ -400,14 +416,23 @@ def create_mapping(
         )
     )
     db.flush()
-    revisions = list(
-        db.scalars(select(MappingRow.revision).where(MappingRow.source_table_id == table.id))
+    current = db.scalar(
+        select(func.max(MappingRow.revision)).where(MappingRow.source_table_id == table.id)
+    )
+    removed_number = cast(func.substr(AuditRow.action, len(REMOVED_MAPPING_REVISION) + 1), Integer)
+    removed = db.scalar(
+        select(func.max(removed_number))
+        .where(
+            AuditRow.workspace_id == table.workspace_id,
+            AuditRow.resource_id == table.id,
+            AuditRow.action.startswith(REMOVED_MAPPING_REVISION, autoescape=True),
+        )
     )
     mapping = MappingRow(
         workspace_id=table.workspace_id,
         source_table_id=table.id,
         schema_id=schema_id,
-        revision=max(revisions, default=0) + 1,
+        revision=max(current or 0, removed or 0) + 1,
         status=proposal["status"],
         signature=source_signature(profile),
         business_scope=project_for_table(db, table).business_scope,

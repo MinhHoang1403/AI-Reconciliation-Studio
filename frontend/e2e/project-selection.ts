@@ -28,11 +28,14 @@ export function assistantPanel(page: Page, name: string) {
 /** Pick an existing field or explicitly extend the schema for business-specific fixtures. */
 export async function chooseMappingTarget(page: Page, column: string, id: string) {
   await page.getByRole("button", { name: `Trường đích ${column}`, exact: true }).click();
-  const picker = page.getByRole("dialog", { name: `Chọn trường cho ${column}`, exact: true });
+  const picker = page.getByRole("group", { name: `Chọn trường cho ${column}`, exact: true });
   await picker.getByRole("combobox", { name: "Tìm trường đích" }).fill(id);
   const field = picker.getByRole("option").and(picker.locator(`[data-target-id="${id}"]`));
   if (await field.count()) await field.click();
-  else await picker.getByRole("button", { name: `Thêm trường “${id}” vào cấu trúc`, exact: true }).click();
+  else {
+    await picker.getByText("Thêm trường tùy chỉnh", { exact: true }).click();
+    await picker.getByRole("button", { name: `Thêm trường “${id}” vào cấu trúc`, exact: true }).click();
+  }
   await expect(picker).not.toBeVisible();
 }
 

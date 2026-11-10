@@ -99,6 +99,7 @@ class MappingView(Contract):
     decision: MappingRevision | None
     schema_definition: SchemaDefinition = Field(alias="schema")
     proposal_source: str | None = None
+    archived: bool = False
     template_mapping_id: str | None = None
     reuse_enabled: bool = False
     reuse_eligible: bool = False

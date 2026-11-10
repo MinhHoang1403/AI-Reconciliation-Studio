@@ -89,6 +89,7 @@ from studio.document_parser import (
     DocumentExtraction,
 )
 from studio.errors import DomainError
+from studio.mapping_lifecycle import MappingChange, MappingImpact, change_mapping, mapping_impact
 from studio.mapping_reuse import (
     REUSE_DISABLED,
     REUSE_ENABLED,
@@ -119,6 +120,7 @@ from studio.repository import (
     enqueue_job,
     gemini_request_counts,
     get_scoped,
+    mapping_archived,
     mapping_contract,
     preparation_overview,
     project_classification_expression,
@@ -1140,15 +1142,17 @@ def table_mapping_jobs(table: TableRow) -> Select[tuple[JobRow]]:
 
 
 @app.get("/api/tables/{table_id}/mappings", response_model=MappingList)
-def mappings(table_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
+def mappings(
+    table_id: str, db: DB, actor: CurrentActor, include_archived: bool = False
+) -> dict[str, Any]:
     table = get_scoped(db, TableRow, table_id, actor)
-    rows = list(
-        db.scalars(
-            select(MappingRow)
-            .where(MappingRow.source_table_id == table.id)
-            .order_by(MappingRow.revision.desc())
-        )
+    archived = mapping_archived()
+    query = (
+        select(MappingRow, archived.label("archived"))
+        .where(MappingRow.source_table_id == table.id)
+        .order_by(MappingRow.revision.desc())
     )
+    rows = db.execute(query if include_archived else query.where(~archived)).all()
     parse_result = db.scalar(
         select(JobRow.result)
         .where(
@@ -1189,15 +1193,54 @@ def mappings(table_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
                 "decision": r.decision,
                 "schema": schema_definition(r.schema_id),
                 "proposal_source": origins.get(r.id),
+                "archived": is_archived,
                 "template_mapping_id": template_ids.get(r.id),
                 "reuse_enabled": r.id == table.active_mapping_id
                 and current_reuse_grant(db, r) is not None,
                 "reuse_eligible": r.id == table.active_mapping_id
                 and approved_reference(db, r, table),
             }
-            for r in rows
+            for r, is_archived in rows
         ],
     }
+
+
+@app.get("/api/mappings/{mapping_id}/lifecycle", response_model=MappingImpact)
+def mapping_lifecycle(mapping_id: str, db: DB, actor: CurrentActor) -> MappingImpact:
+    mapping = get_scoped(db, MappingRow, mapping_id, actor)
+    require_owner(actor, db, mapping_id)
+    return mapping_impact(db, mapping, get_scoped(db, TableRow, mapping.source_table_id, actor))
+
+
+@app.post("/api/mappings/{mapping_id}/lifecycle")
+def change_mapping_lifecycle(
+    mapping_id: str, body: MappingChange, db: DB, actor: CurrentActor
+) -> dict[str, str]:
+    change_mapping(db, actor, mapping_id, body.action)
+    return {"status": "archived" if body.action == "archive" else "deleted"}
+
+
+@app.post("/api/tables/{table_id}/mapping-draft", status_code=201)
+def create_manual_mapping(table_id: str, db: DB, actor: CurrentActor) -> dict[str, str]:
+    from studio.ai_gateway import manual_proposal
+    from studio.profiling import default_schema
+
+    require_editor(actor, db, table_id)
+    table = get_scoped(db, TableRow, table_id, actor)
+    db.refresh(table, with_for_update=True)
+    existing = db.scalar(
+        select(MappingRow.id)
+        .where(MappingRow.source_table_id == table.id, ~mapping_archived())
+        .order_by(MappingRow.revision.desc())
+        .limit(1)
+    )
+    if existing:
+        return {"mapping_id": existing}
+    schema = default_schema(actor.workspace_id, identifier())
+    proposal = manual_proposal(DatasetProfile.model_validate(table.profile), schema)
+    mapping = create_mapping(db, table, proposal.model_dump(mode="json"), schema)
+    db.commit()
+    return {"mapping_id": mapping.id}
 
 
 @app.patch("/api/mappings/{mapping_id}/reuse-policy")
@@ -1209,7 +1252,7 @@ def set_mapping_reuse(
     mapping = get_scoped(db, MappingRow, mapping_id, actor)
     table = get_scoped(db, TableRow, mapping.source_table_id, actor)
     db.refresh(table, with_for_update=True)
-    db.refresh(mapping)
+    mapping = editable_mapping(db, mapping_id, actor)
     enabled = current_reuse_grant(db, mapping) is not None
     if body.expected_enabled != enabled:
         raise DomainError("REUSE_POLICY_CONFLICT", "Chính sách đã đổi. Hãy cập nhật lại.", 409)
@@ -1243,6 +1286,7 @@ def mapping_proposal(mapping_id: str, db: DB, actor: CurrentActor) -> dict[str, 
         "proposal": mapping.proposal,
         "decision": mapping.decision,
         "schema": schema.definition,
+        "archived": bool(db.scalar(select(mapping_archived()).where(MappingRow.id == mapping.id))),
     }
 
 
@@ -1358,7 +1402,7 @@ def reject_mapping(mapping_id: str, db: DB, actor: CurrentActor) -> dict[str, st
     mapping = get_scoped(db, MappingRow, mapping_id, actor)
     table = get_scoped(db, TableRow, mapping.source_table_id, actor)
     db.refresh(table, with_for_update=True)
-    db.refresh(mapping)
+    mapping = editable_mapping(db, mapping_id, actor)
     if mapping.status in {"APPROVED", "SUPERSEDED"}:
         raise DomainError(
             "IMMUTABLE_APPROVAL", "Cần tạo revision mới thay vì sửa lịch sử đã duyệt.", 409
@@ -1374,6 +1418,15 @@ def reject_mapping(mapping_id: str, db: DB, actor: CurrentActor) -> dict[str, st
     )
     db.commit()
     return {"status": "REJECTED"}
+
+
+def editable_mapping(db: Session, mapping_id: str, actor: Actor) -> MappingRow:
+    mapping = db.get(MappingRow, mapping_id, populate_existing=True)
+    if mapping is None or mapping.workspace_id != actor.workspace_id:
+        raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy phiên bản ánh xạ.", 404)
+    if db.scalar(select(mapping_archived()).where(MappingRow.id == mapping_id)):
+        raise DomainError("MAPPING_ARCHIVED", "Phiên bản đã ẩn chỉ dùng để xem lịch sử.", 409)
+    return mapping
 
 
 class NormalizeInput(Contract):
@@ -1524,7 +1577,7 @@ def apply_mapping_approval(
     original = get_scoped(db, MappingRow, mapping_id, actor)
     table = get_scoped(db, TableRow, original.source_table_id, actor)
     db.refresh(table, with_for_update=True)
-    db.refresh(original)
+    original = editable_mapping(db, mapping_id, actor)
     if original.status in {"REJECTED", "SUPERSEDED"}:
         raise DomainError("MAPPING_SUPERSEDED", "Ánh xạ đã bị thay thế hoặc từ chối.", 409)
     if table.parsed_contract["warnings"] and not body.extraction_reviewed:

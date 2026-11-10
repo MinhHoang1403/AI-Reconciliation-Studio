@@ -142,7 +142,8 @@ test(`[${process.env.STUDIO_LIVE_PROVIDER==='GEMINI'?'LIVE GEMINI':'LOCAL ORACLE
 
 const paymentJourney = process.env.STUDIO_JOURNEY_DATASET === 'PAYMENT';
 const compositeJourney = paymentJourney && process.env.STUDIO_COMPOSITE === 'GEMINI';
-for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL ORACLE] Three new ${paymentJourney?'payment':process.env.STUDIO_JOURNEY_DATASET==='MAINTENANCE'?'maintenance':'inventory'} sources through Chat approval, reconciliation and export${sharedReview ? ' with shared business facts' : ''}`,async({page})=>{
+const twoSources = compositeJourney && process.env.STUDIO_COMPOSITE_SOURCES === '2';
+for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[${compositeJourney?'LIVE GEMINI':'LOCAL ORACLE'}] ${twoSources?'Two':'Three'} new ${paymentJourney?'payment':process.env.STUDIO_JOURNEY_DATASET==='MAINTENANCE'?'maintenance':'inventory'} sources through Chat approval, reconciliation and export${sharedReview ? ' with shared business facts' : ''}`,async({page})=>{
   test.setTimeout(compositeJourney ? 210000 : 120000);
   const viewportWidth=Number(process.env.STUDIO_JOURNEY_WIDTH??1440);
   await page.setViewportSize({width:viewportWidth,height:900});
@@ -161,7 +162,7 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
     : ['Stock ID','Snapshot Date','Gross Amount','Currency']);
   const [keyHeader,,moneyHeader]=headers;
   const suffix=crypto.randomUUID().slice(0,8);
-  const names=(maintenance?.names??(paymentJourney?['Don-hang','Thanh-toan','Ngan-hang']:['So-ton','Kiem-ke','Ton-du-phong'])).map(name=>`${name}-${suffix}.csv`);
+  const names=(maintenance?.names??(paymentJourney?['Don-hang','Thanh-toan','Ngan-hang']:['So-ton','Kiem-ke','Ton-du-phong'])).slice(0,twoSources?2:3).map(name=>`${name}-${suffix}.csv`);
   const values=maintenance?.values??[
     [['0001','100.00'],['0002','250.00'],['0003','25.00']],
     [['0001','100.00'],['0002','200.00'],['0004','15.00']],
@@ -182,7 +183,7 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
   await page.getByRole('button',{name:'Tạo dự án mới',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Tạo dự án',exact:true});
   await dialog.getByLabel('Tên dự án',{exact:true}).fill(`UAT ${paymentJourney?'thanh toán':maintenance?'bảo trì':'tồn kho'} ${suffix}`);
-  await dialog.getByLabel('Phạm vi nghiệp vụ',{exact:true}).fill(paymentJourney?'Đối chiếu số tiền đã thanh toán theo mã thanh toán giữa đơn hàng, cổng thanh toán và ngân hàng. Dữ liệu tổng hợp.':maintenance?'Đối chiếu chứng từ bảo trì với khoản thu, có hoàn tiền và số không; dữ liệu tổng hợp.':'Đối chiếu số dư giá trị tồn theo mã hàng, dữ liệu tổng hợp.');
+  await dialog.getByLabel('Phạm vi nghiệp vụ',{exact:true}).fill(twoSources?'Đối chiếu tiền đã thanh toán theo mã giao dịch, đơn hàng làm tham chiếu và cổng thanh toán làm đối ứng. Dữ liệu tổng hợp.':paymentJourney?'Đối chiếu số tiền đã thanh toán theo mã thanh toán giữa đơn hàng, cổng thanh toán và ngân hàng. Dữ liệu tổng hợp.':maintenance?'Đối chiếu chứng từ bảo trì với khoản thu, có hoàn tiền và số không; dữ liệu tổng hợp.':'Đối chiếu số dư giá trị tồn theo mã hàng, dữ liệu tổng hợp.');
   await dialog.getByRole('combobox',{name:'Nhóm dự án',exact:true}).selectOption('TEST');
   await dialog.getByRole('button',{name:'Tạo dự án',exact:true}).click();
   await expect(dialog).not.toBeVisible();
@@ -196,6 +197,7 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
   const start=Date.now();
   if (compositeJourney) {
     await page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true}).fill(
+      twoSources ? 'Hãy kiểm tra hai nguồn tôi đã tải, đề xuất ánh xạ, chuẩn hóa, đối soát theo mã giao dịch, tìm những khoản lệch và xuất Excel.' :
       'Hãy kiểm tra và chuẩn hóa ba nguồn đơn hàng, thanh toán và sao kê ngân hàng. ' +
       'Sau đó đối soát đơn hàng với thanh toán, thanh toán với sao kê và xuất Excel các giao dịch chênh lệch.',
     );
@@ -204,10 +206,10 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
   const attachment=await(await upload).json();
   const uploadedIds=attachment.items.map((item:{id:string})=>item.id);
   receipts.datasets=uploadedIds;
-  await expect(page.locator('.agent-table')).toHaveCount(3);
+  await expect(page.locator('.agent-table')).toHaveCount(names.length);
   receipts.upload_to_raw_visible_ms=Date.now()-start;
   const cards=page.getByRole('region',{name:'Quyết định cần xác nhận',exact:true});
-  await expect(cards).toHaveCount(3);
+  await expect(cards).toHaveCount(names.length);
   receipts.upload_to_reviews_ms=Date.now()-start;
   if(sharedReview){
     const common=page.getByRole('region',{name:'Thông tin chung cho các nguồn',exact:true});
@@ -242,7 +244,7 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
     manualFields+=6;
   }
   }
-  await page.getByRole('button',{name:'Duyệt 3 nguồn và chuẩn hóa',exact:true}).click();
+  await page.getByRole('button',{name:`Duyệt ${names.length} nguồn và chuẩn hóa`,exact:true}).click();
   await expect(cards).toHaveCount(0);
   const work=page.getByRole('region',{name:'Công việc của AI Assistant',exact:true}).last();
   if (!compositeJourney) await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
@@ -286,13 +288,17 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
   if (compositeJourney) {
     const first = await reconcilePair(names[0], names[1]);
     await page.reload();
-    const second = await reconcilePair(names[1], names[2]);
-    expect(first).not.toBe(second);
+    const runs = [first];
+    if (!twoSources) {
+      const second = await reconcilePair(names[1], names[2]);
+      expect(first).not.toBe(second);
+      runs.push(second);
+    }
     await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
     const exports = work.getByRole('link',{name:'Tải giao dịch chênh lệch XLSX',exact:true});
     const folder = `../runtime/automation-payment/${suffix}`;
     await mkdir(folder,{recursive:true});
-    for (const [index, run] of [first, second].entries()) {
+    for (const [index, run] of runs.entries()) {
       const snapshot = await (await page.request.get(`/api/runs/${run}/metrics`)).json();
       expect(snapshot.monetary[0].signed_variance).toBe(index === 0 ? '50.00' : '-0.01');
       const link = await exports.nth(index).getAttribute('href');
@@ -302,10 +308,10 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
     }
     expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBeGreaterThan(before.gemini_requests_used);
     await page.reload();
-    await expect(exports).toHaveCount(2);
+    await expect(exports).toHaveCount(runs.length);
     await page.screenshot({path:test.info().outputPath('composite-workflow.png')});
     expect(errors).toEqual([]);
-    await writeFile(`${folder}/receipt.json`,JSON.stringify({...receipts,first,second,clicks,manualFields},null,2));
+    await writeFile(`${folder}/receipt.json`,JSON.stringify({...receipts,first,second:runs[1],clicks,manualFields},null,2));
     return;
   }
   await send(`Mở bảng gốc trong tệp “${names[0]}”`);

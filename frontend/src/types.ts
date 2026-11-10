@@ -146,6 +146,7 @@ export interface Proposal {
   unresolved_questions: string[];
 }
 export interface Mapping {
+  archived?: boolean;
   proposal_source?: string | null;
   template_mapping_id?: string | null;
   reuse_eligible?: boolean;

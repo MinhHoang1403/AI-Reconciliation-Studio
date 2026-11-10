@@ -664,7 +664,7 @@ export function App() {
     const options = { signal: controller.signal };
     const details = await Promise.all([
       api<Profile>(`/tables/${tableId}/profile`, options),
-      api<{ items: Mapping[]; job?: Job | null }>(`/tables/${tableId}/mappings`, options),
+      api<{ items: Mapping[]; job?: Job | null }>(`/tables/${tableId}/mappings?include_archived=true`, options),
       api<{ canonical_datasets: Canonical[] }>(
         `/datasets/${datasetId}/artifacts`, options,
       ),
@@ -1718,6 +1718,7 @@ export function App() {
                                 busy={busy}
                                 run={run}
                                 onReload={loadDetails}
+                                onRevisionChange={changed}
                                 onProposalAvailable={setSuccess}
                                 onApproved={async () => {
                                   await changed();

@@ -3248,6 +3248,11 @@ def test_export_storage_rejects_an_unpinned_or_different_query(mismatched):
     [
         ("Hãy kiểm tra và chuẩn hóa ba nguồn. Sau đó đối soát hai cặp và xuất Excel.", True),
         ("Chuẩn hóa ba bảng rồi đối soát từng cặp, sau đó tải báo cáo XLSX.", True),
+        (
+            "Hãy kiểm tra hai nguồn tôi đã tải, đề xuất ánh xạ, chuẩn hóa, "
+            "đối soát theo mã giao dịch, tìm những khoản lệch và xuất Excel.",
+            True,
+        ),
         ("Xuất Excel kết quả đối soát đã chuẩn hóa.", False),
         ("Không chuẩn hóa ba bảng. Đối soát hai cặp và xuất Excel.", False),
     ],
@@ -3256,3 +3261,26 @@ def test_compound_routing_requires_each_operation_to_be_requested(goal, expected
     from studio.agent_intents import requests_reconciliation_sequence
 
     assert requests_reconciliation_sequence(goal) is expected
+
+
+def test_compound_routing_accepts_one_pair_and_enforces_scoped_sources():
+    from types import SimpleNamespace
+
+    from studio.agent_intents import interpret_reconciliation_sequence
+
+    catalogue = routing_catalogue()
+    pair = {"left_dataset_id": "dataset-0", "right_dataset_id": "dataset-1"}
+    goal = "Chuẩn hóa hai nguồn, đối soát và xuất Excel."
+
+    def request(_prompt, _policy, _reserve, validate, *, response_schema, max_attempts):
+        grammar = response_schema["$defs"]["ReconciliationSequence"]["properties"]["pairs"]
+        assert grammar["minItems"] == grammar["maxItems"] == max_attempts == 1
+        return validate(json.dumps({"sequence": {"pairs": [pair]}, "question": None}))
+
+    provider = SimpleNamespace(request_typed=request)
+    policy = WorkspacePolicy()
+    result = interpret_reconciliation_sequence(provider, goal, [], catalogue, policy, lambda: True)
+    assert result.sequence.pairs[0].model_dump() == pair
+    pair["right_dataset_id"] = "different-project"
+    with pytest.raises(DomainError, match="AI_INVALID_SOURCE"):
+        interpret_reconciliation_sequence(provider, goal, [], catalogue, policy, lambda: True)

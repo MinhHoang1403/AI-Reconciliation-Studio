@@ -70,7 +70,7 @@ from studio.database import (
     now,
 )
 from studio.errors import DomainError
-from studio.repository import enqueue_job, get_scoped
+from studio.repository import enqueue_job, get_scoped, mapping_archived
 
 
 def digest(value: Any) -> str:
@@ -156,7 +156,7 @@ def review_fingerprint(
         table = get_scoped(db, TableRow, resource_id, actor)
         latest = db.scalar(
             select(MappingRow)
-            .where(MappingRow.source_table_id == table.id)
+            .where(MappingRow.source_table_id == table.id, ~mapping_archived())
             .order_by(MappingRow.revision.desc())
             .limit(1)
         )
