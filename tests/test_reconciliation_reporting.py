@@ -227,7 +227,7 @@ def test_local_planner_uses_approved_semantics_without_resending_raw_profiles(
     def handle(http_request):
         if http_request.url.path == "/api/tags":
             return httpx.Response(
-                200, json={"models": [{"name": "qwen3:8b", "size": 10, "digest": "a" * 64}]}
+                200, json={"models": [{"name": "qwen3.8:27b", "size": 10, "digest": "a" * 64}]}
             )
         requests.append(http_request)
         body = json.loads(http_request.content)
@@ -297,7 +297,7 @@ def test_local_planner_uses_approved_semantics_without_resending_raw_profiles(
         )
 
     provider = OllamaProvider(
-        config, "QWEN_8B", httpx.Client(transport=httpx.MockTransport(handle))
+        config, "QWEN_27B", httpx.Client(transport=httpx.MockTransport(handle))
     )
     try:
         if kind in {"invented-field", "changed-relation", "changed-keys"}:

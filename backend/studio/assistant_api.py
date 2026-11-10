@@ -103,7 +103,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             choice = settings.ollama_choice
             local = AssistantModelOption(
                 id=choice,
-                label="Qwen 8B" if choice == "QWEN_8B" else "Qwen 27B",
+                label="Qwen 27B",
                 available=True,
                 status="UNVERIFIED",
             )

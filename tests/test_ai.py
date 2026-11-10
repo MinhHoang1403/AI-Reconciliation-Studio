@@ -28,13 +28,13 @@ def test_local_provider_uses_only_installed_model_and_typed_content(config, resp
         requests.append(request)
         assert request.url.host == "host.docker.internal"
         if request.url.path == "/api/tags":
-            model = {"name": "qwen3:8b", "size": 1000, "digest": "a" * 64}
+            model = {"name": "qwen3.8:27b", "size": 1000, "digest": "a" * 64}
             if response_kind == "remote_tag":
                 model["remote_model"] = "untrusted"
             return httpx.Response(200, json={"models": [model]})
         assert request.url.path == "/api/chat"
         body = json.loads(request.content)
-        assert body["model"] == "qwen3:8b"
+        assert body["model"] == "qwen3.8:27b"
         assert body["format"] == schema and body["think"] is False
         assert body["options"] == {
             "temperature": 0,
@@ -59,7 +59,7 @@ def test_local_provider_uses_only_installed_model_and_typed_content(config, resp
         return True
 
     with httpx.Client(transport=httpx.MockTransport(transport)) as client:
-        provider = OllamaProvider(config, "QWEN_8B", client)
+        provider = OllamaProvider(config, "QWEN_27B", client)
         prompt = [{"role": "user", "content": "test"}]
         if response_kind == "valid":
             result = provider.request_typed(

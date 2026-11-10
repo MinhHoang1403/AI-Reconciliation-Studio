@@ -20,7 +20,7 @@ async function chatFixture(page:Page,{long=true,failed=false,withModels=false}={
     if(path==="/api/settings")return route.fulfill({json:{workspace_name:"TEST",agent_cloud_enabled:false,assistant_cloud_enabled:false,max_upload_bytes:20971520,max_upload_files:5,agent_max_upload_files:5,agent_upload_extensions:[".csv",".xlsx"],max_rows:100000,policy:{allow_external_ai:false}}});
     if(path==="/api/assistant/models"&&withModels)return route.fulfill({json:[
       {id:"GEMINI",label:"Gemini",available:true,status:"UNAVAILABLE"},
-      {id:"QWEN_8B",label:"Qwen 8B",available:true,status:"UNVERIFIED",preferred:true},
+      {id:"QWEN_27B",label:"Qwen 27B",available:true,status:"UNVERIFIED",preferred:true},
     ]});
     if(path==="/api/projects/scroll-project")return route.fulfill({json:{id:context.project_id,name:"TEST scroll",business_scope:"Synthetic",workspace_id:"demo",classification:"TEST"}});
     if(path.endsWith("/summary"))return route.fulfill({json:{dataset_count:0,table_count:0,mapping_review_count:0,ready_canonical_count:0,active_job_count:0}});
@@ -69,21 +69,21 @@ test("[MOCK CONTRACT] switching model preserves draft, queued request and histor
   await page.getByLabel("Tùy chọn hội thoại",{exact:true}).click();
   const model=page.getByLabel("Trợ lý cho tin nhắn mới");
   const composer=page.getByLabel("Câu hỏi cho AI Assistant",{exact:true});
-  await expect(model).toHaveValue("QWEN_8B");
+  await expect(model).toHaveValue("QWEN_27B");
   await expect(model.locator("option")).toHaveText(["Gemini 3.5 Flash Lite", "Qwen 3:8B"]);
   await expect(model.locator("optgroup")).toHaveCount(0);
   await expect(model).not.toHaveAttribute("title", /.+/);
   await expect(composer).toBeInViewport({ratio:1});
   expect((await composer.boundingBox())?.width).toBeGreaterThan(220);
   await composer.fill("Kiểm tra đúng nguồn của hội thoại này");
-  await model.selectOption("QWEN_8B");
+  await model.selectOption("QWEN_27B");
   await expect(composer).toHaveValue("Kiểm tra đúng nguồn của hội thoại này");
   expect(fixture.count()).toBe(0);
   await composer.press("Enter");
   await expect.poll(fixture.count).toBe(1);
   await expect(model).toBeEnabled();
   await model.selectOption("GEMINI");
-  expect(fixture.modelChoices).toEqual(["QWEN_8B"]);
+  expect(fixture.modelChoices).toEqual(["QWEN_27B"]);
   fixture.finish();
   await expect(page.getByText("Đang kiểm tra nguồn dữ liệu tổng hợp.",{exact:true})).toBeVisible();
   await composer.fill("Bản nháp tiếp theo");

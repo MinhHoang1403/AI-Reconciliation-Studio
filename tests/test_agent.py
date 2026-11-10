@@ -167,7 +167,7 @@ def test_review_partial_edits_keep_valid_facts_and_questions(config, provider_na
     def transport(request):
         if request.url.path == "/api/tags":
             return httpx.Response(
-                200, json={"models": [{"name": "qwen3:8b", "size": 10, "digest": "a" * 64}]}
+                200, json={"models": [{"name": "qwen3.8:27b", "size": 10, "digest": "a" * 64}]}
             )
         body = json.loads(request.content)
         schema = (
@@ -197,7 +197,7 @@ def test_review_partial_edits_keep_valid_facts_and_questions(config, provider_na
 
     with httpx.Client(transport=httpx.MockTransport(transport)) as client:
         provider = (
-            OllamaProvider(config, "QWEN_8B", client)
+            OllamaProvider(config, "QWEN_27B", client)
             if provider_name == "ollama"
             else GeminiProvider(config, client)
         )
@@ -244,7 +244,7 @@ def test_routing_provider_grammar_excludes_tools_that_do_not_belong_to_intent(
     def transport(request):
         if request.url.path == "/api/tags":
             return httpx.Response(
-                200, json={"models": [dict(name="qwen3:8b", size=10, digest="a" * 64)]}
+                200, json={"models": [dict(name="qwen3.8:27b", size=10, digest="a" * 64)]}
             )
         body = json.loads(request.content)
         schema = (
@@ -285,7 +285,7 @@ def test_routing_provider_grammar_excludes_tools_that_do_not_belong_to_intent(
 
     with httpx.Client(transport=httpx.MockTransport(transport)) as client:
         provider = (
-            OllamaProvider(config, "QWEN_8B", client)
+            OllamaProvider(config, "QWEN_27B", client)
             if provider_name == "ollama"
             else GeminiProvider(config, client)
         )
@@ -370,7 +370,7 @@ def test_local_mapping_semantics_cannot_change_source_shape_or_guess_money(
     def transport(request):
         if request.url.path == "/api/tags":
             return httpx.Response(
-                200, json={"models": [{"name": "qwen3:8b", "size": 10, "digest": "a" * 64}]}
+                200, json={"models": [{"name": "qwen3.8:27b", "size": 10, "digest": "a" * 64}]}
             )
         payload = json.loads(request.content)
         assert "fields" not in payload["format"]["properties"]
@@ -397,7 +397,7 @@ def test_local_mapping_semantics_cannot_change_source_shape_or_guess_money(
         )
 
     with httpx.Client(transport=httpx.MockTransport(transport)) as client:
-        provider = OllamaProvider(config, "QWEN_8B", client)
+        provider = OllamaProvider(config, "QWEN_27B", client)
         if bad_column:
             with pytest.raises(DomainError, match="INVALID_SOURCE_FIELD"):
                 propose_normalization(
@@ -2475,7 +2475,7 @@ def test_local_reconciliation_router_keeps_explicit_source_fact_slots(response_k
     def handler(request):
         if request.url.path == "/api/tags":
             return httpx.Response(
-                200, json={"models": [{"name": "qwen3:8b", "size": 1, "digest": "a" * 64}]}
+                200, json={"models": [{"name": "qwen3.8:27b", "size": 1, "digest": "a" * 64}]}
             )
         payload = json.loads(request.content)
         definitions = payload["format"]["$defs"]
@@ -2512,7 +2512,7 @@ def test_local_reconciliation_router_keeps_explicit_source_fact_slots(response_k
 
     provider = OllamaProvider(
         Settings(local_demo_access=True, ollama_url="http://127.0.0.1:11434"),
-        "QWEN_8B",
+        "QWEN_27B",
         httpx.Client(transport=httpx.MockTransport(handler)),
     )
     try:

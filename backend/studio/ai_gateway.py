@@ -15,7 +15,7 @@ from typing import Any, Literal, Protocol
 import httpx
 from pydantic import ValidationError
 
-from studio.config import OLLAMA_MODELS, ModelChoice, Settings, request_limit_reached
+from studio.config import OLLAMA_MODEL, ModelChoice, Settings, request_limit_reached
 from studio.contracts import (
     DatasetProfile,
     MappingDecision,
@@ -50,9 +50,11 @@ class TypedProvider(Protocol):
 
 
 def require_local_model(config: Settings, choice: ModelChoice) -> str:
+    if choice == "QWEN_8B":
+        raise DomainError("OLLAMA_MODEL_RETIRED", "Qwen3:8B đã ngừng nhận yêu cầu mới.", 409)
     if not config.local_demo_access or not config.ollama_url or choice != config.ollama_choice:
         raise DomainError("OLLAMA_NOT_CONFIGURED", "Model Qwen này chưa được cấu hình.", 409)
-    return OLLAMA_MODELS[choice]
+    return OLLAMA_MODEL
 
 
 class OllamaProvider:

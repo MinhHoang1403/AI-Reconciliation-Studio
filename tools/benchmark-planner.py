@@ -49,7 +49,7 @@ def evaluate_case(spec: dict[str, Any], config: Settings, task: str = "routing")
 
     provider = OllamaProvider(
         config,
-        "QWEN_8B",
+        "QWEN_27B",
         httpx.Client(trust_env=False, follow_redirects=False, event_hooks={"response": [capture]}),
     )
     started = time.monotonic()

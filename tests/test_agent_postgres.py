@@ -308,7 +308,7 @@ def test_model_selection_pins_jobs_and_local_never_reserves_cloud(pg, monkeypatc
     choices = []
 
     class FakeLocalProvider:
-        usage = {"cloud_requests": 0, "model": "qwen3:8b"}
+        usage = {"cloud_requests": 0, "model": "qwen3.8:27b"}
 
         def close(self):
             pass
@@ -326,8 +326,12 @@ def test_model_selection_pins_jobs_and_local_never_reserves_cloud(pg, monkeypatc
     monkeypatch.setattr(agents, "interpret_requests", interpret)
     body = dict(conversation_id=cid, context=context, mode="AGENT", text="Tra cứu thông tin")
     headers = {"Idempotency-Key": "local-pinned"}
-    first = client.post(
+    retired = client.post(
         "/api/assistant/messages", json=body | {"model_choice": "QWEN_8B"}, headers=headers
+    )
+    assert retired.status_code == 409 and retired.json()["code"] == "OLLAMA_MODEL_RETIRED"
+    first = client.post(
+        "/api/assistant/messages", json=body | {"model_choice": "QWEN_27B"}, headers=headers
     )
     assert first.status_code == 202
     job_id = first.json()["job_id"]
@@ -343,9 +347,9 @@ def test_model_selection_pins_jobs_and_local_never_reserves_cloud(pg, monkeypatc
     assert blocked.status_code == 403
     drain(factory, worker)
     result = workflow_for(client, factory, job_id)
-    assert result["detail"]["model_choice"] == "QWEN_8B"
+    assert result["detail"]["model_choice"] == "QWEN_27B"
     assert result["detail"]["model_calls"] == 1 and result["state"] == "WAITING_REVIEW"
-    assert choices == ["QWEN_8B"]
+    assert choices == ["QWEN_27B"]
     with factory() as db:
         assert not db.scalar(
             select(AuditRow.id).where(AuditRow.action == "GEMINI_REQUEST_RESERVED")

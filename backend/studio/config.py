@@ -3,12 +3,13 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AGENT_UPLOAD_EXTENSIONS = (".csv", ".xlsx")
-ModelChoice = Literal["GEMINI", "QWEN_8B", "QWEN_27B"]
-OLLAMA_MODELS: dict[ModelChoice, str] = {"QWEN_8B": "qwen3:8b", "QWEN_27B": "qwen3.8:27b"}
+ActiveModelChoice = Literal["GEMINI", "QWEN_27B"]
+ModelChoice = Literal["GEMINI", "QWEN_27B", "QWEN_8B"]  # includes historical message metadata
+OLLAMA_MODEL = "qwen3.8:27b"
 
 
 def request_limit_reached(used: int, ceiling: int | None) -> bool:
@@ -48,8 +49,8 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.5-flash-lite"
     ollama_url: Literal["", "http://127.0.0.1:11434", "http://host.docker.internal:11434"] = ""
-    ollama_choice: Literal["QWEN_8B", "QWEN_27B"] = "QWEN_8B"
-    assistant_default_model: ModelChoice = "GEMINI"
+    ollama_choice: Literal["QWEN_27B"] = "QWEN_27B"
+    assistant_default_model: ActiveModelChoice = "GEMINI"
     ollama_timeout_seconds: float = Field(default=90, ge=5, le=100)
     ollama_context: int = Field(default=8192, ge=2048, le=32768)
     allow_external_ai: bool = False
@@ -71,6 +72,13 @@ class Settings(BaseSettings):
     cloud_parser_credit_budget: int | None = Field(default=0, ge=0, le=20)
     worker_lease_seconds: int = Field(default=300, ge=120)
     worker_poll_seconds: float = 1
+
+    @field_validator("ollama_choice", "assistant_default_model", mode="before")
+    @classmethod
+    def replace_retired_setting(cls, value: object, info: ValidationInfo) -> object:
+        if value == "QWEN_8B":
+            return "GEMINI" if info.field_name == "assistant_default_model" else "QWEN_27B"
+        return value
 
     @field_validator(
         "external_ai_request_budget",

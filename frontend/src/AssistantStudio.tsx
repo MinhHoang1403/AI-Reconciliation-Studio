@@ -22,6 +22,7 @@ import type {
   Conversation,
   ConversationPage,
   FactReference,
+  HistoricalModelChoice,
   ModelChoice,
   Suggestion,
 } from "./assistantTypes";
@@ -38,10 +39,10 @@ const starterTasks = [
 
 const composerModels = [
   { id: "GEMINI", name: "Gemini 3.5 Flash Lite" },
-  { id: "QWEN_8B", name: "Qwen 3:8B" },
+  { id: "QWEN_27B", name: "Qwen 27B" },
 ] as const;
-const historicalModelLabel = (id: ModelChoice) =>
-  composerModels.find(model => model.id === id)?.name ?? "Qwen 27B";
+const historicalModelLabel = (id: HistoricalModelChoice) =>
+  id === "QWEN_8B" ? "Qwen 3:8B" : composerModels.find(model => model.id === id)?.name;
 
 const labels: Record<string, string> = {
   VERIFIED_FACT: "Dữ kiện đã xác minh",
@@ -136,7 +137,7 @@ export function AssistantStudio({
   const modelStorageKey = `studio.assistant-model.${draftOwner}`;
   const [modelChoice, setModelChoice] = useState<ModelChoice | null>(() => {
     const saved = localStorage.getItem(modelStorageKey);
-    return saved === "GEMINI" || saved === "QWEN_8B" ? saved : null;
+    return saved === "GEMINI" || saved === "QWEN_27B" ? saved : null;
   });
   const [models, setModels] = useState<AssistantModelOption[]>([]);
   const toolbarOptions = useRef<HTMLDetailsElement>(null);

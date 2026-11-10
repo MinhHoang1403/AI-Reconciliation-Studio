@@ -62,7 +62,7 @@ export type Conversation = {
   archived: boolean;
 };
 export type AssistantMessage = {
-  model_choice?: ModelChoice | null;
+  model_choice?: HistoricalModelChoice | null;
   job_status?: string | null;
   error_code?: string | null;
   workflow_id?: string | null;
@@ -80,7 +80,8 @@ export type ConversationPage = {
   has_more: boolean;
 };
 export type AssistantRule = { id: string; revision: number; plan: Plan };
-export type ModelChoice = "GEMINI" | "QWEN_8B" | "QWEN_27B";
+export type ModelChoice = "GEMINI" | "QWEN_27B";
+export type HistoricalModelChoice = ModelChoice | "QWEN_8B";
 
 export type AssistantModelOption = {
   id: ModelChoice;

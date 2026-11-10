@@ -441,7 +441,7 @@ def interpret(
             save(row, state)
             db.commit()
             return
-        if state.model_choice in {"QWEN_8B", "QWEN_27B"}:
+        if state.model_choice == "QWEN_27B":
             attached = resolve_attached_normalization(goal, catalogue, state.dataset_ids)
             if attached is not None:
                 state.intent = attached
