@@ -53,6 +53,14 @@ test("[MOCK CONTRACT] desktop shell holds navigation and account while long data
   expect(initial?.height).toBe(900);
   await expect(sidebar.getByText("Reconciliation Studio", { exact: true })).toBeVisible();
   await expect(header.getByText("Reconciliation Studio", { exact: true })).toHaveCount(0);
+  const toggle = sidebar.locator(".navigation-toggle");
+  await expect(toggle).toHaveAccessibleName("Thu gọn thanh điều hướng");
+  await expect(toggle).toHaveAttribute("aria-controls", "studio-sidebar");
+  await expect(header.locator(".navigation-toggle")).toHaveCount(0);
+  const brand = (await sidebar.locator(".brand").boundingBox())!;
+  const toggleBox = (await toggle.boundingBox())!;
+  expect(brand.x + brand.width).toBeLessThan(toggleBox.x);
+  expect(brand.y + brand.height / 2).toBeCloseTo(toggleBox.y + toggleBox.height / 2, 0);
   for (const portion of [0.5, 1, 0]) {
     const moved = await scroll.evaluate((element, ratio) => {
       const range = element.scrollHeight - element.clientHeight;
@@ -76,20 +84,53 @@ test("[MOCK CONTRACT] desktop shell holds navigation and account while long data
   await sidebar.getByRole("button", { name: "Báo cáo", exact: true }).click();
   await expect(page).toHaveURL(/page=reports/);
   expect(await scroll.evaluate(element => element.scrollTop)).toBe(0);
-  await page.getByRole("button", { name: "Thu gọn thanh điều hướng" }).click();
+  await toggle.press("Enter");
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAccessibleName("Mở rộng thanh điều hướng");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(toggle).toHaveAttribute("title", "Mở rộng thanh điều hướng");
   await expect(sidebar.getByRole("button", { name: "Dữ liệu", exact: true })).toHaveAttribute("title", "Dữ liệu");
+  await expect(sidebar.getByRole("button", { name: "Báo cáo", exact: true })).toHaveAttribute("aria-current", "page");
   expect(await sidebar.boundingBox()).toMatchObject({ width: 64, height: 900 });
-  await page.setViewportSize({ width: 768, height: 500 });
+  expect((await header.boundingBox())?.x).toBe(64);
+  await toggle.press("Space");
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(await sidebar.boundingBox()).toEqual(initial);
+  for (const [name, target] of [["AI Assistant", "assistant"], ["Đối soát", "reconcile"], ["Cài đặt", "settings"]]) {
+    const item = sidebar.getByRole("button", { name, exact: true });
+    await item.click();
+    await expect(page).toHaveURL(new RegExp(`page=${target}`));
+    await expect(item).toHaveAttribute("aria-current", "page");
+    expect(await sidebar.boundingBox()).toEqual(initial);
+    expect(await account.boundingBox()).toEqual(accountPosition);
+  }
+  await page.setViewportSize({ width: 1366, height: 340 });
+  const accountAtShortHeight = await account.boundingBox();
+  const headingAtShortHeight = await toggle.boundingBox();
+  const menuOffset = await sidebar.locator("nav").evaluate(element => {
+    element.scrollTop = element.scrollHeight;
+    return element.scrollTop;
+  });
+  expect(menuOffset).toBeGreaterThan(0);
+  expect(await account.boundingBox()).toEqual(accountAtShortHeight);
+  expect(await toggle.boundingBox()).toEqual(headingAtShortHeight);
+  await page.setViewportSize({ width: 390, height: 844 });
   await expect(sidebar).toBeHidden();
   const menu = page.getByRole("button", { name: "Mở điều hướng", exact: true });
   await menu.press("Enter");
   await expect(sidebar.getByRole("button", { name: "Đóng điều hướng" })).toBeFocused();
   await expect(sidebar.getByText("Reconciliation Studio", { exact: true })).toBeVisible();
+  await expect(toggle).toHaveCount(0);
+  await page.keyboard.press("Shift+Tab");
+  await expect(sidebar.getByRole("button", { name: "Cài đặt", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(sidebar.getByRole("button", { name: "Đóng điều hướng" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toBeFocused();
 });
 
-test("[MOCK CONTRACT] scope names stay accessible and picker focus returns at 320px", async ({ page }) => {
+test("[MOCK CONTRACT] long scope names stay accessible and picker focus returns across the header", async ({ page }) => {
   const [project] = projects(1);
   project.name = "Dự án đối chiếu dài của bộ phận kiểm soát doanh thu và thanh toán";
   project.classification = "TEST";
@@ -121,7 +162,17 @@ test("[MOCK CONTRACT] scope names stay accessible and picker focus returns at 32
   await page.keyboard.press("Escape");
   await expect(projectButton).toBeFocused();
   await expect(projectButton).toHaveAttribute("data-project-id", project.id);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  for (const width of [320, 390, 1366]) {
+    await page.setViewportSize({ width, height: 800 });
+    const workspaceBox = (await workspaceButton.boundingBox())!;
+    const projectBox = (await projectButton.boundingBox())!;
+    const statusBox = (await page.locator(".topbar-end").boundingBox())!;
+    expect(workspaceBox.x + workspaceBox.width).toBeLessThan(projectBox.x);
+    expect(projectBox.x + projectBox.width).toBeLessThan(statusBox.x);
+    expect(workspaceBox.height).toBe(width <= 900 ? 44 : 38);
+    expect(projectBox.height).toBe(workspaceBox.height);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
 });
 
 test("[MOCK CONTRACT] keyboard focus stays visible when a long mobile dialog wraps", async ({ page }) => {

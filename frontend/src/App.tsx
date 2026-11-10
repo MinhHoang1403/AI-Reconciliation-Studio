@@ -223,6 +223,7 @@ export function App() {
   const [compactNavigation, setCompactNavigation] = useState(
     () => localStorage.getItem("studio.navigation-compact") === "true",
   );
+  const navigationToggleLabel = compactNavigation ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng";
   function toggleNavigation() {
     const next = !compactNavigation;
     setCompactNavigation(next);
@@ -1079,54 +1080,16 @@ export function App() {
         event.preventDefault();
         document.getElementById("main-content")?.focus();
       }}>Đến nội dung chính</a>
-      <header className="topbar studio-masthead" inert={sidebar || undefined}>
-        <div className="masthead-navigation">
-          <button
-            className="icon-button menu-button"
-            aria-label="Mở điều hướng"
-            aria-expanded={sidebar}
-            onClick={() => setSidebar(true)}
-          >
-            <Menu size={20} aria-hidden="true" />
-          </button>
-          <button
-            className="icon-button navigation-toggle"
-            aria-label={compactNavigation ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
-            title={compactNavigation ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
-            aria-expanded={!compactNavigation}
-            onClick={toggleNavigation}
-          >
-            {compactNavigation ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
-          </button>
-        </div>
-        <div className="masthead-scope" role="group" aria-label="Phạm vi làm việc">
-          {ready && workspace?.workspace_id && <WorkspaceManager key={workspace.workspace_id}
-            current={{ id: workspace.workspace_id, name: workspace.workspace_name, role: actorRole }}
-            onRename={name => setWorkspace(current => current ? { ...current, workspace_name: name } : current)} />}
-          {ready && <ProjectSelector
-            project={projectAccessDenied ? null : project} onSelect={chooseProject}
-            disabled={busy} canClassify={actorRole === "owner"}
-            onCreate={canEdit ? openNewProject : undefined}
-            onManage={actorRole === "owner" ? () => openManagement({ kind: "projects" }, document.getElementById("project-select")) : undefined}
-            onClassificationChange={value => setProject(current => current?.id === value.id ? value : current)}
-          />}
-        </div>
-        <div className="topbar-end">
-          <span className={`connection ${ready ? "connected" : bootstrapError ? "disconnected" : "connecting"}`} role="status" aria-label="Trạng thái kết nối"
-            title={ready ? "Hệ thống đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}>
-            <span aria-hidden="true" />
-            <span className="connection-label">{ready ? "Đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}</span>
-          </span>
-        </div>
-      </header>
       {sidebar && (
         <button
           className="sidebar-scrim"
           aria-label="Đóng thanh điều hướng"
+          tabIndex={-1}
           onClick={() => setSidebar(false)}
         />
       )}
       <aside
+        id="studio-sidebar"
         ref={navigation}
         className={`sidebar ${sidebar ? "sidebar-open" : ""}`}
         role={sidebar ? "dialog" : undefined}
@@ -1138,8 +1101,17 @@ export function App() {
             <span className="brand-symbol"><Layers3 size={17} aria-hidden="true" /></span>
             <span className="brand-label">Reconciliation Studio</span>
           </div>
-          {sidebar && <button className="icon-button sidebar-close" aria-label="Đóng điều hướng" onClick={() => setSidebar(false)}>
+          {sidebar ? <button className="icon-button sidebar-close" aria-label="Đóng điều hướng" onClick={() => setSidebar(false)}>
             <X size={20} aria-hidden="true" />
+          </button> : <button
+            className="icon-button navigation-toggle"
+            aria-label={navigationToggleLabel}
+            title={navigationToggleLabel}
+            aria-controls="studio-sidebar"
+            aria-expanded={!compactNavigation}
+            onClick={toggleNavigation}
+          >
+            {compactNavigation ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
           </button>}
         </div>
         <nav aria-label="Điều hướng chính">
@@ -1162,7 +1134,7 @@ export function App() {
               })
             }
           >
-            <Sparkles size={19} />
+            <Sparkles size={18} aria-hidden="true" />
             <span>AI Assistant</span>
           </button>
           {([
@@ -1182,7 +1154,7 @@ export function App() {
                 setSidebar(false);
               }}
             >
-              <Icon size={19} />
+              <Icon size={18} aria-hidden="true" />
               <span>{label}</span>
             </button>
           ))}
@@ -1192,9 +1164,9 @@ export function App() {
               ? document.querySelector<HTMLElement>(".menu-button") : event.currentTarget;
             setSidebar(false);
             setAssistantHistoryOpen(true);
-          }}><History size={19}/><span>Lịch sử</span></button>
+          }}><History size={18} aria-hidden="true" /><span>Lịch sử</span></button>
           <button
-            className={`settings-nav ${page === "settings" ? "active" : ""}`}
+            className={page === "settings" ? "active" : ""}
             aria-label="Cài đặt"
             title="Cài đặt"
             aria-current={page === "settings" ? "page" : undefined}
@@ -1220,6 +1192,36 @@ export function App() {
           </div>
         </div>
       </aside>
+      <header className="topbar studio-masthead" inert={sidebar || undefined}>
+        <button
+          className="icon-button menu-button"
+          aria-label="Mở điều hướng"
+          aria-controls="studio-sidebar"
+          aria-expanded={sidebar}
+          onClick={() => setSidebar(true)}
+        >
+          <Menu size={20} aria-hidden="true" />
+        </button>
+        <div className="masthead-scope" role="group" aria-label="Phạm vi làm việc">
+          {ready && workspace?.workspace_id && <WorkspaceManager key={workspace.workspace_id}
+            current={{ id: workspace.workspace_id, name: workspace.workspace_name, role: actorRole }}
+            onRename={name => setWorkspace(current => current ? { ...current, workspace_name: name } : current)} />}
+          {ready && <ProjectSelector
+            project={projectAccessDenied ? null : project} onSelect={chooseProject}
+            disabled={busy} canClassify={actorRole === "owner"}
+            onCreate={canEdit ? openNewProject : undefined}
+            onManage={actorRole === "owner" ? () => openManagement({ kind: "projects" }, document.getElementById("project-select")) : undefined}
+            onClassificationChange={value => setProject(current => current?.id === value.id ? value : current)}
+          />}
+        </div>
+        <div className="topbar-end">
+          <span className={`connection ${ready ? "connected" : bootstrapError ? "disconnected" : "connecting"}`} role="status" aria-label="Trạng thái kết nối"
+            title={ready ? "Hệ thống đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}>
+            <span aria-hidden="true" />
+            <span className="connection-label">{ready ? "Đã kết nối" : bootstrapError ? "Chưa kết nối" : "Đang kết nối"}</span>
+          </span>
+        </div>
+      </header>
       <div className="main-shell" ref={pageScroll} inert={sidebar || undefined}>
         <main
           id="main-content"
