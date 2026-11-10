@@ -20,6 +20,7 @@ from openpyxl import load_workbook
 ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = "http://127.0.0.1:18180"
 FIXTURE = ROOT / "tests/fixtures/agent-workflow-heldout.json"
+SECONDARY_FIXTURE = ROOT / "tests/fixtures/agent-workflow-independent.json"
 COUNTS = dict(
     intent_slots=30,
     multi_turn=20,
@@ -159,6 +160,8 @@ def measure(case: dict, oracle: dict, gemini: bool) -> dict[str, Any]:
         if filter_value := case.get("filter"):
             checks["filter"] = any(f["value"] == filter_value for f in query.get("filters", []))
             checks["run"] = query.get("source_id") == context["run_id"]
+        if aggregate := case.get("aggregate"):
+            checks["aggregate"] = any(a["op"] == aggregate for a in query.get("aggregations", []))
         if equality := case.get("equality"):
             checks["exact_value"] = query.get("limit") == equality["limit"] and any(
                 f["value"] == equality["value"] and f["op"] == "eq"
@@ -200,9 +203,16 @@ def main() -> None:
     parser.add_argument(
         "--gemini", action="store_true", help="Send synthetic TEST cases to Gemini."
     )
+    parser.add_argument(
+        "--independent", action="store_true", help="Use the secondary synthetic set."
+    )
     args = parser.parse_args()
-    cases = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    assert Counter(c["category"] for c in cases) == COUNTS
+    fixture = SECONDARY_FIXTURE if args.independent else FIXTURE
+    cases = json.loads(fixture.read_text(encoding="utf-8"))
+    if args.independent:
+        assert 20 <= len(cases) <= 30
+    else:
+        assert Counter(c["category"] for c in cases) == COUNTS
     assert len({c["id"] for c in cases}) == len(cases)
     if args.cases:
         assert set(args.cases) <= {c["id"] for c in cases}
@@ -219,10 +229,20 @@ def main() -> None:
             result = measure(case, oracle, args.gemini)
         except (httpx.HTTPError, KeyError, ValueError) as exc:
             result = dict(ok=False, error=type(exc).__name__)
+        if args.gemini:
+            # A synthetic replay should leave room for Google's per-minute quota.
+            # This delay only schedules benchmark cases and never resends a job.
+            if "GEMINI_RATE_LIMITED" in {result.get("error"), result.get("cause")}:
+                time.sleep(25)
+            elif result.get("model_calls"):
+                time.sleep(4)
         return {"id": case["id"], "category": case["category"], **result}
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.open("w", encoding="utf-8") as stream, ThreadPoolExecutor(3) as pool:
+    with (
+        args.output.open("w", encoding="utf-8") as stream,
+        ThreadPoolExecutor(1 if args.gemini else 3) as pool,
+    ):
         for row in pool.map(run_case, cases):
             stream.write(json.dumps(row, ensure_ascii=False) + "\n")
             stream.flush()
@@ -230,7 +250,7 @@ def main() -> None:
     print(
         json.dumps(
             dict(
-                fixture_sha256=hashlib.sha256(FIXTURE.read_bytes()).hexdigest(),
+                fixture_sha256=hashlib.sha256(fixture.read_bytes()).hexdigest(),
                 correct=sum(row["ok"] for row in rows),
                 total=len(rows),
             )

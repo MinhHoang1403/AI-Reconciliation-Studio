@@ -1414,13 +1414,17 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
     named = re.search(
         r"\s+(?:của|cua|trong)\s+(?:(?:nguồn|nguon|tệp|tep|file)\s+)?"
         r'(?:"([^"\r\n]+)"|“([^”\r\n]+)”|([^"“”\r\n;,:]+?\.(?:csv|xlsx)))'
-        r"(?:\s+để\s+(?:(?:tôi|mình|em)\s+)?(?:đối chiếu|kiểm tra|tham khảo))?$",
+        r"(?=\s+(?:có bao nhiêu|co bao nhieu)\s|(?:\s+để\s+(?:(?:tôi|mình|em)\s+)?"
+        r"(?:đối chiếu|kiểm tra|tham khảo))?$)",
         text,
         re.IGNORECASE,
     )
     filename = next((group for group in named.groups() if group), None) if named else None
     if named:
-        text = text[: named.start()]
+        tail = text[named.end() :]
+        text = text[: named.start()] + (
+            tail if plain_question(tail).lstrip().startswith("co bao nhieu ") else ""
+        )
     normalized = " ".join(plain_question(text).split())
     normalized = re.sub(r"^(?:toi muon|minh muon|vui long) ", "", normalized)
     source_suffix = (
@@ -1431,7 +1435,9 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
         normalized = re.sub(source_suffix, "", normalized)
     layer = "|".join(re.escape(term) for term in LAYER_TERMS)
     view = re.fullmatch(
-        r"(?:cho toi |cho |hay )?(?:xem(?: truoc)?|mo|liet ke) (" + layer + r")", normalized
+        r"(?:cho toi |cho |hay )?(?:xem(?: truoc| lai)?|mo|liet ke) (" + layer + r")"
+        r"(?: de (?:kiem tra|danh gia|biet) chat luong(?: (?:cot|du lieu))?)?",
+        normalized,
     )
     count = re.fullmatch(
         r"(?:hay )?dem (?:so )?(?:ban ghi|dong|hang) (?:trong |cua )?(" + layer + r")", normalized
@@ -1459,14 +1465,19 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
         r"(?:(?:co )?loi ngay(?: thang)?|co ngay (?:sai|khong hop le))(?: nam o dau)?",
         normalized,
     )
-    match = view or count or count_after or date_rows
+    date_count = re.fullmatch(
+        r"(?:(?:cho toi |hay )?(?:xem|mo) so|dem(?: so)?) (?:dong|ban ghi) "
+        r"(?:bi )?loi ngay(?: thang)?",
+        normalized,
+    )
+    match = view or count or count_after or date_rows or date_count
     if not match:
         return None
     if unselected:
         return AgentIntent(
             intent="CLARIFY", questions=["Bạn muốn kiểm tra nguồn nào? Hãy chọn đúng tệp và bảng."]
         )
-    layer_kind = "PREPARED_FINDINGS" if date_rows else LAYER_TERMS[match[1]]
+    layer_kind = "PREPARED_FINDINGS" if date_rows or date_count else LAYER_TERMS[match[1]]
     datasets = [
         dataset
         for dataset in catalogue.datasets
@@ -1503,6 +1514,7 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
             aggregations=[QueryAggregation(op="count")]
             if count
             or count_after
+            or date_count
             or (date_rows and normalized.startswith(("co bao nhieu ", "dem ")))
             else [],
         ),
@@ -1534,7 +1546,8 @@ def resolve_read_export_sequence(goal: str) -> AgentIntent | None:
     text = plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal))
     clauses = re.split(r"[.!?;,\n]|\b(?:roi|sau do|dong thoi|va|then|and)\b", text)
     polite = (
-        r"(?:(?:hay|vui long|cho toi|(?:toi|minh) (?:muon|can)|xin|truoc tien|bay gio|chi)\s+)*"
+        r"(?:(?:hay|vui long|cho(?: toi)?|(?:toi|minh) (?:muon|can)|"
+        r"xin|truoc tien|bay gio|chi)\s+)*"
     )
     read = any(
         re.match(

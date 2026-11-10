@@ -561,6 +561,16 @@ class GeminiProvider:
                         raise DomainError(
                             "GEMINI_RATE_LIMITED", "Gemini đang giới hạn yêu cầu.", 503
                         )
+                    if response.status_code in {401, 403}:
+                        raise DomainError(
+                            "GEMINI_ACCESS_DENIED", "Google từ chối quyền truy cập Gemini.", 403
+                        )
+                    if response.status_code == 404:
+                        raise DomainError(
+                            "GEMINI_MODEL_NOT_FOUND",
+                            "Google không tìm thấy model Gemini đã cấu hình.",
+                            409,
+                        )
                     if response.status_code in {500, 502, 503, 504}:
                         self.usage["delivery_unknown"] = False
                         if attempt == max_attempts - 1:
