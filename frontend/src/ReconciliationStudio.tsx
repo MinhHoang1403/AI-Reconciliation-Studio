@@ -1643,8 +1643,14 @@ export function ReconciliationStudio({
                               "Chênh lệch",
                               "Bằng chứng",
                             ]
-                        ).map((c) => (
-                          <th key={c} scope="col">{c}</th>
+                        ).map((c, index) => (
+                          <th
+                            key={c}
+                            scope="col"
+                            className={index === (mode === "exceptions" ? 2 : 3) ? "numeric-cell" : undefined}
+                          >
+                            {c}
+                          </th>
                         ))}
                       </tr>
                     </thead>
@@ -1663,9 +1669,9 @@ export function ReconciliationStudio({
                                   .find((g) => g.id === c.match_group_id)
                                   ?.comparisons.map((m) => (
                                     <div key={m.metric_id}>
-                                      {m.left_amount ?? "N/A"} /{" "}
-                                      {m.right_amount ?? "N/A"} /{" "}
-                                      {m.delta ?? "N/A"} {m.currency}
+                                      {formatDecimal(m.left_amount ?? "N/A")} /{" "}
+                                      {formatDecimal(m.right_amount ?? "N/A")} /{" "}
+                                      {formatDecimal(m.delta ?? "N/A")} {m.currency}
                                     </div>
                                   )) || "Chưa tải được"}
                               </td>

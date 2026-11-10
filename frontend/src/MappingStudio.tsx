@@ -196,6 +196,7 @@ function ManualMappingStudio({
   draftOwner: string;
   canManageReuse?: boolean;
 }) {
+  const registerId = useId();
   const selectionKey = `studio.manual-mapping-selection.${draftOwner}.${table.id}`;
   const [selected, setSelected] = useState(() => {
     try { return sessionStorage.getItem(selectionKey) || ""; }
@@ -574,22 +575,32 @@ function ManualMappingStudio({
       {preflightError&&<Notice tone="error">{preflightError}</Notice>}
       {!invalid&&!preflight&&!preflightError&&<p role="status">Đang kiểm tra trước chuẩn hóa…</p>}
       {preflight&&<Notice>Đã kiểm tra {preflight.source_rows} dòng; dự kiến {preflight.predicted_invalid_rows} dòng không hợp lệ. {Object.entries(preflight.error_counts).map(([code,count])=>`${code}: ${count}`).join('; ')}. Dữ liệu gốc và bản đã tạo được giữ lại.</Notice>}
-      <div className="mapping-rows" aria-label="Các cột trong bảng">
+      <div className="mapping-rows" role="group" aria-label="Các cột trong bảng">
+        <div className="mapping-register-heading" aria-hidden="true">
+          <span>Cột nguồn</span>
+          <span>Trường đích</span>
+          <span>Trạng thái</span>
+        </div>
         {drafts.map((d) => {
           const col = columnsById.get(d.source)!;
           const decision = mapping.proposal.decisions.find(
             (x) => x.source_field === d.source,
           );
+          const rowId = `${registerId}-${d.source}`;
           return (
-            <details className="mapping-row mapping-register-row" key={d.source}>
-              <summary aria-label={`Chỉnh cột ${col.name}`}>
-                <span>{col.name}</span>
-                <span>{d.target ? d.label : "Giữ cột gốc"}{d.key && <small> · Khóa</small>}</span>
-                {decision && <Badge status={decision.decision} />}
+            <details className="mapping-register-row" key={d.source}>
+              <summary aria-label={`Chỉnh cột ${col.name}`} aria-describedby={`${rowId}-target ${rowId}-status`}>
+                <span className="mapping-register-source">{col.name}</span>
+                <span id={`${rowId}-target`} className="mapping-register-target">
+                  {d.target ? d.label : "Giữ cột gốc"}{d.key && <small> · Khóa</small>}
+                </span>
+                <span id={`${rowId}-status`} className="mapping-register-status">
+                  {decision ? <Badge status={decision.decision} /> : <span aria-hidden="true">—</span>}
+                </span>
               </summary>
               <div className="mapping-register-editor">
               <div className="source-column">
-                <div className="source-title">
+                <div className="mapping-source-title">
                   <strong>{col.name}</strong>
                   <button
                     className="icon-button"

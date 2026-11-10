@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { api } from "./api";
-import { ContextPanel, Modal, Notice, Spinner } from "./components";
+import { ContextPanel, formatDecimal, Modal, Notice, Spinner } from "./components";
 import {
   label,
   type Case,
@@ -111,14 +111,14 @@ export function ReconciliationEvidence({
             tabIndex={0} aria-label="Số tiền đã đối chiếu">
             <table className="result-table">
               <thead><tr>
-                <th scope="col">Chỉ tiêu</th><th scope="col">Tham chiếu</th>
-                <th scope="col">Đối ứng</th><th scope="col">Chênh lệch</th><th scope="col">Tiền tệ</th>
+                <th scope="col">Chỉ tiêu</th><th scope="col" className="numeric-cell">Tham chiếu</th>
+                <th scope="col" className="numeric-cell">Đối ứng</th><th scope="col" className="numeric-cell">Chênh lệch</th><th scope="col">Tiền tệ</th>
               </tr></thead>
               <tbody>{evidence.group.comparisons.map(c => <tr key={c.metric_id}>
                 <th scope="row">{c.metric_id}</th>
-                <td className="numeric-cell">{c.left_amount ?? "N/A"}</td>
-                <td className="numeric-cell">{c.right_amount ?? "N/A"}</td>
-                <td className="numeric-cell">{c.delta ?? "N/A"}</td>
+                <td className="numeric-cell">{formatDecimal(c.left_amount ?? "N/A")}</td>
+                <td className="numeric-cell">{formatDecimal(c.right_amount ?? "N/A")}</td>
+                <td className="numeric-cell">{formatDecimal(c.delta ?? "N/A")}</td>
                 <td>{c.currency}</td>
               </tr>)}</tbody>
             </table>

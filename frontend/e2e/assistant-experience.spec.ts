@@ -127,6 +127,7 @@ for(const width of [390,768,1366,1440,1920]) {
     expect(await form.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
     expect(await form.evaluate(el=>getComputedStyle(el).boxShadow)).not.toContain('inset');
     expect(await input.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');
+    await expect(input).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     const contrast=await input.evaluate(el=>{
       const luminance=(color:string)=>{const channels=(color.match(/[\d.]+/g)||[]).slice(0,3).map(Number).map(v=>{const n=v/255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4;});return channels[0]*.2126+channels[1]*.7152+channels[2]*.0722;};
       const background=luminance(getComputedStyle(el.closest('form')!).backgroundColor);

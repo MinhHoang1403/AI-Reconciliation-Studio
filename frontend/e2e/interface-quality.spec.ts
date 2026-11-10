@@ -34,7 +34,8 @@ test("[MOCK CONTRACT] desktop shell holds navigation and account while long data
     total: 25,
     items: Array.from({ length: 25 }, (_, index) => ({
       id: `shell-source-${index}`, project_id: "project-000",
-      name: `Nguồn tổng hợp ${index}.csv`, status: "PARSED", created_at: "2026-11-03",
+      name: `Nguồn tổng hợp ${index}.csv`, status: index === 0 ? "NEEDS_MAPPING_REVIEW" : "PARSED",
+      created_at: "2026-11-03",
     })),
   } }));
   await page.route("**/api/jobs?**", route => route.fulfill({ json: {
@@ -42,6 +43,12 @@ test("[MOCK CONTRACT] desktop shell holds navigation and account while long data
   } }));
   await page.goto("/#page=data");
   await expect(page.getByText("Nguồn tổng hợp 24.csv", { exact: true })).toBeAttached();
+  const rows = page.locator(".inventory-row");
+  for (const column of [".badge", "time", ".icon-button"]) {
+    const first = await rows.nth(0).locator(column).boundingBox();
+    const second = await rows.nth(1).locator(column).boundingBox();
+    expect(first?.x).toBe(second?.x);
+  }
   const sidebar = page.locator(".sidebar");
   const account = sidebar.getByText("Người dùng local", { exact: true });
   const header = page.getByRole("banner");
@@ -209,7 +216,7 @@ for (const width of [390, 1440]) {
     await expect(search).toBeFocused();
     await expect(search).toHaveCSS("outline-style", "none");
     await expect(search).toHaveCSS("box-shadow", "none");
-    await expect(search).not.toHaveCSS("background-color", background);
+    await expect(search).toHaveCSS("background-color", background);
     expect(await search.boundingBox()).toEqual(before);
     await page.keyboard.press("Tab");
     await page.keyboard.press("Shift+Tab");
@@ -416,6 +423,22 @@ test("[MOCK CONTRACT] mapping jobs publish revisions, keep edited drafts and exp
   const visibleAt = Date.now();
   await expect(success).toHaveCount(0, { timeout: 6500 });
   expect(Date.now() - visibleAt).toBeGreaterThan(4400);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const register = page.getByRole("group", { name: "Các cột trong bảng" });
+  const heading = register.locator(".mapping-register-heading");
+  const summaries = register.locator("details > summary").filter({ has: page.locator(".mapping-register-status") });
+  await expect(summaries.nth(1).locator(".mapping-register-status")).toHaveText("—");
+  const tracks = await heading.locator("span").evaluateAll(cells =>
+    cells.map(cell => cell.getBoundingClientRect().x));
+  const align = () => summaries.evaluateAll(rows => rows.map(row =>
+    [...row.children].map(cell => cell.getBoundingClientRect().x)));
+  expect(await align()).toEqual([tracks, tracks]);
+  await page.getByLabel("Chỉnh cột Mã nghiệp vụ", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Trường đích Mã nghiệp vụ", exact: true })).toBeVisible();
+  expect(await align()).toEqual([tracks, tracks]);
+  await page.getByLabel("Chỉnh cột Mã nghiệp vụ", { exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
 
   await page.getByLabel("Chỉnh cột Ghi chú", { exact: true }).click();
   const target = page.getByRole("button", { name: "Trường đích Ghi chú", exact: true });
