@@ -157,15 +157,15 @@ export function WorkspaceSettings({ settings: s, role, tableDensity, onDensityCh
     <section aria-labelledby="settings-privacy">
       <h2 id="settings-privacy"><ShieldCheck size={18} aria-hidden="true" /> AI và quyền riêng tư</h2>
       <dl className="settings-rows">
-        <div><dt>Hỗ trợ AI</dt><dd>{available ? "Có thể yêu cầu AI hỗ trợ" : external ? "AI tạm thời chưa thể hỗ trợ" : "Xử lý trong ứng dụng"}</dd></div>
-        <div><dt>Chia sẻ dữ liệu</dt><dd>{external ? "Cho phép sử dụng dịch vụ AI bên ngoài" : "Không gửi dữ liệu đến dịch vụ AI bên ngoài"}</dd></div>
+        <div><dt>Yêu cầu AI trong Chat</dt><dd>{available ? "Có thể yêu cầu AI hỗ trợ" : external ? "AI tạm thời chưa thể hỗ trợ" : "Xử lý trong ứng dụng"}</dd></div>
+        <div><dt>Chính sách chia sẻ của không gian</dt><dd>{external ? "Cho phép sử dụng dịch vụ AI bên ngoài" : "Không gửi dữ liệu đến dịch vụ AI bên ngoài"}</dd></div>
       </dl>
       {external && !available && <p>Vẫn có thể xem dữ liệu và tiếp tục thiết lập thủ công.</p>}
       <details>
         <summary>Dữ liệu nào được sử dụng?</summary>
         <p>{external ? "Yêu cầu, cấu trúc bảng và một phần nhỏ dữ liệu có thể được gửi đi khi cần xử lý. Tệp gốc được giữ trong không gian làm việc."
           : "Dữ liệu được giữ trong không gian làm việc. Quyền được kiểm tra khi xem, xử lý hoặc tải kết quả."}</p>
-        <p>{external && s.policy.allow_cloud_parsing ? "Chính sách cho phép đọc tài liệu bằng dịch vụ bên ngoài." : "Tài liệu không được gửi đến dịch vụ bên ngoài để đọc."}</p>
+        <p>{s.policy.allow_cloud_parsing ? "Chính sách cho phép dùng dịch vụ bên ngoài để đọc tài liệu đã được cấp quyền riêng." : "Tài liệu không được gửi đến dịch vụ bên ngoài để đọc."}</p>
       </details>
     </section>
     <section aria-labelledby="settings-display">
