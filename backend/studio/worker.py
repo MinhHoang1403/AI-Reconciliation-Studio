@@ -254,6 +254,7 @@ def _fence(db: Session, job_id: str, token: str) -> JobRow:
 
 def _finish(db: Session, job: JobRow, result: dict[str, Any]) -> None:
     job.status, job.result, job.lease_until = "SUCCEEDED", result, None
+    job.error_code = None
     attempt = db.scalar(
         select(AttemptRow).where(AttemptRow.job_id == job.id, AttemptRow.number == job.attempts)
     )
@@ -1081,10 +1082,24 @@ def process_job(job_id: str, token: str, *, native_only: bool = False) -> None:
                 "INVALID_SOURCE_FIELD",
                 "INVALID_TARGET_FIELD",
             }
-            transient = code == "WORKER_INTERNAL_ERROR" and job.attempts < 3
-            job.status = "BLOCKED" if blocked else "RETRYABLE_FAILURE" if transient else "FAILED"
+            from studio.errors import GEMINI_RETRYABLE_ERRORS
+
+            retry_after = exc.retry_after_seconds if isinstance(exc, DomainError) else None
+            provider_retry = (
+                code in GEMINI_RETRYABLE_ERRORS
+                and retry_after is not None
+                and retry_after <= 300
+                and job.attempts == 1
+                and kind in {"agent", "agent_resume", "agent_review", "agent_prepare", "assistant"}
+            )
+            transient = provider_retry or (code == "WORKER_INTERNAL_ERROR" and job.attempts < 3)
+            job.status = "RETRYABLE_FAILURE" if transient else "BLOCKED" if blocked else "FAILED"
+            if code in GEMINI_RETRYABLE_ERRORS:
+                job.result = {"provider_retry_safe": retry_after is not None}
             job.error_code, job.lease_until = code, None
-            job.available_at = now() + timedelta(seconds=5 * job.attempts)
+            job.available_at = now() + timedelta(
+                seconds=retry_after if retry_after is not None else 5 * job.attempts
+            )
             attempt = db.scalar(
                 select(AttemptRow).where(
                     AttemptRow.job_id == job.id, AttemptRow.number == job.attempts
@@ -1123,6 +1138,8 @@ def process_job(job_id: str, token: str, *, native_only: bool = False) -> None:
                                     "Hãy bổ sung thông tin để tiếp tục."
                                 ]
                         state.error_code = code
+                        if retry_after is not None and job.attempts < 3:
+                            state.resumable_job_id = job.id
                         save(row, state)
                 if kind in {"agent", "agent_resume"}:
                     row = db.scalar(
@@ -1137,6 +1154,8 @@ def process_job(job_id: str, token: str, *, native_only: bool = False) -> None:
                     if row and row.state != "CANCELLED_BEFORE_NEXT_STEP":
                         state = WorkflowState.model_validate(row.detail)
                         state.error_code = code
+                        if retry_after is not None and job.attempts < 3:
+                            state.resumable_job_id = job.id
                         row.state = "FAILED" if code == "WORKER_INTERNAL_ERROR" else "BLOCKED"
                         save(row, state)
                 persist_request_failure(db, job)

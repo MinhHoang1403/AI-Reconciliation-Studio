@@ -1,4 +1,6 @@
 FROM python:3.12.14-slim-bookworm
+ARG STUDIO_REVISION=unknown
+LABEL org.opencontainers.image.revision=$STUDIO_REVISION
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app/backend POLARS_MAX_THREADS=2
 WORKDIR /app
 COPY requirements.txt requirements.txt

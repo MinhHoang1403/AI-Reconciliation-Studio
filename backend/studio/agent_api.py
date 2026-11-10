@@ -49,6 +49,7 @@ from studio.contracts.data_query import DataQuery, QueryResult, SourceRowRequest
 from studio.contracts.reconciliation import PlanProposal
 from studio.database import (
     AgentWorkflowRow,
+    AttemptRow,
     AuditRow,
     ConversationRow,
     JobRow,
@@ -61,7 +62,7 @@ from studio.database import (
 )
 from studio.errors import DomainError
 from studio.parsing import inspect_upload
-from studio.repository import enqueue_job, get_scoped, project_for_table
+from studio.repository import enqueue_job, gemini_retry_confirmed, get_scoped, project_for_table
 
 
 def decide(
@@ -539,6 +540,42 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         result = decide(db, actor, workflow_id, body)
         db.commit()
         return result
+
+    @router.post("/workflows/{workflow_id}/resume-provider", response_model=WorkflowView)
+    def resume_provider(workflow_id: str, db: DB, actor: User) -> WorkflowView:
+        row = own_workflow(db, actor, workflow_id, lock=True)
+        require_editor(actor, db, row.id)
+        state = WorkflowState.model_validate(row.detail)
+        if not state.resumable_job_id:
+            return view(row)
+        job = get_scoped(db, JobRow, state.resumable_job_id, actor)
+        db.refresh(job, with_for_update=True)
+        if job.status != "BLOCKED" or job.attempts >= 3 or not gemini_retry_confirmed(job):
+            raise DomainError("STALE_CONTEXT", "Lượt xử lý này không còn có thể tiếp tục.", 409)
+        if job.kind == "agent_review":
+            reply = ReviewReply.model_validate(job.payload["reply"])
+            review = next((item for item in state.reviews if item.id == reply.review_id), None)
+            if (
+                review is None
+                or review.state != "OPEN"
+                or review.pending_reply_job_id
+                or review.nonce != reply.nonce
+                or review.expires_at <= now()
+            ):
+                raise DomainError("STALE_CONTEXT", "Mở lại thẻ trước khi trả lời.", 409)
+            review.pending_reply_job_id = job.id
+            review.reply_questions = []
+        else:
+            row.state = "RUNNING"
+        attempt = db.scalar(
+            select(AttemptRow).where(AttemptRow.job_id == job.id, AttemptRow.number == job.attempts)
+        )
+        assert attempt is not None
+        attempt.status = job.status = "RETRYABLE_FAILURE"
+        state.resumable_job_id = state.error_code = None
+        save(row, state)
+        db.commit()
+        return view(row)
 
     @router.post("/workflows/{workflow_id}/decisions/batch", response_model=WorkflowView)
     def mapping_decisions(

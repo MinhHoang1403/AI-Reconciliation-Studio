@@ -10,6 +10,8 @@ import random
 import re
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any, Literal, Protocol
 
 import httpx
@@ -408,6 +410,32 @@ class QwenProvider:
         raise DomainError("QWEN_UNAVAILABLE", "Qwen chưa phản hồi.", 503)
 
 
+def gemini_retry_delay(response: httpx.Response) -> float:
+    """Read Google's RetryInfo and Retry-After without logging provider content."""
+    delays = [0.0]
+    value = response.headers.get("Retry-After")
+    if value:
+        try:
+            delay = (
+                float(value)
+                if value.isdigit()
+                else (parsedate_to_datetime(value) - datetime.now(UTC)).total_seconds()
+            )
+            delays.append(delay)
+        except (TypeError, ValueError, OverflowError):
+            pass
+    try:
+        for detail in response.json()["error"].get("details", []):
+            value = detail.get("retryDelay", "")
+            if detail.get("@type", "").endswith("/google.rpc.RetryInfo") and re.fullmatch(
+                r"\d+(?:\.\d+)?s", value
+            ):
+                delays.append(float(value[:-1]))
+    except (ValueError, AttributeError, KeyError, TypeError):
+        pass
+    return max(delays)
+
+
 class GeminiProvider:
     """Opt-in adapter. Budget reservation must be transactional before constructing a live call."""
 
@@ -487,9 +515,10 @@ class GeminiProvider:
             output_limit=6000,
             timeout_seconds=self.config.ai_timeout_seconds,
         )
+        delay = 0.0
         for attempt in range(max_attempts):
-            if attempt:
-                time.sleep(1 + random.uniform(0, 0.25))
+            if delay:
+                time.sleep(delay)
             response_received = False
             started = time.monotonic()
             self.usage["tokens"] = None
@@ -525,6 +554,7 @@ class GeminiProvider:
                         self.usage["request_id"] = request_id
                         break
                 if not response.is_success:
+                    hard_quota = False
                     try:
                         error = response.json().get("error", {})
                         if error.get("status") in {
@@ -540,6 +570,9 @@ class GeminiProvider:
                         }:
                             self.usage["provider_error_status"] = error["status"]
                         message = str(error.get("message", "")).lower()
+                        hard_quota = response.status_code == 429 and any(
+                            marker in message for marker in ("per day", "daily quota", "perday")
+                        )
                         self.usage["schema_complexity_rejected"] = "schema" in message and any(
                             word in message for word in ("too many states", "branching", "complex")
                         )
@@ -559,10 +592,21 @@ class GeminiProvider:
                         ]
                     except (ValueError, TypeError, AttributeError):
                         pass
-                    if response.status_code == 429:
-                        raise DomainError(
-                            "GEMINI_RATE_LIMITED", "Gemini đang giới hạn yêu cầu.", 503
+                    if response.status_code in {429, 500, 502, 503, 504}:
+                        limited = response.status_code == 429
+                        self.usage["delivery_unknown"] = False
+                        backoff = (30 if limited else 1) * (2**attempt)
+                        delay = max(backoff, gemini_retry_delay(response)) + random.uniform(0, 0.25)
+                        if not hard_quota and attempt + 1 < max_attempts and delay <= 45:
+                            continue
+                        error = DomainError(
+                            "GEMINI_RATE_LIMITED" if limited else "GEMINI_UNAVAILABLE",
+                            "AI đang bận. Yêu cầu và kết quả đã lưu được giữ để tiếp tục.",
+                            503,
+                            retryable=not hard_quota,
                         )
+                        error.retry_after_seconds = delay if not hard_quota else None
+                        raise error
                     if response.status_code in {401, 403}:
                         raise DomainError(
                             "GEMINI_ACCESS_DENIED", "Google từ chối quyền truy cập Gemini.", 403
@@ -573,15 +617,6 @@ class GeminiProvider:
                             "Google không tìm thấy model Gemini đã cấu hình.",
                             409,
                         )
-                    if response.status_code in {500, 502, 503, 504}:
-                        self.usage["delivery_unknown"] = False
-                        if attempt == max_attempts - 1:
-                            raise DomainError(
-                                "GEMINI_UNAVAILABLE",
-                                "Gemini hiện chưa thể xử lý yêu cầu. Dữ liệu của bạn vẫn được giữ.",
-                                503,
-                            )
-                        continue
                     raise DomainError("GEMINI_HTTP_ERROR", "Gemini trả lỗi HTTP.")
                 try:
                     body = response.json()
@@ -633,6 +668,7 @@ class GeminiProvider:
                     error = DomainError("GEMINI_UNAVAILABLE", "Gemini không phản hồi.")
                     error.provider_usage = dict(self.usage)
                     raise error from exc
+                delay = 2**attempt + random.uniform(0, 0.25)
             except DomainError as exc:
                 exc.provider_usage = dict(self.usage)
                 raise

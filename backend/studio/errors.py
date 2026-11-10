@@ -2,6 +2,8 @@
 
 from typing import Any
 
+GEMINI_RETRYABLE_ERRORS = {"GEMINI_UNAVAILABLE", "GEMINI_RATE_LIMITED"}
+
 
 def request_failure_message(code: str) -> str:
     """Safe terminal response; never persist provider bodies, paths or exception text."""
@@ -85,5 +87,6 @@ class DomainError(Exception):
         self.message_vi = message_vi
         self.status = status
         self.retryable = retryable
+        self.retry_after_seconds: float | None = None
         # Receipt transport đã redact, chỉ dùng cho trace; không đưa vào error DTO công khai.
         self.provider_usage: dict[str, Any] | None = None

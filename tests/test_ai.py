@@ -392,6 +392,44 @@ def test_gemini_contract(kind, config, profile, schema):
     assert len(calls) == (0 if kind in {"missing_key", "budget"} else 1)
 
 
+@pytest.mark.parametrize("status, delay", [(503, 2), (429, 35)])
+def test_gemini_retries_known_http_rejection_after_provider_delay(
+    status, delay, config, profile, schema, monkeypatch
+):
+    from pydantic import SecretStr
+
+    config.allow_external_ai = True
+    config.external_ai_request_budget = 2
+    config.gemini_api_key = SecretStr("synthetic-key")
+    policy = WorkspacePolicy(
+        mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=2
+    )
+    waits, reservations = [], []
+    monkeypatch.setattr("studio.ai_gateway.time.sleep", waits.append)
+    monkeypatch.setattr("studio.ai_gateway.random.uniform", lambda *_: 0.1)
+    responses = iter(
+        [
+            httpx.Response(status, headers={"Retry-After": str(delay)}),
+            httpx.Response(
+                200,
+                json={
+                    "candidates": [
+                        {"content": {"parts": [{"text": json.dumps(unknown_proposal())}]}}
+                    ]
+                },
+            ),
+        ]
+    )
+    with httpx.Client(transport=httpx.MockTransport(lambda _: next(responses))) as client:
+        provider = GeminiProvider(config, client)
+        result = provider.propose(
+            profile, schema, policy, lambda: reservations.append(True) or True
+        )
+    assert result.status == "UNKNOWN"
+    assert waits == [delay + 0.1] and reservations == [True, True]
+    assert [attempt["http_status"] for attempt in provider.usage["attempts"]] == [status, 200]
+
+
 @pytest.mark.parametrize("kind", ["success", "missing_key", "failed", "timeout", "invalid", "http"])
 def test_llamaparse_contract(kind, config, tmp_path):
     from pydantic import SecretStr

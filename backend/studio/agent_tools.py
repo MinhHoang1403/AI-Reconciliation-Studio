@@ -77,6 +77,7 @@ class ExportAction(Contract):
     context: AssistantContext
     format: Literal["csv", "xlsx"]
     displayed_query: DataQuery | None = None
+    discrepancies_only: bool = False
 
 
 AgentAction = Annotated[
@@ -225,6 +226,7 @@ def execute_tool(
                 db,
                 actor,
                 displayed_query=action.displayed_query,
+                discrepancies_only=action.discrepancies_only,
             )
         )
     raise DomainError("TOOL_NOT_ALLOWED", "Công cụ chưa hỗ trợ.")

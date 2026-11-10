@@ -141,8 +141,9 @@ test(`[${process.env.STUDIO_LIVE_PROVIDER==='GEMINI'?'LIVE GEMINI':'LOCAL ORACLE
 });
 
 const paymentJourney = process.env.STUDIO_JOURNEY_DATASET === 'PAYMENT';
+const compositeJourney = paymentJourney && process.env.STUDIO_COMPOSITE === 'GEMINI';
 for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL ORACLE] Three new ${paymentJourney?'payment':process.env.STUDIO_JOURNEY_DATASET==='MAINTENANCE'?'maintenance':'inventory'} sources through Chat approval, reconciliation and export${sharedReview ? ' with shared business facts' : ''}`,async({page})=>{
-  test.setTimeout(120000);
+  test.setTimeout(compositeJourney ? 210000 : 120000);
   const viewportWidth=Number(process.env.STUDIO_JOURNEY_WIDTH??1440);
   await page.setViewportSize({width:viewportWidth,height:900});
   const vietnameseHeaders=process.env.STUDIO_JOURNEY_HEADERS==='VI';
@@ -193,6 +194,12 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
   )})));
   const upload=page.waitForResponse(response=>response.url().endsWith('/agent/attachments')&&response.request().method()==='POST');
   const start=Date.now();
+  if (compositeJourney) {
+    await page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true}).fill(
+      'Hãy kiểm tra và chuẩn hóa ba nguồn đơn hàng, thanh toán và sao kê ngân hàng. ' +
+      'Sau đó đối soát đơn hàng với thanh toán, thanh toán với sao kê và xuất Excel các giao dịch chênh lệch.',
+    );
+  }
   await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();
   const attachment=await(await upload).json();
   const uploadedIds=attachment.items.map((item:{id:string})=>item.id);
@@ -238,7 +245,7 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
   await page.getByRole('button',{name:'Duyệt 3 nguồn và chuẩn hóa',exact:true}).click();
   await expect(cards).toHaveCount(0);
   const work=page.getByRole('region',{name:'Công việc của AI Assistant',exact:true}).last();
-  await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
+  if (!compositeJourney) await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
   receipts.upload_to_canonical_ms=Date.now()-start;
   async function send(question:string){
     await page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true}).fill(question);
@@ -250,30 +257,62 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[LOCAL 
       name:'Công việc của AI Assistant',exact:true,
     })).toBeVisible();
   }
-  await send(`Mở bảng gốc trong tệp “${names[0]}”`);
-  await expect(work.locator('.agent-table')).toContainText(firstId);
-  await send(`Mở bản tự chuẩn bị của tệp “${names[0]}”`);
-  await expect(work).toContainText('Đây là bản tự chuẩn bị để xem và tìm kiếm');
-  await expect(work.locator('.agent-table')).toContainText(firstId);
   async function reconcilePair(left:string,right:string){
-    await send(`Đối soát “${left}” với “${right}”`);
+    if (!compositeJourney) await send(`Đối soát “${left}” với “${right}”`);
+    else await expect(work.getByText(new RegExp(`Cặp [12]: ${left} ↔ ${right}`))).toBeVisible();
     const scope=page.getByRole('group',{name:'Kỳ và phạm vi dữ liệu',exact:true});
-    await scope.getByLabel('Tháng đối soát',{exact:true}).fill('2026-11');
+    if (!compositeJourney || left===names[0]) {
+      await scope.getByLabel('Tháng đối soát',{exact:true}).fill('2026-11');
+      await scope.getByRole('combobox',{name:/^Múi giờ đối soát/}).selectOption('UTC');
+      manualFields+=2;
+    } else await expect(scope.getByRole('combobox',{name:/^Múi giờ đối soát/})).toHaveValue('UTC');
     await expect(scope.getByLabel('Ngày đầu kỳ',{exact:true})).toHaveValue('2026-11-01');
     await expect(scope.getByLabel('Ngày sau cuối kỳ',{exact:true})).toHaveValue('2026-12-01');
-    await scope.getByRole('combobox',{name:/^Múi giờ đối soát/}).selectOption('UTC');
     await scope.getByLabel('Thời điểm chốt dữ liệu (UTC)',{exact:true}).fill('2026-12-02T00:00');
-    await scope.getByRole('checkbox').check();manualFields+=4;
+    await scope.getByRole('checkbox').check();manualFields+=2;
     await scope.getByRole('button',{name:'Kiểm tra phạm vi và tìm khóa',exact:true}).click();
     await expect(cards.getByText('Phương án liên kết đã kiểm tra',{exact:true})).toBeVisible();
     const runRequest=page.waitForResponse(response=>response.url().endsWith('/decisions')&&response.request().method()==='POST');
     await cards.getByRole('button',{name:'Duyệt quy tắc và đối soát',exact:true}).click();
     expect((await runRequest).ok()).toBe(true);
-    await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
+    if (compositeJourney) {
+      const exports = work.getByRole('link',{name:'Tải giao dịch chênh lệch XLSX',exact:true});
+      await expect(exports).toHaveCount(left===names[0]?1:2);
+    } else await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
     const summary=await(await page.request.get(`/api/projects/${projectId}/summary`)).json();
     expect(summary.latest_verified_run_id).toBeTruthy();
     return summary.latest_verified_run_id as string;
   }
+  if (compositeJourney) {
+    const first = await reconcilePair(names[0], names[1]);
+    await page.reload();
+    const second = await reconcilePair(names[1], names[2]);
+    expect(first).not.toBe(second);
+    await expect(work.getByRole('status').first()).toContainText('Đã hoàn thành');
+    const exports = work.getByRole('link',{name:'Tải giao dịch chênh lệch XLSX',exact:true});
+    const folder = `../runtime/automation-payment/${suffix}`;
+    await mkdir(folder,{recursive:true});
+    for (const [index, run] of [first, second].entries()) {
+      const snapshot = await (await page.request.get(`/api/runs/${run}/metrics`)).json();
+      expect(snapshot.monetary[0].signed_variance).toBe(index === 0 ? '50.00' : '-0.01');
+      const link = await exports.nth(index).getAttribute('href');
+      const exportResponse = await page.request.get(link!);
+      expect(exportResponse.ok()).toBe(true);
+      await writeFile(`${folder}/pair-${index+1}.xlsx`,await exportResponse.body());
+    }
+    expect((await(await page.request.get('/api/settings')).json()).gemini_requests_used).toBeGreaterThan(before.gemini_requests_used);
+    await page.reload();
+    await expect(exports).toHaveCount(2);
+    await page.screenshot({path:test.info().outputPath('composite-workflow.png')});
+    expect(errors).toEqual([]);
+    await writeFile(`${folder}/receipt.json`,JSON.stringify({...receipts,first,second,clicks,manualFields},null,2));
+    return;
+  }
+  await send(`Mở bảng gốc trong tệp “${names[0]}”`);
+  await expect(work.locator('.agent-table')).toContainText(firstId);
+  await send(`Mở bản tự chuẩn bị của tệp “${names[0]}”`);
+  await expect(work).toContainText('Đây là bản tự chuẩn bị để xem và tìm kiếm');
+  await expect(work.locator('.agent-table')).toContainText(firstId);
   const runId=await reconcilePair(names[0],names[1]);
   const snapshot=await(await page.request.get(`/api/runs/${runId}/metrics`)).json();
   expect(snapshot.comparison_counts.EQUAL).toBe(expected.equal);

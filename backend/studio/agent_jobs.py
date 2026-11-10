@@ -15,8 +15,10 @@ from studio.access import Actor, require_editor
 from studio.agent_intents import (
     INTENT_REVISION,
     export_query_for_intent,
+    interpret_reconciliation_sequence,
     interpret_requests,
     named_reconciliation_files,
+    requests_reconciliation_sequence,
     resolve_attached_normalization,
     resolve_deferred_export_read,
     resolve_named_reconciliation,
@@ -34,6 +36,7 @@ from studio.agent_preparation import (
 from studio.agent_tools import JobReference
 from studio.agent_workflows import (
     advance,
+    consume_child,
     digest,
     lock_review_sources,
     own_workflow,
@@ -52,8 +55,11 @@ from studio.contracts.agent import (
     IntentBatch,
     IntentCatalogue,
     NormalizationDraft,
+    ReconciliationSequence,
     ReviewInterpretation,
     ReviewReply,
+    SequenceProgress,
+    SequenceResolution,
     WorkflowState,
 )
 from studio.contracts.assistant import AssistantContext
@@ -70,7 +76,12 @@ from studio.database import (
     now,
 )
 from studio.errors import DomainError, request_failure_message
-from studio.repository import get_scoped, project_for_table, reserve_gemini_request
+from studio.repository import (
+    get_scoped,
+    project_for_table,
+    reserve_gemini_request,
+    retrying_gemini_response,
+)
 
 Fence = Callable[[Session, str, str], JobRow]
 Finish = Callable[[Session, JobRow, dict[str, Any]], None]
@@ -121,6 +132,8 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
             context = effective_request_context(
                 db, actor, conversation.id, AssistantContext.model_validate(message.context)
             )
+            if requests_reconciliation_sequence(message.text) and not job.payload.get("command"):
+                return False
             catalogue = agent_catalogue(
                 db,
                 actor,
@@ -145,6 +158,8 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
             reply = ReviewReply.model_validate(job.payload["reply"])
             review = next((r for r in state.reviews if r.id == reply.review_id), None)
             if review is None or review.kind != "CLARIFICATION" or review.state != "OPEN":
+                return False
+            if requests_reconciliation_sequence(row.goal):
                 return False
             catalogue = agent_catalogue(
                 db,
@@ -250,13 +265,16 @@ def model_call(
                 AuditRow.action == reservation, AuditRow.resource_id == job_id
             )
         )
-        if prior:
+        retrying = cloud and retrying_gemini_response(db, job)
+        if prior and not retrying:
             raise DomainError("AI_DELIVERY_UNKNOWN", "Request đã gửi; không tự gửi lại.", 409)
         workspace_id = actor.workspace_id
     provider = typed_provider(settings, choice)
     started, outcome = time.monotonic(), "VALIDATED"
+    reserved = False
 
     def reserve() -> bool:
+        nonlocal reserved
         if cloud and (not settings.agent_cloud_enabled or settings.agent_request_budget == 0):
             return False
         with factory() as db:
@@ -287,7 +305,8 @@ def model_call(
                 )
             )
             if (
-                prior
+                reserved
+                or (prior and not retrying)
                 or (cloud and request_limit_reached(count, settings.agent_request_budget))
                 or state.model_calls >= settings.agent_max_model_calls
             ):
@@ -304,6 +323,7 @@ def model_call(
                 )
             )
             db.commit()
+            reserved = True
             return True
 
     try:
@@ -359,7 +379,22 @@ def interpret(
             "PARTIAL",
         }:
             return
+        if row.waiting_job_id:
+            if not consume_child(db, row, state):
+                save(row, state)
+                db.commit()
+                return
+            save(row, state)
+            db.commit()
         context = AssistantContext.model_validate(row.context)
+        parent = get_scoped(db, JobRow, row.parent_job_id, actor)
+        command = parent.payload.get("command")
+        goal = row.goal
+        sequence_requested = not command and requests_reconciliation_sequence(goal)
+        if sequence_requested:
+            require_editor(actor, db, row.id)
+            context = AssistantContext(project_id=context.project_id)
+            row.context = context.model_dump(mode="json")
         from studio.dataset_status import asks_processing_status
 
         if asks_processing_status(row.goal):
@@ -367,7 +402,7 @@ def interpret(
             save(row, state)
             db.commit()
             return
-        files = named_reconciliation_files(row.goal)
+        files = None if sequence_requested else named_reconciliation_files(row.goal)
         catalogue = agent_catalogue(
             db, actor, context, state.dataset_ids, workflow_id=row.id, dataset_names=files
         )
@@ -397,11 +432,11 @@ def interpret(
             save(row, state)
             db.commit()
             return
-        parent = get_scoped(db, JobRow, row.parent_job_id, actor)
-        command = parent.payload.get("command")
-        goal = row.goal
-        plain_listing = resolve_native_read(goal, catalogue) or resolve_named_reconciliation(
-            goal, catalogue
+        plain_listing = (
+            None
+            if sequence_requested
+            else resolve_native_read(goal, catalogue)
+            or resolve_named_reconciliation(goal, catalogue)
         )
         if plain_listing is not None:
             state.export_query = export_query_for_intent(plain_listing, catalogue)
@@ -452,8 +487,9 @@ def interpret(
         raise DomainError(
             "STALE_CONTEXT", "Ngữ cảnh đọc đã đổi; hãy kiểm tra lại trước khi gửi.", 409
         )
+    sequence = None
     try:
-        intents = model_call(
+        interpreted = model_call(
             job_id,
             token,
             row_id,
@@ -461,10 +497,22 @@ def interpret(
             INTENT_REVISION,
             factory,
             fence,
-            lambda provider, policy, reserve: interpret_requests(
-                provider, [goal], catalogue, policy, reserve
+            lambda provider, policy, reserve: (
+                interpret_reconciliation_sequence(provider, goal, [], catalogue, policy, reserve)
+                if sequence_requested
+                else interpret_requests(provider, [goal], catalogue, policy, reserve)
             ),
         )
+        if isinstance(interpreted, SequenceResolution):
+            sequence = interpreted.sequence
+            intents = [
+                AgentIntent(
+                    intent="PREPARE_NORMALIZATION" if sequence else "CLARIFY",
+                    questions=[interpreted.question] if interpreted.question else [],
+                )
+            ]
+        else:
+            intents = interpreted
     except DomainError as exc:
         if exc.code not in {"INPUT_AMBIGUOUS", "QUERY_SEMANTICS_REQUIRED"}:
             raise
@@ -476,6 +524,8 @@ def interpret(
         owner(db, row)
         if row.state != "CANCELLED_BEFORE_NEXT_STEP":
             state = WorkflowState.model_validate(row.detail)
+            if sequence_requested:
+                row.context = context.model_dump(mode="json")
             current_catalogue = agent_catalogue(
                 db,
                 owner(db, row),
@@ -491,9 +541,23 @@ def interpret(
                     409,
                 )
             state.intent = intents[0]
+            if sequence:
+                initialize_sequence(state, sequence)
             state.export_query = export_query_for_intent(state.intent, current_catalogue)
             save(row, state)
             db.commit()
+
+
+def initialize_sequence(state: WorkflowState, sequence: ReconciliationSequence) -> None:
+    state.sequence_progress = SequenceProgress(sequence=sequence)
+    state.dataset_ids = list(
+        dict.fromkeys(
+            ident
+            for pair in sequence.pairs
+            for ident in (pair.left_dataset_id, pair.right_dataset_id)
+        )
+    )
+    state.prepare_upload = True
 
 
 def execute_agent(
@@ -543,7 +607,9 @@ def execute_agent(
                     detail=WorkflowState(
                         dataset_ids=job.payload.get("dataset_ids", []),
                         model_choice=job.payload.get("model_choice"),
-                    ).model_dump(),
+                    ).model_dump(
+                        exclude={"sequence_progress", "sequence_clarifications", "resumable_job_id"}
+                    ),
                 )
                 db.add(row)
                 db.commit()
@@ -597,6 +663,11 @@ def execute_agent(
                 + "\nNgười dùng trả lời: "
                 + reply.text
             )
+            sequence_reply = review.kind == "CLARIFICATION" and requests_reconciliation_sequence(
+                row.goal
+            )
+            sequence_answers = [*state.sequence_clarifications[-3:], reply.text]
+            original_goal = row.goal
             expected_selection = selection_fingerprint(catalogue)
             if review.kind == "CLARIFICATION":
                 catalogue = catalogue.model_copy(
@@ -606,7 +677,7 @@ def execute_agent(
         # remain previews and can never be applied by this branch.
         native_reply = (
             resolve_deferred_export_read(reply.text, catalogue)
-            if review.kind == "CLARIFICATION"
+            if review.kind == "CLARIFICATION" and not sequence_reply
             else None
         )
         if native_only and native_reply is None:
@@ -625,7 +696,11 @@ def execute_agent(
                 factory,
                 fence,
                 lambda provider, policy, reserve: (
-                    ReviewInterpretation(
+                    interpret_reconciliation_sequence(
+                        provider, original_goal, sequence_answers, catalogue, policy, reserve
+                    )
+                    if sequence_reply
+                    else ReviewInterpretation(
                         intent=interpret_requests(
                             provider, [reply.text], catalogue, policy, reserve
                         )[0]
@@ -660,6 +735,18 @@ def execute_agent(
                 raise DomainError(
                     "STALE_CONTEXT", "Review đã thay đổi; không ghi đè lựa chọn.", 409
                 )
+            resolved_sequence = None
+            if isinstance(output, SequenceResolution):
+                state.sequence_clarifications = sequence_answers
+                if output.sequence is not None:
+                    resolved_sequence = output.sequence
+                    output = ReviewInterpretation(
+                        intent=AgentIntent(intent="PREPARE_NORMALIZATION")
+                    )
+                else:
+                    output = ReviewInterpretation(
+                        questions=[output.question or "Chọn nguồn cho từng cặp đối soát."]
+                    )
             if output.draft:
                 table = get_scoped(db, TableRow, current.resource_id, actor)
                 validate_draft(output.draft, table.id, DatasetProfile.model_validate(table.profile))
@@ -746,14 +833,18 @@ def execute_agent(
                         "Hãy kiểm tra lại lựa chọn.",
                         409,
                     )
-                validated = validate_intents(
-                    IntentBatch(intents=[output.intent]).model_dump_json(),
-                    [
-                        clarification_goal
-                        if current.kind == "CLARIFICATION"
-                        else row.goal + "\n" + reply.text
-                    ],
-                    catalogue,
+                validated = (
+                    [output.intent]
+                    if sequence_reply
+                    else validate_intents(
+                        IntentBatch(intents=[output.intent]).model_dump_json(),
+                        [
+                            clarification_goal
+                            if current.kind == "CLARIFICATION"
+                            else row.goal + "\n" + reply.text
+                        ],
+                        catalogue,
+                    )
                 )
                 output.intent = validated[0]
                 current.reply_intent = output.intent
@@ -793,6 +884,8 @@ def execute_agent(
                     )
                 )
                 state.intent = output.intent
+                if resolved_sequence:
+                    initialize_sequence(state, resolved_sequence)
                 state.export_query = export_query_for_intent(state.intent, catalogue)
                 if reply.model_choice is not None:
                     state.model_choice = reply.model_choice

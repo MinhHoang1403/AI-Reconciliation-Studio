@@ -18,7 +18,7 @@ from studio.contracts import WorkspacePolicy
 from studio.contracts.assistant import AssistantAnswer, AssistantContext, ToolRequest
 from studio.database import AuditRow, JobRow, MembershipRow, MessageRow, TraceRow, WorkspaceRow
 from studio.errors import DomainError
-from studio.repository import reserve_gemini_request
+from studio.repository import reserve_gemini_request, retrying_gemini_response
 
 
 def execute_assistant(
@@ -57,7 +57,8 @@ def execute_assistant(
                 AuditRow.action == reservation, AuditRow.resource_id == job.id
             )
         )
-        if prior_attempt:
+        retrying = cloud and retrying_gemini_response(db, job)
+        if prior_attempt and not retrying:
             raise DomainError(
                 "AI_DELIVERY_UNKNOWN", "Request trước chưa rõ delivery; không tự gửi lại.", 409
             )
@@ -100,7 +101,10 @@ def execute_assistant(
             ).workflow
         db.rollback()
 
+    reserved_this_attempt = False
+
     def reserve() -> bool:
+        nonlocal reserved_this_attempt
         if cloud and (
             not settings.assistant_cloud_enabled or settings.assistant_request_budget == 0
         ):
@@ -138,7 +142,9 @@ def execute_assistant(
                     AuditRow.action == "ASSISTANT_REQUEST_RESERVED", AuditRow.resource_id == job_id
                 )
             )
-            if request_limit_reached(count, settings.assistant_request_budget) or previous:
+            if request_limit_reached(count, settings.assistant_request_budget) or (
+                reserved_this_attempt or (previous and not retrying)
+            ):
                 db.rollback()
                 return False
             db.add(
@@ -150,6 +156,7 @@ def execute_assistant(
                 )
             )
             db.commit()
+            reserved_this_attempt = True
             return True
 
     try:

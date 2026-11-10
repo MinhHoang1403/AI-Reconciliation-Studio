@@ -883,11 +883,18 @@ def enqueue_export(
     actor: Actor,
     *,
     displayed_query: DataQuery | None = None,
+    discrepancies_only: bool = False,
 ) -> dict[str, str]:
     require_editor(actor, db, run_id)
     row = get_scoped(db, RunRow, run_id, actor)
     require_verified(row)
     revision = REPORT_REVISION
+    if discrepancies_only:
+        if displayed_query is not None or row.status != "VERIFIED":
+            raise DomainError(
+                "INSUFFICIENT_EVIDENCE", "Cần lượt đã xác minh toàn bộ để xuất chênh lệch."
+            )
+        revision = f"{REPORT_REVISION}-discrepancies"
     if displayed_query is not None:
         if (
             displayed_query.source_kind != "VERIFIED_RUN"
@@ -925,6 +932,7 @@ def enqueue_export(
         "export",
         "export:" + artifact.id,
         {"export_id": artifact.id}
+        | ({"discrepancies_only": True} if discrepancies_only else {})
         | (
             {"displayed_query": displayed_query.model_dump(mode="json"), "actor_id": actor.id}
             if displayed_query

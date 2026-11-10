@@ -3,7 +3,7 @@
 import hashlib
 import json
 import secrets
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any, get_args
 
 from sqlalchemy import select, text
@@ -27,12 +27,14 @@ from studio.assistant_api import own_conversation
 from studio.assistant_tools import agent_catalogue, build_fact_set
 from studio.config import settings
 from studio.contracts.agent import (
+    AgentIntent,
     ChartBlock,
     ChartPoint,
     ClarificationOption,
     DatasetBlock,
     DownloadBlock,
     FactsBlock,
+    IntentCatalogue,
     NormalizationDraft,
     ProgressBlock,
     ReviewRequest,
@@ -46,6 +48,7 @@ from studio.contracts.data_query import DataQuery, QueryResult
 from studio.contracts.reconciliation import (
     PlanningCandidate,
     PlanningRequest,
+    PlanningSource,
     PlanProposal,
     ReconciliationContract,
 )
@@ -60,6 +63,7 @@ from studio.database import (
     MembershipRow,
     PlanRow,
     ReconciliationContractRow,
+    RunRow,
     TableRow,
     VersionRow,
     identifier,
@@ -125,6 +129,14 @@ def save(row: AgentWorkflowRow, state: WorkflowState) -> None:
     row.detail = state.model_dump(
         mode="json",
         exclude={
+            **({"sequence_progress": True} if state.sequence_progress is None else {}),
+            **({"sequence_clarifications": True} if not state.sequence_clarifications else {}),
+            **({"resumable_job_id": True} if not state.resumable_job_id else {}),
+            "blocks": {
+                index: {"discrepancies_only"}
+                for index, block in enumerate(state.blocks)
+                if isinstance(block, DownloadBlock) and not block.discrepancies_only
+            },
             "intent": {"export_scope"},
             "reviews": {
                 "__all__": {
@@ -377,7 +389,7 @@ def notify_job_finished(db: Session, job: JobRow) -> None:
             row.workspace_id,
             row.project_id,
             "agent_resume",
-            f"agent-resume:{row.id}:{job.id}",
+            f"agent-resume:{row.id}:{job.id}" + (f":{job.attempts}" if job.attempts > 1 else ""),
             dict(workflow_id=row.id) | ({"deterministic": True} if deterministic else {}),
         )
 
@@ -390,7 +402,7 @@ def wait_for(
     resource_id: str,
     reference: JobReference,
 ) -> None:
-    if len(state.steps) >= settings.agent_max_steps:
+    if len(state.steps) >= step_limit(state):
         raise DomainError("AGENT_STEP_LIMIT", "Đã đạt giới hạn bước; chưa thực hiện phần còn lại.")
     row.waiting_job_id = reference.job_id
     row.state = "RUNNING"
@@ -402,6 +414,93 @@ def wait_for(
         notify_job_finished(db, child)
 
 
+def step_limit(state: WorkflowState) -> int:
+    return settings.agent_max_steps + 8 if state.sequence_progress else settings.agent_max_steps
+
+
+def advance_sequence(
+    db: Session,
+    row: AgentWorkflowRow,
+    state: WorkflowState,
+    context: AssistantContext,
+    catalogue: IntentCatalogue,
+) -> None:
+    """Advance a completed phase without revisiting its jobs or human decisions."""
+    progress = state.sequence_progress
+    assert progress is not None
+    if progress.stage == "EXPORT":
+        progress.pair_index += 1
+    if progress.pair_index == len(progress.sequence.pairs):
+        row.context = context.model_dump(mode="json")
+        save(row, state)
+        return
+    if progress.stage == "RECONCILE":
+        assert context.run_id is not None
+        run = get_scoped(db, RunRow, context.run_id, owner(db, row))
+        if run.status != "VERIFIED":
+            row.state = "PARTIAL"
+            state.error_code = "INSUFFICIENT_EVIDENCE"
+            state.blocks.append(
+                ProgressBlock(
+                    text="Lượt đối soát mới được xác minh một phần. Kiểm tra nguồn trước khi xuất."
+                )
+            )
+            save(row, state)
+            return
+        if progress.pair_index == 0:
+            snapshot = run.metric_snapshot
+            assert snapshot is not None
+            progress.sequence.period_start = date.fromisoformat(snapshot["period_start"])
+            progress.sequence.period_end = date.fromisoformat(snapshot["period_end"])
+            progress.sequence.timezone = snapshot["timezone"]
+        progress.stage = "EXPORT"
+        state.intent = AgentIntent(intent="EXPORT_RESULT", run_id=context.run_id)
+    else:
+        pair = progress.sequence.pairs[progress.pair_index]
+        canonical_ids = {
+            dataset.id: dataset.tables[0].canonical_id
+            for dataset in catalogue.datasets
+            if len(dataset.tables) == 1 and dataset.tables[0].canonical_status == "READY"
+        }
+        left = canonical_ids.get(pair.left_dataset_id)
+        right = canonical_ids.get(pair.right_dataset_id)
+        if not left or not right:
+            row.state = "PARTIAL"
+            state.error_code = "INSUFFICIENT_EVIDENCE"
+            state.blocks.append(ProgressBlock(text="Hai nguồn cần có bản chuẩn hóa đã duyệt."))
+            save(row, state)
+            return
+        progress.stage = "RECONCILE"
+        names = {dataset.id: dataset.name for dataset in catalogue.datasets}
+        state.blocks.append(
+            ProgressBlock(
+                text=(
+                    f"Cặp {progress.pair_index + 1}: "
+                    f"{names[pair.left_dataset_id]} ↔ {names[pair.right_dataset_id]}"
+                )
+            )
+        )
+        state.confirmed_contract_id = None
+        context.run_id = context.case_id = context.group_id = context.dataset_id = None
+        state.intent = AgentIntent(
+            intent="RECONCILE_DATASETS",
+            planning_request=PlanningRequest(
+                left=PlanningSource(canonical_id=left, role="reference"),
+                right=PlanningSource(canonical_id=right, role="counterpart"),
+                period_start=progress.sequence.period_start,
+                period_end=progress.sequence.period_end,
+                timezone=progress.sequence.timezone,
+                intent=row.goal,
+            ),
+        )
+    progress.step_start = len(state.steps)
+    progress.review_start = len(state.reviews)
+    row.state = "RUNNING"
+    row.context = context.model_dump(mode="json")
+    save(row, state)
+    advance(db, row)
+
+
 def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> bool:
     if row.waiting_job_id is None:
         return True
@@ -410,6 +509,14 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
     if child.status in {"QUEUED", "RUNNING", "RETRYABLE_FAILURE"}:
         return False
     step = next(s for s in state.steps if s.job_id == child.id)
+    if child.kind == "agent_prepare" and child.status == "BLOCKED" and child.attempts < 3:
+        from studio.repository import gemini_retry_confirmed
+
+        if gemini_retry_confirmed(child):
+            row.state = "BLOCKED"
+            state.error_code = child.error_code
+            state.resumable_job_id = child.id
+            return False
     step.status = "SUCCEEDED" if child.status == "SUCCEEDED" else "BLOCKED"
     row.waiting_job_id = None
     if child.status != "SUCCEEDED":
@@ -498,6 +605,9 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
         return
     intent = state.intent
     context = AssistantContext.model_validate(row.context)
+    sequence = state.sequence_progress
+    stage_steps = state.steps[sequence.step_start :] if sequence else state.steps
+    stage_reviews = state.reviews[sequence.review_start :] if sequence else state.reviews
     if intent.intent == "CHECK_DATASET_STATUS":
         from studio.dataset_status import read_processing_status, status_description
 
@@ -596,7 +706,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
         return shown
 
     def facts(explain: bool = False) -> None:
-        if len(state.steps) >= settings.agent_max_steps:
+        if len(state.steps) >= step_limit(state):
             raise DomainError("AGENT_STEP_LIMIT", "Đã đạt giới hạn bước.")
         result = execute_tool(
             db,
@@ -759,7 +869,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                 )
                 save(row, state)
                 return
-            if len(state.steps) >= settings.agent_max_steps:
+            if len(state.steps) >= step_limit(state):
                 raise DomainError("AGENT_STEP_LIMIT", "Đã đạt giới hạn bước.")
             if (
                 sum(r.state == "OPEN" for r in state.reviews) >= 3
@@ -822,7 +932,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
         existing_run = next(
             (
                 s.result_id
-                for s in state.steps
+                for s in stage_steps
                 if s.tool == "run_approved_reconciliation" and s.status == "SUCCEEDED"
             ),
             None,
@@ -846,7 +956,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
             wait_for(
                 db, row, state, "run_approved_reconciliation", state.confirmed_contract_id, ref
             )
-        elif any(r.kind == "RECONCILIATION" for r in state.reviews):
+        elif any(r.kind == "RECONCILIATION" for r in stage_reviews):
             row.state = "WAITING_REVIEW"
         else:
             p = intent.planning_request
@@ -919,7 +1029,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                 db,
                 actor,
                 PlanAction(name="prepare_reconciliation_plan", context=context, request=p),
-                row.id,
+                f"{row.id}:pair:{sequence.pair_index}" if sequence else row.id,
                 model_choice=state.model_choice,
             )
             assert isinstance(ref, JobReference)
@@ -1070,7 +1180,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
         exported = next(
             (
                 s.result_id
-                for s in state.steps
+                for s in stage_steps
                 if s.tool == "start_export" and s.status == "SUCCEEDED"
             ),
             None,
@@ -1083,6 +1193,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                     run_id=context.run_id,
                     format=intent.export_format,
                     displayed_query=state.export_query is not None,
+                    discrepancies_only=sequence is not None,
                 )
             )
             row.state = "COMPLETED"
@@ -1095,6 +1206,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                     context=context,
                     format=intent.export_format,
                     displayed_query=state.export_query,
+                    discrepancies_only=sequence is not None,
                 ),
                 row.id,
             )
@@ -1124,5 +1236,8 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                 question=" ".join(intent.questions) or "Bạn muốn xử lý nguồn nào?",
                 reason="Cần bổ sung ngữ cảnh trước khi thực hiện.",
             )
+    if sequence and row.state == "COMPLETED":
+        advance_sequence(db, row, state, context, catalogue)
+        return
     row.context = context.model_dump(mode="json")
     save(row, state)

@@ -39,6 +39,31 @@ IntentName = Literal[
 ]
 
 
+class WorkflowPair(Contract):
+    left_dataset_id: Identifier
+    right_dataset_id: Identifier
+
+
+class ReconciliationSequence(Contract):
+    pairs: list[WorkflowPair] = Field(min_length=2, max_length=2)
+    period_start: date | None = None
+    period_end: date | None = None
+    timezone: str | None = None
+
+
+class SequenceResolution(Contract):
+    sequence: ReconciliationSequence | None
+    question: str | None
+
+
+class SequenceProgress(Contract):
+    sequence: ReconciliationSequence
+    pair_index: int = Field(default=0, ge=0, le=2)
+    step_start: int = Field(default=0, ge=0, le=20)
+    review_start: int = Field(default=0, ge=0, le=10)
+    stage: Literal["NORMALIZE", "RECONCILE", "EXPORT"] = "NORMALIZE"
+
+
 class AgentIntent(Contract):
     intent: IntentName
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
@@ -282,6 +307,7 @@ class DownloadBlock(Contract):
     run_id: str
     format: Literal["csv", "xlsx"]
     displayed_query: bool = False
+    discrepancies_only: bool = False
 
 
 ResultBlock = Annotated[
@@ -335,7 +361,7 @@ class QuerySelection(Contract):
 class WorkflowState(Contract):
     intent: AgentIntent | None = None
     prepare_upload: bool = False
-    steps: list[WorkflowStep] = Field(default_factory=list, max_length=12)
+    steps: list[WorkflowStep] = Field(default_factory=list, max_length=20)
     reviews: list[ReviewRequest] = Field(default_factory=list, max_length=10)
     blocks: list[ResultBlock] = Field(default_factory=list, max_length=30)
     model_calls: int = 0
@@ -346,6 +372,9 @@ class WorkflowState(Contract):
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
     query_selection: QuerySelection | None = None
     export_query: DataQuery | None = None
+    sequence_progress: SequenceProgress | None = None
+    sequence_clarifications: list[str] = Field(default_factory=list, max_length=4)
+    resumable_job_id: str | None = None
 
     @model_validator(mode="after")
     def restore_pinned_export(self) -> "WorkflowState":

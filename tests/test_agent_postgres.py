@@ -964,6 +964,65 @@ def test_agent_provider_blocked_is_durable_no_retry_or_fake_complete(pg, monkeyp
     assert same["job_id"] == message["job_id"]
 
 
+def test_agent_retries_503_and_continues_same_job_after_explicit_resume(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+    from pydantic import SecretStr
+    from studio.config import settings
+    from studio.contracts import WorkspacePolicy
+    from studio.database import WorkspaceRow
+
+    client, factory, worker = pg
+    monkeypatch.setattr(settings, "allow_external_ai", True)
+    monkeypatch.setattr(settings, "gemini_api_key", SecretStr("synthetic-test-only"))
+    monkeypatch.setattr(settings, "external_ai_request_budget", None)
+    monkeypatch.setattr(settings, "agent_cloud_enabled", True)
+    monkeypatch.setattr(settings, "agent_request_budget", None)
+    with factory() as db:
+        db.get(WorkspaceRow, "demo").policy = WorkspacePolicy(
+            mode="CLOUD_ALLOWED", allow_external_ai=True, external_request_budget=None
+        ).model_dump(mode="json")
+        db.commit()
+    calls = []
+
+    def temporarily_unavailable(provider, goals, catalogue, policy, reserve):
+        assert reserve()
+        calls.append(goals)
+        if len(calls) <= 2:
+            error = DomainError("GEMINI_UNAVAILABLE", "Synthetic 503", 503, retryable=True)
+            error.retry_after_seconds = 60
+            raise error
+        return [AgentIntent(intent="CLARIFY", questions=["Chọn nguồn cần xem."])]
+
+    monkeypatch.setattr(agents, "interpret_requests", temporarily_unavailable)
+    context = dict(project_id=project(client))
+    cid = conversation(client, context)
+    job_id = ask_agent(client, context, cid)["job_id"]
+    drain(factory, worker)
+
+    def advance_clock(expected_status):
+        with factory() as db:
+            job = db.get(JobRow, job_id)
+            assert job.status == expected_status
+            job.available_at = now()
+            db.commit()
+
+    advance_clock("RETRYABLE_FAILURE")
+    assert ask_agent(client, context, cid)["job_id"] == job_id
+    drain(factory, worker)
+    blocked = workflow_for(client, factory, job_id)
+    assert blocked["state"] == "BLOCKED" and blocked["detail"]["resumable_job_id"] == job_id
+    path = f"/api/agent/workflows/{blocked['id']}/resume-provider"
+    assert client.post(path).status_code == client.post(path).status_code == 200
+    advance_clock("RETRYABLE_FAILURE")
+    drain(factory, worker)
+    done = workflow_for(client, factory, job_id)
+    assert done["state"] == "WAITING_REVIEW" and done["detail"]["resumable_job_id"] is None
+    assert len(calls) == 3 and all(goal == calls[0] for goal in calls)
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(AgentWorkflowRow)) == 1
+        assert db.get(JobRow, job_id).status == "SUCCEEDED"
+
+
 def test_agent_attachments_bootstrap_scope_idempotency_no_cloud(pg):  # noqa: F811
     from studio.database import ArtifactRow, DatasetRow, ProjectRow
 

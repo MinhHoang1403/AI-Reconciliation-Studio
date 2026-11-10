@@ -67,6 +67,8 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
     const [error, setError] = useState("");
     const [batchDrafts, setBatchDrafts] = useState<Record<string, string>>({});
     const [batchBusy, setBatchBusy] = useState(false);
+    const [resumeVersion, setResumeVersion] = useState(0);
+    const resumeLock = useRef(false);
     const [sharedFacts,setSharedFacts]=useState<SharedMappingFacts|null>(null);
     const batchLock = useRef(false);
     const batchDraft = useCallback((id: string, payload: string | null) => {
@@ -106,7 +108,19 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
             timer = setTimeout(() => void poll(), Math.min(4000, 800 + attempts++ * 150)); };
         void poll();
         return () => { alive.current = false; sequence.current++; controller.current.abort(); clearTimeout(timer); };
-    }, [id]);
+    }, [id, resumeVersion]);
+    async function resumeProvider() {
+        if (resumeLock.current) return;
+        resumeLock.current = true;
+        try {
+            await api(`/agent/workflows/${id}/resume-provider`, { method: "POST" });
+            if (alive.current) setResumeVersion(value => value + 1);
+        } catch (err) {
+            if (alive.current) setError(err instanceof Error ? err.message : "Chưa thể tiếp tục.");
+        } finally {
+            resumeLock.current = false;
+        }
+    }
     async function cancel() { try {
         await api(`/agent/workflows/${id}/cancel`, { method: "POST" });
         await refresh();
@@ -136,12 +150,13 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
     {!workflow ? <Spinner /> : <><p className="agent-workflow-state" role="status">{["CREATED","RUNNING"].includes(workflow.state)&&<Spinner/>}<strong>{workflow.state==="WAITING_REVIEW"&&workflow.detail.reviews.some(r=>r.state==="OPEN"&&r.kind==="CLARIFICATION")?"Cần bạn bổ sung":workflow.state === "COMPLETED" && workflow.detail.intent?.intent === "EXPLORE_DATA" ? "Đã đọc dữ liệu; chưa chuẩn hóa" : states[workflow.state] || "Chưa có trạng thái xử lý"}</strong>{["CREATED", "RUNNING", "WAITING_REVIEW"].includes(workflow.state) && <button className="text-button" onClick={() => void cancel()}>Dừng bước tiếp theo</button>}</p>
       {workflow.detail.error_code && <Notice tone="warning">
         {errors[workflow.detail.error_code]||"Chưa đủ điều kiện để tiếp tục. Dữ liệu và kết quả đã lưu được giữ."}
+        {canEdit && workflow.detail.resumable_job_id &&
+          <button type="button" className="text-button" onClick={() => void resumeProvider()}>Tiếp tục công việc</button>}
         {workflow.detail.intent?.intent === "PREPARE_NORMALIZATION" && (
           <button type="button" className="text-button" onClick={() => onNavigate("OPEN_DATA", workflow.context)}>
             Mở dữ liệu để ghép cột thủ công
           </button>
         )}
-        <details><summary>Chi tiết</summary><code>{workflow.detail.error_code}</code></details>
       </Notice>}
       {workflow.detail.steps.length>0&&<details className="agent-processing"><summary>Chi tiết xử lý</summary><ol className="agent-steps">{workflow.detail.steps.map((s, i) => <li key={i}>{tools[s.tool] || s.tool} · {statusText[s.status]||label(s.status)}</li>)}</ol></details>}
       {workflow.detail.prepare_upload && openMappings.length>=2 && openMappings.every(review=>review.normalization_draft?.fields.filter(field=>field.data_type==="decimal").length===1) && <CommonMappingFacts

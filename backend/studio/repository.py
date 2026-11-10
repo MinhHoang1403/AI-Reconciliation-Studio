@@ -20,6 +20,7 @@ from studio.contracts import (
 from studio.contracts.api import PreparationAction, PreparedTable
 from studio.database import (
     ArtifactRow,
+    AttemptRow,
     AuditRow,
     Base,
     CanonicalRow,
@@ -33,7 +34,7 @@ from studio.database import (
     VersionRow,
     WorkspaceRow,
 )
-from studio.errors import DomainError
+from studio.errors import GEMINI_RETRYABLE_ERRORS, DomainError
 from studio.profiling import default_schema, source_signature
 from studio.resource_lifecycle import active_project, active_source, guard_resource
 
@@ -177,6 +178,28 @@ def gemini_request_counts(db: Session, workspace_id: str) -> tuple[int, int]:
     return (
         db.scalar(reserved) or 0,
         db.scalar(reserved.where(AuditRow.workspace_id == workspace_id)) or 0,
+    )
+
+
+def retrying_gemini_response(db: Session, job: JobRow) -> bool:
+    """Only the prior acknowledged rejection permits another reservation after a claim."""
+    if job.attempts < 2:
+        return False
+    previous = db.scalar(
+        select(AttemptRow).where(AttemptRow.job_id == job.id, AttemptRow.number == job.attempts - 1)
+    )
+    return bool(
+        previous
+        and previous.status == "RETRYABLE_FAILURE"
+        and previous.error_code in GEMINI_RETRYABLE_ERRORS
+    )
+
+
+def gemini_retry_confirmed(job: JobRow) -> bool:
+    """A known HTTP rejection is safe to requeue. An unknown delivery is never safe."""
+    return (
+        job.error_code in GEMINI_RETRYABLE_ERRORS
+        and (job.result or {}).get("provider_retry_safe") is True
     )
 
 

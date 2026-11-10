@@ -165,6 +165,7 @@ export type AgentBlock = {
 } | Chart | {
     type: "download";
     displayed_query?: boolean;
+    discrepancies_only?: boolean;
     export_id: string;
     run_id: string;
     format: string;
@@ -189,6 +190,7 @@ export type Workflow = {
         model_calls: number;
     model_choice?: ModelChoice | null;
         error_code: string | null;
+        resumable_job_id?: string | null;
         query_selection?: { query: Query; group_ids: string[] } | null;
     };
 };

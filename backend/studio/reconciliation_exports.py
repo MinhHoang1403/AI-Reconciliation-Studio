@@ -51,6 +51,8 @@ def report_sections(
     db: Any,
     run: RunRow,
     captured_at: datetime | None = None,
+    *,
+    discrepancies_only: bool = False,
 ) -> dict[str, list[list[Any]]]:
     from studio.contracts import CanonicalDataset
 
@@ -183,7 +185,23 @@ def report_sections(
                 metric.absolute_variance,
             ]
         )
+    selected_groups: set[str] = set()
+    selected_records: set[tuple[str, str]] = set()
+    if discrepancies_only:
+        sections["Summary"].append(
+            [
+                "Detail scope",
+                "Amount and attribute mismatches only. Metrics cover the verified run.",
+            ]
+        )
     for group in all_match_groups(run):
+        if discrepancies_only and group.comparison_state not in {
+            "AMOUNT_MISMATCH",
+            "ATTRIBUTE_MISMATCH",
+        }:
+            continue
+        if discrepancies_only:
+            selected_groups.add(group.id)
         common = [
             group.id,
             json.dumps(group.key, ensure_ascii=False),
@@ -207,6 +225,8 @@ def report_sections(
         if not group.comparisons:
             sections["Matches"].append([*common, *([None] * 8)])
         for member in group.members:
+            if discrepancies_only:
+                selected_records.add((member.canonical_id, member.record_id))
             for p in member.evidence:
                 sections["Evidence"].append(
                     [
@@ -224,6 +244,8 @@ def report_sections(
         select(ExceptionRow).where(ExceptionRow.run_id == run.id).order_by(ExceptionRow.id)
     ):
         view = case_view(case)
+        if discrepancies_only and view.match_group_id not in selected_groups:
+            continue
         sections["Exceptions"].append(
             [view.id, view.match_group_id, view.type, view.workflow_state, view.notes, view.rule_id]
         )
@@ -231,6 +253,8 @@ def report_sections(
     for side, source in zip(("left", "right"), run.source_refs, strict=True):
         canonical = CanonicalDataset.model_validate(source)
         for record in load_canonical_records(db, actor, canonical):
+            if discrepancies_only and (canonical.id, record.id) not in selected_records:
+                continue
             sections["Data quality"].append(
                 [
                     side,
@@ -393,7 +417,12 @@ def execute_export(job_id: str, token: str, factory: Any, fence: Any, finish: An
                 job.payload["actor_id"],
             )
             if "displayed_query" in job.payload
-            else report_sections(db, run, captured_at)
+            else report_sections(
+                db,
+                run,
+                captured_at,
+                discrepancies_only=job.payload.get("discrepancies_only", False),
+            )
         )
         artifact_id, format = artifact.id, artifact.format
         key = f"{run.workspace_id}/exports/{artifact_id}/{identifier()}/report.{format}"
