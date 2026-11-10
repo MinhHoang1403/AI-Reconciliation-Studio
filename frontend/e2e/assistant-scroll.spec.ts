@@ -70,7 +70,7 @@ test("[MOCK CONTRACT] switching model preserves draft, queued request and histor
   const model=page.getByLabel("Trợ lý cho tin nhắn mới");
   const composer=page.getByLabel("Câu hỏi cho AI Assistant",{exact:true});
   await expect(model).toHaveValue("QWEN_27B");
-  await expect(model.locator("option")).toHaveText(["Gemini 3.5 Flash Lite", "Qwen 3:8B"]);
+  await expect(model.locator("option")).toHaveText(["Gemini 3.5 Flash Lite", "Qwen 27B"]);
   await expect(model.locator("optgroup")).toHaveCount(0);
   await expect(model).not.toHaveAttribute("title", /.+/);
   await expect(composer).toBeInViewport({ratio:1});

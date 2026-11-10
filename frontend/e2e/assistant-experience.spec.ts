@@ -117,7 +117,7 @@ for(const width of [390,768,1366,1440,1920]) {
     const model=page.getByRole('combobox',{name:'Trợ lý cho tin nhắn mới',exact:true});
     await expect(model).not.toBeVisible();
     await page.getByLabel('Tùy chọn hội thoại',{exact:true}).click();
-    await expect(model.locator('option')).toHaveText(['Gemini 3.5 Flash Lite','Qwen 3:8B']);
+    await expect(model.locator('option')).toHaveText(['Gemini 3.5 Flash Lite','Qwen 27B']);
     await page.keyboard.press('Escape');
     await expect(model).not.toBeVisible();
     await expect(send).toHaveText('');await expect(send).toBeDisabled();
