@@ -1,6 +1,4 @@
 FROM python:3.12.14-slim-bookworm
-ARG STUDIO_REVISION=unknown
-LABEL org.opencontainers.image.revision=$STUDIO_REVISION
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app/backend POLARS_MAX_THREADS=2
 WORKDIR /app
 COPY requirements.txt requirements.txt
@@ -10,4 +8,6 @@ COPY backend backend
 COPY alembic.ini alembic.ini
 RUN mkdir -p /var/lib/studio /run/studio && chown -R studio:studio /var/lib/studio /run/studio
 USER studio
+ARG STUDIO_REVISION=unknown
+LABEL org.opencontainers.image.revision=$STUDIO_REVISION
 CMD ["python", "-m", "studio.startup"]

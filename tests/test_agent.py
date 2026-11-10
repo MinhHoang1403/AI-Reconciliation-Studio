@@ -3256,5 +3256,3 @@ def test_compound_routing_requires_each_operation_to_be_requested(goal, expected
     from studio.agent_intents import requests_reconciliation_sequence
 
     assert requests_reconciliation_sequence(goal) is expected
-
-
