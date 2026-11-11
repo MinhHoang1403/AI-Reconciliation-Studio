@@ -424,7 +424,7 @@ def test_scoped_candidate_ignores_outside_duplicates_but_abstains_on_inside_conf
     from datetime import UTC, datetime
 
     from studio.contracts.reconciliation import PlanningRequest
-    from studio.reconciliation_planner import scoped_key_candidate
+    from studio.reconciliation_planner import scoped_key_candidate, scoped_key_candidates
 
     left_rows = records("shipments.csv")
     right_rows = records("delivery-confirmations.csv")
@@ -454,6 +454,12 @@ def test_scoped_candidate_ignores_outside_duplicates_but_abstains_on_inside_conf
         ("tracking_id", "tracking_id")
     ]
     assert scoped_key_candidate(draft, cats, [*left_rows, left_rows[0]], right_rows) is None
+    for source in cats:
+        source.schema_definition.business_key_fields = ["tracking_id"]
+    duplicate = scoped_key_candidates(draft, cats, [*left_rows, left_rows[0]], right_rows)
+    assert duplicate is not None and duplicate.plan is not None
+    assert duplicate.plan.duplicate_policy == "REVIEW"
+    assert duplicate.candidates[0].left_rows - duplicate.candidates[0].left_distinct_keys == 1
     draft.period_start = None
     assert scoped_key_candidate(draft, cats, left_rows, right_rows) is None
 

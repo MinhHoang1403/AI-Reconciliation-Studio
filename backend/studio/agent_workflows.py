@@ -552,13 +552,30 @@ def advance_sequence(
                 )
             )
         )
+        previous_slots = {}
+        if state.confirmed_contract_id:
+            approved = get_scoped(
+                db, ReconciliationContractRow, state.confirmed_contract_id, owner(db, row)
+            )
+            previous = PlanningRequest.from_plan(
+                ReconciliationContract.model_validate(approved.definition).plan
+            )
+            previous_slots = {
+                source.canonical_id: source
+                for source in (previous.left, previous.right)
+                if not source.filters and source.settlement_due_at is None
+            }
         state.confirmed_contract_id = None
         context.run_id = context.case_id = context.group_id = context.dataset_id = None
         state.intent = AgentIntent(
             intent="RECONCILE_DATASETS",
             planning_request=PlanningRequest(
-                left=PlanningSource(canonical_id=left, role="reference"),
-                right=PlanningSource(canonical_id=right, role="counterpart"),
+                left=previous_slots.get(left, PlanningSource(canonical_id=left)).model_copy(
+                    update={"role": "reference"}
+                ),
+                right=previous_slots.get(right, PlanningSource(canonical_id=right)).model_copy(
+                    update={"role": "counterpart"}
+                ),
                 period_start=progress.sequence.period_start,
                 period_end=progress.sequence.period_end,
                 timezone=progress.sequence.timezone,

@@ -408,7 +408,15 @@ def scoped_key_candidates(
         left_unique, right_unique = (max(count.values()) == 1 for count in counts)
         if left.canonical.grain == right.canonical.grain:
             if not (left_unique and right_unique):
-                continue
+                # A declared key can still have data errors. Keep its proposal
+                # reviewable, with the plan's REVIEW policy for duplicate groups.
+                approved_keys = all(
+                    {getattr(pair, side) for pair in pairs}
+                    == set(cat.schema_definition.business_key_fields)
+                    for side, cat in (("left", left), ("right", right))
+                )
+                if not approved_keys:
+                    continue
         elif left_unique != right_unique:
             anchors = composite_anchors.get(tuple(pair.left for pair in pairs))
             if anchors and ("left" if left_unique else "right") not in anchors:

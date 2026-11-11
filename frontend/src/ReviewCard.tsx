@@ -511,6 +511,8 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
           onChange={() => setPlan(candidate.plan)}/>
         {candidate.plan.join_keys.map(key => `${fieldName(candidate.plan.left.canonical_id,key.left)} ↔ ${fieldName(candidate.plan.right.canonical_id,key.right)}`).join(', ')}
         {` · ${candidate.overlap} khóa có đối ứng (${candidate.left_distinct_keys} khóa nguồn A, ${candidate.right_distinct_keys} khóa nguồn B) · ${label(candidate.plan.cardinality)}`}
+        {(candidate.left_rows > candidate.left_distinct_keys || candidate.right_rows > candidate.right_distinct_keys) &&
+          " · Các nhóm trùng khóa được đưa vào rà soát."}
       </label>)}
     </fieldset>}
     {review.kind === "RECONCILIATION" && !!review.source_evidence?.length && <div>
