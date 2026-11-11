@@ -161,7 +161,9 @@ export function SearchableDropdown({
         if (next) search.current?.focus({ preventScroll: true });
       }}
       onBlur={event => {
-        if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) {
+        // The trigger's click toggles the popover after focus moves to it.
+        if (event.relatedTarget instanceof Node && event.relatedTarget !== trigger.current &&
+          !event.currentTarget.contains(event.relatedTarget)) {
           event.currentTarget.hidePopover();
         }
       }}>
@@ -173,7 +175,10 @@ export function SearchableDropdown({
           onChange={event => { setQuery(event.target.value); setActive(0); }}
           onKeyDown={event => {
             if (event.nativeEvent.isComposing) return;
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            if (event.key === "Tab" && event.shiftKey) {
+              event.preventDefault();
+              close();
+            } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
               event.preventDefault();
               setActive(index => Math.max(0, Math.min(enabled.length - 1, index + (event.key === "ArrowDown" ? 1 : -1))));
             } else if (event.key === "Enter" && highlighted) {

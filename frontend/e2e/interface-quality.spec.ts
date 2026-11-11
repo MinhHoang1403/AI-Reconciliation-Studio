@@ -519,6 +519,14 @@ test("[MOCK CONTRACT] mapping jobs publish revisions, keep edited drafts and exp
   await page.keyboard.press("Tab");
   await expect(dialog).not.toBeVisible();
   await target.click();
+  await expect(search).toBeFocused();
+  await target.click();
+  await expect(dialog).not.toBeVisible();
+  await target.press("ArrowDown");
+  await search.press("Shift+Tab");
+  await expect(dialog).not.toBeVisible();
+  await expect(target).toBeFocused();
+  await target.click();
   await page.getByText("Ý nghĩa của bảng", { exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await target.click();
