@@ -1,6 +1,7 @@
 """Real PostgreSQL metadata and queue; provider failures are explicit MOCK cases."""
 
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select
@@ -1072,9 +1073,8 @@ def test_status_respects_single_source_scope_and_never_answers_two_with_one(pg, 
 
 def test_project_inventory_and_preparation_use_current_scoped_uploads(pg, monkeypatch):  # noqa: F811
     import studio.agent_jobs as agents
-    from studio.agent_preparation import profiled_fields
     from studio.contracts.agent import NormalizationDraft
-    from studio.database import ProjectRow, VersionRow, WorkspaceRow
+    from studio.database import ProjectRow, RunRow, VersionRow, WorkspaceRow
 
     client, factory, worker = pg
     pid = project(client)
@@ -1085,9 +1085,28 @@ def test_project_inventory_and_preparation_use_current_scoped_uploads(pg, monkey
         calls.append(table_id)
         return NormalizationDraft(
             table_id=table_id,
-            entity_kind="unknown",
-            grain="unknown",
-            fields=profiled_fields(profile),
+            entity_kind="synthetic_record",
+            grain="one synthetic transaction per row",
+            fields=[
+                dict(
+                    source_field="c1",
+                    target_id="reference_id",
+                    name="ID",
+                    data_type="string",
+                    business_key=True,
+                ),
+                dict(
+                    source_field="c2",
+                    target_id="amount",
+                    name="Amount",
+                    data_type="decimal",
+                    locale="en-US",
+                    currency="VND",
+                    unit="VND",
+                    semantic_metric="synthetic_net",
+                    amount_basis="net",
+                ),
+            ],
         )
 
     def unexpected_router(*args):
@@ -1097,7 +1116,9 @@ def test_project_inventory_and_preparation_use_current_scoped_uploads(pg, monkey
     monkeypatch.setattr(agents, "interpret_requests", unexpected_router)
 
     def upload(name, project_id=pid):
-        raw = f"ID,Amount\n00001,{sum(map(ord, name))}\n"
+        raw = "ID,Amount\n" + "".join(
+            f"{index:07d},{index + sum(map(ord, name))}.25\n" for index in range(3000)
+        )
         response = client.post(
             "/api/datasets/uploads",
             data={"project_id": project_id, "request_ai_mapping": "false"},
@@ -1106,7 +1127,7 @@ def test_project_inventory_and_preparation_use_current_scoped_uploads(pg, monkey
         assert response.status_code == 202, response.text
         return response.json()["items"][0]["id"]
 
-    names = ("Revenue A.csv", "Ledger B.csv", "Payments C.csv")
+    names = ("Revenue A.csv", "Sổ kế toán.csv", "Payments C.csv")
     dataset_ids = [upload(name) for name in names]
     outside = upload("Other project.csv", other)
     drain(factory, worker)
@@ -1144,9 +1165,20 @@ def test_project_inventory_and_preparation_use_current_scoped_uploads(pg, monkey
     assert "Other project.csv" not in text and "Other workspace.csv" not in text
     assert "Đã đọc dữ liệu, chưa chuẩn hóa" in text
 
-    _, single = ask('Tệp "Ledger B.csv" đã chuẩn hóa chưa?', "one")
-    text = " ".join(b["text"] for b in single["detail"]["blocks"])
-    assert "Ledger B.csv" in text and all(n not in text for n in (names[0], names[2]))
+    for index, question in enumerate(
+        ('Tệp "Sổ kế toán.csv" đã chuẩn hóa chưa?', "Kiểm tra riêng sổ kế toán.")
+    ):
+        _, single = ask(question, f"one-{index}")
+        text = " ".join(b["text"] for b in single["detail"]["blocks"])
+        assert names[1] in text and all(n not in text for n in (names[0], names[2]))
+
+    for index, unknown in enumerate(
+        ("Nonexistent.csv", "Other project.csv", "Other workspace.csv")
+    ):
+        _, missing = ask(f'Chuẩn bị tệp "{unknown}"', f"unknown-{index}")
+        assert missing["state"] == "WAITING_REVIEW"
+        assert [r["kind"] for r in missing["detail"]["reviews"]] == ["CLARIFICATION"]
+    assert not calls
 
     pinned = {"project_id": pid, "dataset_id": dataset_ids[0]}
     pinned_cid = conversation(client, pinned, key="one-source-conversation")
@@ -1159,10 +1191,18 @@ def test_project_inventory_and_preparation_use_current_scoped_uploads(pg, monkey
     assert all(name in " ".join(b["text"] for b in widened["detail"]["blocks"]) for name in names)
     assert widened["context"]["dataset_id"] is None
 
-    question = "Hãy kiểm tra và chuẩn hóa cả ba nguồn dữ liệu"
+    question = (
+        (Path(__file__).parent / "fixtures/assistant-project-preparation-vi.txt")
+        .read_text(encoding="utf-8")
+        .strip()
+    )
     queued, prepared = ask(question, "all")
     assert prepared["state"] == "WAITING_REVIEW"
     assert prepared["detail"]["dataset_ids"] == dataset_ids
+    assert prepared["detail"]["intent"]["intent"] == "PREPARE_NORMALIZATION"
+    assert prepared["detail"]["intent"]["dataset_ids"] == dataset_ids
+    statuses = [b["text"] for b in prepared["detail"]["blocks"] if b["type"] == "progress"]
+    assert all(any(name in text and "3.000 dòng" in text for text in statuses) for name in names)
     reviews = prepared["detail"]["reviews"]
     assert len(reviews) == 3 and all(
         r["kind"] == "MAPPING" and r["state"] == "OPEN" for r in reviews
@@ -1175,6 +1215,7 @@ def test_project_inventory_and_preparation_use_current_scoped_uploads(pg, monkey
         )
         assert set(calls) == actual
         assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 0
+        assert db.scalar(select(func.count()).select_from(RunRow)) == 0
     replay = ask_agent(client, project_context, cid, key="all", text=question)
     assert replay["job_id"] == queued["job_id"]
     _, reviewed = ask("Liệt kê các nguồn dữ liệu trong dự án", "review-status")
@@ -1189,6 +1230,37 @@ def test_project_inventory_and_preparation_use_current_scoped_uploads(pg, monkey
     assert "Dự án có 4 nguồn dữ liệu" in text and "New upload.csv" in text
     old = client.get(f"/api/agent/workflows/{prepared['id']}").json()
     assert old["detail"]["dataset_ids"] == dataset_ids and len(calls) == 3
+
+    path = f"/api/agent/workflows/{prepared['id']}"
+    for index, review in enumerate(old["detail"]["reviews"]):
+        draft = review["normalization_draft"]
+        # Chỉ người duyệt xác nhận cột tiền tổng hợp là doanh thu thuần bằng VND.
+        amount = next(field for field in draft["fields"] if field["source_field"] == "c2")
+        amount.update(
+            semantic_metric="synthetic_net", amount_basis="net", currency="VND", unit="VND"
+        )
+        approved = client.post(
+            path + "/decisions",
+            json=dict(
+                review_id=review["id"],
+                nonce=review["nonce"],
+                fingerprint=review["fingerprint"],
+                decision=dict(type="MAPPING", draft=draft),
+            ),
+            headers={"Idempotency-Key": f"manual-mapping-{index}"},
+        )
+        assert approved.status_code == 200, approved.text
+        drain(factory, worker)
+    complete = client.get(path).json()
+    assert complete["state"] == "COMPLETED", complete
+    results = [b for b in complete["detail"]["blocks"] if b["type"] == "dataset_summary"]
+    assert {b["dataset_id"] for b in results} == set(dataset_ids)
+    assert all(
+        b["rows"] == 3000 and b["invalid_rows"] == 0 and b["status"] == "READY" for b in results
+    )
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(RunRow)) == 0
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 3
 
     denied = client.post(
         "/api/conversations",

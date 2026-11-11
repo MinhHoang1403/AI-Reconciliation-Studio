@@ -68,6 +68,8 @@ def select_project_datasets(
     project_id: str,
     dataset_ids: list[str],
     dataset_names: tuple[str, ...] | None = None,
+    *,
+    dataset_stem: str | None = None,
 ) -> list[DatasetRow]:
     """Đọc nguồn hiện hành theo phạm vi đã xác thực, kể cả tệp chưa đọc."""
     query = select(DatasetRow).where(
@@ -77,13 +79,17 @@ def select_project_datasets(
     )
     if dataset_ids:
         query = query.where(DatasetRow.id.in_(dataset_ids))
-    elif dataset_names:
-        names = {unicodedata.normalize("NFC", name).casefold() for name in dataset_names}
+    elif dataset_names or dataset_stem:
+        from studio.assistant import plain_question
+
+        names = {unicodedata.normalize("NFC", name).casefold() for name in dataset_names or ()}
         identities = []
         lookup = query.with_only_columns(DatasetRow.id, DatasetRow.name)
         with db.execute(lookup.execution_options(yield_per=128)) as result:
             for dataset_id, name in result:
-                if unicodedata.normalize("NFC", name).casefold() in names:
+                if unicodedata.normalize("NFC", name).casefold() in names or (
+                    dataset_stem and plain_question(name.rsplit(".", 1)[0]) == dataset_stem
+                ):
                     identities.append(dataset_id)
                     if len(identities) == 6:
                         break

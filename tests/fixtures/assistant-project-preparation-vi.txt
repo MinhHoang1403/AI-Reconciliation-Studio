@@ -1,0 +1,11 @@
+Hãy kiểm tra toàn bộ dữ liệu hiện có trong dự án này và tự động chuẩn bị cả 3 nguồn doanh thu quý III/2026 để đối soát.
+
+Trước tiên, hãy cho tôi biết tên từng nguồn, số dòng và trạng thái xử lý thực tế.
+
+Sau đó, hãy chủ động đọc, phân tích và đề xuất ánh xạ cho cả ba nguồn. Tôi muốn hệ thống tự thực hiện các bước an toàn, chỉ yêu cầu xác nhận những thông tin nghiệp vụ chưa chắc chắn.
+
+Các nguồn sử dụng VND và phục vụ đối soát doanh thu thuần chưa VAT. Phân biệt mã giao dịch, mã chứng từ, mã dòng và các loại ngày nghiệp vụ.
+
+Không tự giả định cơ sở gross/net nếu chưa đủ bằng chứng. Không tự sửa số tiền, xóa hoặc loại trừ giao dịch. Chưa chạy đối soát cho đến khi tôi phê duyệt dữ liệu và quy tắc.
+
+Hãy thực hiện trực tiếp trong AI Assistant, không yêu cầu tôi chuyển qua các trang khác để làm những thao tác mà hệ thống có thể tự thực hiện.

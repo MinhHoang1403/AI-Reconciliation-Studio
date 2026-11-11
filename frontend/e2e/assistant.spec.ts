@@ -176,10 +176,7 @@ test("unknown message delivery keeps its idempotency key after reload", async ({
     const count=await runSelect.locator('option').count();await more.click();await expect.poll(()=>runSelect.locator('option').count()).toBeGreaterThan(count);
   }
   await runSelect.selectOption(s.runs.delivery.run_id);
-  await assistant
-    .getByRole("button", { name: "Hội thoại mới", exact: true })
-    .click();
-  // Hội thoại mới đã có phạm vi riêng. Giữ nguyên câu hỏi xác định để ca
+  // Chọn kết quả đã mở một hội thoại có phạm vi riêng. Giữ câu hỏi xác định để ca
   // kiểm biên nhận không phụ thuộc mô hình hoặc phát sinh yêu cầu cloud.
   const question = "Tóm tắt kết quả đối soát";
   const quotaBefore = (await (await page.request.get("/api/settings")).json()).gemini_requests_used;

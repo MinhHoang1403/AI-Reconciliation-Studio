@@ -3,6 +3,7 @@
 import re
 import secrets
 import time
+import unicodedata
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
@@ -85,7 +86,9 @@ from studio.database import (
 from studio.dataset_status import (
     asks_processing_status,
     asks_source_inventory,
+    read_processing_status,
     requests_project_sources,
+    status_description,
 )
 from studio.errors import DomainError, request_failure_message
 from studio.repository import (
@@ -248,8 +251,6 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
             context = effective_request_context(
                 db, actor, conversation.id, AssistantContext.model_validate(message.context)
             )
-            if requests_reconciliation_sequence(message.text) and not job.payload.get("command"):
-                return False
             if not job.payload.get("command") and QUALITY_CORRECTION.match(message.text):
                 return True
             if (
@@ -258,6 +259,8 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
                 or requests_source_preparation(message.text)
             ):
                 return True
+            if requests_reconciliation_sequence(message.text) and not job.payload.get("command"):
+                return False
             catalogue = agent_catalogue(
                 db,
                 actor,
@@ -522,17 +525,18 @@ def interpret(
             quality_reply(db, actor, row, state, context)
             db.commit()
             return
-        sequence_requested = not command and requests_reconciliation_sequence(goal)
+        status_request = asks_processing_status(goal) or asks_source_inventory(goal)
+        native_preparation = command is None and requests_source_preparation(goal)
+        prepare = command == "PREPARE_NORMALIZATION" or native_preparation
+        sequence_requested = not (command or prepare) and requests_reconciliation_sequence(goal)
         if sequence_requested:
             require_editor(actor, db, row.id)
             context = AssistantContext(project_id=context.project_id)
             row.context = context.model_dump(mode="json")
-        status_request = asks_processing_status(goal) or asks_source_inventory(goal)
-        prepare = command == "PREPARE_NORMALIZATION" or (
-            command is None and requests_source_preparation(goal)
-        )
-        if status_request or prepare or (
-            command is None and requests_source_preparation(goal, require_selector=False)
+        if (
+            status_request
+            or prepare
+            or (command is None and requests_source_preparation(goal, require_selector=False))
         ):
             if requests_project_sources(goal) and not state.steps:
                 if state.dataset_ids:
@@ -553,15 +557,18 @@ def interpret(
             None
             if sequence_requested or command
             else (
-                named_reconciliation_files(goal) or tuple(explicit_source_filenames(goal)) or None
+                (None if prepare else named_reconciliation_files(goal))
+                or tuple(explicit_source_filenames(goal))
+                or None
             )
         )
-        catalogue = agent_catalogue(
-            db, actor, context, state.dataset_ids, workflow_id=row.id, dataset_names=files
-        )
-        expected_selection = selection_fingerprint(catalogue)
-        ids = [d.id for d in catalogue.datasets]
         if prepare:
+            selected = state.dataset_ids or (
+                [context.dataset_id] if context.dataset_id and not files else []
+            )
+            datasets = select_project_datasets(db, actor, context.project_id, selected, files)
+            ids = [dataset.id for dataset in datasets]
+            names = {unicodedata.normalize("NFC", dataset.name).casefold() for dataset in datasets}
             quantity = re.search(
                 r"\b(?:ca )?(ba|3|hai|2) (?:bo du lieu|du lieu|nguon|file|tep)\b",
                 plain_question(goal),
@@ -569,7 +576,7 @@ def interpret(
             expected = (3 if quantity[1] in {"ba", "3"} else 2) if quantity else None
             if (
                 not ids
-                or (files and len(ids) != len(set(files)))
+                or (files and (names != set(files) or len(ids) != len(names)))
                 or (expected and len(ids) != expected)
             ):
                 state.intent = AgentIntent(
@@ -584,10 +591,28 @@ def interpret(
                 return
             # Mỗi workflow ghim phạm vi lúc nhận yêu cầu. Tin nhắn tiếp theo đọc lại dự án.
             state.dataset_ids = ids
+            if native_preparation:
+                statuses = read_processing_status(db, actor, context, ids)
+                state.blocks.append(
+                    ProgressBlock(text=f"Khi bắt đầu: {len(ids)} nguồn trong phạm vi yêu cầu.")
+                )
+                state.blocks.extend(
+                    ProgressBlock(
+                        text="\n".join(
+                            status_description(s) for s in statuses if s.dataset_id == dataset_id
+                        )
+                    )
+                    for dataset_id in ids
+                )
             state.intent = AgentIntent(intent="PREPARE_NORMALIZATION", dataset_ids=ids)
             save(row, state)
             db.commit()
             return
+        catalogue = agent_catalogue(
+            db, actor, context, state.dataset_ids, workflow_id=row.id, dataset_names=files
+        )
+        expected_selection = selection_fingerprint(catalogue)
+        ids = [d.id for d in catalogue.datasets]
         if command == "PREPARE_UPLOAD":
             if not state.dataset_ids:
                 raise DomainError("INPUT_AMBIGUOUS", "Cần chọn các tệp vừa tải lên.", 422)

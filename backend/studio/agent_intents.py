@@ -1841,7 +1841,7 @@ def resolve_plain_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
 
 
 def requests_source_preparation(goal: str, *, require_selector: bool = True) -> bool:
-    """Nhận lệnh chuẩn bị độc lập; câu ghép tiếp tục đi qua router nghiệp vụ."""
+    """Nhận yêu cầu chuẩn bị nguồn, kể cả khi có bước kiểm tra và mục đích đối soát."""
     normalized = " ".join(plain_question(goal).split()).rstrip(" ?.!")
     action = (
         r"(?:(?:xin|toi muon|hay|vui long|giup toi) )?"
@@ -1862,9 +1862,54 @@ def requests_source_preparation(goal: str, *, require_selector: bool = True) -> 
     ):
         return True
     filename = r'(?:"[^"\r\n]+\.(?:csv|xlsx)"|“[^”\r\n]+\.(?:csv|xlsx)”|[^!?;,]+?\.(?:csv|xlsx))'
-    return len(explicit_source_filenames(goal)) == 1 and bool(
-        re.fullmatch(action + r"(?:tep|file) " + filename, normalized)
+    names = explicit_source_filenames(goal)
+    if len(names) == 1 and re.fullmatch(action + r"(?:tep|file) " + filename, normalized):
+        return True
+    # Mục đích sau "để" và các câu phủ định không cấp quyền thực hiện hành động.
+    # Cắt câu sau khi bỏ tên tệp để dấu chấm trong phần mở rộng không chia câu.
+    text = re.sub(r'"[^"]+"|“[^”]+”', " ", normalized)
+    text = re.sub(r"\.(?:csv|xlsx)\b", "", text)
+    clauses = re.split(
+        r"[.!?;]|\b(?:roi|sau do|tiep theo|nhung(?=\s+(?:hay|khong|chua|dung|chay|xuat)\b))\b",
+        text,
     )
+    polite = (
+        r"(?:(?:truoc tien|xin|hay|vui long|toi muon|giup toi|chu dong|tu dong)(?:,\s*|\s+)|,\s*)*"
+    )
+    direct = [re.sub(polite, "", clause.strip(), count=1) for clause in clauses]
+    direct = [clause for clause in direct if not re.match(r"(?:khong|chua|dung)\b", clause)]
+    if any(_denied_request(c) or unresolved_source_requested(c) for c in direct):
+        return False
+    other_action = (
+        r"(?:chay |thuc hien |tien hanh |bat dau |tu )?(?:doi soat|so sanh)"
+        r"|(?:xuat|tai bao cao|lap bao cao|phe duyet|duyet|sua|xoa|loai tru|ghi de|loc)\b"
+    )
+    if any(re.search(r"(?:^|,\s*|\bva )" + polite + rf"(?:{other_action})\b", c) for c in direct):
+        return False
+    if re.search(
+        r"\b(?:du an khac|workspace khac|ngoai tru)\b"
+        r"|\b(?:tru|chi) (?:(?:cac|nhung) )?(?:tep|file|nguon|dong|giao dich)\b",
+        " ".join(direct),
+    ):
+        return False
+    if re.search(
+        r'\b(?:trong|cua|o) du an (?!nay\b|hien tai\b|va\b|de\b|giup\b|cho\b)[\w"“]',
+        normalized,
+    ):
+        return False
+
+    # Giữ nguyên các điều kiện nghiệp vụ trong goal gửi cho bước đề xuất.
+    prepare = any(
+        re.search(r"(?:^|\bva )" + polite + rf"(?:chuan bi|chuan hoa) (?:.* )?{source}\b", c)
+        for c in direct
+    )
+    inspect = any(re.match(rf"kiem tra .*\b{source}\b", c) for c in direct)
+    mapping = any(re.search(r"(?:^|\bva )de xuat (?:anh xa|cach ghep cot)\b", c) for c in direct)
+    future_purpose = any(
+        re.match(rf"(?:chuan bi|chuan hoa) {source} de doi soat\b", c) for c in direct
+    )
+    selected = explicit_scope or names or (inspect and mapping) or future_purpose
+    return bool((prepare or (inspect and mapping)) and selected)
 
 
 def resolve_attached_normalization(
@@ -1998,6 +2043,10 @@ def compile_routing(
                 raise DomainError("AI_INVALID_INTENT", "Intent không sử dụng công cụ truy vấn.")
             source = sources.get(item.query.source_ref)
             if source is None:
+                if diagnostics is not None:
+                    diagnostics["routing_error"] = dict(
+                        stage="unknown_query_source", allowed_source_count=len(sources)
+                    )
                 raise DomainError("AI_INVALID_SOURCE", "Nguồn được chọn không có trong catalogue.")
             fields = {f["id"] for f in source["fields"]}
             requested = set(item.query.select_fields + item.query.group_by)

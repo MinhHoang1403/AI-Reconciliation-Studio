@@ -1,6 +1,7 @@
 """Read processing metadata without requiring reconciliation facts or calling a model."""
 
 import re
+import unicodedata
 from typing import Literal
 
 from sqlalchemy import select
@@ -28,6 +29,7 @@ class ProcessingStatus(Contract):
     name: str
     table_id: str | None = None
     sheet: str | None = None
+    row_count: int | None = None
     version_id: str | None = None
     mapping_id: str | None = None
     canonical_id: str | None = None
@@ -79,8 +81,19 @@ def requests_project_sources(goal: str) -> bool:
     )
 
 
+def requested_source_stem(goal: str) -> str | None:
+    """Tên tệp không có phần mở rộng trong câu kiểm tra một nguồn cụ thể."""
+    text = " ".join(plain_question(goal).split()).rstrip(" ?!")
+    match = re.fullmatch(
+        r"(?:hay )?kiem tra rieng (?:tep |file |nguon )?([^.!?;,]{1,200})\.?", text
+    )
+    return (match[1].strip(' "“”') or None) if match else None
+
+
 def asks_processing_status(goal: str) -> bool:
     """Conservative read shortcut: status questions, never instructions to perform work."""
+    if requested_source_stem(goal):
+        return True
     text = plain_question(goal)
     subject = re.search(r"\b(?:du lieu|nguon|file|tep|cot)\b", text)
     status = re.search(
@@ -122,16 +135,25 @@ def read_processing_status(
     not readiness for a particular financial contract. No writes, artifact scans or AI.
     """
     scoped_context(db, actor, context)
+    stem = requested_source_stem(goal) if not dataset_names else None
     selected = dataset_ids or (
-        [context.dataset_id] if context.dataset_id and not dataset_names else []
+        [context.dataset_id] if context.dataset_id and not (dataset_names or stem) else []
     )
-    datasets = select_project_datasets(db, actor, context.project_id, selected, dataset_names)
-    if dataset_names and not selected and len(datasets) != len(set(dataset_names)):
+    datasets = select_project_datasets(
+        db, actor, context.project_id, selected, dataset_names, dataset_stem=stem
+    )
+    actual = [unicodedata.normalize("NFC", d.name).casefold() for d in datasets]
+    if (
+        dataset_names
+        and (len(actual) != len(set(actual)) or set(actual) != set(dataset_names))
+        or stem
+        and (len(datasets) != 1 or plain_question(datasets[0].name.rsplit(".", 1)[0]) != stem)
+    ):
         raise DomainError(
             "INPUT_AMBIGUOUS", "Chưa xác định được đúng tệp theo tên trong dự án này."
         )
     requested = re.findall(r"\b(?:nguon|file|tep) ([a-z])\b", plain_question(goal))
-    if requested and not selected and not dataset_names:
+    if requested and not selected and not (dataset_names or stem):
         matched = []
         for alias in sorted(set(requested)):
             matches = [
@@ -278,6 +300,7 @@ def read_processing_status(
                     **base,
                     table_id=table.id,
                     sheet=table.sheet,
+                    row_count=table.row_count,
                     mapping_id=mapping.id if mapping else None,
                     canonical_id=canonical.id if canonical else None,
                     state=state,
@@ -319,6 +342,11 @@ def status_description(item: ProcessingStatus) -> str:
     return (
         f"{item.name}"
         + (f" · {item.sheet}" if item.sheet else "")
+        + (
+            " · " + f"{item.row_count:,}".replace(",", ".") + " dòng"
+            if item.row_count is not None
+            else ""
+        )
         + ": "
         + descriptions[item.state]
     )

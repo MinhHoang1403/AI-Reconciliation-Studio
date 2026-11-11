@@ -221,6 +221,7 @@ export function AssistantStudio({
   },[context.project_id,context.dataset_id]);
   const [historySearch,setHistorySearch]=useState("");
   const historyTrigger=historyReturnFocus;
+  const focusComposerAfterHistory = useRef(false);
   const deleteTrigger=useRef<HTMLElement|null>(null);
   const composerInput=useRef<HTMLTextAreaElement>(null);
   const transcript=useRef<HTMLDivElement>(null);
@@ -306,7 +307,6 @@ export function AssistantStudio({
     observer.observe(input);
     return()=>observer.disconnect();
   },[text]);
-  const [draftNotice, setDraftNotice] = useState("");
   const draftKeyFor = (scope: AssistantContext, id = "new") =>
     `studio.assistant-draft.${draftOwner}.${JSON.stringify([scope.project_id, scope.run_id || "", scope.dataset_id || "", scope.group_id || "", scope.case_id || "", id])}`;
   const draftKey = useRef(draftKeyFor(initialContext));
@@ -522,7 +522,7 @@ export function AssistantStudio({
     // Component key binds this lifecycle to its initial project/run/case context.
   }, []);
 
-  function newConversation(next = context) {
+  function newConversation(next: AssistantContext = { project_id: context.project_id }) {
     followTail.current=true;
     forceTail.current=true;
     setNewContent(false);
@@ -541,15 +541,14 @@ export function AssistantStudio({
     setPendingJob("");
     setError("");
     restoreDraft(next);
-    setDraftNotice(
-      "Bản nháp chưa gửi được giữ riêng theo dự án, lượt đối soát và hội thoại trong tab này.",
-    );
     setConfirmDelete(false);
     setConfirmWorkflow(null);
     pendingRequest.current = null;
     createKey.current = crypto.randomUUID();
     sessionStorage.removeItem(`${draftKey.current}.create`);
     localStorage.removeItem(conversationKeyFor(next));
+    if (!next.dataset_id && !next.run_id)
+      localStorage.removeItem(`studio.conversation.${next.project_id}`);
   }
   async function send() {
     if ((!text.trim() && !files.length) || busy || pendingJob || sendLock.current) return;
@@ -831,7 +830,10 @@ export function AssistantStudio({
         <div className="assistant-toolbar-actions">
           {context.project_id&&<button className="icon-button" aria-label="Tệp đã tải" title="Tệp đã tải" onClick={()=>openDetail("OPEN_DATA",displayContext)}><Files size={18}/></button>}
           {context.project_id&&<button className="icon-button context-chip" data-run-id={displayContext.run_id||""} data-dataset-id={displayContext.dataset_id||""} aria-label="Đổi ngữ cảnh phân tích" title={displayContext.run_id?`${selectedRun?.metric_snapshot?.period_start||"Kết quả đang xem"} · ${selectedRun?.status==="PARTIAL_VERIFIED"?"Xác minh một phần":"Kết quả đối soát"}`:displayContext.dataset_id?(sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Nguồn đang xem"):"Chọn dữ liệu phân tích"} onClick={()=>setContextOpen(true)}><SlidersHorizontal size={18}/><span className="visually-hidden">{displayContext.dataset_id&&sourceLabel?.id===displayContext.dataset_id?sourceLabel.name:"Chọn dữ liệu phân tích"}</span></button>}
-          {context.project_id&&<button className="icon-button" aria-label="Hội thoại mới" title="Hội thoại mới" disabled={busy||loading} onClick={()=>newConversation()}><MessageSquarePlus size={18}/></button>}
+          {context.project_id&&<button className="icon-button" aria-label="Hội thoại mới" title="Hội thoại mới" disabled={busy||loading} onClick={() => {
+            newConversation();
+            composerInput.current?.focus({ preventScroll: true });
+          }}><MessageSquarePlus size={18}/></button>}
           <details ref={toolbarOptions} className="assistant-policy assistant-menu" onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
             <summary aria-label="Tùy chọn hội thoại" title="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary>
             <div className="assistant-options dropdown-panel">
@@ -1113,11 +1115,6 @@ export function AssistantStudio({
             </div>
           </div>
           {newContent&&<button type="button" className="assistant-jump text-button" onClick={()=>scrollToTail(true)}>Tin nhắn mới · Xuống cuối</button>}
-          {draftNotice && (
-            <p className="draft-notice" role="status">
-              {draftNotice}
-            </p>
-          )}
           <form
             className={`assistant-composer ${reviewReply?"is-review-reply":""}`}
             onDragOver={event=>{event.preventDefault();}}
@@ -1197,7 +1194,13 @@ export function AssistantStudio({
         <p>Xóa nội dung hội thoại này? Lượt đối soát, quy tắc, nguồn dữ liệu và báo cáo được giữ nguyên.</p>
         <div className="modal-actions"><button className="button secondary" disabled={busy} onClick={()=>setConfirmDelete(false)}>Hủy</button><button className="button primary" disabled={busy} onClick={()=>void deleteConversation()}>Xác nhận xóa hội thoại</button></div>
       </Modal>
-      <Modal title="Lịch sử hội thoại" open={historyOpen} onOpenChange={setHistoryOpen} returnFocus={historyTrigger}>
+      <Modal title="Lịch sử hội thoại" open={historyOpen} onOpenChange={setHistoryOpen} returnFocus={historyTrigger}
+        shouldRestoreFocus={() => {
+          if (!focusComposerAfterHistory.current) return true;
+          focusComposerAfterHistory.current = false;
+          composerInput.current?.focus({ preventScroll: true });
+          return false;
+        }}>
         <div
           id="assistant-history-panel"
           className="assistant-history"
@@ -1205,7 +1208,11 @@ export function AssistantStudio({
         >
           <p className="muted"><strong>{projectName}</strong></p>
           <label>Tìm trong hội thoại đã tải<input value={historySearch} onChange={e=>setHistorySearch(e.target.value)}/></label>
-          <button className="button secondary" disabled={busy||!context.project_id} onClick={()=>{newConversation();setHistoryOpen(false);}}>Hội thoại mới</button>
+          <button className="button secondary" disabled={busy||loading||!context.project_id} onClick={() => {
+            newConversation();
+            focusComposerAfterHistory.current = true;
+            setHistoryOpen(false);
+          }}>Hội thoại mới</button>
           <h3>
             Lịch sử hội thoại ({history.length}
             {moreHistory ? "+" : ""})

@@ -31,6 +31,71 @@ test('[MOCK CONTRACT] single-source context can explicitly return to project dat
   expect(writes).toEqual([]);
 });
 
+for (const width of [390, 1440]) {
+  const entry = width === 390 ? "sidebar history" : "toolbar";
+  test(`[MOCK CONTRACT] new chat from ${entry} starts in the project and retains the old draft`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const project = "scope-project";
+    const context = { project_id: project, dataset_id: "scope-ledger" };
+    const conversation = {
+      id: "old-chat", title: "Kiểm tra sổ kế toán", context, archived: false,
+      created_at: "2026-11-05T00:00:00Z",
+    };
+    const projectHistory = { ...conversation, id: "old-project-chat", context: { project_id: project } };
+    await page.addInitScript(({ project, id }) => {
+      if (sessionStorage.getItem("legacy-seeded")) return;
+      localStorage.setItem(`studio.conversation.${project}`, id);
+      sessionStorage.setItem("legacy-seeded", "1");
+    }, { project, id: projectHistory.id });
+    await page.route("**/api/**", async route => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === "/api/session") return route.fulfill({ json: { workspace_id: "test", actor_id: "owner", role: "owner" } });
+      if (path === "/api/settings") return route.fulfill({ json: { workspace_name: "TEST", policy: { allow_external_ai: false } } });
+      if (path === `/api/projects/${project}`) return route.fulfill({ json: { id: project, name: "TEST", classification: "TEST" } });
+      if (path === "/api/conversations" && route.request().method() === "POST")
+        return route.fulfill({ status: 201, json: { ...projectHistory, id: "fresh-chat" } });
+      if (path === "/api/conversations") return route.fulfill({ json: { items: [conversation], has_more: false } });
+      if (path === `/api/conversations/${conversation.id}` || path === `/api/conversations/${projectHistory.id}`)
+        return route.fulfill({ json: { conversation: path.endsWith(conversation.id) ? conversation : projectHistory, items: [], has_more: false } });
+      if (path === "/api/assistant/messages") return route.fulfill({ status: 503, json: { message_vi: "TEST" } });
+      return route.fulfill({ json: { items: [], has_more: false } });
+    });
+    const openHistory = async () => {
+      const menu = page.getByRole("button", { name: "Mở điều hướng", exact: true });
+      if (await menu.isVisible()) await menu.click();
+      await page.locator(".sidebar").getByRole("button", { name: "Lịch sử hội thoại", exact: true }).click();
+      return page.getByRole("dialog", { name: "Lịch sử hội thoại", exact: true });
+    };
+    await page.goto(`/#page=assistant&project=${project}&conversation=${conversation.id}`);
+    const composer = page.getByRole("textbox", { name: "Câu hỏi cho AI Assistant", exact: true });
+    const scope = page.getByRole("button", { name: "Đổi ngữ cảnh phân tích", exact: true });
+    await expect(scope).toHaveAttribute("data-dataset-id", context.dataset_id);
+    await composer.fill("Bản nháp của sổ kế toán");
+    const toolbar = page.getByRole("region", { name: "AI Assistant", exact: true });
+    const parent = width === 390 ? await openHistory() : toolbar;
+    await parent.getByRole("button", { name: "Hội thoại mới", exact: true }).click();
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("");
+    await expect(scope).toHaveAttribute("data-dataset-id", "");
+    await expect(page.locator(".draft-notice")).toHaveCount(0);
+    await expect(page.getByText(/Bản nháp chưa gửi được giữ riêng/)).toHaveCount(0);
+    await page.reload();
+    await expect(scope).toHaveAttribute("data-dataset-id", "");
+    await expect(composer).toHaveValue("");
+    await (await openHistory()).getByRole("button", { name: new RegExp(conversation.title) }).click();
+    await expect(scope).toHaveAttribute("data-dataset-id", context.dataset_id);
+    await expect(composer).toHaveValue("Bản nháp của sổ kế toán");
+    const freshParent = width === 390 ? await openHistory() : toolbar;
+    await freshParent.getByRole("button", { name: "Hội thoại mới", exact: true }).click();
+    const goal = (await readFile("../tests/fixtures/assistant-project-preparation-vi.txt", "utf8")).trim();
+    await composer.fill(goal);
+    const submitted = page.waitForRequest(request => request.url().endsWith("/api/assistant/messages") && request.method() === "POST");
+    await page.getByRole("button", { name: "Gửi câu hỏi", exact: true }).click();
+    expect((await submitted).postDataJSON()).toMatchObject({ text: goal, context: { project_id: project } });
+    expect((await submitted).postDataJSON().context.dataset_id ?? null).toBeNull();
+  });
+}
+
 test('[LOCAL] composer reflows an unchanged draft when the viewport narrows and widens',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await page.setViewportSize({width:1440,height:900});await page.goto('/#page=assistant');

@@ -481,6 +481,22 @@ def test_explicit_local_normalization_binds_only_attached_scope(goal, attached, 
         ("Chuẩn hóa dữ liệu", False, False),
         ("Đừng chuẩn hóa toàn bộ dữ liệu", False, False),
         ("Chuẩn bị cả ba nguồn rồi chạy đối soát", False, False),
+        ("Trước tiên kiểm tra các tệp, sau đó đề xuất ánh xạ.", False, True),
+        ("Chuẩn bị dữ liệu để đối soát, nhưng chưa chạy đối soát.", False, True),
+        ("Kiểm tra riêng sổ kế toán.", False, False),
+        ("Chuẩn bị cả ba nguồn, nhưng hãy chạy đối soát.", False, False),
+        ("Chuẩn bị cả ba nguồn để đối soát rồi xuất Excel.", False, False),
+        ("Chuẩn bị cả ba nguồn, sau đó tự phê duyệt ánh xạ.", False, False),
+        ("Chuẩn bị ba nguồn trong dự án tháng trước.", False, False),
+        ("Chuẩn bị tất cả dữ liệu ngoại trừ tệp sao kê.", False, False),
+        ("Chưa chuẩn hóa toàn bộ dữ liệu. Hãy đọc ba tệp.", False, False),
+        (
+            (Path(__file__).parent / "fixtures/assistant-project-preparation-vi.txt")
+            .read_text(encoding="utf-8")
+            .strip(),
+            False,
+            True,
+        ),
     ],
 )
 def test_project_source_commands_exclude_row_reads_and_compound_actions(goal, inventory, prepare):
@@ -3266,6 +3282,8 @@ def test_export_storage_rejects_an_unpinned_or_different_query(mismatched):
         state.export_query = query.model_copy(update={"offset": 1})
     with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
         save(SimpleNamespace(), state)
+
+
 @pytest.mark.parametrize(
     "goal, expected",
     [
