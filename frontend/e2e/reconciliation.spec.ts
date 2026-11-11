@@ -168,7 +168,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
     .click();
   await expect(
     page.getByText(
-      "Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa. Hãy xem xét các dòng trùng khóa.",
+      "Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa.",
     ),
   ).toBeVisible();
   await page

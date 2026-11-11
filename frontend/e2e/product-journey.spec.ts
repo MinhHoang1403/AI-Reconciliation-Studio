@@ -270,10 +270,12 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     .click();
   await expect(
     page.getByText(
-      "Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa. Hãy xem xét các dòng trùng khóa.",
+      "Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa.",
       { exact: true },
     ),
   ).toBeVisible();
+  await expect(page.getByText(/Nguồn trái: 3 trong kỳ\/phạm vi, 0 ngoài phạm vi, 0 lỗi/)).toBeVisible();
+  await expect(page.getByText(/Nguồn phải: 3 trong kỳ\/phạm vi, 0 ngoài phạm vi, 0 lỗi/)).toBeVisible();
   await page
     .getByRole("button", { name: "Lưu đề xuất thủ công", exact: true })
     .click();

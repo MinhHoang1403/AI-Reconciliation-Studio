@@ -107,7 +107,7 @@ for(const scenario of manifest.datasets){
       const runs=await(await page.request.get(`/api/runs?project_id=${projectId}`)).json();expect(runs.total).toBe(0);
       await writeFile(`../runtime/demo-acceptance/results/${scenario.name}.json`,JSON.stringify({projectId,name,status:'PASS_SAFE_BLOCK',reason:'mixed currencies without FX'}));return;
     }
-    await expect(page.getByText('Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa. Hãy xem xét các dòng trùng khóa.',{exact:true})).toBeVisible();
+    await expect(page.getByText('Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa.',{exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Lưu đề xuất thủ công',exact:true}).click();
     const approve=page.getByRole('button',{name:'Xác nhận quy tắc và dấu số tiền',exact:true});
     const hasPartial=catalogue.items.some((c:{canonical:{quality_status:string}})=>c.canonical.quality_status==='PARTIAL');

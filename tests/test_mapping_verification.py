@@ -204,6 +204,18 @@ def test_full_column_enrichment_does_not_guess_timezone_currency_or_customer_key
 
 
 @pytest.mark.parametrize(
+    ("name", "expected"),
+    [("Estimated amount", None), ("Net or gross amount", None), ("Gross before discount", "gross")],
+)
+def test_enrichment_clears_an_unsupported_model_amount_basis(name, expected):
+    frame, profile, draft = sample()
+    profile.columns[1].name = name
+    result = assess_mapping(draft, frame, profile, "sha", enrich=True)
+    assert result.draft.fields[1].amount_basis == expected
+    assert draft.fields[1].amount_basis == "gross"
+
+
+@pytest.mark.parametrize(
     "codes,suggested", [(["VND"] * 3, "VND"), (["VND", "VND", "USD"], None), (["cash"] * 3, None)]
 )
 def test_vietnamese_currency_alias_binds_the_existing_row_check(codes, suggested):

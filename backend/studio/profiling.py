@@ -259,6 +259,27 @@ def field_name_tokens(value: str) -> tuple[str, ...]:
     return tuple(translated.split())
 
 
+def fee_qualifier_basis(tokens: tuple[str, ...]) -> set[str]:
+    """Chỉ nhận cơ sở trước/sau phí khi tên cột cho biết đây là khoản tiền."""
+    if "amount" not in tokens:
+        return set()
+    words = [word for word in tokens if word not in {"cac", "nhung", "amount"}]
+    return {
+        "gross" if direction == "truoc" else "net"
+        for direction, qualified in zip(words, words[1:], strict=False)
+        if qualified == "fee" and direction in {"truoc", "sau"}
+    }
+
+
+def observed_amount_basis(name: str) -> str | None:
+    tokens = field_name_tokens(name)
+    words = set(tokens)
+    if words & {"khong", "chua", "hoac", "hay", "not", "or", "unknown"}:
+        return None
+    basis = (words & {"gross", "net"}) | fee_qualifier_basis(tokens)
+    return next(iter(basis)) if len(basis) == 1 else None
+
+
 def find_mapping_candidates(
     profile: DatasetProfile, schema: SchemaDefinition
 ) -> dict[str, list[str]]:
@@ -287,12 +308,9 @@ def find_mapping_candidates(
             words -= {"id", "loai"}
         # "Phí" sau từ chỉ cơ sở là một điều kiện của chỉ tiêu, không phải
         # chính chỉ tiêu. Chỉ dùng khi tên cột có tín hiệu là giá trị tiền.
-        if "amount" in words:
-            qualifiers = [word for word in tokens if word not in {"cac", "nhung", "amount"}]
-            for direction, qualified in zip(qualifiers, qualifiers[1:], strict=False):
-                if qualified == "fee" and direction in {"truoc", "sau"}:
-                    words.discard("fee")
-                    words.add("gross" if direction == "truoc" else "net")
+        if qualifiers := fee_qualifier_basis(tokens):
+            words.discard("fee")
+            words.update(qualifiers)
         if words & money_roles:
             words.discard("amount")
         return frozenset(words)

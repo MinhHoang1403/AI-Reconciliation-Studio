@@ -21,15 +21,16 @@ from studio.config import OLLAMA_MODEL, ModelChoice, Settings, request_limit_rea
 from studio.contracts import (
     DatasetProfile,
     MappingDecision,
+    MappingStatus,
     SchemaDefinition,
     SchemaProposal,
     WorkspacePolicy,
 )
 from studio.errors import DomainError
-from studio.profiling import find_mapping_candidates
+from studio.profiling import find_mapping_candidates, observed_amount_basis
 from studio.schema_mapping import validate_mapping
 
-PROMPT_REVISION = "schema-understanding-7"
+PROMPT_REVISION = "schema-understanding-8"
 TASK_IDS = {"classify_dataset", "infer_grain", "propose_mapping", "suggest_transformation"}
 
 
@@ -335,7 +336,28 @@ def validate_ai_output(
         raise DomainError(
             "AI_INVALID_JSON", "AI trả dữ liệu sai hợp đồng; có thể chỉnh ánh xạ thủ công."
         ) from exc
-    return validate_mapping(proposal, profile, schema)
+    proposal = validate_mapping(proposal, profile, schema)
+    sources = {column.column_id: column.name for column in profile.columns}
+    targets = {decision.candidate_target for decision in proposal.decisions}
+    generic_available = "amount" not in targets and any(
+        field.id == "amount" and field.data_type == "decimal" for field in schema.fields
+    )
+    unsupported = [
+        decision
+        for decision in proposal.decisions
+        if decision.candidate_target in {"gross_amount", "net_amount"}
+        and observed_amount_basis(sources[decision.source_field])
+        != decision.candidate_target.removesuffix("_amount")
+    ]
+    for decision in unsupported:
+        decision.candidate_target = (
+            "amount" if generic_available and len(unsupported) == 1 else None
+        )
+        decision.decision = MappingStatus.AMBIGUOUS
+        decision.unresolved_questions = ["Xác nhận cơ sở số tiền, đơn vị và tiền tệ."]
+    if unsupported:
+        proposal.status = MappingStatus.AMBIGUOUS
+    return proposal
 
 
 class QwenProvider:

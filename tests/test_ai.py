@@ -192,6 +192,31 @@ def test_AI_cannot_self_approve(profile, schema, mapping):
         validate_ai_output(proposal.model_dump_json(), profile, schema)
 
 
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("Estimated amount", "amount"), ("Gross before discount", "gross_amount")],
+)
+def test_ai_mapping_preserves_candidates_without_guessing_amount_basis(profile, name, expected):
+    from studio.profiling import default_schema
+
+    profile.columns[1].name = name
+    schema = default_schema(profile.workspace_id, "synthetic-schema")
+    proposal = unknown_proposal()
+    proposal["decisions"] = [
+        {
+            "source_field": profile.columns[1].column_id,
+            "candidate_target": "gross_amount",
+            "decision": "PROPOSED",
+            "evidence_ids": profile.columns[1].evidence_ids,
+            "grain_assumption": "unknown",
+            "transformation_candidate": {"op": "parse_decimal", "locale": "en-US"},
+        }
+    ]
+    checked = validate_ai_output(json.dumps(proposal), profile, schema)
+    assert checked.decisions[0].candidate_target == expected
+    assert checked.decisions[0].decision == "AMBIGUOUS"
+
+
 def test_gemini_mapping_response_schema_restricts_status_without_bypassing_validation(
     config, profile, schema, mapping
 ):

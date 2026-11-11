@@ -21,7 +21,12 @@ from studio.contracts.api import ApprovalInput, NormalizationPreflight
 from studio.date_parsing import date_format, date_zone, parse_date
 from studio.errors import DomainError
 from studio.normalization import apply_transform_plan, parse_decimal
-from studio.profiling import field_name_tokens, normalized_name, profile_table
+from studio.profiling import (
+    field_name_tokens,
+    normalized_name,
+    observed_amount_basis,
+    profile_table,
+)
 from studio.schema_mapping import TransformPlan, compile_transform_plan
 
 
@@ -132,7 +137,10 @@ def assess_mapping(
                 elif currency_columns:
                     # Không chọn đa số, mã không đúng dạng hoặc cột bị xung đột.
                     f.currency = f.unit = None
-                if name in {"amount", "total", "so tien", "tong"}:
+                basis = (f.amount_basis or "").strip().casefold()
+                if name in {"amount", "total", "so tien", "tong"} or (
+                    basis in {"gross", "net"} and observed_amount_basis(c.name) != basis
+                ):
                     f.amount_basis = None
         if (
             f.business_key
