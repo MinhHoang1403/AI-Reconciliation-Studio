@@ -49,7 +49,7 @@ for(const width of [390,768,1366,1440,1920]){
     const input=page.getByLabel("Câu hỏi cho AI Assistant",{exact:true});
     for(const name of ["empty","short","long","upload","running","review","completed","table","chart","evidence","history","multiline","keyboard","sidebar","delete","error","permission","loading","partial","failed","unavailable","export","longfilename"]){
       scenario=name;gate=new Promise<void>(resolve=>release=resolve);
-      await page.goto("/");await expect(page.getByRole("status",{name:"Trạng thái kết nối"})).toHaveText("Đã kết nối");
+      await page.goto("/#page=assistant");await expect(page.getByRole("status",{name:"Trạng thái kết nối"})).toHaveText("Đã kết nối");
       if(name==="loading"){await expect(input).toBeDisabled();await shot(name);release();await expect(input).toBeEnabled();continue;}
       if(name==="error"){await expect(page.getByRole("alert")).toContainText("Chưa tải được hội thoại");await shot(name);continue;}
       await expect(input).toBeEnabled();
@@ -132,7 +132,7 @@ test("[MOCK CONTRACT] context panel changes placement while composer and draft r
     if (path === "/api/projects/visual-project") return route.fulfill({ json: { id: "visual-project", name: "Visual project", workspace_id: "visual" } });
     return route.fulfill({ json: { items: [], total: 0 } });
   });
-  await page.goto("/");
+  await page.goto("/#page=assistant");
   const input = page.getByLabel("Câu hỏi cho AI Assistant", { exact: true });
   await input.fill("Giữ bản nháp của dự án này");
   const sources = page.getByRole("button", { name: "Tệp đã tải", exact: true });
@@ -249,7 +249,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
       if(route.request().method()!=='GET')throw Error('Unexpected product write '+path);
       return route.fulfill({json:{items:[],total:0,has_more:false}});
     });
-    await page.goto('/');
+    await page.goto('/#page=assistant');
     const projectPicker=page.locator('#project-select');
     await expect(projectPicker.getByText(projectName,{exact:true})).toBeVisible();
     await expect(projectPicker).toHaveAttribute('title',projectName);

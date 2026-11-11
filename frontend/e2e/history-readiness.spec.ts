@@ -61,7 +61,7 @@ for(const width of [390,768,1366,1440,1920]){
       if(path==='/api/conversations/history-one')return route.fulfill({json:{conversation,items:[],has_more:false}});
       return route.fulfill({json:{items:[],total:0,has_more:false}});
     });
-    await page.goto('/');await expect(page.getByLabel('Câu hỏi cho AI Assistant',{exact:true})).toBeEnabled();
+    await page.goto('/#page=assistant');await expect(page.getByLabel('Câu hỏi cho AI Assistant',{exact:true})).toBeEnabled();
     if(width<900)await page.getByRole('button',{name:'Mở điều hướng',exact:true}).click();
     await page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true}).click();
     const dialog=page.getByRole('dialog',{name:'Lịch sử',exact:true});
@@ -99,5 +99,5 @@ test('[MOCK CONTRACT] a failed user turn keeps the last visible workflow run aft
     if(path==='/api/agent/workflows/visible-workflow')return route.fulfill({json:{id:'visible-workflow',context:{project_id,run_id},state:'COMPLETED',updated_at:'2026-11-02T00:01:00Z',detail:{steps:[],reviews:[],blocks:[],model_calls:0}}});
     return route.fulfill({json:{items:[],total:0,has_more:false}});
   });
-  await page.goto('/');const chip=page.getByRole('button',{name:'Đổi ngữ cảnh phân tích',exact:true});await expect(chip).toHaveAttribute('data-run-id',run_id);await page.reload();await expect(chip).toHaveAttribute('data-run-id',run_id);
+  await page.goto('/#page=assistant');const chip=page.getByRole('button',{name:'Đổi ngữ cảnh phân tích',exact:true});await expect(chip).toHaveAttribute('data-run-id',run_id);await page.reload();await expect(chip).toHaveAttribute('data-run-id',run_id);
 });

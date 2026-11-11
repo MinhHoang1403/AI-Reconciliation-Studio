@@ -274,7 +274,7 @@ for (const name of ["shopee", "tiktok", "delivery"]) {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     const s = await state();
-    await page.goto("/");
+    await page.goto("/#page=assistant");
     await expect(page.getByRole("status", { name: "Trạng thái kết nối" })).toHaveText("Đã kết nối");
     const quota = await (await page.request.get("/api/settings")).json();
     const runId = s.runs[name].run_id;

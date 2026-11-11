@@ -33,7 +33,7 @@ test('[MOCK CONTRACT] single-source context can explicitly return to project dat
 
 test('[LOCAL] composer reflows an unchanged draft when the viewport narrows and widens',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.setViewportSize({width:1440,height:900});await page.goto('/');
+  await page.setViewportSize({width:1440,height:900});await page.goto('/#page=assistant');
   const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
   await expect(input).toBeEnabled();
   const draft='Bản nháp nghiệm thu: giữ nguyên mã và bằng chứng';
@@ -76,7 +76,7 @@ for(const width of [390,768,1366,1440,1920]){
       if(route.request().method()!=='GET')throw Error('Unexpected clarification write '+path);
       return route.fulfill({json:{items:[],total:0,has_more:false}});
     });
-    await page.goto('/');
+    await page.goto('/#page=assistant');
     const card=page.getByRole('region',{name:'Câu hỏi bổ sung',exact:true});
     await expect(card).toBeVisible();await expect(page.getByText(review.question,{exact:true})).toHaveCount(1);
     await expect(card.getByRole('checkbox')).toHaveCount(0);await expect(card.getByText(/Xác nhận và tiếp tục|QUERY_FIELD_INVALID|QUERY_DATA/)).toHaveCount(0);
@@ -107,7 +107,7 @@ for(const width of [390,768,1366,1440,1920]) {
   test(`Compact composer and user settings at ${width}px [LOCAL]`,async({page})=>{
     const errors:string[]=[]; page.on('pageerror',e=>errors.push(e.message));
     const writes:string[]=[];page.on('request',r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});
-    await page.setViewportSize({width,height:900}); await page.goto('/');
+    await page.setViewportSize({width,height:900}); await page.goto('/#page=assistant');
     const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
     await expect(input).toBeEnabled();
     const form=page.locator('.assistant-composer');
@@ -203,7 +203,7 @@ test('[MOCK CONTRACT] Settings uses user-facing availability, privacy and roles 
 });
 
 test('[LOCAL] Lost upload response survives refresh without a second bootstrap project',async({page})=>{
-  await page.goto('/');await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeEnabled();
+  await page.goto('/#page=assistant');await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeEnabled();
   const original=await(await page.request.get('/api/settings')).json();
   const file={name:`Synthetic-upload-recovery-${crypto.randomUUID()}.csv`,mimeType:'text/csv',buffer:Buffer.from('id,amount\n000702,12.75\n')};
   const keys:string[]=[];const receipts:{project_id:string;items:{id:string}[]}[]=[];
@@ -229,7 +229,7 @@ test('[LOCAL] Lost upload response survives refresh without a second bootstrap p
 
 test('[MOCK CONTRACT] IME composition does not submit a message',async({page})=>{
   let posts=0;await page.route('**/api/assistant/messages',route=>{posts++;return route.abort();});
-  await page.goto('/');const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
+  await page.goto('/#page=assistant');const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
   await expect(input).toBeEnabled();await input.fill('Đối soát dữ liệu');
   await input.dispatchEvent('keydown',{key:'Enter',code:'Enter',isComposing:true,bubbles:true});
   await expect(input).toHaveValue('Đối soát dữ liệu');expect(posts).toBe(0);
@@ -249,7 +249,7 @@ test('[MOCK CONTRACT] Long chart categories remain readable on mobile with exact
     if(path==='/api/agent/workflows/long-chart-workflow')return route.fulfill({json:{id:'long-chart-workflow',context,state:'COMPLETED',updated_at:'2026-11-02T00:00:00Z',detail:{intent:{intent:'CREATE_VISUALIZATION'},model_calls:0,steps:[],reviews:[],blocks:[{type:'chart',title:'Các nhóm chứng từ',unit:'VND',population:6,population_definition:'Toàn bộ nhóm tổng hợp',verification_status:'CANONICAL',completeness:'COMPLETE',points:labels.map((label,i)=>({label,value:i===0?'12.75':`${i+1}.00`})),source_refs:['synthetic-chart-ref']}]}}});
     return route.fulfill({json:{items:[],total:0,has_more:false}});
   });
-  await page.goto('/');const chart=page.locator('.agent-chart .result-chart');await expect(chart.locator('svg')).toBeVisible();
+  await page.goto('/#page=assistant');const chart=page.locator('.agent-chart .result-chart');await expect(chart.locator('svg')).toBeVisible();
   await mkdir('../runtime/ui-refinement',{recursive:true});await page.screenshot({path:'../runtime/ui-refinement/long-chart.png'});
   const text=await chart.locator('svg').textContent();
   for(const label of labels)expect(text!.replace(/\s/g,'')).toContain(label.replace(/\s/g,''));
@@ -274,7 +274,7 @@ test('[MOCK CONTRACT] identifiers resembling status enums remain exact source st
     if(path==='/api/agent/workflows/identifier-workflow')return route.fulfill({json:{id:'identifier-workflow',context,state:'COMPLETED',updated_at:'2026-11-03T00:00:00Z',detail:{steps:[],reviews:[],blocks:[{type:'table',result:{query:{project_id:context.project_id,source_kind:'CANONICAL',source_id:'canonical',sort:[],filters:[]},fields:['transaction_id','state','amount'],field_labels:{transaction_id:'Mã giao dịch',state:'Vùng',amount:'Số tiền'},rows:[{transaction_id:'EQUAL',state:'OPEN',amount:'12.75'},{transaction_id:'000702',state:'PAID',amount:'0.00'}],total_count:2,input_count:2,offset:0,limit:25,truncated:false,evidence_complete:true,verification_status:'CANONICAL',warnings:[],source_refs:[]}}]}}});
     return route.fulfill({json:{items:[],total:0,has_more:false}});
   });
-  await page.goto('/');const table=page.locator('.agent-table');
+  await page.goto('/#page=assistant');const table=page.locator('.agent-table');
   for(const exact of ['EQUAL','OPEN','PAID','000702','12.75','0.00'])await expect(table.getByRole('cell',{name:exact,exact:true})).toBeVisible();
   await expect(table).not.toContainText('Khớp chính xác');
 });
@@ -283,11 +283,11 @@ for(const width of [390,768,1366,1440,1920]){
   test(`Workspace navigation and history focus at ${width}px`,async({page})=>{
     const writes:string[]=[];page.on("request",r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});
     await page.setViewportSize({width,height:900});
-    await page.goto('/');
+    await page.goto('/#page=assistant');
     await expect(page.getByRole('heading',{name:'Bạn muốn xử lý dữ liệu gì?'})).toBeVisible();
     if(width<900)await page.getByRole('button',{name:'Mở điều hướng',exact:true}).click();
     const nav=page.locator('.sidebar');
-    await expect(nav.locator('nav').getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử','Cài đặt']);
+    await expect(nav.locator('nav').getByRole('button')).toHaveText(['Dashboard','AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử','Cài đặt']);
     if(width<900)await expect(nav.getByRole('button',{name:'Đóng điều hướng',exact:true})).toBeFocused();
     for(const name of ['Tổng quan','Ngoại lệ','Kết quả'])await expect(nav.getByRole('button',{name,exact:true})).toHaveCount(0);
     await mkdir('../runtime/assistant-experience',{recursive:true});
@@ -316,7 +316,7 @@ test('[MOCK CONTRACT] composer Enter submits once, Shift+Enter preserves a newli
     if(route.request().method()!=='GET')throw Error('Unexpected write '+path);
     return route.fulfill({json:{items:[],total:0,has_more:false,dataset_count:0}});
   });
-  await page.goto('/');
+  await page.goto('/#page=assistant');
   const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
   await expect(input).toBeEnabled();await input.fill('Tra cứu dữ liệu');await input.press('Shift+Enter');await input.press('x');
   await expect(input).toHaveValue('Tra cứu dữ liệu\nx');
@@ -328,7 +328,7 @@ test('[MOCK CONTRACT] composer Enter submits once, Shift+Enter preserves a newli
 test('Chat files drawer previews and downloads original bytes without leaving conversation',async({page})=>{
   test.setTimeout(90000);
   await page.addInitScript(()=>{if(!sessionStorage.getItem('experience-started')){localStorage.clear();sessionStorage.clear();sessionStorage.setItem('experience-started','1');}});
-  await page.goto('/');await expect(page.getByRole('heading',{name:'Bạn muốn xử lý dữ liệu gì?'})).toBeVisible();
+  await page.goto('/#page=assistant');await expect(page.getByRole('heading',{name:'Bạn muốn xử lý dữ liệu gì?'})).toBeVisible();
   const before=await(await page.request.get('/api/settings')).json();
   const raw=Buffer.from('voucher,amount\n000701,25.00\n000702,12.75\n');const name=`Synthetic-source-${crypto.randomUUID()}.csv`;
   await page.locator('.assistant-composer input[type=file]').setInputFiles({name,mimeType:'text/csv',buffer:raw});
@@ -366,7 +366,7 @@ async function deliveryFixture() {
 test('Persisted canonical and error previews stay inside the chat files drawer',async({page})=>{
   const s = await deliveryFixture();
   await page.addInitScript(id => localStorage.setItem("studio.project", id), s.project_id);
-  await page.goto('/');
+  await page.goto('/#page=assistant');
   const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await expect(input).toBeEnabled();await input.fill('Giữ nguyên bản nháp kiểm tra nguồn');
   const before=page.url();await page.getByRole('button',{name:'Tệp đã tải',exact:true}).click();
   const drawer=assistantPanel(page,'Tệp và dữ liệu');
@@ -393,7 +393,7 @@ test('[MOCK conversation, LIVE read] verified report opens in chat and preserves
   await page.addInitScript(s=>{localStorage.setItem('studio.project',s.project_id);localStorage.setItem(`studio.conversation.${s.project_id}`,s.conversation_id);},s);
   await page.route(url=>url.pathname===`/api/conversations/${s.conversation_id}`,route=>route.fulfill({json:{conversation:{id:s.conversation_id,context,title:'Synthetic result overlay'},items:[{id:'overlay-answer',job_id:'overlay-job',role:'assistant',text:'',context,workflow_id:'overlay-workflow',created_at:'2026-11-02T00:00:00Z'}],has_more:false}}));
   await page.route('**/api/agent/workflows/overlay-workflow',route=>route.fulfill({json:{id:'overlay-workflow',conversation_id:s.conversation_id,context,state:'COMPLETED',updated_at:'2026-11-02T00:00:00Z',detail:{intent:{intent:'SUMMARIZE_RESULTS'},model_calls:0,error_code:null,reviews:[],steps:[],blocks:[{type:'facts',result:{tool:'get_run_summary',run:{metric_snapshot:s.snapshot}}}]}}}));
-  await page.goto('/');const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await expect(input).toBeEnabled();await input.fill('Bản nháp ở màn hình kết quả');
+  await page.goto('/#page=assistant');const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});await expect(input).toBeEnabled();await input.fill('Bản nháp ở màn hình kết quả');
   const before=page.url();await expect(page.getByRole('region',{name:'Công việc của AI Assistant',exact:true})).toHaveCount(1);await page.getByRole('button',{name:'Mở kết quả và bằng chứng',exact:true}).click();
   const dialog=assistantPanel(page,'Chi tiết kết quả đã xác minh');
   await expect(dialog).toContainText('33.33');

@@ -28,6 +28,128 @@ const projects = (count: number): Project[] =>
     workspace_id: "synthetic",
   }));
 
+test("[MOCK CONTRACT] Dashboard starts without scope and keeps routes, project and chat draft", async ({ page }) => {
+  const [project] = projects(1);
+  await fixture(page, [project]);
+  await page.goto("/");
+  const dashboard = page.getByRole("heading", { name: "Chào mừng đến với Reconciliation Studio" });
+  const navigation = page.getByRole("navigation", { name: "Điều hướng chính" });
+  const projectSelect = page.locator("#project-select");
+  const brand = page.getByRole("button", { name: "Reconciliation Studio – về Dashboard" });
+  await expect(dashboard).toBeVisible();
+  await expect(navigation.getByRole("button").allTextContents()).resolves.toEqual(
+    ["Dashboard", "AI Assistant", "Dữ liệu", "Đối soát", "Báo cáo", "Lịch sử", "Cài đặt"],
+  );
+  await expect(navigation.getByRole("button", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
+  await expect(projectSelect).toHaveAttribute("data-project-id", "");
+  await expect(page.getByText("Chưa chọn dự án", { exact: true })).toBeVisible();
+  await expect(page.locator(".stat-card")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Tiếp tục công việc" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Tạo dự án", exact: true }).click();
+  await expect(page.getByRole("dialog").getByLabel("Tên dự án", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Tải dữ liệu", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Chọn dự án", exact: true });
+  await expect(picker).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Tải nguồn dữ liệu" })).toHaveCount(0);
+  await picker.getByRole("option").filter({ hasText: project.business_scope }).click();
+  await expect(projectSelect).toHaveAttribute("data-project-id", project.id);
+  await page.goBack();
+  await expect(projectSelect).toHaveAttribute("data-project-id", "");
+  await page.goForward();
+  await expect(projectSelect).toHaveAttribute("data-project-id", project.id);
+
+  await page.getByRole("button", { name: "Tải dữ liệu", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Tải nguồn dữ liệu" })).toContainText(project.name);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Hỏi AI Assistant", exact: true }).click();
+  const composer = page.getByRole("textbox", { name: "Câu hỏi cho AI Assistant", exact: true });
+  await composer.fill("Bản nháp còn nguyên khi về Dashboard");
+  await brand.press("Enter");
+  await expect(dashboard).toBeVisible();
+  await page.getByRole("button", { name: "Mở AI Assistant", exact: true }).click();
+  await expect(composer).toHaveValue("Bản nháp còn nguyên khi về Dashboard");
+
+  for (const [name, route] of [["Quản lý dữ liệu", "data"], ["Mở đối soát", "reconcile"], ["Xem báo cáo", "reports"]]) {
+    await navigation.getByRole("button", { name: "Dashboard", exact: true }).click();
+    await page.getByRole("button", { name, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`page=${route}&project=${project.id}`));
+    await expect(projectSelect).toHaveAttribute("data-project-id", project.id);
+  }
+  await brand.click();
+  await page.reload();
+  await expect(dashboard).toBeVisible();
+  await expect(projectSelect).toHaveAttribute("data-project-id", project.id);
+
+  await page.locator(".navigation-toggle").click();
+  await navigation.getByRole("button", { name: "Báo cáo", exact: true }).click();
+  const compactDashboard = navigation.getByRole("button", { name: "Dashboard", exact: true });
+  await expect(compactDashboard).toHaveAttribute("title", "Dashboard");
+  await compactDashboard.press("Enter");
+  await expect(dashboard).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const menu = page.getByRole("button", { name: "Mở điều hướng" });
+  await menu.click();
+  await navigation.getByRole("button", { name: "Dữ liệu", exact: true }).click();
+  await menu.click();
+  await brand.click();
+  await expect(dashboard).toBeVisible();
+  await expect(menu).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+});
+
+test("[MOCK CONTRACT] switching workspace on Dashboard restores only the new workspace scope", async ({ page }) => {
+  const workspaces = [
+    { id: "workspace-a", name: "Không gian A", role: "owner" },
+    { id: "workspace-b", name: "Không gian B", role: "owner" },
+  ];
+  const items = [
+    { ...projects(1)[0], id: "project-a", name: "Dự án riêng A", workspace_id: "workspace-a" },
+    { ...projects(1)[0], id: "project-b", name: "Dự án riêng B", workspace_id: "workspace-b" },
+  ];
+  let active = 0;
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("test.dashboard-bootstrapped")) return;
+    sessionStorage.setItem("test.dashboard-bootstrapped", "1");
+    localStorage.setItem("studio.project", "project-a");
+    localStorage.setItem("studio.project.workspace-b", "project-b");
+  });
+  await page.route("**/api/**", async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/workspaces/current" && route.request().method() === "POST") {
+      expect(route.request().postDataJSON()).toEqual({ id: "workspace-b" });
+      active = 1;
+      return route.fulfill({ json: workspaces[active] });
+    }
+    expect(route.request().method()).toBe("GET");
+    if (path === "/api/session") return route.fulfill({ json: { workspace_id: workspaces[active].id, role: "owner" } });
+    if (path === "/api/settings") return route.fulfill({ json: {
+      workspace_id: workspaces[active].id, workspace_name: workspaces[active].name, policy: {},
+    } });
+    if (path === "/api/workspaces") return route.fulfill({ json: workspaces });
+    if (path === `/api/projects/${items[active].id}`) return route.fulfill({ json: items[active] });
+    if (path === `/api/projects/${items[active].id}/summary`) return route.fulfill({ json: {
+      ...emptySummary, dataset_count: active ? 2 : 7, table_count: active ? 2 : 7,
+    } });
+    if (path.startsWith("/api/projects/")) return route.fulfill({ status: 404, json: {} });
+    return route.fulfill({ json: { items: [], total: 0 } });
+  });
+  await page.goto("/");
+  const overview = page.getByRole("region", { name: "Tổng quan công việc" });
+  const count = overview.locator(".stat-card").filter({ hasText: "Nguồn dữ liệu" }).locator("strong");
+  await expect(overview).toContainText("Dự án riêng A");
+  await expect(count).toHaveText("7");
+  await page.getByRole("button", { name: "Quản lý không gian làm việc" }).click();
+  const dialog = page.getByRole("dialog", { name: "Quản lý không gian làm việc" });
+  await dialog.getByRole("combobox", { name: "Không gian có quyền truy cập" }).selectOption("workspace-b");
+  await dialog.getByRole("button", { name: "Chuyển không gian" }).click();
+  await expect(page).toHaveURL(/page=home&project=project-b/);
+  await expect(overview).toContainText("Dự án riêng B");
+  await expect(overview).not.toContainText("Dự án riêng A");
+  await expect(count).toHaveText("2");
+});
+
 test("[MOCK CONTRACT] desktop shell holds navigation and account while long data scrolls", async ({ page }) => {
   await fixture(page, projects(1), "project-000");
   await page.route("**/api/datasets?**", route => route.fulfill({ json: {
@@ -130,7 +252,11 @@ test("[MOCK CONTRACT] desktop shell holds navigation and account while long data
   await expect(sidebar.getByText("Reconciliation Studio", { exact: true })).toBeVisible();
   await expect(toggle).toHaveCount(0);
   await page.keyboard.press("Shift+Tab");
+  await expect(sidebar.getByRole("button", { name: "Reconciliation Studio – về Dashboard" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
   await expect(sidebar.getByRole("button", { name: "Cài đặt", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(sidebar.getByRole("button", { name: "Reconciliation Studio – về Dashboard" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(sidebar.getByRole("button", { name: "Đóng điều hướng" })).toBeFocused();
   await page.keyboard.press("Escape");
@@ -675,7 +801,7 @@ for (const count of [5, 30, 80]) {
   test(`recent datasets stay newest after list pagination: ${count} sources`, async ({
     page,
   }) => {
-    await fixture(page, projects(1));
+    await fixture(page, projects(1), "project-000");
     const sources = Array.from({ length: count }, (_, i) => ({
       id: `recent-${i}`,
       project_id: "project-000",
@@ -700,6 +826,7 @@ for (const count of [5, 30, 80]) {
     await page.route("**/api/projects/project-000/summary", (route) =>
       route.fulfill({
         json: {
+          ...emptySummary,
           dataset_count: count,
           table_count: count,
           mapping_review_count: count,
@@ -990,7 +1117,9 @@ test("recent data reports loading/error/empty and discards delayed results after
   page,
 }) => {
   const items = projects(2);
-  await fixture(page, items);
+  await fixture(page, items, items[0].id);
+  await page.route("**/api/projects/*/summary", route =>
+    route.fulfill({ json: { ...emptySummary, dataset_count: 1, table_count: 1 } }));
   let release: () => void = () => {};
   const pending = new Promise<void>((resolve) => {
     release = resolve;
@@ -1206,7 +1335,7 @@ const emptySummary = {
 test("project polling runs only while jobs are active and manual refresh remains available", async ({
   page,
 }) => {
-  await fixture(page, projects(1));
+  await fixture(page, projects(1), "project-000");
   let requests = 0;
   let active = false;
   await page.route("**/api/projects/*/summary", (route) => {
@@ -1256,7 +1385,7 @@ test("project polling runs only while jobs are active and manual refresh remains
 test("summary API error is visible with retry, not empty data or zero statistics", async ({
   page,
 }) => {
-  await fixture(page, projects(1));
+  await fixture(page, projects(1), "project-000");
   let fail = true;
   await page.route("**/api/projects/*/summary", (route) =>
     fail
@@ -1286,7 +1415,7 @@ test("summary API error is visible with retry, not empty data or zero statistics
 test("viewer role is truthful and write actions are disabled while navigation remains available", async ({
   page,
 }) => {
-  await fixture(page, projects(1));
+  await fixture(page, projects(1), "project-000");
   await page.route("**/api/session", (route) =>
     route.fulfill({ json: { role: "viewer", workspace_id: "synthetic" } }),
   );
@@ -1447,6 +1576,8 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
       });
       await expect(navigation.getByRole("button", { name: "Đóng điều hướng", exact: true })).toBeFocused();
       await page.keyboard.press("Shift+Tab");
+      await expect(navigation.getByRole("button", { name: "Reconciliation Studio – về Dashboard" })).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
       await expect(
         navigation.getByRole("button", { name: "Cài đặt", exact: true }),
       ).toBeFocused();
@@ -1471,7 +1602,7 @@ test("dashboard uses server totals, distinguishes PARTIAL and opens the exact of
   page,
 }) => {
   const items = projects(1);
-  await fixture(page, items);
+  await fixture(page, items, items[0].id);
   const source = {
     id: "old-source",
     project_id: items[0].id,
@@ -1591,7 +1722,7 @@ test("project switch discards delayed old summary/data/error", async ({
   page,
 }) => {
   const items = projects(2);
-  await fixture(page, items);
+  await fixture(page, items, items[0].id);
   let release!: () => void;
   const delay = new Promise<void>((resolve) => {
     release = resolve;
@@ -1638,7 +1769,7 @@ for (const kind of ["REVIEW_MAPPING", "NORMALIZE"] as const) {
     page,
   }) => {
     const items = projects(1);
-    await fixture(page, items);
+    await fixture(page, items, items[0].id);
     await page.route("**/api/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith("/summary"))
@@ -1718,7 +1849,7 @@ test("[MOCK CONTRACT] local proof recovery preserves draft and reloads project a
   let documents = 0;
   page.on("request", request => { if(request.isNavigationRequest() && request.frame()===page.mainFrame()) documents++; });
   await page.route("**/api/session", route => verified ? route.fallback() : route.fulfill({status:403,json:{code:"LOCAL_DEMO_NOT_VERIFIED",message_vi:"technical operator detail"}}));
-  await page.goto("/");
+  await page.goto("/#page=assistant");
   const status = page.getByRole("status", {name:"Trạng thái kết nối"});
   await expect(status).toHaveText("Chưa kết nối");
   await expect(page.getByText("Ứng dụng cần xác minh lại môi trường local sau khi khởi động. Dữ liệu của bạn vẫn được giữ nguyên.")).toBeVisible();
@@ -1754,7 +1885,7 @@ for (const failure of ["network", "timeout", "settings"] as const) {
       if(failure==="timeout") { await new Promise(resolve=>setTimeout(resolve,1600)); return route.fulfill({json:{workspace_id:"synthetic",role:"owner"}}).catch(()=>{}); }
       return route.fulfill({status:503,body:"unavailable"});
     });
-    await page.goto("/");
+    await page.goto("/#page=assistant");
     const status=page.getByRole("status",{name:"Trạng thái kết nối"});
     await expect(status).toHaveText("Chưa kết nối");
     await expect(page.getByText("Không thể kết nối tới dịch vụ xử lý dữ liệu. Hãy kiểm tra trạng thái ứng dụng.")).toBeVisible();

@@ -49,7 +49,7 @@ async function chatFixture(page:Page,{long=true,failed=false,withModels=false}={
     if(route.request().method()!=="GET")throw Error(`Unexpected mutation ${path}`);
     return route.fulfill({json:{items:[],total:0}});
   });
-  await page.goto("/");
+  await page.goto("/#page=assistant");
   await expect(page.getByLabel("Câu hỏi cho AI Assistant",{exact:true})).toBeEnabled();
   return {
     modelChoices,

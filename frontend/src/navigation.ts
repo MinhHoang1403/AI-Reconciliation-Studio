@@ -28,12 +28,14 @@ const pages: Page[] = [
 /** URLs contain identifiers only. The API still authorizes every restored resource. */
 export function readLocation(): Location {
   const query = new URLSearchParams(window.location.hash.slice(1));
-  const page = pages.find((p) => p === query.get("page")) || "assistant";
+  const requestedPage = pages.find((p) => p === query.get("page")) || "home";
   const id = (key: string) => {
     const value = query.get(key) || "";
     return /^[a-zA-Z0-9_-]{1,64}$/.test(value) ? value : "";
   };
   const projectId = id("project");
+  // Older Home URLs could include an exact run selected in the embedded results.
+  const page = requestedPage === "home" && projectId && id("run_id") ? "reports" : requestedPage;
   const context: AssistantContext = { project_id: projectId };
   for (const key of ["run_id", "dataset_id", "group_id", "case_id"] as const)
     if (id(key)) context[key] = id(key);
@@ -49,8 +51,7 @@ export function readLocation(): Location {
 }
 
 export function writeLocation(location: Location, replace = false) {
-  const query = new URLSearchParams({ page: location.page });
-  if (location.projectId) query.set("project", location.projectId);
+  const query = new URLSearchParams({ page: location.page, project: location.projectId });
   if (location.page === "assistant") query.set("from", location.origin);
   if (location.page === "assistant" && location.conversationId)
     query.set("conversation", location.conversationId);

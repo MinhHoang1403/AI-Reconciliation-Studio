@@ -18,6 +18,7 @@ import {
   FileSpreadsheet,
   FolderOpen,
   Layers3,
+  LayoutDashboard,
   History,
   MoreHorizontal,
   Menu,
@@ -294,7 +295,7 @@ export function App() {
           "a[href], button:not(:disabled)",
         ) || [],
       );
-    items()[0]?.focus();
+    navigation.current?.querySelector<HTMLElement>(".sidebar-close")?.focus();
     function keydown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -332,6 +333,12 @@ export function App() {
   function openUpload() {
     if (!canEdit) {
       setError("Bạn chỉ có quyền xem. Cần quyền chỉnh sửa để tải dữ liệu.");
+      return;
+    }
+    if (!projectId || projectAccessDenied) {
+      const selector = document.getElementById("project-select");
+      selector?.focus();
+      selector?.click();
       return;
     }
     modalFocus.current = document.activeElement as HTMLElement | null;
@@ -375,14 +382,14 @@ export function App() {
         if (!mounted) return;
         setApiWorkspace(actor.workspace_id);
         const s = await api<WorkspaceSettings>("/settings", { signal });
-        const savedId =
-          locationRef.current.projectId ||
-          localStorage.getItem("studio.project");
+        const explicitScope = new URLSearchParams(window.location.hash.slice(1)).has("project");
+        const savedId = locationRef.current.projectId ||
+          (!explicitScope ? localStorage.getItem("studio.project") : null);
         let restored: Project | null = null;
         try {
           restored = savedId
             ? await api<Project>(`/projects/${encodeURIComponent(savedId)}`, { signal })
-            : locationRef.current.page === "assistant" ? null : (
+            : explicitScope || ["home", "assistant"].includes(locationRef.current.page) ? null : (
                 await api<{ items: Project[] }>(
                   "/projects?include_test=false&limit=1", { signal },
                 )
@@ -411,6 +418,7 @@ export function App() {
               ? { ...(initial.context || {}), project_id: restored.id }
               : null,
         };
+        locationRef.current = next;
         setLocation(next);
         writeLocation(next, true);
         if (initial.context?.run_id && restored)
@@ -558,7 +566,7 @@ export function App() {
     };
   }, [ready, refreshProject]);
   useEffect(() => {
-    if (!ready || !projectId || !summary || page !== "home") return;
+    if (!ready || !projectId || !summary?.dataset_count || page !== "home") return;
     const controller = new AbortController();
     setRecent({ projectId, items: [], loading: true, error: "" });
     void api<{ items: Dataset[] }>(
@@ -847,6 +855,10 @@ export function App() {
         }
         if (controller.signal.aborted || current !== navigationSequence.current)
           return;
+        if (!next.projectId && (next.page === "home" ||
+          new URLSearchParams(window.location.hash.slice(1)).has("project"))) {
+          chooseProject(null, false);
+        }
         if (next.context?.run_id)
           setRunNavigation({
             id: next.context.run_id,
@@ -897,7 +909,8 @@ export function App() {
       return;
     }
     if (action.kind === "WAIT") {
-      await changed();
+      setOpenActivityProject(projectId);
+      setPage("data");
       return;
     }
     if (action.kind === "RECONCILE") {
@@ -1115,10 +1128,12 @@ export function App() {
         aria-label={sidebar ? "Điều hướng" : undefined}
       >
         <div className="sidebar-heading">
-          <div className="brand" title="Reconciliation Studio">
+          <button type="button" className="brand" title="Reconciliation Studio"
+            aria-label="Reconciliation Studio – về Dashboard"
+            onClick={() => { if (page !== "home") setPage("home"); setSidebar(false); }}>
             <span className="brand-symbol"><Layers3 size={17} aria-hidden="true" /></span>
             <span className="brand-label">Reconciliation Studio</span>
-          </div>
+          </button>
           {sidebar ? <button className="icon-button sidebar-close" aria-label="Đóng điều hướng" onClick={() => setSidebar(false)}>
             <X size={20} aria-hidden="true" />
           </button> : <button
@@ -1133,6 +1148,13 @@ export function App() {
           </button>}
         </div>
         <nav aria-label="Điều hướng chính">
+          <button type="button" aria-label="Dashboard" title="Dashboard"
+            className={page === "home" ? "active" : ""}
+            aria-current={page === "home" ? "page" : undefined}
+            onClick={() => { if (page !== "home") setPage("home"); setSidebar(false); }}>
+            <LayoutDashboard size={18} aria-hidden="true" />
+            <span>Dashboard</span>
+          </button>
           <button
             aria-label="AI Assistant"
             title="AI Assistant"
@@ -1222,6 +1244,7 @@ export function App() {
         </button>
         <div className="masthead-scope" role="group" aria-label="Phạm vi làm việc">
           {ready && workspace?.workspace_id && <WorkspaceManager key={workspace.workspace_id}
+            returnToDashboard={page === "home"}
             current={{ id: workspace.workspace_id, name: workspace.workspace_name, role: actorRole }}
             onRename={name => setWorkspace(current => current ? { ...current, workspace_name: name } : current)} />}
           {ready && <ProjectSelector
@@ -1247,12 +1270,10 @@ export function App() {
           className={page === "assistant" ? "assistant-main" : ""}
           inert={restoringLocation || undefined}
         >
-          {page !== "assistant" && (!["reconcile", "exceptions", "reports"].includes(page) || !ready || !projectId || projectAccessDenied) && <div className="page-heading">
+          {page !== "assistant" && page !== "home" && (!["reconcile", "exceptions", "reports"].includes(page) || !ready || !projectId || projectAccessDenied) && <div className="page-heading">
             <div>
               <h1>
-                {page === "home"
-                  ? "Nền tảng dữ liệu của bạn"
-                  : page === "data"
+                {page === "data"
                     ? "Quản lý dữ liệu"
                     : page === "reconcile"
                       ? "Đối soát có kiểm chứng"
@@ -1264,12 +1285,12 @@ export function App() {
               </h1>
             </div>
             <div className="heading-actions">
-              {(page === "data" || page === "home") && ready && projectId && <button
+              {page === "data" && ready && projectId && <button
                 className="icon-button" aria-label="Cập nhật dự án" title="Cập nhật dự án"
                 disabled={busy || projectLoading} onClick={() => void run(changed)}>
                 <RefreshCw size={17} className={projectLoading ? "spin" : ""} />
               </button>}
-              {(page === "home" || page === "data") && (
+              {page === "data" && (
                 <button
                   className={`button ${page === "data" && datasetId && tab !== "explore" ? "secondary" : "primary"}`}
                   disabled={!ready || busy || !canEdit}
@@ -1286,7 +1307,7 @@ export function App() {
               <div className="notice-content">
                 <div>
                   <p>{bootstrapError.message}</p>
-                  {bootstrapError.code === "LOCAL_DEMO_NOT_VERIFIED" && (
+                  {page !== "home" && bootstrapError.code === "LOCAL_DEMO_NOT_VERIFIED" && (
                     <details>
                       <summary>Hướng dẫn cho người vận hành local</summary>
                       <p>Chạy <code>tools/verify-local.ps1</code> nếu các dịch vụ đang chạy. Sau đó thử kết nối lại.</p>
@@ -1316,7 +1337,7 @@ export function App() {
           )}
           {success && <Notice tone="success">{success.message}</Notice>}
           {!ready && !bootstrapError && <Spinner />}
-          {ready && !projectId && !["settings","assistant"].includes(page) && (
+          {ready && !projectId && !["home","settings","assistant"].includes(page) && (
             <Notice>
               Chọn hoặc tạo dự án để xem dữ liệu. Dự án chưa được chọn; không
               hiển thị số liệu của dự án khác.
@@ -1342,7 +1363,6 @@ export function App() {
             projectId &&
             !projectAccessDenied &&
             [
-              "home",
               "reconcile",
               "exceptions",
               "reports",
@@ -1489,29 +1509,29 @@ export function App() {
                 </Suspense>
               </section>
             )}
-          {ready && page === "home" && projectId && summary && (
+          {page === "home" && (
             <DataOverview
-              summary={summary}
+              project={projectAccessDenied ? null : project}
+              summary={projectAccessDenied ? null : summary}
               datasets={recent.projectId === projectId ? recent.items : []}
               recentLoading={recent.projectId !== projectId || recent.loading}
               recentError={recent.projectId === projectId ? recent.error : ""}
               onRecentRetry={() => setRecentRetry((value) => value + 1)}
+              ready={ready}
               busy={busy}
+              canEdit={canEdit}
+              projectLoading={projectLoading}
+              onUpload={openUpload}
+              onCreate={openNewProject}
+              onRefresh={() => void run(changed)}
               onAction={(action) => void run(() => openPreparation(action))}
-              onResults={(target) => {
-                if (summary.latest_verified_run_id)
-                  localStorage.setItem(
-                    `studio.run.${projectId}`,
-                    summary.latest_verified_run_id,
-                  );
-                if (summary.latest_verified_run_id)
-                  setRunNavigation((old) => ({
-                    id: summary.latest_verified_run_id!,
-                    request: (old?.request || 0) + 1,
-                  }));
-                setPage(target);
+              onResults={(id) => {
+                setRunNavigation({ id, request: Date.now() });
+                navigate("reports", { project_id: projectId, run_id: id });
               }}
-              onData={() => setPage("data")}
+              onNavigate={(target) => target === "assistant"
+                ? openAssistant({ project_id: projectId })
+                : setPage(target)}
               chooseDataset={chooseDataset}
             />
           )}

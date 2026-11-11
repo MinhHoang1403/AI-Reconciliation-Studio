@@ -14,9 +14,10 @@ const roles: Record<string, string> = {
 
 type WorkspaceChoice = { id: string; name: string; role: string };
 
-export function WorkspaceManager({ current, onRename }: {
+export function WorkspaceManager({ current, onRename, returnToDashboard }: {
   current: WorkspaceChoice;
   onRename: (name: string) => void;
+  returnToDashboard: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [choices, setChoices] = useState<WorkspaceChoice[] | null>(null);
@@ -62,7 +63,7 @@ export function WorkspaceManager({ current, onRename }: {
         const nextProject = localStorage.getItem(`studio.project.${selected}`);
         if (nextProject) localStorage.setItem("studio.project", nextProject);
         else localStorage.removeItem("studio.project");
-        window.history.replaceState(null, "", "#page=settings");
+        window.history.replaceState(null, "", returnToDashboard ? "#page=home" : "#page=settings");
         window.location.reload();
         return;
       }

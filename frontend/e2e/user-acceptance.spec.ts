@@ -16,7 +16,7 @@ for(const scenario of manifest.datasets){
   test(`[UAT LOCAL manual fallback] ${scenario.name}: Chat uploads to independent oracle and export`,async({page})=>{
     test.setTimeout(300000);
     const start=Date.now(), errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
-    await page.goto('/');await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeEnabled();
+    await page.goto('/#page=assistant');await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeEnabled();
     const initial=await(await page.request.get('/api/settings')).json();
     await page.locator('#project-select').click();await page.getByRole('button',{name:'Tạo dự án mới',exact:true}).click();
     const create=page.getByRole('dialog',{name:'Tạo dự án',exact:true});
@@ -166,7 +166,7 @@ for(const scenario of manifest.datasets){
 }
 
 test('[UAT LOCAL] Oversized and corrupt uploads are rejected before processing',async({page})=>{
-  await page.goto('/');await expect(page.getByLabel('Câu hỏi cho AI Assistant',{exact:true})).toBeEnabled();
+  await page.goto('/#page=assistant');await expect(page.getByLabel('Câu hỏi cho AI Assistant',{exact:true})).toBeEnabled();
   const writes:string[]=[];page.on('request',r=>{if(r.method()==='POST')writes.push(new URL(r.url()).pathname);});
   await page.locator('.assistant-composer input[type=file]').setInputFiles(`${data}/Tệp quá giới hạn.csv`);
   await expect(page.getByRole('alert')).toContainText(/20|giới hạn|dung lượng/i);

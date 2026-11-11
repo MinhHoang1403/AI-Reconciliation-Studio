@@ -392,7 +392,7 @@ for (const size of [
     await openApp(page);
     await selectProject(page, projectId);
     await expect(
-      page.getByRole("heading", { name: "Nền tảng dữ liệu của bạn" }),
+      page.getByRole("heading", { name: "Chào mừng đến với Reconciliation Studio" }),
     ).toBeVisible();
     // Shell heading renders before summary/recent sources. Inspect loaded data,
     // not a transient loading frame, at every viewport.

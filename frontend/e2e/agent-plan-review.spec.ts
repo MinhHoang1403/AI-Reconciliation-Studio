@@ -22,7 +22,7 @@ test('[MOCK CONTRACT] sparse Planner facts remain editable and submit valid revi
     if(path.endsWith('/canonical-catalogue'))return route.fulfill({json:{items:['canonical-a','canonical-b'].map((id,index)=>({canonical:{id,quality_status:index?'READY':'PARTIAL',invalid_count:index?0:3},name:index?'Đối ứng tổng hợp':'Tham chiếu tổng hợp',schema_definition:{grain:'transaction',entity_kind:'event',fields}}))}});
     return route.fulfill({json:{items:[],total:0}});
   });
-  await page.goto('/');const card=page.getByRole('region',{name:'Quyết định cần xác nhận',exact:true});await card.getByText('Kiểm tra phạm vi và chỉnh quy tắc',{exact:true}).click();
+  await page.goto('/#page=assistant');const card=page.getByRole('region',{name:'Quyết định cần xác nhận',exact:true});await card.getByText('Kiểm tra phạm vi và chỉnh quy tắc',{exact:true}).click();
   await card.getByLabel('Bắt đầu kỳ',{exact:true}).fill('2026-10-01');await card.getByLabel('Kết thúc kỳ (không bao gồm)',{exact:true}).fill('2026-11-01');await card.getByLabel('Quy tắc có hiệu lực từ',{exact:true}).fill('2026-10-01');await card.getByLabel('Múi giờ',{exact:true}).fill('UTC');
   const effectiveEnd=card.getByLabel('Quy tắc có hiệu lực đến (không bao gồm)',{exact:true});
   await effectiveEnd.fill('2026-12-01');

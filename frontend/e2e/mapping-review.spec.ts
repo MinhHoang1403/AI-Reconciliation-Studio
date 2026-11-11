@@ -36,7 +36,7 @@ test('[MOCK CONTRACT] mapping review confirms timezone once and cannot approve a
     if(route.request().method()!=='GET')throw Error('Unexpected write '+path);
     return route.fulfill({json:{items:[],has_more:false,total:0}});
   });
-  await page.goto('/');const approve=page.getByRole('button',{name:'Duyệt cách ghép cột và chuẩn hóa',exact:true});
+  await page.goto('/#page=assistant');const approve=page.getByRole('button',{name:'Duyệt cách ghép cột và chuẩn hóa',exact:true});
   await expect(page.getByText('2 cột · 2418 dòng.',{exact:false})).toBeVisible();await expect(approve).toBeDisabled();
   await page.getByRole('region',{name:'Quyết định cần xác nhận',exact:true}).screenshot({path:'../runtime/mapping-audit/review-ui-mock.png'});
   await expect(page.getByLabel('Tên trường',{exact:true}).first()).toBeHidden();await expect(page.getByLabel('Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.',{exact:true})).toHaveCount(0);

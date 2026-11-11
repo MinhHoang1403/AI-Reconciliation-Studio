@@ -16,3 +16,5 @@ Ngày 09/11/2026 (giờ Việt Nam), chủ dự án phê duyệt **phương án 
 | D10 · Bằng chứng và xuất · OWNER_APPROVED | Giữ hai scope được hỗ trợ, cảnh báo bằng chứng chưa đầy đủ, từ chối scope chưa có. | Mở rộng thêm export toàn bộ tập lọc/row selection và phân trang mọi thành viên evidence. | A ở đợt UX. B chỉ sau yêu cầu riêng, API có phạm vi/quyền/snapshot và oracle read-back. | Người dùng đọc đúng phạm vi trước khi xuất và nhận biết evidence bị giới hạn; không ngụ ý toàn tập khi chỉ xem trang ghim. |
 
 Cả mười quyết định đã chốt về hướng. Các phép đo kỹ thuật thực hiện trên ứng viên thật. Hiệu quả sử dụng và thử nghiệm thiết bị thực thuộc UAT của chủ dự án. Bất biến tài chính, quyền duyệt, workspace scope, provider policy và raw lineage thuộc hợp đồng dự án.
+
+Chỉ thị Dashboard ngày 11/11/2026 cập nhật phần trang mặc định và thứ tự menu của D01. Dashboard dùng route `home`, đứng trước AI Assistant và mở từ nhận diện Studio. Liên kết trực tiếp đến Assistant, Đối soát, Báo cáo và Ngoại lệ tiếp tục mở theo phạm vi đã lưu trong liên kết.

@@ -241,7 +241,7 @@ Nếu provider không hỗ trợ Structured Outputs theo contract thật, hỗ t
 
 ### 9.1. Trải nghiệm thống nhất
 
-AI Assistant là trang mặc định. Thanh điều hướng có sáu mục **AI Assistant, Dữ liệu, Đối soát, Báo cáo, Lịch sử, Cài đặt**. Ngoại lệ đi từ Kết quả Đối soát và giữ deep link hiện hành. Giữ đường thủ công khi AI không khả dụng, sidebar thu gọn trên desktop và drawer ở màn hình hẹp. Giữ giao diện sáng, xanh dương chủ đạo (`#2563EB`), nền trung tính sáng (`#F8FAFC`); không sao chép branding, assets hoặc bố cục theo pixel.
+Dashboard là trang mặc định ở địa chỉ gốc. Thanh điều hướng có **Dashboard, AI Assistant, Dữ liệu, Đối soát, Báo cáo**, sau đó là nhóm Quản lý với **Lịch sử, Cài đặt**. Ngoại lệ đi từ Kết quả Đối soát và giữ deep link hiện hành. Giữ đường thủ công khi AI không khả dụng, sidebar thu gọn trên desktop và drawer ở màn hình hẹp. Giữ giao diện sáng, xanh dương chủ đạo (`#2563EB`), nền trung tính sáng (`#F8FAFC`); không sao chép branding, assets hoặc bố cục theo pixel.
 
 - Dashboard trực quan, tối đa một hành động chính mỗi màn hình; AI-assisted workflow thật, người dùng không cần biết code. Advanced settings chỉ mở khi cần, không bắt sửa JSON/config kỹ thuật ngay từ đầu.
 - Bảng dễ tìm/lọc/kiểm tra, pagination, evidence drawer và truy ngược nguồn. Có loading/error/empty/success, progress và disabled thực; không file/run thì hướng dẫn bước tiếp, không hiện KPI 0% giả.

@@ -5,7 +5,7 @@ import {mkdir,readFile,writeFile} from "node:fs/promises";
 test("Agent landing without a project does not create metadata or call cloud",async({page})=>{
   await page.addInitScript(()=>{if(!sessionStorage.getItem("agent-test-initialized")){localStorage.clear();sessionStorage.clear();sessionStorage.setItem("agent-test-initialized","1");}});
   const mutations:string[]=[];page.on("request",r=>{if(r.method()==="POST"||r.method()==="PATCH")mutations.push(new URL(r.url()).pathname);});
-  await page.goto("/");
+  await page.goto("/#page=assistant");
   await expect(page.getByRole("heading",{name:"Bạn muốn xử lý dữ liệu gì?"})).toBeVisible();
   await expect(page.getByText("Chọn hoặc tạo dự án để xem dữ liệu.",{exact:false})).toHaveCount(0);
   await expect(page.getByRole("button",{name:"Đính kèm CSV hoặc Excel"})).toBeEnabled();
@@ -28,7 +28,7 @@ test("Agent landing without a project does not create metadata or call cloud",as
 test("Agent inline upload bootstraps once, profiles real files and reopens without cloud",async({page})=>{
   test.setTimeout(90000);
   await page.addInitScript(()=>{if(!sessionStorage.getItem("agent-test-initialized")){localStorage.clear();sessionStorage.clear();sessionStorage.setItem("agent-test-initialized","1");}});
-  await page.goto("/");
+  await page.goto("/#page=assistant");
   await expect(page.getByRole("heading",{name:"Bạn muốn xử lý dữ liệu gì?"})).toBeVisible();
   const before=await(await page.request.get("/api/settings")).json();
   const marker=crypto.randomUUID();
@@ -82,7 +82,7 @@ for(const width of [390,768,1366,1440,1920]){
   test(`Agent empty composer responsive ${width}px and keyboard`,async({page})=>{
     await page.setViewportSize({width,height:900});
     await page.addInitScript(()=>{localStorage.clear();sessionStorage.clear();});
-    await page.goto("/");
+    await page.goto("/#page=assistant");
     await expect(page.getByLabel("Câu hỏi cho AI Assistant",{exact:true})).toBeVisible();
     await page.getByLabel("Câu hỏi cho AI Assistant",{exact:true}).focus();
     await expect(page.getByLabel("Câu hỏi cho AI Assistant",{exact:true})).toBeFocused();
@@ -97,7 +97,7 @@ test(`[${process.env.STUDIO_LIVE_PROVIDER==='GEMINI'?'LIVE GEMINI':'LOCAL ORACLE
   const live=process.env.STUDIO_LIVE_PROVIDER==='GEMINI';
   if(live)test.setTimeout(120000);
   await page.addInitScript(()=>{localStorage.clear();sessionStorage.clear();});
-  await page.goto('/');
+  await page.goto('/#page=assistant');
   await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeEnabled();
   const before=await(await page.request.get('/api/settings')).json();
   const raw='ID,Date\n0001,2026-10-01\n0002,2026-02-29\n';
@@ -176,7 +176,7 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[${comp
   await page.exposeFunction('recordJourneyClick',()=>{clicks++;});
   await page.addInitScript(()=>document.addEventListener('click',event=>{if(event.isTrusted)void (window as unknown as {recordJourneyClick:()=>Promise<void>}).recordJourneyClick();},true));
   page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/');
+  await page.goto('/#page=assistant');
   await expect(page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true})).toBeEnabled();
   const before=await(await page.request.get('/api/settings')).json();
   await page.locator('#project-select').click();
