@@ -1,9 +1,10 @@
 import { ChevronDown, Files, FolderOpen, Layers3, PanelTop, ShieldCheck, UserRound } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { api } from "./api";
 import { Modal, Notice, Spinner } from "./components";
 import type { WorkspaceSettings as Settings } from "./types";
 import { PermanentDeletion } from "./PermanentDeletion";
+import { DropdownSelect } from "./Dropdown";
 
 const roles: Record<string, string> = {
   owner: "Chủ không gian",
@@ -26,6 +27,7 @@ export function WorkspaceManager({ current, onRename }: {
   const [status, setStatus] = useState("");
   const [pending, setPending] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
+  const anchorName = `--workspace-${useId()}`;
   const submitting = useRef(false);
   const createRequest = useRef<{ name: string; key: string } | null>(null);
 
@@ -39,6 +41,12 @@ export function WorkspaceManager({ current, onRename }: {
       });
     return () => controller.abort();
   }, [open]);
+
+  useEffect(() => {
+    if (!status) return;
+    const timer = window.setTimeout(() => setStatus(""), 5000);
+    return () => window.clearTimeout(timer);
+  }, [status]);
 
   async function save() {
     if (submitting.current) return;
@@ -84,7 +92,7 @@ export function WorkspaceManager({ current, onRename }: {
   }
 
   return <>
-    <button className="workspace-picker" aria-label="Quản lý không gian làm việc" aria-description={current.name} aria-haspopup="dialog"
+    <button className="workspace-picker" style={{ anchorName }} aria-label="Quản lý không gian làm việc" aria-description={current.name} aria-haspopup="dialog"
       aria-expanded={open} title={current.name} ref={trigger} onClick={() => {
       setChoices(null);
       setSelected(current.id);
@@ -93,7 +101,7 @@ export function WorkspaceManager({ current, onRename }: {
       setAction(null);
       setOpen(true);
     }}><Layers3 size={15} aria-hidden="true" /><strong>{current.name}</strong><ChevronDown size={14} aria-hidden="true" /></button>
-    <Modal title="Quản lý không gian làm việc" open={open} returnFocus={trigger}
+    <Modal title="Quản lý không gian làm việc" open={open} returnFocus={trigger} anchorName={anchorName}
       onOpenChange={next => { if (!pending) setOpen(next); }}>
       {error && <Notice tone="error">{error}</Notice>}
       {status && <Notice tone="success">{status}</Notice>}
@@ -101,12 +109,12 @@ export function WorkspaceManager({ current, onRename }: {
       {choices && <form onSubmit={event => { event.preventDefault(); void save(); }}>
         {action ? <label>Tên không gian làm việc
           <input value={name} maxLength={200} required disabled={pending} onChange={event => setName(event.target.value)} />
-        </label> : <label>Không gian có quyền truy cập
-          <select value={selected} disabled={pending} onChange={event => setSelected(event.target.value)}>
-            {choices.map(row => <option key={row.id} value={row.id}>{row.name} · {roles[row.role] ?? row.role}</option>)}
-          </select>
+        </label> : <div className="workspace-choice">
+          <DropdownSelect label="Không gian có quyền truy cập" searchLabel="Tìm không gian làm việc"
+            value={selected} disabled={pending} onChange={setSelected}
+            options={choices.map(row => ({ value: row.id, label: `${row.name} · ${roles[row.role] ?? row.role}` }))} />
           <span className="workspace-selected-name">{choices.find(row => row.id === selected)?.name}</span>
-        </label>}
+        </div>}
         <div className="modal-actions">
           {action ? <button type="button" className="button secondary" disabled={pending} onClick={() => setAction(null)}>Hủy</button>
             : current.role === "owner" && <>

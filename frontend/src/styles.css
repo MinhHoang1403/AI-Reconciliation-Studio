@@ -20,8 +20,9 @@
   --surface-sidebar: #f2f6fb;
   --control-border: #e5e7eb;
   --control-radius: 8px;
+  --dropdown-gap: 4px;
+  --dropdown-shadow: 0 4px 16px #0f172a12;
   --composer-radius: 30px;
-  --chat-border: #d1d5db;
   --shadow-composer: 0 3px 16px #0000000a;
   --overlay-radius: 14px;
   --shadow-surface: 0 2px 12px #0f172a05;
@@ -449,16 +450,10 @@ main {
 .project-trigger small { color: var(--text-muted); margin-top: 3px; }
 .project-trigger > svg { flex-shrink: 0; color: #2563eb; }
 .project-search-label { display: block; margin-bottom: 8px; font-weight: 600; }
-.project-options { max-height: min(42vh, 340px); overflow-y: auto; margin-top: 12px; }
-.project-option { padding: 10px 12px; border-radius: 8px; cursor: pointer; overflow-wrap: anywhere; }
-.project-option strong, .project-option span, .project-option small { display: block; }
-.project-option span { margin-top: 3px; font-size: 12px; color: #475569; }
+.dropdown-dialog .project-options { max-block-size: min(42dvh, 340px); }
+.dropdown-dialog .project-options:empty { min-block-size: 0; margin-block-start: 0; }
+.project-option small { display: block; }
 .project-option small { margin-top: 3px; font-size: 10px; color: var(--text-muted); }
-.project-option.highlighted { background: var(--accent-soft); }
-.project-option.highlighted strong { color: var(--accent-hover); }
-:where(:root:has(.app-shell[data-focus-mode="keyboard"]))
-  .project-option.highlighted strong { text-decoration: underline; text-underline-offset: 3px; }
-.project-option.highlighted small { color: #475569; }
 .project-test-filter { margin-top: 12px; }
 .project-classification { border-top: 1px solid var(--surface-border); margin-top: 12px; padding-top: 12px; }
 .project-classification p { margin: 8px 0; overflow-wrap: anywhere; }
@@ -778,13 +773,11 @@ main {
 }
 .search-input > svg {
   position: absolute;
-  left: 11px;
-  top: 10px;
-  color: #94a3b8;
-}
-.search-input input {
-  padding-left: 35px;
-  font-size: 12px;
+  inset-inline-start: 11px;
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
 }
 .table-scroll {
   width: 100%;
@@ -921,7 +914,7 @@ main {
   gap: 16px;
   margin-bottom: 17px;
 }
-label {
+:is(label, .dropdown-labeled) {
   font-size: 12px;
   font-weight: 550;
   color: #334155;
@@ -947,6 +940,11 @@ label > textarea {
 }
 :is(input, select, textarea):disabled { color: var(--text-muted); }
 :is(input, select, textarea)[aria-invalid="true"] { border-color: #b91c1c; }
+.search-input > input {
+  display: block;
+  margin: 0;
+  padding-inline-start: 36px;
+}
 input::placeholder {
   color: var(--text-muted);
   font-weight: 400;
@@ -1032,47 +1030,143 @@ input[type="checkbox"] {
   font-size: 12px;
   font-weight: 550;
 }
-.mapping-target-trigger {
+.dropdown-field {
+  min-width: 0;
+  width: 100%;
+}
+.dropdown-labeled > .dropdown-field { margin-top: 6px; }
+.dropdown-trigger {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 40px;
+  min-height: 37px;
   width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--control-border);
   border-radius: var(--control-radius);
   background: var(--surface-raised);
   text-align: left;
+  font-size: 13px;
 }
-.mapping-target-trigger span { min-width: 0; overflow-wrap: anywhere; }
-.mapping-target-trigger:hover:not(:disabled) { background: var(--canvas); }
-.mapping-target-trigger:disabled { opacity: 1; color: var(--text-muted); }
-.mapping-target-popup {
-  position: fixed;
-  inset: auto 1rem 1rem;
-  margin: 0;
-  inline-size: min(22rem, calc(100vw - 2rem));
-  max-block-size: min(24rem, 50dvh);
-  padding: var(--space-2);
-  overflow: auto;
+.mapping-fields .dropdown-trigger { min-height: 40px; }
+.dropdown-trigger span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dropdown-trigger svg { flex: none; color: var(--text-muted); }
+.dropdown-trigger:hover:not(:disabled) { background: var(--canvas); }
+.dropdown-trigger:disabled { opacity: 1; color: var(--text-muted); }
+.dropdown-panel {
   border: 1px solid var(--control-border);
   border-radius: var(--control-radius);
   background: var(--surface-raised);
   color: var(--ink);
-  box-shadow: 0 4px 16px #0f172a12;
+  box-shadow: var(--dropdown-shadow);
+  overscroll-behavior: contain;
+}
+.dropdown-popover {
+  position: fixed;
+  inset: auto 12px 12px;
+  margin: 0;
+  inline-size: min(22rem, calc(100vw - 24px));
+  max-block-size: min(24rem, 50dvh);
+  padding: var(--space-2);
+  overflow: auto;
+}
+.dropdown-popover:popover-open { display: flex; flex-direction: column; }
+.dropdown-search { max-width: none; flex: none; }
+.dropdown-options {
+  min-block-size: min(48px, 9dvh);
+  max-block-size: 13rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-block-start: var(--space-2);
+}
+.dropdown-popover .dropdown-options:empty { display: none; }
+.dropdown-option {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.dropdown-option strong, .dropdown-option span { display: block; }
+.dropdown-option strong { font-weight: 550; }
+.dropdown-option span { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.dropdown-option[aria-selected="true"] { background: var(--accent-soft); }
+.dropdown-option:not([aria-disabled="true"], [aria-selected="true"]):is(:hover, .highlighted) { background: var(--surface-subtle); }
+.dropdown-option[aria-disabled="true"] { cursor: not-allowed; color: var(--text-muted); }
+:where(:root:has(.app-shell[data-focus-mode="keyboard"])) .dropdown-option.highlighted strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 @supports (position-area: block-end span-inline-end) {
-  .mapping-target-popup {
+  .dropdown-trigger:not([data-dropdown-compact]) + .dropdown-popover {
     inset: auto;
-    position-area: block-end span-inline-end;
-    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    position-area: block-end span-all;
+    inset-inline-start: clamp(12px, anchor(left), calc(100vw - var(--dropdown-width) - 12px));
+    --dropdown-width: min(calc(100vw - 24px), max(14rem, anchor-size(width)));
+    inline-size: var(--dropdown-width);
     justify-self: start;
-    margin-block-start: 4px;
-    inline-size: min(calc(100vw - 2rem), max(15rem, anchor-size(width)));
+    margin-block-start: var(--dropdown-gap);
+    max-block-size: min(24rem, calc(100% - 12px));
   }
 }
-.mapping-target-popup .project-options { max-block-size: min(13rem, 33dvh); margin-block-start: var(--space-2); }
+
+/* Short lists retain the native form, keyboard and value semantics. */
+@supports (appearance: base-select) {
+  select:not([multiple], [size]), select:not([multiple], [size])::picker(select) {
+    appearance: base-select;
+  }
+  select:not([multiple], [size]) {
+    min-inline-size: 0;
+    gap: 8px;
+  }
+  select::picker-icon {
+    inline-size: 14px;
+    block-size: 14px;
+    flex: none;
+    content: "";
+    background: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+    color: var(--text-muted);
+  }
+  select::picker(select) {
+    position-area: block-end span-inline-end;
+    position-try-fallbacks: none;
+    justify-self: start;
+    margin: var(--dropdown-gap) 0 0;
+    inline-size: min(anchor-size(width), 100%);
+    max-block-size: min(18rem, calc(100% - 12px));
+    padding: 4px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--control-border);
+    border-radius: var(--control-radius);
+    background: var(--surface-raised);
+    color: var(--ink);
+    box-shadow: var(--dropdown-shadow);
+  }
+  select[data-dropdown-compact]::picker(select) {
+    position-area: none;
+    inset: auto 12px 12px;
+    inline-size: min(22rem, calc(100vw - 24px));
+    max-block-size: 50dvh;
+    margin: 0;
+  }
+  select option {
+    min-block-size: 36px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  select option:checked { background: var(--accent-soft); }
+  select option:not(:disabled, :checked):is(:hover, :focus) { background: var(--surface-subtle); }
+  select option:disabled { color: var(--text-muted); }
+  select option::checkmark { order: 1; margin-inline-start: auto; color: var(--accent-hover); }
+  select option:focus { outline: none; }
+  :where(:root:has(.app-shell[data-focus-mode="keyboard"])) select option:focus-visible {
+    box-shadow: inset 0 -2px var(--focus-mark);
+  }
+}
 .mapping-add-field { margin-block-start: var(--space-2); overflow-wrap: anywhere; }
 .project-option[aria-disabled="true"] { cursor: not-allowed; }
 .inline-options {
@@ -1270,6 +1364,27 @@ footer > span {
 .modal-wide {
   width: min(900px, calc(100vw - 32px));
 }
+.dropdown-overlay { background: transparent; backdrop-filter: none; }
+.modal.dropdown-dialog {
+  width: var(--dropdown-width);
+  --dropdown-width: min(26rem, calc(100vw - 24px));
+  padding: 12px;
+  border-radius: var(--control-radius);
+  box-shadow: var(--dropdown-shadow);
+}
+@supports (position-area: block-end span-all) {
+  .modal.dropdown-dialog {
+    inset: auto;
+    inset-inline-start: clamp(12px, anchor(left), calc(100vw - var(--dropdown-width) - 12px));
+    position-area: block-end span-all;
+    justify-self: start;
+    transform: none;
+    margin-block-start: var(--dropdown-gap);
+    max-block-size: min(36rem, calc(100% - 12px));
+  }
+}
+.dropdown-dialog .modal-heading { margin-bottom: 8px; }
+.dropdown-dialog .modal-heading h2 { font-size: 15px; }
 .modal-heading {
   display: flex;
   align-items: center;
@@ -1926,7 +2041,7 @@ pre {
 .assistant-menu { position: relative; }
 .assistant-menu > summary { cursor: pointer; list-style: none; display: grid; place-items: center; }
 .assistant-menu > summary::before { content: none; }
-.assistant-options { position: absolute; right: 0; top: calc(100% + 6px); z-index: 15; display: grid; gap: 14px; width: min(320px, calc(100vw - 32px)); max-height: min(480px, 70dvh); overflow: auto; background: #fff; border: 1px solid var(--chat-border); box-shadow: var(--shadow-overlay); border-radius: var(--control-radius); padding: 18px; font-size: 14px; }
+.assistant-options { position: absolute; right: 0; top: calc(100% + var(--dropdown-gap)); z-index: 15; display: grid; gap: 14px; width: min(320px, calc(100vw - 32px)); max-height: min(480px, 70dvh); overflow: auto; padding: 18px; font-size: 14px; }
 .assistant-options > label { font-size: 14px; }
 .assistant-options .text-button { font-size: 14px; white-space: normal; }
 .context-chip {border:0;border-radius:20px;padding:6px 10px;font-size:11px;background:var(--surface-subtle);color:#475569;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}

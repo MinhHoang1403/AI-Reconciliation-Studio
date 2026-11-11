@@ -5,6 +5,7 @@ import { ReviewCard } from "./ReviewCard";
 import type { Workflow } from "./agentTypes";
 import { Badge, Notice, Spinner } from "./components";
 import { MappingVersions } from "./MappingVersions";
+import { foldDropdownText, SearchableDropdown } from "./Dropdown";
 import type {
   DataType,
   Decision,
@@ -41,9 +42,6 @@ const typeLabels: Record<DataType, string> = {
   enum: "Danh mục",
 };
 const keepSourceLabel = "Giữ nguyên trong nguồn gốc";
-const fold = (value: string) => value.toLocaleLowerCase("vi").normalize("NFD")
-  .replace(/\p{M}/gu, "").replace(/đ/g, "d");
-
 function MappingTargetPicker({ column, draft, fields, occupied, suggestion, readOnly, onSelect }: {
   column: string;
   draft: Draft;
@@ -53,96 +51,46 @@ function MappingTargetPicker({ column, draft, fields, occupied, suggestion, read
   readOnly: boolean;
   onSelect: (field: SchemaField | null) => void;
 }) {
-  const trigger = useRef<HTMLButtonElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
-  const search = useRef<HTMLInputElement>(null);
-  const listId = useId();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const term = fold(query.trim()).replaceAll("_", " ");
-  const options = [null, ...fields].filter(field => fold(field
-    ? `${field.name} ${field.id} ${typeLabels[field.data_type]}`
-    : keepSourceLabel).replaceAll("_", " ").includes(term));
-  const assignedTo = (id: string) => id === draft.target ? undefined : occupied.get(id);
-  const enabled = options.filter(field => !field || !assignedTo(field.id));
-  const highlighted = enabled[active];
-  const customId = fold(query.trim()).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  const canAdd = /^[a-z][a-z0-9_]{0,63}$/.test(customId) &&
-    query.trim().length <= 120 && !fields.some(field =>
-      field.id === customId || fold(field.name).replaceAll("_", " ") === term);
-  function choose(field: SchemaField | null) {
-    onSelect(field);
-    panel.current?.hidePopover();
-    trigger.current?.focus({ preventScroll: true });
-  }
-  useEffect(() => {
-    if (open && highlighted !== undefined)
-      document.getElementById(`${listId}-${highlighted?.id || "source"}`)
-        ?.scrollIntoView({ block: "nearest" });
-  }, [highlighted, listId, open]);
+  const options = fields.map(field => {
+    const takenBy = field.id === draft.target ? undefined : occupied.get(field.id);
+    const type = typeLabels[field.data_type];
+    return {
+      value: field.id,
+      label: field.name,
+      searchText: `${field.id} ${type}`,
+      description: takenBy ? `Đã gán cho cột ${takenBy}` : type + (field.id === suggestion ? " · AI đề xuất" : ""),
+      disabled: Boolean(takenBy),
+    };
+  });
+
   return <div>
     <span className="mapping-target-label">Trường đích</span>
-    <button type="button" ref={trigger} className="mapping-target-trigger"
-      aria-label={`Trường đích ${column}`} aria-haspopup="listbox" aria-expanded={open}
-      popoverTarget={`${listId}-popup`} disabled={readOnly}
-      onClick={() => { setQuery(""); setActive(0); }}
-      onKeyDown={event => {
-        if (event.key === "ArrowDown" && !open) {
-          event.preventDefault();
-          event.currentTarget.click();
-        }
-      }}>
-      <span>{draft.target ? draft.label : keepSourceLabel}</span><ChevronDown size={15} aria-hidden="true" />
-    </button>
-    <div ref={panel} id={`${listId}-popup`} popover="auto" role="group"
-      aria-label={`Chọn trường cho ${column}`} className="mapping-target-popup"
-      onToggle={event => {
-        if (event.target !== event.currentTarget) return;
-        const next = event.newState === "open";
-        setOpen(next);
-        if (next) search.current?.focus({ preventScroll: true });
-      }}>
-      <input ref={search} role="combobox" aria-label="Tìm trường đích" aria-expanded={open}
-        aria-controls={listId} aria-autocomplete="list"
-        aria-activedescendant={highlighted !== undefined ? `${listId}-${highlighted?.id || "source"}` : undefined}
-        maxLength={120} value={query} placeholder="Tìm theo tên, ví dụ: Mã tham chiếu"
-        onChange={event => { setQuery(event.target.value); setActive(0); }}
-        onKeyDown={event => {
-          if (event.nativeEvent.isComposing) return;
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            setActive(index => Math.max(0, Math.min(enabled.length - 1, index + (event.key === "ArrowDown" ? 1 : -1))));
-          } else if (event.key === "Enter" && highlighted !== undefined) {
-            event.preventDefault();
-            choose(highlighted);
-          }
-        }} />
-      <div id={listId} role="listbox" aria-label="Trường đích hợp lệ" className="project-options">
-        {options.map(field => {
-          const id = field?.id || "";
-          const takenBy = assignedTo(id);
-          return <div key={id} id={`${listId}-${id || "source"}`} role="option"
-            data-target-id={id}
-            aria-selected={draft.target === id} aria-disabled={Boolean(takenBy)}
-            className={`project-option${highlighted === field ? " highlighted" : ""}`}
-            onMouseDown={event => event.preventDefault()} onClick={() => { if (!takenBy) choose(field); }}>
-            <strong>{field?.name || keepSourceLabel}</strong>
-            <span>{takenBy ? `Đã gán cho cột ${takenBy}` : field ? typeLabels[field.data_type] : "Cột vẫn xem được trong dữ liệu gốc."}
-              {id && id === suggestion && !takenBy ? " · AI đề xuất" : ""}</span>
-          </div>;
-        })}
-      </div>
-      {!options.length && <p role="status">Không tìm thấy trường trong cấu trúc hiện tại.</p>}
-      <details className="mapping-add-field">
-        <summary>Thêm trường tùy chỉnh</summary>
-        {canAdd ? <button type="button" className="button secondary" onClick={() => choose({
-          id: customId, name: query.trim(), data_type: "string", required: false,
-          semantic_metric: null, amount_basis: null, currency: null, unit: null,
-        })}>Thêm trường “{query.trim()}” vào cấu trúc</button>
-          : <p>Nhập tên trường mới vào ô tìm kiếm.</p>}
-      </details>
-    </div>
+    <SearchableDropdown label={`Trường đích ${column}`} value={draft.target}
+      panelLabel={`Chọn trường cho ${column}`} searchLabel="Tìm trường đích"
+      placeholder="Tìm theo tên, ví dụ: Mã tham chiếu"
+      emptyMessage="Không tìm thấy trường trong cấu trúc hiện tại." disabled={readOnly}
+      options={[
+        { value: "", label: keepSourceLabel, description: "Cột vẫn xem được trong dữ liệu gốc." },
+        ...options,
+      ]}
+      onChange={id => onSelect(fields.find(field => field.id === id) ?? null)}
+      extra={(query, close) => {
+        const term = foldDropdownText(query.trim());
+        const id = term.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+        const canAdd = /^[a-z][a-z0-9_]{0,63}$/.test(id) &&
+          !fields.some(field => field.id === id || foldDropdownText(field.name) === term);
+        return <details className="mapping-add-field">
+          <summary>Thêm trường tùy chỉnh</summary>
+          {canAdd ? <button type="button" className="button secondary" onClick={() => {
+            close();
+            onSelect({
+              id, name: query.trim(), data_type: "string", required: false,
+              semantic_metric: null, amount_basis: null, currency: null, unit: null,
+            });
+          }}>Thêm trường “{query.trim()}” vào cấu trúc</button>
+            : <p>Nhập tên trường mới vào ô tìm kiếm.</p>}
+        </details>;
+      }} />
   </div>;
 }
 

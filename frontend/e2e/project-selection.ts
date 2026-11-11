@@ -30,7 +30,7 @@ export async function chooseMappingTarget(page: Page, column: string, id: string
   await page.getByRole("button", { name: `Trường đích ${column}`, exact: true }).click();
   const picker = page.getByRole("group", { name: `Chọn trường cho ${column}`, exact: true });
   await picker.getByRole("combobox", { name: "Tìm trường đích" }).fill(id);
-  const field = picker.getByRole("option").and(picker.locator(`[data-target-id="${id}"]`));
+  const field = picker.getByRole("option").and(picker.locator(`[data-option-value="${id}"]`));
   if (await field.count()) await field.click();
   else {
     await picker.getByText("Thêm trường tùy chỉnh", { exact: true }).click();

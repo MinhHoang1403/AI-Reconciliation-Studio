@@ -18,7 +18,9 @@ Giữ điều khiển web quen thuộc, trạng thái focus rõ, nhãn đầy đ
 
 Ô nhập và bộ chọn dùng nền trắng, viền trung tính nhẹ `#E5E7EB` và bo góc theo kích thước. Composer giữ một viền quanh khung trắng, với vùng nhập bên trong trong suốt. Khi dùng bàn phím, điều khiển có một nét nhấn ở cạnh dưới. Ô đánh dấu và nút chọn tròn dùng nét bao mảnh để giữ rõ dấu chọn. Các dấu hiệu này giữ nguyên kích thước điều khiển và phân biệt với màu của mục đang chọn hoặc cảnh báo.
 
-Trong Xác nhận cột, danh sách Trường đích mở sát ô chọn, tìm theo tên tiếng Việt và dùng danh sách của cấu trúc đang xem. Mỗi lựa chọn cho biết kiểu dữ liệu. Trường đã gán có lý do vô hiệu hóa. Người dùng có thể giữ nguyên cột nguồn hoặc mở mục thêm trường tùy chỉnh. Hộp chọn hỗ trợ phím mũi tên, Enter và Escape.
+Danh sách chọn mở dưới điều khiển, cách 4 px, với nền trắng, viền mảnh và vùng cuộn riêng. Khi thiếu chỗ, vùng nội dung cuộn vừa đủ để đặt danh sách dưới điều khiển. Màn hình quá thấp có thể dùng bảng chọn gọn sát đáy. Danh sách ngắn giữ cơ chế biểu mẫu và bàn phím của trình duyệt. Danh sách Trường đích và danh sách dài của workspace hoặc nguồn có ô tìm kiếm. Bộ chọn dự án giữ tìm kiếm và phân trang phía máy chủ.
+
+Trong Xác nhận cột, danh sách Trường đích dùng cấu trúc đang xem. Mỗi lựa chọn cho biết kiểu dữ liệu. Trường đã gán có lý do vô hiệu hóa. Người dùng có thể giữ nguyên cột nguồn hoặc mở mục thêm trường tùy chỉnh. Hộp chọn hỗ trợ phím mũi tên, Enter và Escape.
 
 Menu cạnh Phiên bản ánh xạ mở lịch sử và kiểm quyền xóa theo phiên bản. Chủ workspace có thể xóa phiên bản không có tham chiếu hoặc ẩn phiên bản khỏi danh sách thường dùng. Bản đã ẩn vẫn mở được để đọc lịch sử và các kết quả đã công bố giữ liên kết gốc.
 

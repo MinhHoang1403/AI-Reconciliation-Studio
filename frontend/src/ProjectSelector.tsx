@@ -4,9 +4,11 @@ import {
   ChevronLeft,
   ChevronRight,
   FolderOpen,
+  Search,
 } from "lucide-react";
 import { api } from "./api";
 import { Modal, Notice, Spinner } from "./components";
+import { revealDropdownOption } from "./Dropdown";
 import type { Project, ProjectClassification } from "./types";
 
 const PAGE_SIZE = 20;
@@ -51,7 +53,9 @@ export function ProjectSelector({
   const alive = useRef(true);
   projectRef.current = project;
   const listId = useId();
+  const anchorName = `--project-${listId}`;
   const searchRef = useRef<HTMLInputElement>(null);
+  const optionsRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const queryRef = useRef("");
   const sequence = useRef(0);
@@ -115,10 +119,14 @@ export function ProjectSelector({
   }, [project?.id]);
 
   useEffect(() => {
-    document
-      .getElementById(`${listId}-${active}`)
-      ?.scrollIntoView({ block: "nearest" });
-  }, [active, listId]);
+    revealDropdownOption(optionsRef.current, document.getElementById(`${listId}-${active}`));
+  }, [active, items, listId]);
+
+  useEffect(() => {
+    if (!classificationSuccess) return;
+    const timer = window.setTimeout(() => setClassificationSuccess(""), 5000);
+    return () => window.clearTimeout(timer);
+  }, [classificationSuccess]);
 
   function invalidate() {
     sequence.current += 1;
@@ -175,6 +183,7 @@ export function ProjectSelector({
   return (
     <>
       <button
+        style={{ anchorName }}
         ref={triggerRef}
         id="project-select"
         className="project-trigger"
@@ -205,56 +214,60 @@ export function ProjectSelector({
         open={open}
         onOpenChange={setOpen}
         returnFocus={triggerRef}
+        anchorName={anchorName}
       >
         <label className="project-search-label" htmlFor={`${listId}-search`}>
           Tìm dự án theo tên hoặc phạm vi
         </label>
-        <input
-          id={`${listId}-search`}
-          ref={searchRef}
-          autoFocus
-          role="combobox"
-          aria-label="Tìm dự án"
-          aria-expanded={open}
-          aria-controls={listId}
-          aria-autocomplete="list"
-          aria-activedescendant={
-            !loading && items[active] ? `${listId}-${active}` : undefined
-          }
-          value={query}
-          maxLength={200}
-          placeholder="Ví dụ: Đơn hàng, miền Nam…"
-          onChange={(e) => {
-            queryRef.current = e.target.value;
-            invalidate();
-            setQuery(e.target.value);
-            setOffset(0);
-          }}
-          onKeyDown={(e) => {
-            if (loading || queryRef.current !== query) return;
-            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-              e.preventDefault();
-              setActive((old) =>
-                Math.max(
-                  0,
-                  Math.min(
-                    items.length - 1,
-                    old + (e.key === "ArrowDown" ? 1 : -1),
-                  ),
-                ),
-              );
-            } else if (e.key === "Enter" && items[active]) {
-              e.preventDefault();
-              select(items[active]);
-            } else if (e.key === "Home") {
-              e.preventDefault();
-              setActive(0);
-            } else if (e.key === "End") {
-              e.preventDefault();
-              setActive(Math.max(0, items.length - 1));
+        <div className="search-input dropdown-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            id={`${listId}-search`}
+            ref={searchRef}
+            autoFocus
+            role="combobox"
+            aria-label="Tìm dự án"
+            aria-expanded={open}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-activedescendant={
+              !loading && items[active] ? `${listId}-${active}` : undefined
             }
-          }}
-        />
+            value={query}
+            maxLength={200}
+            placeholder="Ví dụ: Đơn hàng, miền Nam…"
+            onChange={(e) => {
+              queryRef.current = e.target.value;
+              invalidate();
+              setQuery(e.target.value);
+              setOffset(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing || loading || queryRef.current !== query) return;
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                setActive((old) =>
+                  Math.max(
+                    0,
+                    Math.min(
+                      items.length - 1,
+                      old + (e.key === "ArrowDown" ? 1 : -1),
+                    ),
+                  ),
+                );
+              } else if (e.key === "Enter" && items[active]) {
+                e.preventDefault();
+                select(items[active]);
+              } else if (e.key === "Home") {
+                e.preventDefault();
+                setActive(0);
+              } else if (e.key === "End") {
+                e.preventDefault();
+                setActive(Math.max(0, items.length - 1));
+              }
+            }}
+          />
+        </div>
         <label className="check-label project-test-filter">
           <input
             type="checkbox"
@@ -288,10 +301,12 @@ export function ProjectSelector({
         )}
         <div
           id={listId}
+          ref={optionsRef}
           role="listbox"
+          tabIndex={-1}
           aria-label="Danh sách dự án"
           aria-busy={loading}
-          className="project-options"
+          className="project-options dropdown-options"
         >
           {!loading &&
             !error &&
@@ -302,7 +317,7 @@ export function ProjectSelector({
                 role="option"
                 aria-selected={project?.id === item.id}
                 tabIndex={-1}
-                className={`project-option ${active === index ? "highlighted" : ""}`}
+                className={`project-option dropdown-option ${active === index ? "highlighted" : ""}`}
                 onMouseMove={() => setActive(index)}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => select(item)}

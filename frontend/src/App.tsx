@@ -46,6 +46,7 @@ import {
   Spinner,
 } from "./components";
 import { MappingStudio } from "./MappingStudio";
+import { useNativeDropdowns } from "./Dropdown";
 import type { AssistantContext } from "./assistantTypes";
 import {
   readLocation,
@@ -197,6 +198,7 @@ export function App() {
     message: string;
   } | null>(null);
   const [focusMode, setFocusMode] = useState<"pointer" | "keyboard">("pointer");
+  useNativeDropdowns(setFocusMode);
   const [actorRole, setActorRole] = useState("");
   const [tableDensity, setTableDensity] = useState<"comfortable" | "compact">(
     () => localStorage.getItem("studio.table-density") === "compact" ? "compact" : "comfortable",
@@ -1086,7 +1088,10 @@ export function App() {
         const activation = (event.key === "Enter" || event.key === " ") &&
           event.target instanceof HTMLElement &&
           event.target.closest("button, a, summary, select, input[type='checkbox'], input[type='radio']");
-        if (event.key === "Tab" || event.key === "Escape" || activation) setFocusMode("keyboard");
+        const dropdownNavigation = (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+          event.target instanceof HTMLElement &&
+          event.target.closest("select, [role='combobox'], .dropdown-trigger");
+        if (event.key === "Tab" || event.key === "Escape" || activation || dropdownNavigation) setFocusMode("keyboard");
       }}
     >
       <a className="skip-to-work" href="#main-content" inert={sidebar || undefined} onClick={event => {
@@ -1826,7 +1831,7 @@ export function App() {
                                     </select>
                                   </label>
                                   <label className="search-input">
-                                    <Search size={17} />
+                                    <Search size={17} aria-hidden="true" />
                                     <input
                                       aria-label="Tìm trong bảng"
                                       placeholder="Tìm giá trị…"

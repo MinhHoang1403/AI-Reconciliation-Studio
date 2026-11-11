@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, apiPages } from "./api";
 import { Notice, Spinner } from "./components";
+import { DropdownSelect } from "./Dropdown";
 import type { Catalogue, Proposal } from "./reconciliationTypes";
 import type { AssistantAnswer, AssistantRule } from "./assistantTypes";
 
@@ -93,22 +94,19 @@ export function AssistantWorkflow({
     onChange: (id: string) => void,
   ) {
     return (
-      <label>
-        {label}
-        <select
-          aria-label={label}
-          value={value}
-          disabled={busy}
-          onChange={(e) => changed(() => onChange(e.target.value))}
-        >
-          <option value="">Chọn nguồn đã chuẩn hóa</option>
-          {sources.map((s) => (
-            <option key={s.canonical.id} value={s.canonical.id}>
-              {s.name} · {s.canonical.id.slice(0, 8)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <DropdownSelect
+        label={label}
+        searchLabel="Tìm nguồn đã chuẩn hóa"
+        value={value}
+        disabled={busy}
+        onChange={(id) => changed(() => onChange(id))}
+        options={[
+          { value: "", label: "Chọn nguồn đã chuẩn hóa" },
+          ...sources.map(s => ({
+            value: s.canonical.id, label: `${s.name} · ${s.canonical.id.slice(0, 8)}`,
+          })),
+        ]}
+      />
     );
   }
   function ruleSelect(

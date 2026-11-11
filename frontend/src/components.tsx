@@ -62,6 +62,7 @@ export function Modal({
   onOpenChange,
   wide = false,
   placement = "center",
+  anchorName,
   returnFocus,
   shouldRestoreFocus,
 }: {
@@ -71,15 +72,17 @@ export function Modal({
   onOpenChange: (open: boolean) => void;
   wide?: boolean;
   placement?: "center" | "context";
+  anchorName?: string;
   returnFocus?: RefObject<HTMLElement | null>;
   shouldRestoreFocus?: () => boolean;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="modal-overlay" />
+        <Dialog.Overlay className={anchorName ? "modal-overlay dropdown-overlay" : "modal-overlay"} />
         <Dialog.Content
-          className={`modal${wide ? " modal-wide" : ""}${placement === "context" ? " modal-context" : ""}`}
+          className={`modal${wide ? " modal-wide" : ""}${placement === "context" ? " modal-context" : ""}${anchorName ? " dropdown-panel dropdown-dialog" : ""}`}
+          style={anchorName ? { positionAnchor: anchorName } : undefined}
           aria-describedby={undefined}
           onFocusCapture={(event) => {
             const modal = event.currentTarget;

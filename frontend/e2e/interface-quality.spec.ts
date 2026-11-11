@@ -212,6 +212,17 @@ for (const width of [390, 1440]) {
     await expect(search).toBeVisible();
     const before = await search.boundingBox();
     const background = await search.evaluate(element => getComputedStyle(element).backgroundColor);
+    const spacing = await search.evaluate(element => {
+      const field = element.getBoundingClientRect();
+      const icon = element.previousElementSibling!.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        textGap: field.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft) - icon.right,
+        centerDelta: Math.abs(field.top + field.height / 2 - icon.top - icon.height / 2),
+      };
+    });
+    expect(spacing.textGap).toBeGreaterThanOrEqual(6);
+    expect(spacing.centerDelta).toBeLessThanOrEqual(1);
     await search.click();
     await expect(search).toBeFocused();
     await expect(search).toHaveCSS("outline-style", "none");
@@ -227,6 +238,49 @@ for (const width of [390, 1440]) {
     await expect(search).toHaveCSS("box-shadow", "none");
   });
 }
+
+test("[MOCK CONTRACT] long workspace list searches and closes before its management panel", async ({ page }) => {
+  await fixture(page, projects(1), "project-000");
+  await page.setViewportSize({ width: 390, height: 620 });
+  await page.route("**/api/settings", route => route.fulfill({ json: {
+    workspace_id: "synthetic", workspace_name: "Synthetic",
+    policy: { allow_external_ai: false },
+    max_upload_bytes: 20971520, max_upload_files: 10, max_rows: 100000,
+  } }));
+  await page.route("**/api/workspaces", route => route.fulfill({ json: [
+    { id: "synthetic", name: "Synthetic", role: "owner" },
+    ...Array.from({ length: 12 }, (_, index) => ({
+      id: `workspace-${index}`, name: `Đối soát chi nhánh ${index}`, role: "editor",
+    })),
+  ] }));
+  await page.goto("/#page=settings");
+  const header = page.locator(".workspace-picker");
+  const anchor = (await header.boundingBox())!;
+  await header.click();
+  const dialog = page.getByRole("dialog", { name: "Quản lý không gian làm việc", exact: true });
+  const bounds = (await dialog.boundingBox())!;
+  expect(bounds.y - anchor.y - anchor.height).toBeCloseTo(4, 0);
+  const trigger = dialog.getByRole("button", { name: "Không gian có quyền truy cập", exact: true });
+  await trigger.press("ArrowDown");
+  const search = dialog.getByRole("combobox", { name: "Tìm không gian làm việc" });
+  await expect(search).toBeFocused();
+  const list = dialog.getByRole("listbox");
+  expect(await list.evaluate(element => element.scrollHeight)).toBeGreaterThan(
+    (await list.boundingBox())!.height,
+  );
+  await search.fill("doi soat chi nhanh 11");
+  await expect(list.getByRole("option")).toHaveCount(1);
+  await search.press("Enter");
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toContainText("Đối soát chi nhánh 11");
+  await trigger.press("Enter");
+  await search.press("Escape");
+  await expect(search).not.toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(header).toBeFocused();
+});
 
 test("[MOCK CONTRACT] project lifecycle previews impact and restores the hidden project", async ({ page }) => {
   const [sample] = projects(1);
@@ -449,10 +503,7 @@ test("[MOCK CONTRACT] mapping jobs publish revisions, keep edited drafts and exp
   const anchorBounds = (await target.boundingBox())!;
   expect(dialogBounds.x).toBeGreaterThanOrEqual(0);
   expect(dialogBounds.x + dialogBounds.width).toBeLessThanOrEqual(390);
-  expect(Math.min(
-    Math.abs(dialogBounds.y - anchorBounds.y - anchorBounds.height),
-    Math.abs(anchorBounds.y - dialogBounds.y - dialogBounds.height),
-  )).toBeLessThanOrEqual(8);
+  expect(dialogBounds.y - anchorBounds.y - anchorBounds.height).toBeCloseTo(4, 0);
   await search.fill("ma tham chieu");
   await expect(dialog.getByRole("option")).toHaveAttribute("aria-disabled", "true");
   await expect(dialog.getByText("Đã gán cho cột Mã nghiệp vụ")).toBeVisible();
@@ -461,6 +512,12 @@ test("[MOCK CONTRACT] mapping jobs publish revisions, keep edited drafts and exp
   await page.keyboard.press("Escape");
   await expect(target).toBeFocused();
   await expect(target).toContainText("Giữ nguyên trong nguồn gốc");
+  await target.press("ArrowDown");
+  await expect(search).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByText("Thêm trường tùy chỉnh", { exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(dialog).not.toBeVisible();
   await target.click();
   await page.getByText("Ý nghĩa của bảng", { exact: true }).click();
   await expect(dialog).not.toBeVisible();
@@ -469,6 +526,24 @@ test("[MOCK CONTRACT] mapping jobs publish revisions, keep edited drafts and exp
   await search.press("Enter");
   await expect(target).toBeFocused();
   await expect(target).toContainText("Mô tả");
+  const type = page.getByRole("combobox", { name: "Kiểu Ghi chú", exact: true });
+  await type.click();
+  await expect.poll(() => type.evaluate(element => element.matches(":open"))).toBe(true);
+  const nativePicker = await type.evaluate(element => {
+    const select = element as HTMLSelectElement;
+    return {
+      top: select.options[0].getBoundingClientRect().top,
+      triggerBottom: select.getBoundingClientRect().bottom,
+      background: getComputedStyle(select, "::picker(select)").backgroundColor,
+    };
+  });
+  expect(nativePicker.top).toBeGreaterThan(nativePicker.triggerBottom);
+  expect(nativePicker.background).toBe("rgb(255, 255, 255)");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(type).toHaveValue("decimal");
+  await expect(type).toBeFocused();
+  await type.selectOption("string");
   const bounds = await target.boundingBox();
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
 

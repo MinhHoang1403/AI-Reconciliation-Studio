@@ -12,6 +12,7 @@ import { GridComponent, TooltipComponent } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 import { api, apiPages, ApiError } from "./api";
 import { ReconciliationEvidence } from "./ReconciliationEvidence";
+import { DropdownSelect } from "./Dropdown";
 import { Badge, ContextPanel, formatDecimal, Notice, Spinner } from "./components";
 import {
   label,
@@ -694,36 +695,31 @@ export function ReconciliationStudio({
             <>
               <div className="rule-grid">
                 {(["left", "right"] as const).map((side, i) => (
-                  <label key={side}>
-                    {i === 0 ? "Nguồn tham chiếu" : "Nguồn đối ứng"}
-                    <select
-                      aria-label={
-                        i === 0 ? "Nguồn tham chiếu" : "Nguồn đối ứng"
-                      }
-                      value={draft?.[side].canonical_id || ""}
-                      onChange={(e) => {
-                        const selected = e.target.value;
-                        const otherSide = side === "left" ? "right" : "left";
-                        const previous = draft?.[otherSide].canonical_id;
-                        const other =
-                          previous && previous !== selected
-                            ? previous
-                            : sources.find((c) => c.canonical.id !== selected)
-                                ?.canonical.id || "";
-                        makeDraft(
-                          side === "left" ? selected : other,
-                          side === "right" ? selected : other,
-                        );
-                      }}
-                    >
-                      <option value="">Chọn nguồn</option>
-                      {sources.map((c) => (
-                        <option key={c.canonical.id} value={c.canonical.id}>
-                          {c.name} · {c.canonical.row_count} dòng
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <DropdownSelect key={side} searchLabel="Tìm nguồn đối soát"
+                    label={
+                      i === 0 ? "Nguồn tham chiếu" : "Nguồn đối ứng"
+                    }
+                    value={draft?.[side].canonical_id || ""}
+                    onChange={(selected) => {
+                      const otherSide = side === "left" ? "right" : "left";
+                      const previous = draft?.[otherSide].canonical_id;
+                      const other =
+                        previous && previous !== selected
+                          ? previous
+                          : sources.find((c) => c.canonical.id !== selected)
+                              ?.canonical.id || "";
+                      makeDraft(
+                        side === "left" ? selected : other,
+                        side === "right" ? selected : other,
+                      );
+                    }}
+                    options={[
+                      { value: "", label: "Chọn nguồn" },
+                      ...sources.map(c => ({
+                        value: c.canonical.id, label: `${c.name} · ${c.canonical.row_count} dòng`,
+                      })),
+                    ]}
+                  />
                 ))}
               </div>
               {draft && templates.length > 0 && (
@@ -1875,23 +1871,19 @@ export function ReconciliationStudio({
                 }}
               />
             </label>
-            <label>
-              Lọc theo nguồn
-              <select
-                value={sourceFilter}
-                onChange={(e) => {
-                  setSourceFilter(e.target.value);
-                  setRunOffset(0);
-                }}
-              >
-                <option value="">Tất cả nguồn</option>
-                {catalogue.map((c) => (
-                  <option key={c.canonical.id} value={c.canonical.id}>
-                    {c.name} · {c.canonical.id.slice(0, 8)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <DropdownSelect label="Lọc theo nguồn" searchLabel="Tìm nguồn báo cáo"
+              value={sourceFilter}
+              onChange={(value) => {
+                setSourceFilter(value);
+                setRunOffset(0);
+              }}
+              options={[
+                { value: "", label: "Tất cả nguồn" },
+                ...catalogue.map(c => ({
+                  value: c.canonical.id, label: `${c.name} · ${c.canonical.id.slice(0, 8)}`,
+                })),
+              ]}
+            />
           </div>
           <div className="table-scroll">
             <table className="result-table">

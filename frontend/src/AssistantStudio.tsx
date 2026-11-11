@@ -827,7 +827,7 @@ export function AssistantStudio({
           {context.project_id&&<button className="icon-button" aria-label="Hội thoại mới" title="Hội thoại mới" disabled={busy||loading} onClick={()=>newConversation()}><MessageSquarePlus size={18}/></button>}
           <details ref={toolbarOptions} className="assistant-policy assistant-menu" onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
             <summary aria-label="Tùy chọn hội thoại" title="Tùy chọn hội thoại"><MoreHorizontal size={18}/></summary>
-            <div className="assistant-options">
+            <div className="assistant-options dropdown-panel">
               <strong>Tùy chọn hội thoại</strong>
               {selectedModel === "GEMINI" && !agentEnabled &&
                 <p>Bạn vẫn có thể hỏi về các kết quả đã xác minh hoặc dùng Đối soát thủ công.</p>}
