@@ -157,12 +157,15 @@ test("[LIVE] Assistant prepares three 3000-row sources from the full Vietnamese 
   }
   await page.getByRole("button", { name: "Tệp đã tải", exact: true }).click();
   await expect(panel).toContainText("3 tệp trong dự án");
+  // Ở 1440px panel có thể phủ Chat. Đóng panel trước khi thao tác với composer.
+  await panel.getByRole("button", { name: "Đóng", exact: true }).click();
   await page.locator('.assistant-composer input[type="file"]').setInputFiles({
     name: "Later upload.csv", mimeType: "text/csv", buffer: makeCsv(20000, 3),
   });
   await send(inventory);
   await expect(workflows.last()).toContainText("Dự án có 4 nguồn dữ liệu.");
   await expect(workflows.last()).toContainText("Later upload.csv");
+  await page.getByRole("button", { name: "Tệp đã tải", exact: true }).click();
   await expect(panel).toContainText("4 tệp trong dự án");
   const jobs = (await (await page.request.get(`/api/jobs?project_id=${id}`)).json()).items;
   expect(jobs.filter((job: { kind: string }) => ["normalize", "reconcile"].includes(job.kind))).toHaveLength(0);
