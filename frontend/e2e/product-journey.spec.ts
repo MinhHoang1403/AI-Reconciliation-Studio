@@ -282,6 +282,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
   await expect(page.getByText("Quy tắc đối soát đang chờ bạn xác nhận.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Xem và xác nhận quy tắc", exact: true }).click();
   await expect(page).toHaveURL(/page=reconcile/);
+  await expect(page.getByText("Đã mở quy tắc. Kiểm tra nguồn và điều kiện trước khi xác nhận.", { exact: true })).toBeVisible();
   await page.getByLabel("Tôi xác nhận kỳ, múi giờ và phạm vi nguồn", { exact: true }).check();
   await page
     .getByRole("button", {

@@ -200,6 +200,7 @@ export function ReconciliationStudio({
     [proposal, setProposal] = useState<Proposal | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null),
     [download, setDownload] = useState("");
+  const [loadedPlanRequest, setLoadedPlanRequest] = useState<number | null>(null);
   const [scopeConfirmed, setScopeConfirmed] = useState(false),
     [exportNotice, setExportNotice] = useState("");
   const [invalidRowsReviewedPlan, setInvalidRowsReviewedPlan] = useState<string | null>(null);
@@ -220,6 +221,7 @@ export function ReconciliationStudio({
   const analysisDisclosure = useRef<HTMLDetailsElement>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const showResults = mode !== "reconcile" || workView === "results";
+  const openingPlan = requestedPlan !== null && loadedPlanRequest !== requestedPlan.request;
   const activeRun = jobs.find(job => job.kind === "reconcile" && isActiveJob(job));
   const activeRunId = activeRun?.id;
   const showPendingPlans = canEdit && (mode === "reconcile" || mode === "reports");
@@ -254,6 +256,12 @@ export function ReconciliationStudio({
   useEffect(() => {
     if (!requestedPlan) return;
     setWorkView("setup");
+    setDraft(null);
+    setProposal(null);
+    setReadiness(null);
+    setScopeConfirmed(false);
+    setMessage("");
+    setError("");
     const read = new AbortController();
     void api<Proposal & { project_id: string }>(
       `/reconciliation-plans/${requestedPlan.id}`,
@@ -265,8 +273,6 @@ export function ReconciliationStudio({
           throw new Error("Kế hoạch không thuộc dự án hoặc còn thiếu rule.");
         setDraft(result.proposal.plan);
         setProposal(result);
-        setReadiness(null);
-        setScopeConfirmed(false);
         setMessage(
           "Đã mở quy tắc. Kiểm tra nguồn và điều kiện trước khi xác nhận.",
         );
@@ -276,7 +282,8 @@ export function ReconciliationStudio({
           setError(
             err instanceof Error ? err.message : "Không mở được kế hoạch.",
           );
-      });
+      })
+      .finally(() => { if (!read.signal.aborted) setLoadedPlanRequest(requestedPlan.request); });
     return () => read.abort();
   }, [requestedPlan, projectId]);
   useEffect(() => {
@@ -730,7 +737,7 @@ export function ReconciliationStudio({
       {activeRun && <Notice>{activeRun.status === "QUEUED" ? "Lần đối soát đang chờ xử lý." :
         activeRun.status === "RETRYABLE_FAILURE" ? "Lần đối soát đang chờ thử lại." : "Đang đối soát và kiểm chứng kết quả."}</Notice>}
       {mode === "reconcile" && !showResults && (
-        listLoading ? <Spinner /> : sources.length < 2 ? (
+        listLoading || openingPlan ? <Spinner /> : sources.length < 2 ? (
           <section className="card empty-state" aria-label="Chuẩn bị nguồn đối soát">
             <h2>Chọn nguồn đối soát</h2>
             {error ? <p>Dùng Cập nhật đối soát để tải lại nguồn.</p> : preparation ? <>
