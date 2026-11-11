@@ -44,12 +44,18 @@ test("[MOCK CONTRACT] Dashboard starts without scope and keeps routes, project a
   await expect(projectSelect).toHaveAttribute("data-project-id", "");
   await expect(page.getByText("Chưa chọn dự án", { exact: true })).toBeVisible();
   await expect(page.locator(".stat-card")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Chức năng chính" }).getByRole("button")).toHaveCount(4);
+  await expect(page.getByRole("button", { name: "Tải dữ liệu", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Hỏi AI Assistant", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Tiếp tục công việc" })).toHaveCount(0);
   await page.getByRole("button", { name: "Tạo dự án", exact: true }).click();
   await expect(page.getByRole("dialog").getByLabel("Tên dự án", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: "Tải dữ liệu", exact: true }).click();
+  await page.getByRole("button", { name: "Quản lý dữ liệu", exact: true }).click();
+  await expect(page).toHaveURL(/page=data/);
+  await expect(page.getByRole("button", { name: "Tạo dự án đầu tiên", exact: true })).toBeVisible();
+  await projectSelect.click();
   const picker = page.getByRole("dialog", { name: "Chọn dự án", exact: true });
   await expect(picker).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Tải nguồn dữ liệu" })).toHaveCount(0);
@@ -63,7 +69,8 @@ test("[MOCK CONTRACT] Dashboard starts without scope and keeps routes, project a
   await page.getByRole("button", { name: "Tải dữ liệu", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Tải nguồn dữ liệu" })).toContainText(project.name);
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Hỏi AI Assistant", exact: true }).click();
+  await brand.click();
+  await page.getByRole("button", { name: "Mở AI Assistant", exact: true }).click();
   const composer = page.getByRole("textbox", { name: "Câu hỏi cho AI Assistant", exact: true });
   await composer.fill("Bản nháp còn nguyên khi về Dashboard");
   await brand.press("Enter");
@@ -1338,6 +1345,9 @@ test("project polling runs only while jobs are active and manual refresh remains
   await fixture(page, projects(1), "project-000");
   let requests = 0;
   let active = false;
+  await page.route("**/api/jobs?**", route => route.fulfill({ json: {
+    items: [{ id: "dashboard-job", kind: "report", status: "RUNNING" }],
+  } }));
   await page.route("**/api/projects/*/summary", (route) => {
     requests += 1;
     return route.fulfill({
@@ -1354,6 +1364,9 @@ test("project polling runs only while jobs are active and manual refresh remains
   await expect(
     page.getByRole("button", { name: "Cập nhật dự án", exact: true }),
   ).toBeEnabled();
+  const activity = page.getByRole("button", { name: "Xem công việc đang xử lý", exact: true });
+  await expect(activity).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Hoạt động xử lý" })).toHaveCount(0);
   const idle = requests;
   await page.clock.fastForward(15000);
   expect(requests).toBe(idle);
@@ -1367,6 +1380,7 @@ test("project polling runs only while jobs are active and manual refresh remains
       .filter({ hasText: "Tác vụ đang xử lý" })
       .locator("strong"),
   ).toHaveText("1");
+  await expect(activity).toBeEnabled();
   const beforePoll = requests;
   active = false;
   await page.clock.fastForward(3100);
@@ -1377,9 +1391,16 @@ test("project polling runs only while jobs are active and manual refresh remains
       .filter({ hasText: "Tác vụ đang xử lý" })
       .locator("strong"),
   ).toHaveText("0");
+  await expect(activity).toHaveCount(0);
   const completed = requests;
   await page.clock.fastForward(20000);
   expect(requests).toBe(completed);
+  active = true;
+  await page.getByRole("button", { name: "Cập nhật dự án", exact: true }).click();
+  await activity.click();
+  await expect(page).toHaveURL(/page=data&project=project-000/);
+  await expect(page.getByRole("button", { name: /Hoạt động xử lý.*1 đang xử lý/ })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#project-jobs")).toBeVisible();
 });
 
 test("summary API error is visible with retry, not empty data or zero statistics", async ({
@@ -1443,6 +1464,7 @@ test("viewer role is truthful and write actions are disabled while navigation re
   );
   await page.goto("/#page=home");
   await expect(page.getByText("Chỉ xem", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Quản lý dữ liệu", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Tải dữ liệu", exact: true }),
   ).toBeDisabled();
@@ -1585,6 +1607,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
       await expect(menu).toBeFocused();
       await expect(navigation).toHaveCount(0);
     }
+    await page.getByRole("button", { name: "Quản lý dữ liệu", exact: true }).click();
     const upload = page.getByRole("button", {
       name: "Tải dữ liệu",
       exact: true,

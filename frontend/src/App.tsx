@@ -1521,7 +1521,6 @@ export function App() {
               busy={busy}
               canEdit={canEdit}
               projectLoading={projectLoading}
-              onUpload={openUpload}
               onCreate={openNewProject}
               onRefresh={() => void run(changed)}
               onAction={(action) => void run(() => openPreparation(action))}
@@ -2017,6 +2016,7 @@ export function App() {
           )}
           {ready &&
             jobs.length > 0 &&
+            page !== "home" &&
             page !== "settings" &&
             page !== "assistant" && (
               <section className="panel jobs-panel" aria-label="Hoạt động xử lý">

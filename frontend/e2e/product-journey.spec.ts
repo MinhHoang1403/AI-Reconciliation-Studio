@@ -50,6 +50,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     xlsxPath,
   ]);
   const names = [`reference-${marker}_2026_10.csv`, `counterpart-${marker}.xlsx`];
+  await page.getByRole("button", { name: "Quản lý dữ liệu", exact: true }).click();
   for (let i = 0; i < 2; i++) {
     await page
       .getByRole("button", { name: "Tải dữ liệu", exact: true })

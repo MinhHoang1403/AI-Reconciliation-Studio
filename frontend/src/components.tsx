@@ -221,30 +221,24 @@ export function formatValue(value: unknown): string {
 export function DatasetList({
   items,
   onSelect,
-  selected,
 }: {
   items: Dataset[];
   onSelect: (dataset: Dataset) => void;
-  selected?: string;
 }) {
   return (
     <div className="dataset-list">
       {items.map((d) => (
         <button
-          className={`dataset-item ${selected === d.id ? "dataset-selected" : ""}`}
+          type="button"
+          className="dataset-item"
           key={d.id}
-          aria-pressed={selected === d.id}
           onClick={() => onSelect(d)}
         >
-          <span className="file-type">
-            <FileSpreadsheet size={22} />
-          </span>
-          <span className="dataset-name">
-            <strong>{d.name}</strong>
-            <small>{new Date(d.created_at).toLocaleString("vi-VN")}</small>
-          </span>
+          <FileSpreadsheet className="dataset-file-icon" size={18} aria-hidden="true" />
+          <strong className="dataset-name" title={d.name}>{d.name}</strong>
+          <time dateTime={d.created_at}>{new Date(d.created_at).toLocaleDateString("vi-VN")}</time>
           <Badge status={d.status} />
-          <ChevronRight size={18} />
+          <ChevronRight className="dataset-arrow" size={16} aria-hidden="true" />
         </button>
       ))}
     </div>

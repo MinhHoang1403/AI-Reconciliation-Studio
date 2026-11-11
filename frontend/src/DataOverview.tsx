@@ -1,28 +1,26 @@
-import { ArrowRight, Database, FileSpreadsheet, Layers3, RefreshCw, Sparkles, Upload } from "lucide-react";
+import { ArrowRight, Database, FileSpreadsheet, Layers3, RefreshCw, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "./api";
-import { Badge, DatasetList, Notice, Spinner } from "./components";
+import { DatasetList, Notice, Spinner } from "./components";
 import type { Run } from "./reconciliationTypes";
-import type { Dataset, PreparationAction, Project, ProjectSummary } from "./types";
+import { statusText, type Dataset, type PreparationAction, type Project, type ProjectSummary } from "./types";
 
 const features = [
   { page: "assistant", icon: Sparkles, title: "AI Assistant", action: "Mở AI Assistant",
-    description: "Yêu cầu AI kiểm tra, chuẩn hóa, đối soát và phân tích dữ liệu bằng ngôn ngữ tự nhiên." },
+    description: "Trao đổi với AI để kiểm tra và xử lý dữ liệu." },
   { page: "data", icon: Database, title: "Dữ liệu", action: "Quản lý dữ liệu",
-    description: "Quản lý nguồn dữ liệu, kiểm tra cấu trúc, xác nhận ánh xạ và tạo dữ liệu chuẩn hóa." },
+    description: "Quản lý nguồn, xác nhận ánh xạ và chuẩn hóa." },
   { page: "reconcile", icon: Layers3, title: "Đối soát", action: "Mở đối soát",
-    description: "Thiết lập quy tắc, so sánh nhiều nguồn và phát hiện những giao dịch không khớp." },
+    description: "Thiết lập quy tắc và kiểm tra chênh lệch giữa các nguồn." },
   { page: "reports", icon: FileSpreadsheet, title: "Báo cáo", action: "Xem báo cáo",
-    description: "Xem kết quả đã xác minh, phân tích ngoại lệ và xuất báo cáo." },
+    description: "Xem kết quả đã xác minh, ngoại lệ và xuất báo cáo." },
 ] as const;
 
-const nextActions = {
-  WAIT: { label: "Xem công việc đang xử lý", help: "Theo dõi tiến độ trong Hoạt động xử lý của dự án." },
-  REVIEW_MAPPING: { label: "Kiểm tra ánh xạ", help: "Xác nhận cách đọc các cột trước khi chuẩn hóa bảng." },
-  NORMALIZE: { label: "Chuẩn hóa dữ liệu", help: "Mở bảng đã duyệt ánh xạ để tạo kết quả chuẩn hóa." },
-  REVIEW_DATA: { label: "Kiểm tra lỗi dữ liệu", help: "Mở nguồn cần kiểm tra và xem cảnh báo của đúng bảng." },
-  RECONCILE: { label: "Mở Đối soát", help: "Chọn nguồn đã chuẩn hóa, kiểm tra quy tắc và kỳ đối soát." },
-} satisfies Record<Exclude<PreparationAction["kind"], "UPLOAD">, { label: string; help: string }>;
+const nextActions: Partial<Record<PreparationAction["kind"], string>> = {
+  REVIEW_MAPPING: "Kiểm tra ánh xạ",
+  NORMALIZE: "Chuẩn hóa dữ liệu",
+  REVIEW_DATA: "Kiểm tra lỗi dữ liệu",
+};
 
 function LatestResult({ projectId, runId, onOpen }: {
   projectId: string;
@@ -45,28 +43,37 @@ function LatestResult({ projectId, runId, onOpen }: {
 
   return <div className="dashboard-result">
     <h3>Kết quả đối soát gần nhất</h3>
-    {run?.metric_snapshot && <div className="dashboard-result-detail">
-      <Badge status={run.status} />
-      <span>{run.metric_snapshot.period_start} đến trước {run.metric_snapshot.period_end}</span>
-    </div>}
+    {run?.metric_snapshot && <p className="dashboard-result-detail">
+      {statusText[run.status]} · {run.metric_snapshot.period_start} đến trước {run.metric_snapshot.period_end}
+    </p>}
     <button type="button" className="text-button" onClick={onOpen}>
       Xem kết quả đã xác minh <ArrowRight size={15} aria-hidden="true" />
     </button>
   </div>;
 }
 
-function ProjectCounts({ summary }: { summary: ProjectSummary }) {
+function ProjectCounts({ summary, onActivity, busy }: {
+  summary: ProjectSummary;
+  onActivity?: () => void;
+  busy: boolean;
+}) {
   const counts = [
     { label: "Nguồn dữ liệu", value: summary.dataset_count, help: `${summary.table_count} bảng / sheet` },
     { label: "Kết quả sẵn sàng sử dụng", value: summary.ready_canonical_count,
-      help: `${summary.partial_canonical_count} cần kiểm tra · ${summary.stale_canonical_count} đã cũ` +
-        (summary.failed_canonical_count ? ` · ${summary.failed_canonical_count} thất bại` : "") },
+      help: [
+        summary.partial_canonical_count ? `${summary.partial_canonical_count} cần kiểm tra` : "",
+        summary.stale_canonical_count ? `${summary.stale_canonical_count} đã cũ` : "",
+        summary.failed_canonical_count ? `${summary.failed_canonical_count} thất bại` : "",
+      ].filter(Boolean).join(" · ") },
     { label: "Bảng cần xác nhận ánh xạ", value: summary.mapping_review_count },
-    { label: "Tác vụ đang xử lý", value: summary.active_job_count },
+    { label: "Tác vụ đang xử lý", value: summary.active_job_count, onOpen: onActivity },
   ];
   return <dl className="dashboard-counts">
-    {counts.map(({ label, value, help }) => <div className="stat-card" key={label}>
-      <dt>{label}{help && <small>{help}</small>}</dt>
+    {counts.map(({ label, value, help, onOpen }) => <div className="stat-card" key={label}>
+      <dt>{onOpen ? <button type="button" className="text-button dashboard-activity"
+        aria-label="Xem công việc đang xử lý" disabled={busy} onClick={onOpen}>
+        {label} <ArrowRight size={15} aria-hidden="true" />
+      </button> : label}{help && <small>{help}</small>}</dt>
       <dd><strong>{value.toLocaleString("vi-VN")}</strong></dd>
     </div>)}
   </dl>;
@@ -74,7 +81,7 @@ function ProjectCounts({ summary }: { summary: ProjectSummary }) {
 
 export function DataOverview({
   project, summary, datasets, recentLoading, recentError, onRecentRetry,
-  ready, busy, canEdit, projectLoading, onUpload, onCreate, onRefresh,
+  ready, busy, canEdit, projectLoading, onCreate, onRefresh,
   onAction, onResults, onNavigate, chooseDataset,
 }: {
   project: Project | null;
@@ -87,7 +94,6 @@ export function DataOverview({
   busy: boolean;
   canEdit: boolean;
   projectLoading: boolean;
-  onUpload: () => void;
   onCreate: () => void;
   onRefresh: () => void;
   onAction: (action: PreparationAction) => void;
@@ -97,39 +103,28 @@ export function DataOverview({
 }) {
   const latestRun = summary?.latest_verified_run_id;
   const action = summary?.preparation_action;
-  const next = action && action.kind !== "UPLOAD" ? nextActions[action.kind] : null;
-  const continueWork = action && next ? () => onAction(action)
-    : latestRun ? () => onResults(latestRun) : null;
+  const next = action && nextActions[action.kind];
+  const onActivity = summary && action?.kind === "WAIT" && summary.active_job_count > 0
+    ? () => onAction(action) : undefined;
 
   return <div className="dashboard">
     <header className="dashboard-intro">
       <h1>Chào mừng đến với Reconciliation Studio</h1>
-      <p>Chuẩn bị, đối soát và phân tích dữ liệu với AI. Theo dõi từng bước từ tệp nguồn đến kết quả đã xác minh.</p>
-      <div className="dashboard-start">
-        <button type="button" className="button primary" disabled={!ready || busy || !canEdit} onClick={onUpload}>
-          <Upload size={17} aria-hidden="true" /> Tải dữ liệu
-        </button>
-        <button type="button" className="button secondary" disabled={!ready} onClick={() => onNavigate("assistant")}>
-          <Sparkles size={17} aria-hidden="true" /> Hỏi AI Assistant
-        </button>
-        {continueWork && <button type="button" className="button secondary" disabled={busy} onClick={continueWork}>
-          Tiếp tục công việc <ArrowRight size={16} aria-hidden="true" />
-        </button>}
-      </div>
+      <p>Nền tảng AI hỗ trợ chuẩn hóa, đối soát và phân tích dữ liệu trên cùng một không gian làm việc.</p>
     </header>
 
     <div className="dashboard-grid">
       <section className="dashboard-tools" aria-labelledby="dashboard-tools-title">
-        <h2 id="dashboard-tools-title">Chức năng chính</h2>
+        <div className="dashboard-section-heading"><h2 id="dashboard-tools-title">Chức năng chính</h2></div>
         <ul className="dashboard-feature-list">
           {features.map(({ page, icon: Icon, title, action: actionLabel, description }) => (
             <li key={page}>
               <button type="button" className="dashboard-feature" aria-label={actionLabel} disabled={!ready}
-                onClick={() => onNavigate(page)}>
+                aria-describedby={`dashboard-${page}-description`} onClick={() => onNavigate(page)}>
                 <Icon size={20} aria-hidden="true" />
                 <strong>{title}</strong>
-                <span>{description}</span>
-                <span className="dashboard-feature-action">{actionLabel} <ArrowRight size={15} aria-hidden="true" /></span>
+                <ArrowRight size={16} className="dashboard-feature-arrow" aria-hidden="true" />
+                <span id={`dashboard-${page}-description`}>{description}</span>
               </button>
             </li>
           ))}
@@ -137,47 +132,44 @@ export function DataOverview({
       </section>
 
       <section className="dashboard-project" aria-labelledby="dashboard-project-title">
-        <div className="dashboard-project-heading">
+        <div className="dashboard-section-heading">
           <h2 id="dashboard-project-title">Tổng quan công việc</h2>
           {project && <button type="button" className="icon-button" aria-label="Cập nhật dự án" title="Cập nhật dự án"
             disabled={busy || projectLoading} onClick={onRefresh}>
             <RefreshCw size={16} aria-hidden="true" className={projectLoading ? "spin" : ""} />
           </button>}
         </div>
-        {project ? <>
-          <p className="dashboard-project-name">{project.name}</p>
-          {summary && <>
-            {summary.dataset_count > 0
-              ? <ProjectCounts summary={summary} />
-              : <div className="dashboard-status">
+        <div className="dashboard-project-body">
+          {project ? <>
+            <p className="dashboard-project-name">{project.name}</p>
+            {summary && <>
+              <ProjectCounts summary={summary} onActivity={onActivity} busy={busy} />
+              {summary.dataset_count === 0 && <div className="dashboard-status">
                 <h3>Chưa có nguồn dữ liệu</h3>
-                <p>Tải tệp đầu tiên để bắt đầu.</p>
+                <p>Mở Dữ liệu để tải tệp đầu tiên.</p>
               </div>}
-            {action && next && <div className="dashboard-next">
-              <p>{next.help}</p>
-              <button type="button" className="text-button" disabled={busy} onClick={() => onAction(action)}>
-                {next.label} <ArrowRight size={15} aria-hidden="true" />
-              </button>
-            </div>}
-            {latestRun && <LatestResult key={`${project.id}:${latestRun}`}
-              projectId={project.id} runId={latestRun} onOpen={() => onResults(latestRun)} />}
-          </>}
-        </> : ready && <div className="dashboard-status">
-          <p className="dashboard-project-name">Chưa chọn dự án</p>
-          <p>Chọn hoặc tạo dự án để tải dữ liệu và xem tiến độ.</p>
-          {canEdit && <button type="button" className="text-button" disabled={busy} onClick={onCreate}>
-            Tạo dự án <ArrowRight size={15} aria-hidden="true" />
-          </button>}
-        </div>}
+              {action && next && <div className="dashboard-next">
+                <button type="button" className="text-button" disabled={busy} onClick={() => onAction(action)}>
+                  {next} <ArrowRight size={15} aria-hidden="true" />
+                </button>
+              </div>}
+              {latestRun && <LatestResult key={`${project.id}:${latestRun}`}
+                projectId={project.id} runId={latestRun} onOpen={() => onResults(latestRun)} />}
+            </>}
+          </> : ready && <div className="dashboard-status">
+            <p className="dashboard-project-name">Chưa chọn dự án</p>
+            <p>Chọn hoặc tạo dự án để tải dữ liệu và xem tiến độ.</p>
+            {canEdit && <button type="button" className="text-button" disabled={busy} onClick={onCreate}>
+              Tạo dự án <ArrowRight size={15} aria-hidden="true" />
+            </button>}
+          </div>}
+        </div>
       </section>
     </div>
 
     {project && summary && summary.dataset_count > 0 && <section className="dashboard-recent panel" aria-labelledby="dashboard-recent-title">
       <div className="panel-heading">
         <h2 id="dashboard-recent-title">Dữ liệu gần đây</h2>
-        <button type="button" className="text-button" onClick={() => onNavigate("data")}>
-          Xem tất cả <ArrowRight size={15} aria-hidden="true" />
-        </button>
       </div>
       {recentLoading ? (
         <div className="dashboard-recent-state" role="status"><Spinner /> Đang tải dữ liệu gần đây…</div>

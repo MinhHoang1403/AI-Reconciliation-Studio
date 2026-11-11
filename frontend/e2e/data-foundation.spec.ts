@@ -111,6 +111,7 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
     await selectProject(page, projectId);
   }
   const dialog = page.getByRole("dialog");
+  await page.getByRole("button", { name: "Quản lý dữ liệu", exact: true }).click();
   await page.getByRole("button", { name: "Tải dữ liệu", exact: true }).click();
   await page.getByLabel("Chọn tệp dữ liệu").setInputFiles({
     name: datasetName,
