@@ -1840,6 +1840,33 @@ def resolve_plain_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
     )
 
 
+def requests_source_preparation(goal: str, *, require_selector: bool = True) -> bool:
+    """Nhận lệnh chuẩn bị độc lập; câu ghép tiếp tục đi qua router nghiệp vụ."""
+    normalized = " ".join(plain_question(goal).split()).rstrip(" ?.!")
+    action = (
+        r"(?:(?:xin|toi muon|hay|vui long|giup toi) )?"
+        r"(?:kiem tra va )?(?:chuan hoa|chuan bi(?: de chuan hoa)?) "
+    )
+    quantity = r"(?:(?:toan bo|tat ca|ca ba|ba|3|ca hai|hai|2|cac|nhung) )?(?:cac )?"
+    source = r"(?:bo du lieu|du lieu|tep|file|nguon du lieu|nguon)"
+    scope = (
+        r"(?: nay| dang xem|(?: toi)? (?:vua|moi|da) tai len"
+        r"| (?:trong|cua|o) du an(?: nay| hien tai)?)?"
+    )
+    explicit_scope = re.search(
+        r"\b(?:toan bo|tat ca|ca ba|ba|3|ca hai|hai|2|nay|dang xem|tai len|du an)\b",
+        normalized,
+    )
+    if (explicit_scope or not require_selector) and re.fullmatch(
+        action + quantity + source + scope + r"(?: cho toi| giup toi)?", normalized
+    ):
+        return True
+    filename = r'(?:"[^"\r\n]+\.(?:csv|xlsx)"|“[^”\r\n]+\.(?:csv|xlsx)”|[^!?;,]+?\.(?:csv|xlsx))'
+    return len(explicit_source_filenames(goal)) == 1 and bool(
+        re.fullmatch(action + r"(?:tep|file) " + filename, normalized)
+    )
+
+
 def resolve_attached_normalization(
     goal: str, catalogue: IntentCatalogue, attached_ids: list[str]
 ) -> AgentIntent | None:

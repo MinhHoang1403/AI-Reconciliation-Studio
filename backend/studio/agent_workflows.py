@@ -562,6 +562,13 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
     step.status = "SUCCEEDED" if child.status == "SUCCEEDED" else "BLOCKED"
     row.waiting_job_id = None
     if child.status != "SUCCEEDED":
+        if (
+            child.kind == "parse"
+            and state.intent
+            and state.intent.intent == "PREPARE_NORMALIZATION"
+        ):
+            # Báo nguồn đọc lỗi từ metadata và tiếp tục với những nguồn khác.
+            return True
         if child.kind == "agent_prepare" and any(r.state == "OPEN" for r in state.reviews):
             row.state = "WAITING_REVIEW"
         else:
@@ -654,11 +661,21 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
     stage_steps = state.steps[sequence.step_start :] if sequence else state.steps
     stage_reviews = state.reviews[sequence.review_start :] if sequence else state.reviews
     if intent.intent == "CHECK_DATASET_STATUS":
-        from studio.dataset_status import read_processing_status, status_description
+        from studio.agent_intents import explicit_source_filenames
+        from studio.dataset_status import (
+            asks_source_inventory,
+            read_processing_status,
+            status_description,
+        )
 
         try:
             statuses = read_processing_status(
-                db, actor, context, state.dataset_ids or intent.dataset_ids, row.goal
+                db,
+                actor,
+                context,
+                state.dataset_ids or intent.dataset_ids,
+                row.goal,
+                dataset_names=tuple(explicit_source_filenames(row.goal)) or None,
             )
         except DomainError as exc:
             if exc.code != "INPUT_AMBIGUOUS":
@@ -680,26 +697,14 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                     text="Dự án chưa có tệp dữ liệu. Hãy dùng dấu cộng để tải CSV hoặc XLSX."
                 )
             )
-        elif (
-            not state.dataset_ids
-            and not intent.dataset_ids
-            and not context.dataset_id
-            and len({s.dataset_id for s in statuses}) > 2
-            and any(w in row.goal.lower().split() for w in ["hai", "2", "này", "trên"])
-        ):
-            make_review(
-                db,
-                row,
-                state,
-                kind="CLARIFICATION",
-                resource_id=row.id,
-                question="Bạn muốn kiểm tra nguồn nào? Các tệp trong dự án: "
-                + "; ".join(dict.fromkeys(s.name for s in statuses)),
-                reason="Cần xác định đúng nguồn trước khi trả lời về hai bộ dữ liệu.",
-            )
-            save(row, state)
-            return
         else:
+            if asks_source_inventory(row.goal):
+                scope = "Phạm vi đang hỏi" if context.dataset_id or state.dataset_ids else "Dự án"
+                state.blocks.append(
+                    ProgressBlock(
+                        text=f"{scope} có {len({s.dataset_id for s in statuses})} nguồn dữ liệu."
+                    )
+                )
             state.blocks.extend(ProgressBlock(text=status_description(s)) for s in statuses)
             state.blocks.append(
                 ProgressBlock(
@@ -800,6 +805,39 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
 
     if intent.intent == "PREPARE_NORMALIZATION":
         require_editor(actor, db, row.id)
+        unread = [dataset for dataset in catalogue.datasets if not dataset.tables]
+        if unread and not approved_only:
+            parsing = db.scalar(
+                select(JobRow)
+                .where(
+                    JobRow.workspace_id == actor.workspace_id,
+                    JobRow.project_id == row.project_id,
+                    JobRow.kind == "parse",
+                    JobRow.status.in_(["QUEUED", "RUNNING", "RETRYABLE_FAILURE"]),
+                    JobRow.payload["dataset_id"].astext.in_([dataset.id for dataset in unread]),
+                )
+                .order_by(JobRow.created_at, JobRow.id)
+                .limit(1)
+            )
+            if parsing:
+                wait_for(
+                    db,
+                    row,
+                    state,
+                    "parse",
+                    parsing.payload["dataset_id"],
+                    JobReference(job_id=parsing.id, status=parsing.status),
+                )
+                save(row, state)
+                return
+            for dataset in unread:
+                message = f"{dataset.name} đã tải lên nhưng chưa có bảng đọc được."
+                if dataset.status == "FAILED":
+                    message = f"{dataset.name} đã tải lên nhưng đọc tệp thất bại."
+                if not any(
+                    isinstance(b, ProgressBlock) and b.text == message for b in state.blocks
+                ):
+                    state.blocks.append(ProgressBlock(text=message))
         if state.prepare_upload and not state.blocks:
             if add_source_previews():
                 state.blocks.append(
@@ -973,7 +1011,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                     or all(t.canonical_id for d in catalogue.datasets for t in d.tables)
                 )
                 else "PARTIAL"
-                if (state.prepare_upload or approved_only) and state.blocks
+                if state.blocks and (unread or state.prepare_upload or approved_only)
                 else "WAITING_REVIEW"
             )
         if approved_only and row.state == "COMPLETED":

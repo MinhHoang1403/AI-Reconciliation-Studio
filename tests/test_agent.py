@@ -469,6 +469,29 @@ def test_explicit_local_normalization_binds_only_attached_scope(goal, attached, 
 
 
 @pytest.mark.parametrize(
+    ("goal", "inventory", "prepare"),
+    [
+        ("Dự án này có những tệp nào?", True, False),
+        ("Liệt kê toàn bộ nguồn dữ liệu trong dự án", True, False),
+        ("Có bao nhiêu nguồn dữ liệu trong dự án?", True, False),
+        ("Liệt kê các dòng lỗi của nguồn", False, False),
+        ("Hãy kiểm tra và chuẩn hóa cả ba nguồn dữ liệu", False, True),
+        ("Chuẩn bị toàn bộ dữ liệu trong dự án giúp tôi", False, True),
+        ('Chuẩn bị tệp "Ledger B.xlsx"', False, True),
+        ("Chuẩn hóa dữ liệu", False, False),
+        ("Đừng chuẩn hóa toàn bộ dữ liệu", False, False),
+        ("Chuẩn bị cả ba nguồn rồi chạy đối soát", False, False),
+    ],
+)
+def test_project_source_commands_exclude_row_reads_and_compound_actions(goal, inventory, prepare):
+    from studio.agent_intents import requests_source_preparation
+    from studio.dataset_status import asks_source_inventory
+
+    assert asks_source_inventory(goal) is inventory
+    assert requests_source_preparation(goal) is prepare
+
+
+@pytest.mark.parametrize(
     "goal",
     [
         "Xem trước cả hai nguồn đã thanh toán",

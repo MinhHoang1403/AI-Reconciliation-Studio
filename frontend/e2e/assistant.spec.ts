@@ -811,7 +811,7 @@ test("conversation history failure shows recoverable error", async ({
   ).toBeEnabled();
 });
 
-test("data screen passes only its current scoped dataset to assistant", async ({
+test("viewing Data keeps project scope until a file is explicitly chosen for chat", async ({
   page,
 }) => {
   const s = await state();
@@ -835,6 +835,11 @@ test("data screen passes only its current scoped dataset to assistant", async ({
   await page.getByRole("button", { name: "AI Assistant", exact: true }).click();
   const dialog = page.getByRole("region", { name: "AI Assistant", exact: true });
   const sourceChip=dialog.getByRole("button",{name:"Đổi ngữ cảnh phân tích",exact:true});
+  await expect(sourceChip).toHaveAttribute("data-dataset-id","");
+  await dialog.getByRole("button", { name: "Tệp đã tải", exact: true }).click();
+  const panel = assistantPanel(page, "Tệp và dữ liệu");
+  await panel.getByRole("button").filter({ hasText: dataset.name }).first().click();
+  await panel.getByRole("button", { name: "Hỏi riêng về tệp này", exact: true }).click();
   await expect(sourceChip).toHaveAttribute("data-dataset-id",dataset.id);
   await expect(sourceChip).toContainText(dataset.name);
   const answer = await ask(page, "Tóm tắt kết quả đối soát");

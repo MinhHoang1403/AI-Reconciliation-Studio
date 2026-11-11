@@ -62,6 +62,40 @@ def scoped_context(db: Session, actor: Actor, context: AssistantContext) -> RunR
     return run
 
 
+def select_project_datasets(
+    db: Session,
+    actor: Actor,
+    project_id: str,
+    dataset_ids: list[str],
+    dataset_names: tuple[str, ...] | None = None,
+) -> list[DatasetRow]:
+    """Đọc nguồn hiện hành theo phạm vi đã xác thực, kể cả tệp chưa đọc."""
+    query = select(DatasetRow).where(
+        DatasetRow.workspace_id == actor.workspace_id,
+        DatasetRow.project_id == project_id,
+        active_source(),
+    )
+    if dataset_ids:
+        query = query.where(DatasetRow.id.in_(dataset_ids))
+    elif dataset_names:
+        names = {unicodedata.normalize("NFC", name).casefold() for name in dataset_names}
+        identities = []
+        lookup = query.with_only_columns(DatasetRow.id, DatasetRow.name)
+        with db.execute(lookup.execution_options(yield_per=128)) as result:
+            for dataset_id, name in result:
+                if unicodedata.normalize("NFC", name).casefold() in names:
+                    identities.append(dataset_id)
+                    if len(identities) == 6:
+                        break
+        query = query.where(DatasetRow.id.in_(identities))
+    datasets = list(db.scalars(query.order_by(DatasetRow.created_at, DatasetRow.id).limit(6)))
+    if len(datasets) > 5:
+        raise DomainError("INPUT_AMBIGUOUS", "Phạm vi có hơn năm nguồn. Hãy chọn tối đa năm tệp.")
+    if dataset_ids and {d.id for d in datasets} != set(dataset_ids):
+        raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy nguồn trong dự án này.", 404)
+    return datasets
+
+
 def agent_catalogue(
     db: Session,
     actor: Actor,
@@ -69,7 +103,7 @@ def agent_catalogue(
     dataset_ids: list[str],
     *,
     workflow_id: str | None = None,
-    dataset_names: tuple[str, str] | None = None,
+    dataset_names: tuple[str, ...] | None = None,
 ) -> "IntentCatalogue":
     """Catalogue bounded cho router; chỉ metadata/profile, không raw values/paths/secrets."""
     from studio.contracts import SchemaDefinition
@@ -107,38 +141,22 @@ def agent_catalogue(
                 .distinct()
             )
         )
-    query = select(DatasetRow).where(
-        DatasetRow.workspace_id == actor.workspace_id,
-        DatasetRow.project_id == context.project_id,
-        active_source(),
-    )
-    if dataset_ids:
-        query = query.where(DatasetRow.id.in_(dataset_ids))
-    elif selected_names:
-        # Search only the current project and workspace. Read names in batches so
-        # unrelated source profiles never enter the catalogue or the provider.
-        names = {unicodedata.normalize("NFC", name).casefold() for name in selected_names}
-        identities = []
-        lookup = query.with_only_columns(DatasetRow.id, DatasetRow.name)
-        with db.execute(lookup.execution_options(yield_per=128)) as result:
-            for dataset_id, name in result:
-                if unicodedata.normalize("NFC", name).casefold() in names:
-                    identities.append(dataset_id)
-                    if len(identities) == 6:
-                        break
-        query = query.where(DatasetRow.id.in_(identities))
-    datasets = list(db.scalars(query.order_by(DatasetRow.created_at, DatasetRow.id).limit(6)))
-    if len(datasets) > 5 or (dataset_ids and {d.id for d in datasets} != set(dataset_ids)):
-        raise DomainError("INPUT_AMBIGUOUS", "Chọn tối đa năm nguồn đúng dự án cần xử lý.")
+    datasets = select_project_datasets(db, actor, context.project_id, dataset_ids, selected_names)
     sources = []
     for dataset in datasets:
         tables = list(
             db.scalars(
                 select(TableRow)
-                .join(VersionRow)
                 .where(
                     TableRow.workspace_id == actor.workspace_id,
-                    VersionRow.dataset_id == dataset.id,
+                    TableRow.dataset_version_id
+                    == (
+                        select(VersionRow.id)
+                        .where(VersionRow.dataset_id == dataset.id)
+                        .order_by(VersionRow.revision.desc())
+                        .limit(1)
+                        .scalar_subquery()
+                    ),
                 )
                 .order_by(TableRow.id)
                 .limit(6)

@@ -223,7 +223,9 @@ Không cần đổi API key hoặc mở quyền mới để kiểm tra dữ li�
 
 ### 5.4. Hỏi trạng thái và kiểm tra lỗi
 
-Nếu vừa trở về từ màn hình kiểm tra một tệp, bấm **Đổi ngữ cảnh phân tích** trên thanh công cụ Chat. Khi thấy **Nguồn đang xem**, bấm **Dùng dữ liệu của dự án** để hỏi về cả hai nguồn. Thao tác này mở hội thoại theo phạm vi dự án; hội thoại và bản nháp riêng của tệp vẫn được giữ. Nếu đang ở phạm vi một nguồn mà hỏi “hai bộ dữ liệu”, hệ thống sẽ yêu cầu chọn lại phạm vi, không trả lời một nguồn như thể đã kiểm tra hai nguồn.
+Mở **AI Assistant** từ thanh điều hướng để làm việc với dự án hiện tại. Danh sách nguồn được đọc lại cho mỗi câu hỏi, kể cả khi vừa tải tệp hoặc mở xem một tệp trong **Tệp và dữ liệu**. Ví dụ “Dự án này có những tệp nào?” liệt kê các nguồn trong phạm vi xử lý và cho biết mỗi nguồn đang ở bước nào.
+
+Để hỏi riêng, nêu đúng tên tệp trong câu hỏi hoặc mở tệp trong **Tệp và dữ liệu** rồi bấm **Hỏi riêng về tệp này**. Trong hội thoại riêng, câu hỏi nêu rõ phạm vi dự án sẽ tra cứu toàn dự án cho lượt đó. **Dùng dữ liệu của dự án** mở hội thoại dự án để tiếp tục làm việc ở phạm vi này.
 
 Gửi câu sau — đây cũng là kiểm thử lại lỗi đã báo:
 

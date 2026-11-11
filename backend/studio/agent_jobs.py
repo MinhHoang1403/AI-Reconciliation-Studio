@@ -15,11 +15,13 @@ from sqlalchemy.orm import Session
 from studio.access import Actor, require_editor
 from studio.agent_intents import (
     INTENT_REVISION,
+    explicit_source_filenames,
     export_query_for_intent,
     interpret_reconciliation_sequence,
     interpret_requests,
     named_reconciliation_files,
     requests_reconciliation_sequence,
+    requests_source_preparation,
     resolve_attached_normalization,
     resolve_deferred_export_read,
     resolve_named_reconciliation,
@@ -47,8 +49,9 @@ from studio.agent_workflows import (
     wait_for,
 )
 from studio.ai_gateway import typed_provider
+from studio.assistant import plain_question
 from studio.assistant_api import own_conversation
-from studio.assistant_tools import agent_catalogue
+from studio.assistant_tools import agent_catalogue, select_project_datasets
 from studio.config import request_limit_reached, settings
 from studio.contracts import DatasetProfile, WorkspacePolicy
 from studio.contracts.agent import (
@@ -78,6 +81,11 @@ from studio.database import (
     TraceRow,
     WorkspaceRow,
     now,
+)
+from studio.dataset_status import (
+    asks_processing_status,
+    asks_source_inventory,
+    requests_project_sources,
 )
 from studio.errors import DomainError, request_failure_message
 from studio.repository import (
@@ -244,12 +252,22 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
                 return False
             if not job.payload.get("command") and QUALITY_CORRECTION.match(message.text):
                 return True
+            if (
+                asks_processing_status(message.text)
+                or asks_source_inventory(message.text)
+                or requests_source_preparation(message.text)
+            ):
+                return True
             catalogue = agent_catalogue(
                 db,
                 actor,
                 context,
                 job.payload.get("dataset_ids", []),
-                dataset_names=named_reconciliation_files(message.text),
+                dataset_names=(
+                    named_reconciliation_files(message.text)
+                    or tuple(explicit_source_filenames(message.text))
+                    or None
+                ),
             )
             return bool(
                 resolve_native_read(message.text, catalogue)
@@ -509,19 +527,77 @@ def interpret(
             require_editor(actor, db, row.id)
             context = AssistantContext(project_id=context.project_id)
             row.context = context.model_dump(mode="json")
-        from studio.dataset_status import asks_processing_status
-
-        if asks_processing_status(row.goal):
+        status_request = asks_processing_status(goal) or asks_source_inventory(goal)
+        prepare = command == "PREPARE_NORMALIZATION" or (
+            command is None and requests_source_preparation(goal)
+        )
+        if status_request or prepare or (
+            command is None and requests_source_preparation(goal, require_selector=False)
+        ):
+            if requests_project_sources(goal) and not state.steps:
+                if state.dataset_ids:
+                    select_project_datasets(db, actor, context.project_id, state.dataset_ids)
+                state.dataset_ids = []
+                context = AssistantContext(project_id=context.project_id)
+            else:
+                context = AssistantContext(
+                    project_id=context.project_id, dataset_id=context.dataset_id
+                )
+            row.context = context.model_dump(mode="json")
+        if status_request:
             state.intent = AgentIntent(intent="CHECK_DATASET_STATUS", dataset_ids=state.dataset_ids)
             save(row, state)
             db.commit()
             return
-        files = None if sequence_requested else named_reconciliation_files(row.goal)
+        files = (
+            None
+            if sequence_requested or command
+            else (
+                named_reconciliation_files(goal) or tuple(explicit_source_filenames(goal)) or None
+            )
+        )
         catalogue = agent_catalogue(
             db, actor, context, state.dataset_ids, workflow_id=row.id, dataset_names=files
         )
         expected_selection = selection_fingerprint(catalogue)
         ids = [d.id for d in catalogue.datasets]
+        if prepare:
+            quantity = re.search(
+                r"\b(?:ca )?(ba|3|hai|2) (?:bo du lieu|du lieu|nguon|file|tep)\b",
+                plain_question(goal),
+            )
+            expected = (3 if quantity[1] in {"ba", "3"} else 2) if quantity else None
+            if (
+                not ids
+                or (files and len(ids) != len(set(files)))
+                or (expected and len(ids) != expected)
+            ):
+                state.intent = AgentIntent(
+                    intent="CLARIFY",
+                    questions=[
+                        "Chưa xác định được đủ nguồn trong phạm vi yêu cầu. "
+                        "Hãy nêu tên tệp hoặc yêu cầu chuẩn bị toàn bộ dự án."
+                    ],
+                )
+                save(row, state)
+                db.commit()
+                return
+            # Mỗi workflow ghim phạm vi lúc nhận yêu cầu. Tin nhắn tiếp theo đọc lại dự án.
+            state.dataset_ids = ids
+            state.intent = AgentIntent(intent="PREPARE_NORMALIZATION", dataset_ids=ids)
+            save(row, state)
+            db.commit()
+            return
+        if command == "PREPARE_UPLOAD":
+            if not state.dataset_ids:
+                raise DomainError("INPUT_AMBIGUOUS", "Cần chọn các tệp vừa tải lên.", 422)
+            state.prepare_upload = True
+            state.intent = AgentIntent(
+                intent="PREPARE_NORMALIZATION", dataset_ids=state.dataset_ids
+            )
+            save(row, state)
+            db.commit()
+            return
         parsing = db.scalar(
             select(JobRow)
             .where(
@@ -572,16 +648,6 @@ def interpret(
                 row.context = context.model_dump(mode="json")
                 plain_listing = plain_listing.model_copy(update={"result_position": None})
             state.intent = plain_listing
-            save(row, state)
-            db.commit()
-            return
-        if command == "PREPARE_UPLOAD":
-            if not state.dataset_ids:
-                raise DomainError("INPUT_AMBIGUOUS", "Cần chọn các tệp vừa tải lên.", 422)
-            state.prepare_upload = True
-            state.intent = AgentIntent(
-                intent="PREPARE_NORMALIZATION", dataset_ids=state.dataset_ids
-            )
             save(row, state)
             db.commit()
             return
@@ -646,6 +712,7 @@ def interpret(
                 AssistantContext.model_validate(row.context),
                 state.dataset_ids,
                 workflow_id=row.id,
+                dataset_names=files,
             )
             if selection_fingerprint(current_catalogue) != expected_selection:
                 raise DomainError(
@@ -655,6 +722,8 @@ def interpret(
                     409,
                 )
             state.intent = intents[0]
+            if state.intent.intent == "PREPARE_NORMALIZATION" and not state.dataset_ids:
+                state.dataset_ids = state.intent.dataset_ids or ids
             if sequence:
                 initialize_sequence(state, sequence)
             state.export_query = export_query_for_intent(state.intent, current_catalogue)

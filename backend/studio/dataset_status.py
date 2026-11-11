@@ -8,13 +8,19 @@ from sqlalchemy.orm import Session
 
 from studio.access import Actor
 from studio.assistant import plain_question
-from studio.assistant_tools import scoped_context
+from studio.assistant_tools import scoped_context, select_project_datasets
 from studio.contracts import Contract
 from studio.contracts.assistant import AssistantContext
-from studio.database import CanonicalRow, DatasetRow, MappingRow, TableRow, VersionRow
+from studio.database import (
+    AgentWorkflowRow,
+    CanonicalRow,
+    ConversationRow,
+    MappingRow,
+    TableRow,
+    VersionRow,
+)
 from studio.errors import DomainError
 from studio.repository import mapping_archived
-from studio.resource_lifecycle import active_source
 
 
 class ProcessingStatus(Contract):
@@ -39,13 +45,47 @@ class ProcessingStatus(Contract):
     ]
 
 
+def asks_source_inventory(goal: str) -> bool:
+    """Nhận câu hỏi danh mục, tách khỏi việc xem dòng và tính chỉ tiêu."""
+    text = " ".join(plain_question(goal).split()).rstrip(" ?.!")
+    source = r"(?:tep(?: du lieu)?|file|nguon(?: du lieu)?|bo du lieu)"
+    project = r"(?: (?:trong|cua|o) du an(?: nay| hien tai)?)?"
+    modifier = r"(?: (?:da|vua|moi) tai len)?"
+    return bool(
+        re.fullmatch(
+            r"(?:(?:hay|vui long|cho toi) )?"
+            r"(?:(?:liet ke|cho biet|xem) (?:danh sach )?(?:tat ca |toan bo )?(?:cac |nhung )?"
+            rf"{source}{modifier}{project}"
+            r"|(?:trong )?du an(?: nay| hien tai)? (?:(?:dang|hien) )?co "
+            rf"(?:nhung {source} nao|(?:bao nhieu|may) {source})"
+            rf"|(?:hien )?co (?:nhung {source} nao|bao nhieu {source}){modifier}{project}"
+            rf"|(?:danh sach (?:cac )?{source}|(?:cac |nhung )?{source} nao){modifier}{project})",
+            text,
+        )
+    )
+
+
+def requests_project_sources(goal: str) -> bool:
+    """Phạm vi toàn dự án chỉ ghi đè tệp đã ghim khi yêu cầu nêu rõ."""
+    text = plain_question(goal)
+    return bool(
+        re.search(
+            r"\b(?:trong|cua|o) du an\b|\bdu an (?:nay |hien tai )?(?:dang |hien )?co\b", text
+        )
+        or re.search(
+            r"\b(?:toan bo|tat ca|ca ba|ba|3) (?:cac )?(?:bo du lieu|du lieu|nguon|file|tep)\b",
+            text,
+        )
+    )
+
+
 def asks_processing_status(goal: str) -> bool:
     """Conservative read shortcut: status questions, never instructions to perform work."""
     text = plain_question(goal)
     subject = re.search(r"\b(?:du lieu|nguon|file|tep|cot)\b", text)
     status = re.search(
         (
-            "\\b(?:chuan hoa|xu ly xong|san sang|dung duoc|trang thai xu ly|xac "
+            "\\b(?:chuan hoa|da doc|doc xong|xu ly xong|san sang|dung duoc|trang thai xu ly|xac "
             "nhan cot|co the doi soat)\\b"
         ),
         text,
@@ -68,7 +108,13 @@ def asks_processing_status(goal: str) -> bool:
 
 
 def read_processing_status(
-    db: Session, actor: Actor, context: AssistantContext, dataset_ids: list[str], goal: str = ""
+    db: Session,
+    actor: Actor,
+    context: AssistantContext,
+    dataset_ids: list[str],
+    goal: str = "",
+    *,
+    dataset_names: tuple[str, ...] | None = None,
 ) -> list[ProcessingStatus]:
     """Read current versions/mappings only; stale/partial can never become READY.
 
@@ -76,23 +122,16 @@ def read_processing_status(
     not readiness for a particular financial contract. No writes, artifact scans or AI.
     """
     scoped_context(db, actor, context)
-    selected = dataset_ids or ([context.dataset_id] if context.dataset_id else [])
-    query = select(DatasetRow).where(
-        DatasetRow.workspace_id == actor.workspace_id,
-        DatasetRow.project_id == context.project_id,
-        active_source(),
+    selected = dataset_ids or (
+        [context.dataset_id] if context.dataset_id and not dataset_names else []
     )
-    if selected:
-        query = query.where(DatasetRow.id.in_(selected))
-    datasets = list(db.scalars(query.order_by(DatasetRow.created_at, DatasetRow.id).limit(6)))
-    if selected and {d.id for d in datasets} != set(selected):
-        raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy nguồn trong dự án này.", 404)
-    if len(datasets) > 5:
+    datasets = select_project_datasets(db, actor, context.project_id, selected, dataset_names)
+    if dataset_names and not selected and len(datasets) != len(set(dataset_names)):
         raise DomainError(
-            "INPUT_AMBIGUOUS", "Dự án có nhiều nguồn. Hãy chọn tối đa năm tệp trong ngữ cảnh."
+            "INPUT_AMBIGUOUS", "Chưa xác định được đúng tệp theo tên trong dự án này."
         )
     requested = re.findall(r"\b(?:nguon|file|tep) ([a-z])\b", plain_question(goal))
-    if requested and not selected:
+    if requested and not selected and not dataset_names:
         matched = []
         for alias in sorted(set(requested)):
             matches = [
@@ -116,8 +155,7 @@ def read_processing_status(
             "INPUT_AMBIGUOUS",
             f"Ngữ cảnh hiện tại có {len(datasets)} nguồn: "
             + "; ".join(d.name for d in datasets)
-            + ". Hãy chọn đúng hai nguồn. Nếu đang xem một tệp, "
-            "mở Đổi ngữ cảnh phân tích và chọn Dùng dữ liệu của dự án trước khi hỏi lại.",
+            + ". Hãy nêu tên hai nguồn hoặc hỏi về toàn bộ dự án.",
         )
     result = []
     from studio.normalization import NORMALIZATION_REVISION
@@ -197,11 +235,31 @@ def read_processing_status(
                 .where(
                     MappingRow.workspace_id == actor.workspace_id,
                     MappingRow.source_table_id == table.id,
-                    MappingRow.status.in_(["PROPOSED", "NEEDS_REVIEW"]),
+                    MappingRow.status.in_(["PROPOSED", "AMBIGUOUS", "NEEDS_REVIEW"]),
                     ~mapping_archived(),
                 )
                 .limit(1)
             )
+            if not proposed and not mapping:
+                proposed = db.scalar(
+                    select(AgentWorkflowRow.id)
+                    .join(ConversationRow, ConversationRow.id == AgentWorkflowRow.conversation_id)
+                    .where(
+                        AgentWorkflowRow.workspace_id == actor.workspace_id,
+                        AgentWorkflowRow.project_id == context.project_id,
+                        AgentWorkflowRow.actor_id == actor.id,
+                        ConversationRow.deleted_at.is_(None),
+                        AgentWorkflowRow.state.in_(["RUNNING", "WAITING_REVIEW"]),
+                        AgentWorkflowRow.detail.contains(
+                            {
+                                "reviews": [
+                                    {"kind": "MAPPING", "resource_id": table.id, "state": "OPEN"},
+                                ]
+                            }
+                        ),
+                    )
+                    .limit(1)
+                )
             state = (
                 "STALE"
                 if canonical and canonical.stale

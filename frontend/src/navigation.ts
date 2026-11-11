@@ -36,11 +36,14 @@ export function readLocation(): Location {
   const projectId = id("project");
   // Older Home URLs could include an exact run selected in the embedded results.
   const page = requestedPage === "home" && projectId && id("run_id") ? "reports" : requestedPage;
-  const context: AssistantContext = { project_id: projectId };
-  for (const key of ["run_id", "dataset_id", "group_id", "case_id"] as const)
-    if (id(key)) context[key] = id(key);
   const origin =
     pages.find((p) => p !== "assistant" && p === query.get("from")) || "home";
+  // Sidebar links from Data used to copy the preview's dataset into Chat.
+  const legacyPreview = page === "assistant" && origin === "data"
+    && query.get("source_scope") !== "1" && !id("conversation");
+  const context: AssistantContext = { project_id: projectId };
+  for (const key of ["run_id", "dataset_id", "group_id", "case_id"] as const)
+    if (id(key) && !(key === "dataset_id" && legacyPreview)) context[key] = id(key);
   return {
     page,
     projectId,
@@ -55,6 +58,8 @@ export function writeLocation(location: Location, replace = false) {
   if (location.page === "assistant") query.set("from", location.origin);
   if (location.page === "assistant" && location.conversationId)
     query.set("conversation", location.conversationId);
+  if (location.page === "assistant" && location.context?.dataset_id)
+    query.set("source_scope", "1");
   for (const key of ["run_id", "dataset_id", "group_id", "case_id"] as const)
     if (location.context?.[key]) query.set(key, location.context[key]!);
   window.history[replace ? "replaceState" : "pushState"](null, "", `#${query}`);

@@ -318,7 +318,8 @@ def test_historical_refresh_does_not_prepare_sources_added_after_the_original_re
         db.commit()
     drain(factory, worker)
     current = client.get(f"/api/agent/workflows/{initial['id']}").json()
-    assert current["state"] == "PARTIAL"
+    assert current["state"] == "COMPLETED"
+    assert current["detail"]["dataset_ids"] == [dataset_id]
     assert current["detail"]["reviews"][0]["state"] == "INVALIDATED"
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 1
@@ -1067,6 +1068,134 @@ def test_status_respects_single_source_scope_and_never_answers_two_with_one(pg, 
             )
             == 1
         )
+
+
+def test_project_inventory_and_preparation_use_current_scoped_uploads(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+    from studio.agent_preparation import profiled_fields
+    from studio.contracts.agent import NormalizationDraft
+    from studio.database import ProjectRow, VersionRow, WorkspaceRow
+
+    client, factory, worker = pg
+    pid = project(client)
+    other = project(client, "Another project")
+    calls = []
+
+    def mock_proposal(provider, table_id, profile, policy, reserve, context=None):
+        calls.append(table_id)
+        return NormalizationDraft(
+            table_id=table_id,
+            entity_kind="unknown",
+            grain="unknown",
+            fields=profiled_fields(profile),
+        )
+
+    def unexpected_router(*args):
+        pytest.fail("Explicit source requests must not go through the language router")
+
+    monkeypatch.setattr(agents, "propose_normalization", mock_proposal)
+    monkeypatch.setattr(agents, "interpret_requests", unexpected_router)
+
+    def upload(name, project_id=pid):
+        raw = f"ID,Amount\n00001,{sum(map(ord, name))}\n"
+        response = client.post(
+            "/api/datasets/uploads",
+            data={"project_id": project_id, "request_ai_mapping": "false"},
+            files={"files": (name, raw.encode(), "text/csv")},
+        )
+        assert response.status_code == 202, response.text
+        return response.json()["items"][0]["id"]
+
+    names = ("Revenue A.csv", "Ledger B.csv", "Payments C.csv")
+    dataset_ids = [upload(name) for name in names]
+    outside = upload("Other project.csv", other)
+    drain(factory, worker)
+    with factory() as db:
+        ws = WorkspaceRow(id="scope-isolated", name="Isolated", policy={})
+        db.add(ws)
+        db.flush()
+        foreign = ProjectRow(workspace_id=ws.id, name="Outside workspace", business_scope="test")
+        db.add(foreign)
+        db.flush()
+        db.add(
+            DatasetRow(
+                workspace_id=ws.id,
+                project_id=foreign.id,
+                owner_id="foreign",
+                name="Other workspace.csv",
+                sha256="a" * 64,
+                parse_signature="synthetic",
+            )
+        )
+        db.commit()
+
+    project_context = {"project_id": pid}
+    cid = conversation(client, project_context)
+
+    def ask(text, key, *, context=project_context, conversation_id=cid):
+        job = ask_agent(client, context, conversation_id, key=key, text=text)
+        drain(factory, worker)
+        return job, workflow_for(client, factory, job["job_id"])
+
+    _, listed = ask("Dự án này có những tệp nào?", "inventory")
+    text = " ".join(b["text"] for b in listed["detail"]["blocks"])
+    assert "Dự án có 3 nguồn dữ liệu" in text
+    assert all(name in text for name in names)
+    assert "Other project.csv" not in text and "Other workspace.csv" not in text
+    assert "Đã đọc dữ liệu, chưa chuẩn hóa" in text
+
+    _, single = ask('Tệp "Ledger B.csv" đã chuẩn hóa chưa?', "one")
+    text = " ".join(b["text"] for b in single["detail"]["blocks"])
+    assert "Ledger B.csv" in text and all(n not in text for n in (names[0], names[2]))
+
+    pinned = {"project_id": pid, "dataset_id": dataset_ids[0]}
+    pinned_cid = conversation(client, pinned, key="one-source-conversation")
+    _, widened = ask(
+        "Có bao nhiêu nguồn dữ liệu trong dự án?",
+        "explicit-project",
+        context=pinned,
+        conversation_id=pinned_cid,
+    )
+    assert all(name in " ".join(b["text"] for b in widened["detail"]["blocks"]) for name in names)
+    assert widened["context"]["dataset_id"] is None
+
+    question = "Hãy kiểm tra và chuẩn hóa cả ba nguồn dữ liệu"
+    queued, prepared = ask(question, "all")
+    assert prepared["state"] == "WAITING_REVIEW"
+    assert prepared["detail"]["dataset_ids"] == dataset_ids
+    reviews = prepared["detail"]["reviews"]
+    assert len(reviews) == 3 and all(
+        r["kind"] == "MAPPING" and r["state"] == "OPEN" for r in reviews
+    )
+    with factory() as db:
+        actual = set(
+            db.scalars(
+                select(TableRow.id).join(VersionRow).where(VersionRow.dataset_id.in_(dataset_ids))
+            )
+        )
+        assert set(calls) == actual
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 0
+    replay = ask_agent(client, project_context, cid, key="all", text=question)
+    assert replay["job_id"] == queued["job_id"]
+    _, reviewed = ask("Liệt kê các nguồn dữ liệu trong dự án", "review-status")
+    assert (
+        sum("chờ kiểm tra, xác nhận" in block["text"] for block in reviewed["detail"]["blocks"])
+        == 3
+    )
+
+    upload("New upload.csv")
+    _, refreshed = ask("Liệt kê các nguồn dữ liệu trong dự án", "fresh")
+    text = " ".join(b["text"] for b in refreshed["detail"]["blocks"])
+    assert "Dự án có 4 nguồn dữ liệu" in text and "New upload.csv" in text
+    old = client.get(f"/api/agent/workflows/{prepared['id']}").json()
+    assert old["detail"]["dataset_ids"] == dataset_ids and len(calls) == 3
+
+    denied = client.post(
+        "/api/conversations",
+        json={"context": {"project_id": pid, "dataset_id": outside}},
+        headers={"Idempotency-Key": "wrong-project"},
+    )
+    assert denied.status_code == 404
 
 
 @pytest.mark.parametrize(

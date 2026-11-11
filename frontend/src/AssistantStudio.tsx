@@ -103,6 +103,14 @@ async function attachmentSignature(files: File[]): Promise<string> {
   return hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(members))));
 }
 
+const conversationScopeKeys = ["run_id", "dataset_id", "group_id", "case_id"] as const;
+function conversationKeyFor(scope: AssistantContext) {
+  const project = `studio.conversation.${scope.project_id}`;
+  return conversationScopeKeys.some(key => scope[key])
+    ? `${project}.${JSON.stringify(conversationScopeKeys.map(key => scope[key] ?? null))}`
+    : project;
+}
+
 /** Mỗi mount thuộc một project/context; abort và sequence chặn response cũ sau chuyển scope. */
 export function AssistantStudio({
   initialContext,
@@ -199,6 +207,7 @@ export function AssistantStudio({
     null,
   );
   const [dataContext,setDataContext] = useState<AssistantContext|null>(null);
+  const [dataRevision, setDataRevision] = useState(0);
   const [resultContext,setResultContext] = useState<{context:AssistantContext;mode:"reports"|"exceptions"}|null>(null);
   const detailTrigger = useRef<HTMLElement|null>(null);
   const [contextOpen,setContextOpen]=useState(false);
@@ -325,7 +334,7 @@ export function AssistantStudio({
   const citationTrigger = useRef<HTMLElement | null>(null);
   const pendingRequest = useRef<{ body: string; key: string } | null>(null);
   const createKey = useRef<string>(crypto.randomUUID());
-  const storageKey = `studio.conversation.${initialContext.project_id}`;
+  const storageKey = conversationKeyFor(initialContext);
   const requestStorageKey = `studio.assistant-request.${draftOwner}.${initialContext.project_id}`;
   const getOptions = () => ({ signal: controller.current.signal });
   useLayoutEffect(() => {
@@ -396,7 +405,7 @@ export function AssistantStudio({
     setContext(page.conversation.context);
     setMessages(page.items);
     setMoreMessages(page.has_more);
-    localStorage.setItem(storageKey, id);
+    localStorage.setItem(conversationKeyFor(page.conversation.context), id);
     return page;
   }
   async function waitForAnswer(jobId: string, id: string, request: number) {
@@ -473,7 +482,8 @@ export function AssistantStudio({
           await openConversation(initialConversationId);
           return;
         }
-        const saved = localStorage.getItem(storageKey);
+        const saved = localStorage.getItem(storageKey)
+          || localStorage.getItem(`studio.conversation.${initialContext.project_id}`);
         if (saved) {
           // A contextual link may resume only the exact same scope, never another run/case.
           const savedPage = await api<ConversationPage>(
@@ -481,15 +491,8 @@ export function AssistantStudio({
             getOptions(),
           );
           if (initialSignal.aborted || !alive.current || sequence.current !== initialSequence) return;
-          const scoped = [
-            "run_id",
-            "dataset_id",
-            "group_id",
-            "case_id",
-          ] as const;
           if (
-            (!initialContext.run_id && !initialContext.dataset_id) ||
-            scoped.every(
+            conversationScopeKeys.every(
               (key) =>
                 (initialContext[key] || null) ===
                 (savedPage.conversation.context[key] || null),
@@ -530,6 +533,7 @@ export function AssistantStudio({
     setResultContext(null);
     setRule(null);
     setContext(next);
+    onContextChange(next);
     setConversation(null);
     setMessages([]);
     setActiveWorkflowContext(null);
@@ -545,7 +549,7 @@ export function AssistantStudio({
     pendingRequest.current = null;
     createKey.current = crypto.randomUUID();
     sessionStorage.removeItem(`${draftKey.current}.create`);
-    localStorage.removeItem(storageKey);
+    localStorage.removeItem(conversationKeyFor(next));
   }
   async function send() {
     if ((!text.trim() && !files.length) || busy || pendingJob || sendLock.current) return;
@@ -594,6 +598,7 @@ export function AssistantStudio({
         uploadedDatasetIds = uploaded.items?.map(item => item.id);
         if(!alive.current||request!==sequence.current)return;
         setFiles([]);sessionStorage.removeItem(storage);
+        setDataRevision(value => value + 1);
         if(!context.project_id){
           bootstrapProject=uploaded.project_id;
           localStorage.setItem("studio.project",uploaded.project_id);
@@ -632,7 +637,7 @@ export function AssistantStudio({
         });
         if (!alive.current || request !== sequence.current) return;
         setConversation(active);
-        localStorage.setItem(storageKey, active.id);
+        localStorage.setItem(conversationKeyFor(active.context), active.id);
         const previousDraft = draftKey.current;
         draftKey.current = draftKeyFor(context, active.id);
         sessionStorage.setItem(draftKey.current, text);
@@ -770,7 +775,9 @@ export function AssistantStudio({
       if (alive.current) setBusy(false);
     }
   }
-  const displayContext=activeWorkflowContext||context;
+  const displayContext = !context.dataset_id && activeWorkflowContext?.run_id
+    ? activeWorkflowContext
+    : context;
   const selectedRun = runs.find((r) => r.id === displayContext.run_id);
   async function agentNavigate(target:Suggestion,next:AssistantContext){
     if(target!=="OPEN_EVIDENCE"||!next.run_id||!next.group_id){openDetail(target,next);return;}
@@ -1166,7 +1173,8 @@ export function AssistantStudio({
         </div>
         {dataContext && <Suspense fallback={<Spinner />}>
           <AssistantDataDrawer key={`${dataContext.project_id}:${dataContext.dataset_id || ""}`}
-            context={dataContext} docked={docked} onClose={() => setDataContext(null)}
+            context={dataContext} revision={dataRevision} docked={docked} onClose={() => setDataContext(null)}
+            onAsk={next => newConversation(next)} canAsk={!busy && !pendingJob && !loading}
             returnFocus={detailTrigger} onManual={next => {
               setDataContext(null);
               onNavigate("OPEN_DATA", next);

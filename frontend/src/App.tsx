@@ -1179,18 +1179,7 @@ export function App() {
             className={page === "assistant" ? "active" : ""}
             aria-current={page === "assistant" ? "page" : undefined}
             disabled={!ready}
-            onClick={() =>
-              openAssistant({
-                project_id: projectId,
-                ...(page === "data" && selectedDataset?.project_id === projectId
-                  ? { dataset_id: selectedDataset.id }
-                  : {}),
-                ...(["reconcile", "exceptions", "reports"].includes(page) &&
-                localStorage.getItem(`studio.run.${projectId}`)
-                  ? { run_id: localStorage.getItem(`studio.run.${projectId}`) }
-                  : {}),
-              })
-            }
+            onClick={() => openAssistant({ project_id: projectId })}
           >
             <Sparkles size={18} aria-hidden="true" />
             <span>AI Assistant</span>
