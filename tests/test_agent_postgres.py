@@ -1216,6 +1216,100 @@ def test_agent_mock_new_rule_requires_review_before_real_verified_run(
         assert db.scalar(select(func.count()).select_from(RunRow)) == 2
 
 
+def test_ordered_agent_reviews_partial_source_before_running_and_exports_verified_subset(
+    pg,  # noqa: F811
+    monkeypatch,
+):
+    import studio.agent_jobs as agents
+    from studio.contracts.agent import ReconciliationSequence, SequenceResolution, WorkflowPair
+    from studio.contracts.reconciliation import PlanningRequest
+    from studio.database import RunRow, VersionRow
+    from test_reconciliation_postgres import prepare_pair
+
+    client, factory, worker = pg
+    pid, plan = prepare_pair(pg, partial=True)
+    plan = plan.model_copy(update={"allow_partial": True})
+    with factory() as db:
+        versions = [
+            db.get(CanonicalRow, slot.canonical_id).contract["dataset_version_id"]
+            for slot in (plan.left, plan.right)
+        ]
+        datasets = [db.get(VersionRow, ident).dataset_id for ident in versions]
+    monkeypatch.setattr(
+        agents,
+        "interpret_reconciliation_sequence",
+        lambda *args: SequenceResolution(
+            sequence=ReconciliationSequence(
+                pairs=[WorkflowPair(left_dataset_id=datasets[0], right_dataset_id=datasets[1])],
+                period_start=plan.period_start,
+                period_end=plan.period_end,
+                timezone=plan.timezone,
+            ),
+            question=None,
+        ),
+    )
+    context = {"project_id": pid}
+    queued = ask_agent(
+        client,
+        context,
+        conversation(client, context),
+        text="Chuẩn bị dữ liệu, giúp mình đối soát và cuối cùng xuất Excel.",
+    )
+    drain(factory, worker)
+    flow = workflow_for(client, factory, queued["job_id"])
+    path = f"/api/agent/workflows/{flow['id']}"
+    assert flow["state"] == "WAITING_REVIEW"
+    scope = flow["detail"]["reviews"][-1]
+    assert scope["kind"] == "RECONCILIATION" and scope["scope_check_pending"]
+    assert not any(
+        step["tool"] == "run_approved_reconciliation" for step in flow["detail"]["steps"]
+    )
+    checked = client.post(
+        path + "/draft",
+        json=dict(
+            review_id=scope["id"],
+            nonce=scope["nonce"],
+            fingerprint=scope["fingerprint"],
+            planning_request=PlanningRequest.from_plan(plan).model_dump(mode="json"),
+            check_planning_scope=True,
+        ),
+        headers={"Idempotency-Key": "confirm-partial-scope"},
+    )
+    assert checked.status_code == 200, checked.text
+    drain(factory, worker)
+    waiting = client.get(path).json()
+    review = waiting["detail"]["reviews"][-1]
+    decision = dict(
+        review_id=review["id"],
+        nonce=review["nonce"],
+        fingerprint=review["fingerprint"],
+        decision=dict(type="RECONCILIATION", plan=plan.model_dump(mode="json")),
+    )
+    blocked = client.post(
+        path + "/decisions", json=decision, headers={"Idempotency-Key": "missing-partial-review"}
+    )
+    assert blocked.json()["code"] == "INVALID_ROWS_REVIEW_REQUIRED"
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(RunRow)) == 0
+    decision["decision"]["invalid_rows_reviewed"] = True
+    response = client.post(
+        path + "/decisions", json=decision, headers={"Idempotency-Key": "approve-partial-scope"}
+    )
+    assert response.status_code == 200, response.text
+    drain(factory, worker)
+    done = client.get(path).json()
+    assert done["state"] == "COMPLETED", done
+    run_id = done["context"]["run_id"]
+    assert client.get(f"/api/runs/{run_id}").json()["status"] == "PARTIAL_VERIFIED"
+    assert any(
+        block["type"] == "download"
+        and block["format"] == "xlsx"
+        and block["run_id"] == run_id
+        and not block["discrepancies_only"]
+        for block in done["detail"]["blocks"]
+    )
+
+
 def test_agent_mock_query_chart_uses_all_matching_not_page(pg, monkeypatch):  # noqa: F811
     import studio.agent_jobs as agents
     from studio.contracts.data_query import DataQuery

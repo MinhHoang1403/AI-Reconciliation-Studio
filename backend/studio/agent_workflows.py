@@ -505,19 +505,22 @@ def advance_sequence(
     if progress.stage == "RECONCILE":
         assert context.run_id is not None
         run = get_scoped(db, RunRow, context.run_id, owner(db, row))
-        if run.status != "VERIFIED":
+        snapshot = run.metric_snapshot
+        if run.status not in {"VERIFIED", "PARTIAL_VERIFIED"} or snapshot is None:
             row.state = "PARTIAL"
             state.error_code = "INSUFFICIENT_EVIDENCE"
             state.blocks.append(
                 ProgressBlock(
-                    text="Lượt đối soát mới được xác minh một phần. Kiểm tra nguồn trước khi xuất."
+                    text="Lượt đối soát chưa được xác minh. Kiểm tra nguồn trước khi xuất."
                 )
             )
             save(row, state)
             return
+        if run.status == "PARTIAL_VERIFIED":
+            state.blocks.append(
+                ProgressBlock(text="Đã xác minh kết quả trên phần dữ liệu đủ điều kiện.")
+            )
         if progress.pair_index == 0:
-            snapshot = run.metric_snapshot
-            assert snapshot is not None
             progress.sequence.period_start = date.fromisoformat(snapshot["period_start"])
             progress.sequence.period_end = date.fromisoformat(snapshot["period_end"])
             progress.sequence.timezone = snapshot["timezone"]
@@ -528,7 +531,8 @@ def advance_sequence(
         canonical_ids = {
             dataset.id: dataset.tables[0].canonical_id
             for dataset in catalogue.datasets
-            if len(dataset.tables) == 1 and dataset.tables[0].canonical_status == "READY"
+            if len(dataset.tables) == 1
+            and dataset.tables[0].canonical_status in {"READY", "PARTIAL"}
         }
         left = canonical_ids.get(pair.left_dataset_id)
         right = canonical_ids.get(pair.right_dataset_id)
@@ -1143,6 +1147,10 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
             )
         elif any(r.state == "OPEN" for r in state.reviews):
             row.state = "WAITING_REVIEW"
+        elif sequence:
+            # The planner still requires explicit scope and invalid-row confirmations.
+            advance_sequence(db, row, state, context, catalogue)
+            return
         else:
             row.state = (
                 "PARTIAL"
@@ -1410,6 +1418,11 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
         row.state = "COMPLETED"
     elif intent.intent == "EXPORT_RESULT":
         context.run_id = intent.run_id or context.run_id
+        discrepancies_only = (
+            sequence is not None
+            and context.run_id is not None
+            and get_scoped(db, RunRow, context.run_id, actor).status == "VERIFIED"
+        )
         exported = next(
             (
                 s.result_id
@@ -1426,7 +1439,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                     run_id=context.run_id,
                     format=intent.export_format,
                     displayed_query=state.export_query is not None,
-                    discrepancies_only=sequence is not None,
+                    discrepancies_only=discrepancies_only,
                 )
             )
             row.state = "COMPLETED"
@@ -1439,7 +1452,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                     context=context,
                     format=intent.export_format,
                     displayed_query=state.export_query,
-                    discrepancies_only=sequence is not None,
+                    discrepancies_only=discrepancies_only,
                 ),
                 row.id,
             )
