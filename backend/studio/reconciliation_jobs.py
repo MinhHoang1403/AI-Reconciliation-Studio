@@ -264,7 +264,7 @@ def execute_planning(job_id: str, token: str, factory: Any, fence: Fence, finish
                     "Cần xác nhận các mục còn trống về kỳ và phạm vi của hai nguồn."
                     if missing
                     else "Chưa tìm được một phương án duy nhất có đủ bằng chứng. "
-                    "Hãy chọn khóa, quan hệ và chỉ tiêu trong phần chỉnh sửa."
+                    "Hãy bổ sung khóa, quan hệ và chỉ tiêu bằng tiếng Việt."
                 ),
             ),
             "DETERMINISTIC",

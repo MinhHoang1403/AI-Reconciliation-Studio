@@ -26,13 +26,13 @@ from studio.contracts.agent import (
 )
 from studio.contracts.api import ApprovalInput
 from studio.contracts.assistant import Identifier
-from studio.contracts.reconciliation import PlanningRequest, PlanningSuggestions
+from studio.contracts.reconciliation import PlanningRequest, PlanningSuggestions, SourceCatalogue
 from studio.errors import DomainError
 from studio.profiling import field_name_tokens, normalized_name
 
 PREPARATION_REVISION = "agent-normalization-9"
 LOCAL_PREPARATION_REVISION = "agent-mapping-semantics-3"
-REVIEW_REVISION = "agent-review-3"
+REVIEW_REVISION = "agent-review-4"
 
 
 class MappingFieldChange(Contract):
@@ -145,6 +145,7 @@ def interpret_review_reply(
     text: str,
     policy: WorkspacePolicy,
     reserve: Callable[[], bool],
+    planning_sources: list[SourceCatalogue] | None = None,
 ) -> ReviewInterpretation:
     """Đọc một reply đã bind review; chỉ trả preview, tuyệt đối không phê duyệt."""
     mapping = review.kind == "MAPPING"
@@ -164,6 +165,30 @@ def interpret_review_reply(
         # removing only this grammar bound returns200. Both providers use the
         # same envelope; MappingEdits still enforces <=80 changes on the server.
         schema["properties"]["changes"].pop("maxItems", None)
+    rule_evidence = {}
+    if rule and planning_sources:
+        from studio.reconciliation_planner import compatible_planning_metrics
+
+        rule_evidence = {
+            "untrusted_source_catalogue": [
+                dict(
+                    canonical_id=source.canonical.id,
+                    name=source.name,
+                    grain=source.canonical.grain,
+                    business_key_fields=source.schema_definition.business_key_fields,
+                    fields=[
+                        field.model_dump(mode="json", exclude_none=True)
+                        for field in source.schema_definition.fields
+                    ],
+                )
+                for source in planning_sources
+            ],
+            "compatible_metrics": [
+                metric.model_dump(mode="json")
+                for metric in compatible_planning_metrics(planning_sources)
+            ],
+            "allowed_evidence_ids": [source.canonical.id for source in planning_sources],
+        }
     prompt = [
         dict(
             role="system",
@@ -184,7 +209,10 @@ def interpret_review_reply(
                     else "For rule reviews, return only supplied facts in request, with both "
                     "unchanged canonical IDs. Omit every unchanged optional property, including "
                     "nested source properties. Missing coverage/period/timezone stays unknown. "
-                    "suggestions are non-executable candidates and must cite allowed evidence. "
+                    "Suggestions are non-executable candidates. Resolve column names to exact IDs "
+                    "in the corresponding source catalogue, use compatible metrics, and cite only "
+                    "allowed evidence IDs. If both approved grains differ, ask the user to review "
+                    "the grain before suggesting a one-to-one rule. "
                     if rule
                     else "Return one intent candidate for clarification, or none. "
                 )
@@ -211,6 +239,7 @@ def interpret_review_reply(
                         },
                     ),
                     untrusted_reply=text,
+                    **rule_evidence,
                 ),
                 ensure_ascii=False,
             ),
@@ -297,7 +326,10 @@ def profiled_type(column: ColumnProfile, name: str) -> Literal["string", "date",
     # Tỷ lệ này chỉ gợi ý kiểu để review. Backend vẫn kiểm từng giá trị, kể cả lỗi thật.
     numbers = column.observations.get("numeric_locales")
     count = column.observations.get("nonempty_count")
-    money_name = bool(words & {"amount", "gross", "net", "fee", "total"})
+    money_name = bool(
+        words & {"amount", "gross", "net", "fee", "total", "revenue"}
+        or re.match(r"^doanh\s+thu\b", name.strip())
+    )
     if money_name and isinstance(numbers, dict) and isinstance(count, int) and count > 0:
         if 5 * max(numbers.values(), default=0) >= 4 * count:
             return "decimal"

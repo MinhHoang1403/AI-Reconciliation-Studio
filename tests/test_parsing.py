@@ -383,7 +383,12 @@ def test_profile_only_draft_recognizes_vietnamese_types_without_business_approva
     from studio.profiling import profile_table
 
     frame = pl.DataFrame(
-        {"key": ["0001", "0002"], "money": ["12.50", "-2.00"], "date": ["2026-11-01", "2026-11-02"]}
+        {
+            "key": ["0001", "0002"],
+            "money": ["12.50", "-2.00"],
+            "revenue": ["2500", "3700"],
+            "date": ["2026-11-01", "2026-11-02"],
+        }
     )
     profile = profile_table(
         frame,
@@ -392,7 +397,12 @@ def test_profile_only_draft_recognizes_vietnamese_types_without_business_approva
             for index, (key, name) in enumerate(
                 zip(
                     frame.columns,
-                    ["Mã thanh toán", "Phí ngân hàng", "Ngày thanh toán"],
+                    [
+                        "Mã thanh toán",
+                        "Phí ngân hàng",
+                        "Doanh thu ghi nhận chưa VAT",
+                        "Ngày thanh toán",
+                    ],
                     strict=True,
                 )
             )
@@ -402,7 +412,7 @@ def test_profile_only_draft_recognizes_vietnamese_types_without_business_approva
         "parsed",
     )
     fields = profiled_fields(profile)
-    assert [field.data_type for field in fields] == ["string", "decimal", "date"]
+    assert [field.data_type for field in fields] == ["string", "decimal", "decimal", "date"]
     assert all(not field.business_key for field in fields)
     assert all(
         field.amount_basis is None and field.semantic_metric is None and field.timezone is None

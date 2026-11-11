@@ -1002,6 +1002,17 @@ def execute_agent(
                 and review.planning_request is not None
                 and asks_for_current_source_evidence(reply.text)
             )
+            planning_sources = None
+            if review.kind == "RECONCILIATION" and review.planning_request and not inspect_sources:
+                from studio.reconciliation_repository import selected_catalogue
+
+                request = review.planning_request
+                planning_sources = selected_catalogue(
+                    db,
+                    actor,
+                    row.project_id,
+                    [request.left.canonical_id, request.right.canonical_id],
+                )
             expected_selection = selection_fingerprint(catalogue)
             if review.kind == "CLARIFICATION":
                 catalogue = catalogue.model_copy(
@@ -1052,7 +1063,9 @@ def execute_agent(
                         )[0]
                     )
                     if review.kind == "CLARIFICATION"
-                    else interpret_review_reply(provider, review, reply.text, policy, reserve)
+                    else interpret_review_reply(
+                        provider, review, reply.text, policy, reserve, planning_sources
+                    )
                 ),
             )
         )

@@ -328,7 +328,10 @@ def test_routing_provider_grammar_excludes_tools_that_do_not_belong_to_intent(
 
 @pytest.mark.parametrize("foreign", [False, True])
 def test_rule_reply_preserves_unanswered_facts_and_source_identity(foreign):
-    from studio.agent_preparation import RuleEdits, merge_planning_reply
+    from types import SimpleNamespace
+
+    from reconciliation_cases import catalogue
+    from studio.agent_preparation import RuleEdits, interpret_review_reply
     from studio.contracts.agent import ReviewRequest
     from studio.database import now
 
@@ -359,11 +362,33 @@ def test_rule_reply_preserves_unanswered_facts_and_source_identity(foreign):
             questions=["Ngày kết thúc kỳ là ngày nào?"],
         )
     )
+
+    def request(prompt, _policy, _reserve, validate, **_options):
+        evidence = json.loads(prompt[1]["content"])
+        assert evidence["allowed_evidence_ids"] == ["left", "right"]
+        assert [source["canonical_id"] for source in evidence["untrusted_source_catalogue"]] == [
+            "left",
+            "right",
+        ]
+        assert "fields" in evidence["untrusted_source_catalogue"][0]
+        assert evidence["compatible_metrics"][0]["metric_id"] == "item_gross"
+        return validate(edits.model_dump_json(exclude_unset=True))
+
+    def interpret():
+        return interpret_review_reply(
+            SimpleNamespace(request_typed=request),
+            review,
+            "Kỳ theo giờ UTC.",
+            WorkspacePolicy(),
+            lambda: True,
+            [catalogue(side, []) for side in ("left", "right")],
+        )
+
     if foreign:
         with pytest.raises(DomainError, match="AI_INVALID_SOURCE"):
-            merge_planning_reply(review, edits)
+            interpret()
     else:
-        result = merge_planning_reply(review, edits)
+        result = interpret()
         assert str(result.planning_request.period_start) == "2026-10-01"
         assert result.planning_request.period_end is None
         assert result.planning_request.left.filters == {"platform": "A"}
