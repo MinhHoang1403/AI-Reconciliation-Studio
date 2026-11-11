@@ -323,7 +323,12 @@ def make_review(
                 review.scope_check_pending = True
                 review.question = "Xác nhận các thông tin nguồn còn thiếu."
                 review.reason = "Thông tin đã lưu và khoảng ngày quan sát được hiển thị bên dưới."
-        if plan_row.origin == "DETERMINISTIC" and proposal.plan is None and proposal.reasoning:
+        if (
+            plan_row.origin == "DETERMINISTIC"
+            and not review.scope_check_pending
+            and proposal.plan is None
+            and proposal.reasoning
+        ):
             review.reason = proposal.reasoning
     state.reviews.append(review)
     row.state = "WAITING_REVIEW"
