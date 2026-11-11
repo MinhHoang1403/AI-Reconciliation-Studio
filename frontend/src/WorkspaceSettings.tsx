@@ -49,6 +49,17 @@ export function WorkspaceManager({ current, onRename, returnToDashboard }: {
     return () => window.clearTimeout(timer);
   }, [status]);
 
+  async function switchWorkspace(id: string) {
+    await api("/workspaces/current", { method: "POST", body: JSON.stringify({ id }) });
+    const lastProject = localStorage.getItem("studio.project");
+    if (lastProject) localStorage.setItem(`studio.project.${current.id}`, lastProject);
+    const nextProject = localStorage.getItem(`studio.project.${id}`);
+    if (nextProject) localStorage.setItem("studio.project", nextProject);
+    else localStorage.removeItem("studio.project");
+    window.history.replaceState(null, "", returnToDashboard ? "#page=home" : "#page=settings");
+    window.location.reload();
+  }
+
   async function save() {
     if (submitting.current) return;
     submitting.current = true;
@@ -57,14 +68,7 @@ export function WorkspaceManager({ current, onRename, returnToDashboard }: {
     setStatus("");
     try {
       if (!action) {
-        await api("/workspaces/current", { method: "POST", body: JSON.stringify({ id: selected }) });
-        const lastProject = localStorage.getItem("studio.project");
-        if (lastProject) localStorage.setItem(`studio.project.${current.id}`, lastProject);
-        const nextProject = localStorage.getItem(`studio.project.${selected}`);
-        if (nextProject) localStorage.setItem("studio.project", nextProject);
-        else localStorage.removeItem("studio.project");
-        window.history.replaceState(null, "", returnToDashboard ? "#page=home" : "#page=settings");
-        window.location.reload();
+        await switchWorkspace(selected);
         return;
       }
       const body = action === "create" ? { name } : { name, expected_name: current.name };
@@ -81,9 +85,15 @@ export function WorkspaceManager({ current, onRename, returnToDashboard }: {
       createRequest.current = null;
       setChoices(rows => [...(rows ?? []).filter(row => row.id !== saved.id), saved]);
       setSelected(saved.id);
-      if (action === "rename") onRename(saved.name);
-      setStatus(action === "create" ? "Đã tạo. Chọn Chuyển không gian để mở." : "Đã lưu tên mới.");
       setAction(null);
+      if (action === "create") {
+        // A failed switch leaves the created workspace selected for retry.
+        setStatus("Đã tạo không gian làm việc.");
+        await switchWorkspace(saved.id);
+      } else {
+        onRename(saved.name);
+        setStatus("Đã lưu tên mới.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chưa thể hoàn tất thao tác.");
     } finally {

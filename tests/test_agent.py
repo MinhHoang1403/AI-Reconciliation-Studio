@@ -3306,12 +3306,21 @@ def test_export_storage_rejects_an_unpinned_or_different_query(mismatched):
         ("Hãy kiểm tra và chuẩn hóa ba nguồn. Sau đó đối soát hai cặp và xuất Excel.", True),
         ("Chuẩn hóa ba bảng rồi đối soát từng cặp, sau đó tải báo cáo XLSX.", True),
         (
+            "Hãy tự nhận diện các cột, chuẩn bị dữ liệu và tìm những điểm bất thường. "
+            "Khi xong, giúp mình đối soát doanh thu với kế toán, rồi kế toán với hóa đơn. "
+            "Cuối cùng tổng hợp các chênh lệch quan trọng và xuất Excel để mình kiểm tra.",
+            True,
+        ),
+        ("Chuẩn bị các nguồn. Giúp mình đối soát. Cuối cùng xuất Excel.", True),
+        (
             "Hãy kiểm tra hai nguồn tôi đã tải, đề xuất ánh xạ, chuẩn hóa, "
             "đối soát theo mã giao dịch, tìm những khoản lệch và xuất Excel.",
             True,
         ),
         ("Xuất Excel kết quả đối soát đã chuẩn hóa.", False),
         ("Không chuẩn hóa ba bảng. Đối soát hai cặp và xuất Excel.", False),
+        ("Đừng chuẩn bị dữ liệu. Giúp mình đối soát và xuất Excel.", False),
+        ("Chuẩn bị dữ liệu đã tải. Không đối soát. Cuối cùng xuất Excel.", False),
     ],
 )
 def test_compound_routing_requires_each_operation_to_be_requested(goal, expected):

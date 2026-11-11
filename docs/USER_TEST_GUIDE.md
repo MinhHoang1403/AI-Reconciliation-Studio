@@ -14,7 +14,7 @@ Tài liệu dành cho người mới, dùng ứng dụng local tại <http://127
 
 - Tại **AI Assistant**, chọn một tác vụ mẫu. Xem câu được điền trước khi gửi. Khi đã nhập bản nháp riêng, kiểm rằng tác vụ mẫu không thay nội dung. Nhấn Tab rồi Enter trên **Đến nội dung chính** để đi thẳng tới vùng làm việc.
 - Trong **Dữ liệu**, mở một nguồn rồi chọn nguồn kế bên trên màn rộng. Trên màn hẹp, bấm **Về danh mục nguồn** trước. Owner có thể mở **Quản lý nguồn → Đổi tên hiển thị**. Sau khi lưu, tải tệp gốc để đối chiếu tên và nội dung ban đầu.
-- Trong **Cài đặt → Quản lý không gian làm việc**, owner tạo một không gian TEST. Chọn **Chuyển không gian** và kiểm danh sách dự án ban đầu rỗng. Đổi tên không gian TEST, quay lại không gian trước đó và kiểm dự án vẫn còn. Đọc phạm vi kiểm thử và giới hạn của ứng viên trước khi dùng dữ liệu khác. [Trạng thái triển khai](IMPLEMENTATION_STATUS.md).
+- Trong **Quản lý không gian làm việc** ở thanh trên cùng, chủ không gian tạo một không gian TEST. Studio mở ngay không gian vừa tạo. Kiểm danh sách dự án ban đầu rỗng. Nếu bước mở gặp lỗi, chọn **Chuyển không gian** để thử lại. Đổi tên không gian TEST, quay lại không gian trước đó và kiểm dự án vẫn còn. [Trạng thái triển khai](IMPLEMENTATION_STATUS.md).
 
 ## 1. Hiểu giao diện trước khi bắt đầu
 

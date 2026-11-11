@@ -32,8 +32,6 @@ test("[LOCAL] create, switch and rename a workspace from the masthead", async ({
   await create.click();
   await dialog.getByLabel("Tên không gian làm việc").fill(name);
   await dialog.getByRole("button", { name: "Tạo", exact: true }).click();
-  await expect(dialog.getByRole("status")).toContainText("Đã tạo.");
-  await dialog.getByRole("button", { name: "Chuyển không gian" }).click();
   await expect(dialog).not.toBeVisible();
   await expect(manage).toHaveAccessibleDescription(name);
   await expect(page.getByRole("main").getByText(name, { exact: true })).toBeVisible();
