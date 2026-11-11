@@ -38,7 +38,7 @@ test("[MOCK CONTRACT] Dashboard starts without scope and keeps routes, project a
   const brand = page.getByRole("button", { name: "Reconciliation Studio – về Dashboard" });
   await expect(dashboard).toBeVisible();
   await expect(navigation.getByRole("button").allTextContents()).resolves.toEqual(
-    ["Dashboard", "AI Assistant", "Dữ liệu", "Đối soát", "Báo cáo", "Lịch sử", "Cài đặt"],
+    ["Dashboard", "AI Assistant", "Dữ liệu", "Đối soát", "Báo cáo", "Lịch sử hội thoại", "Cài đặt"],
   );
   await expect(navigation.getByRole("button", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
   await expect(projectSelect).toHaveAttribute("data-project-id", "");
@@ -1697,6 +1697,8 @@ test("dashboard uses server totals, distinguishes PARTIAL and opens the exact of
       });
     if (path.endsWith("/artifacts"))
       return route.fulfill({ json: { canonical_datasets: [canonical] } });
+    if (path.endsWith("/table-errors/mappings"))
+      return route.fulfill({ json: { items: [{ id: "approved", status: "APPROVED", schema: { fields: [] } }] } });
     if (path.endsWith("/profile"))
       return route.fulfill({ json: { columns: [], row_count: 4 } });
     if (path.endsWith("/preview"))
@@ -1737,7 +1739,7 @@ test("dashboard uses server totals, distinguishes PARTIAL and opens the exact of
   ).toBeVisible();
   await expect(
     page.getByRole("status").filter({ hasText: "Dữ liệu cần kiểm tra" }),
-  ).toContainText("2 / 4");
+  ).toContainText("4 dòng · 2 hợp lệ · 2 cần kiểm tra");
   expect(errors).toEqual([]);
 });
 
@@ -1793,6 +1795,7 @@ for (const kind of ["REVIEW_MAPPING", "NORMALIZE"] as const) {
   }) => {
     const items = projects(1);
     await fixture(page, items, items[0].id);
+    let normalizationRunning = false;
     await page.route("**/api/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith("/summary"))
@@ -1817,6 +1820,9 @@ for (const kind of ["REVIEW_MAPPING", "NORMALIZE"] as const) {
       };
       if (path === "/api/datasets/source")
         return route.fulfill({ json: source });
+      if (path === "/api/jobs" && normalizationRunning)
+        return route.fulfill({ json: { items: [{ id: "normalization", kind: "normalize", status: "RUNNING",
+          normalization: { dataset_id: "source", mapping_id: "active-mapping" } }] } });
       if (path === "/api/datasets")
         return route.fulfill({ json: { items: [source], total: 1 } });
       if (path.endsWith("/tables"))
@@ -1825,6 +1831,7 @@ for (const kind of ["REVIEW_MAPPING", "NORMALIZE"] as const) {
             items: [
               {
                 id: "table",
+                active_mapping_id: kind === "NORMALIZE" ? "active-mapping" : null,
                 sheet: "CSV",
                 row_count: 1,
                 parsed: { columns: [], warnings: [] },
@@ -1834,6 +1841,8 @@ for (const kind of ["REVIEW_MAPPING", "NORMALIZE"] as const) {
         });
       if (path.endsWith("/profile"))
         return route.fulfill({ json: { columns: [], row_count: 1 } });
+      if (path.endsWith("/mappings") && kind === "NORMALIZE")
+        return route.fulfill({ json: { items: [{ id: "active-mapping", status: "APPROVED" }] } });
       if (path.endsWith("/artifacts"))
         return route.fulfill({ json: { canonical_datasets: [] } });
       return route.fallback();
@@ -1855,6 +1864,13 @@ for (const kind of ["REVIEW_MAPPING", "NORMALIZE"] as const) {
         exact: true,
       }),
     ).toHaveAttribute("aria-pressed", "true");
+    if (kind === "NORMALIZE") {
+      await expect(page.getByRole("button", { name: "Chuẩn hóa dữ liệu", exact: true })).toBeEnabled();
+      normalizationRunning = true;
+      await page.getByRole("button", { name: "Cập nhật kết quả", exact: true }).click();
+      await expect(page.getByText("Đang chuẩn hóa dữ liệu.", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Chuẩn hóa dữ liệu", exact: true })).toHaveCount(0);
+    }
   });
 }
 
@@ -1887,8 +1903,8 @@ test("[MOCK CONTRACT] local proof recovery preserves draft and reloads project a
   await expect(status).toHaveText("Đã kết nối");
   await expect(page.locator("#project-select")).toHaveAttribute("data-project-id","project-000");
   await expect(page.getByRole("textbox",{name:"Câu hỏi cho AI Assistant",exact:true})).toHaveValue("Bản nháp được giữ nguyên");
-  await page.getByRole("button", {name:"Lịch sử",exact:true}).click();
-  await expect(page.getByRole("dialog",{name:"Lịch sử",exact:true}).getByText("Hội thoại trước khi khởi động lại",{exact:false})).toBeVisible();
+  await page.getByRole("button", {name:"Lịch sử hội thoại",exact:true}).click();
+  await expect(page.getByRole("dialog",{name:"Lịch sử hội thoại",exact:true}).getByText("Hội thoại trước khi khởi động lại",{exact:false})).toBeVisible();
   expect(historyReads).toBeGreaterThan(0);
   expect(await page.evaluate(key=>sessionStorage.getItem(key),draftKey)).toBe("Bản nháp được giữ nguyên");
   expect(documents).toBe(1);

@@ -1184,7 +1184,8 @@ def test_parse_failure_never_publishes_artifact(pg):
 
 def test_normalize_crash_before_publish_is_atomic_and_retry_safe(pg, monkeypatch):
     client, factory, worker = pg
-    item = upload(client, project(client))
+    pid = project(client)
+    item = upload(client, pid)
     drain(factory, worker)
     table = client.get(f"/api/datasets/{item['id']}/tables").json()["items"][0]
     approved, _ = approve(client, table["id"])
@@ -1195,6 +1196,17 @@ def test_normalize_crash_before_publish_is_atomic_and_retry_safe(pg, monkeypatch
     )
     assert response.status_code == 202
     job_id = response.json()["job_id"]
+    duplicate = client.post(
+        f"/api/datasets/{item['id']}/normalize",
+        json={"mapping_id": approved["id"]},
+        headers={"Idempotency-Key": "another-tab"},
+    )
+    assert duplicate.status_code == 202
+    assert duplicate.json() == {"job_id": job_id, "status": "QUEUED"}
+    jobs = client.get(f"/api/jobs?project_id={pid}").json()["items"]
+    assert [(job["id"], job["normalization"]) for job in jobs if job["kind"] == "normalize"] == [
+        (job_id, {"mapping_id": approved["id"], "dataset_id": item["id"]}),
+    ]
     original_finish = worker._finish
     with factory() as db:
         published_before = set(db.execute(select(ArtifactRow.id, ArtifactRow.sha256)))

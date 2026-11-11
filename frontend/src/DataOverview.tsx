@@ -17,10 +17,12 @@ const features = [
 ] as const;
 
 const nextActions: Partial<Record<PreparationAction["kind"], string>> = {
+  UPLOAD: "Tải dữ liệu",
   REVIEW_MAPPING: "Kiểm tra ánh xạ",
   NORMALIZE: "Chuẩn hóa dữ liệu",
   REVIEW_DATA: "Kiểm tra lỗi dữ liệu",
 };
+const workflow = ["Tải dữ liệu", "Xác nhận cột", "Chuẩn hóa", "Đối soát", "Xem báo cáo"];
 
 function LatestResult({ projectId, runId, onOpen }: {
   projectId: string;
@@ -103,7 +105,8 @@ export function DataOverview({
 }) {
   const latestRun = summary?.latest_verified_run_id;
   const action = summary?.preparation_action;
-  const next = action && nextActions[action.kind];
+  const next = action && (action.kind !== "UPLOAD" || (canEdit && summary?.dataset_count === 0))
+    ? nextActions[action.kind] : undefined;
   const onActivity = summary && action?.kind === "WAIT" && summary.active_job_count > 0
     ? () => onAction(action) : undefined;
 
@@ -112,6 +115,14 @@ export function DataOverview({
       <h1>Chào mừng đến với Reconciliation Studio</h1>
       <p>Nền tảng AI hỗ trợ chuẩn hóa, đối soát và phân tích dữ liệu trên cùng một không gian làm việc.</p>
     </header>
+    <section className="dashboard-workflow" aria-labelledby="dashboard-workflow-title">
+      <h2 id="dashboard-workflow-title">Quy trình làm việc</h2>
+      <ol role="list">
+        {workflow.map((step, index) => <li key={step}>
+          {index > 0 && <ArrowRight size={14} aria-hidden="true" />}{step}
+        </li>)}
+      </ol>
+    </section>
 
     <div className="dashboard-grid">
       <section className="dashboard-tools" aria-labelledby="dashboard-tools-title">
@@ -146,14 +157,14 @@ export function DataOverview({
               <ProjectCounts summary={summary} onActivity={onActivity} busy={busy} />
               {summary.dataset_count === 0 && <div className="dashboard-status">
                 <h3>Chưa có nguồn dữ liệu</h3>
-                <p>Mở Dữ liệu để tải tệp đầu tiên.</p>
+                <p>Thêm tệp đầu tiên để bắt đầu.</p>
               </div>}
               {action && next && <div className="dashboard-next">
                 <button type="button" className="text-button" disabled={busy} onClick={() => onAction(action)}>
                   {next} <ArrowRight size={15} aria-hidden="true" />
                 </button>
               </div>}
-              {latestRun && <LatestResult key={`${project.id}:${latestRun}`}
+              {latestRun && !next && !summary.active_job_count && <LatestResult key={`${project.id}:${latestRun}`}
                 projectId={project.id} runId={latestRun} onOpen={() => onResults(latestRun)} />}
             </>}
           </> : ready && <div className="dashboard-status">

@@ -65,6 +65,7 @@ const ReconciliationStudio = lazy(() =>
 );
 import {
   errorText,
+  isActiveJob,
   jobKind,
   warningText,
   qualityText,
@@ -260,7 +261,16 @@ export function App() {
   const table = tables.find((t) => t.id === tableId);
   const currentCanonical = canonicals.find((c) => c.id === canonicalId);
   const activeMapping = mappings.find((m) => m.id === table?.active_mapping_id);
-  const activeJobs = jobs.filter(job => ["QUEUED", "RUNNING", "RETRYABLE_FAILURE"].includes(job.status)).length;
+  const activeJobs = jobs.filter(isActiveJob).length;
+  const attentionJobs = jobs.slice(0, 6).filter(job => ["FAILED", "BLOCKED", "RETRYABLE_FAILURE"].includes(job.status));
+  const latestNormalization = activeMapping && jobs.find(job => job.normalization?.mapping_id === activeMapping.id);
+  const normalizingSources = new Set(jobs.filter(isActiveJob).flatMap(job => job.normalization ? [job.normalization.dataset_id] : []));
+  const normalizing = !!activeMapping && (selectedDataset?.status === "NORMALIZING" || jobs.some(job =>
+    job.normalization?.mapping_id === activeMapping.id && isActiveJob(job)));
+  const tableCanonicals = canonicals.filter(c => c.source_table_id === tableId);
+  const normalized = activeMapping?.status === "APPROVED" &&
+    tableCanonicals.find(c => !c.stale && c.mapping_revision_id === activeMapping.id);
+  const staleCanonical = !normalized && tableCanonicals.some(c => c.stale);
 
   useLayoutEffect(() => {
     if (pageScroll.current) pageScroll.current.scrollTop = 0;
@@ -717,7 +727,7 @@ export function App() {
   useEffect(() => {
     void loadDetails().catch((err) => setError(err.message));
     return () => detailRequest.current?.abort();
-  }, [loadDetails, selectedDataset?.status]);
+  }, [loadDetails, selectedDataset?.status, latestNormalization?.id, latestNormalization?.status]);
 
   useEffect(() => {
     if (!tableId || (["canonical", "errors"].includes(view) && !canonicalId)) {
@@ -995,13 +1005,19 @@ export function App() {
     );
   }
   async function normalize() {
-    if (!activeMapping || !selectedDataset) return;
+    if (!activeMapping || !selectedDataset || normalizing || normalized) return;
     await api(`/datasets/${selectedDataset.id}/normalize`, {
       method: "POST",
       body: JSON.stringify({ mapping_id: activeMapping.id }),
     });
-    await refreshProject();
-    setSuccess("Đã xếp hàng chuẩn hóa. Bấm cập nhật kết quả khi job hoàn tất.");
+    await changed();
+  }
+  function viewNormalized(id: string, layer: "canonical" | "errors" = "canonical") {
+    setCanonicalId(id);
+    setView(layer);
+    setTab("explore");
+    setOffset(0);
+    requestAnimationFrame(() => document.getElementById("source-title")?.focus());
   }
 
   const previewMatchesView =
@@ -1199,12 +1215,12 @@ export function App() {
             </button>
           ))}
           <span className="navigation-group-label navigation-group-secondary" aria-hidden="true">Quản lý</span>
-          <button disabled={!ready} aria-label="Lịch sử" title="Lịch sử" aria-expanded={assistantHistoryOpen} onClick={event => {
+          <button disabled={!ready} aria-label="Lịch sử hội thoại" title="Lịch sử hội thoại" aria-expanded={assistantHistoryOpen} onClick={event => {
             assistantHistoryTrigger.current = window.matchMedia("(max-width: 900px)").matches
               ? document.querySelector<HTMLElement>(".menu-button") : event.currentTarget;
             setSidebar(false);
             setAssistantHistoryOpen(true);
-          }}><History size={18} aria-hidden="true" /><span>Lịch sử</span></button>
+          }}><History size={18} aria-hidden="true" /><span>Lịch sử hội thoại</span></button>
           <button
             className={page === "settings" ? "active" : ""}
             aria-label="Cài đặt"
@@ -1373,6 +1389,8 @@ export function App() {
                   <ReconciliationStudio
                     key={projectId}
                     projectId={projectId}
+                    summary={projectError ? null : summary}
+                    jobs={jobs}
                     canEdit={canEdit}
                     onAsk={openAssistant}
                     requestedPlan={
@@ -1397,7 +1415,13 @@ export function App() {
                         | "exceptions"
                         | "reports"
                     }
-                    onSetup={() => { setRunNavigation(null); setPage("reconcile"); }}
+                    onSetup={id => {
+                      setRunNavigation(null);
+                      if (id) setPlanNavigation({ id, projectId, request: Date.now() });
+                      setPage("reconcile");
+                    }}
+                    onPreparation={target => target ? void run(() => openPreparation(target)) : setPage("data")}
+                    onWorkChanged={refreshProject}
                     onOpenExceptions={id => {
                       setRunNavigation({ id, request: Date.now() });
                       navigate("exceptions", { project_id: projectId, run_id: id });
@@ -1566,7 +1590,8 @@ export function App() {
                           }}>
                           <FileSpreadsheet size={18} aria-hidden="true" /><span>{source.name}</span>
                         </button>
-                        <Badge status={source.status} />
+                        <Badge status={normalizingSources.has(source.id) ? "NORMALIZING" : source.status}
+                          label={source.status === "PARTIAL" && !normalizingSources.has(source.id) ? "Cần kiểm tra lỗi" : undefined} />
                         <time dateTime={source.created_at}>{new Date(source.created_at).toLocaleDateString("vi-VN")}</time>
                         {actorRole === "owner" && selectedDataset?.id !== source.id && <button className="icon-button" aria-label={`Quản lý ${source.name}`}
                           onClick={event => openManagement({ kind: "datasets", projectId, id: source.id }, event.currentTarget)}><MoreHorizontal size={18} /></button>}
@@ -1620,28 +1645,12 @@ export function App() {
                       <div className="panel-heading">
                         <div className="source-title">
                           <h2 id="source-title" tabIndex={-1}>{selectedDataset.name}</h2>
-                          <Badge status={selectedDataset.status} />
+                          <Badge status={normalizingSources.has(datasetId) ? "NORMALIZING" : selectedDataset.status}
+                            label={selectedDataset.status === "PARTIAL" && !normalizingSources.has(datasetId) ? "Cần kiểm tra lỗi" : undefined} />
                         </div>
                         {actorRole === "owner" && <button className="icon-button" aria-label={`Quản lý ${selectedDataset.name}`}
                           onClick={event => openManagement({ kind: "datasets", projectId, id: selectedDataset.id }, event.currentTarget)}><MoreHorizontal size={18} /></button>}
                       </div>
-                      {selectedDataset.status === "PARTIAL" && (
-                        <div className="source-warning" role="status">
-                          {currentCanonical ? `Dữ liệu cần kiểm tra · ${currentCanonical.invalid_count} / ${currentCanonical.row_count} dòng` : "Có dòng cần kiểm tra"}
-                          {currentCanonical && (
-                            <button
-                              className="text-button"
-                              onClick={() => {
-                                setTab("explore");
-                                setView("errors");
-                                setOffset(0);
-                              }}
-                            >
-                              Xem lỗi
-                            </button>
-                          )}
-                        </div>
-                      )}
                       {tableRequest.datasetId !== datasetId || tableRequest.loading && !tables.length ? <Spinner />
                         : tableRequest.error ? <Notice tone="error">{tableRequest.error}
                           <button className="text-button" onClick={() => void loadTables()}>Tải lại bảng dữ liệu</button>
@@ -1698,15 +1707,6 @@ export function App() {
                                 ))}
                               </select>
                             </label>
-                            {canEdit && tab !== "normalize" && detailScope === `${datasetId}:${tableId}` &&
-                              activeMapping?.status === "APPROVED" && !canonicals.some(c =>
-                                c.mapping_revision_id === activeMapping.id && !c.stale
-                              ) && (
-                                <button className="button primary" disabled={busy}
-                                  onClick={() => { setTab("normalize"); void run(normalize); }}>
-                                  <Layers3 size={17} aria-hidden="true" /> Chuẩn hóa dữ liệu
-                                </button>
-                              )}
                           </div>
                           <div
                             className="source-workflow"
@@ -1722,14 +1722,51 @@ export function App() {
                             ).map(([key, label]) => (
                               <button
                                 aria-pressed={tab === key}
-                                className={`button ${tab === key ? "secondary selected" : "secondary"}`}
+                                className={`button ${tab === key ? "secondary selected" : "secondary"}${key === "mapping" && !table?.active_mapping_id && canEdit ? " source-workflow-next" : ""}`}
                                 key={key}
+                                id={`source-tab-${key}`}
                                 onClick={() => setTab(key)}
                               >
                                 {label}
                               </button>
                             ))}
                           </div>
+                          {detailScope === `${datasetId}:${tableId}` && (
+                            <div className="source-next">
+                              {normalizing ? <>
+                                <Spinner /> <span role="status">{latestNormalization?.status === "QUEUED" ? "Đang chờ chuẩn hóa." :
+                                  latestNormalization?.status === "RETRYABLE_FAILURE" ? "Chuẩn hóa đang chờ thử lại." : "Đang chuẩn hóa dữ liệu."}</span>
+                              </> : normalized ? <>
+                                <div role="status">
+                                  <strong>{normalized.quality_status === "READY" ? "Đã chuẩn hóa thành công." : "Dữ liệu cần kiểm tra lỗi."}</strong>
+                                  {normalized.quality_status !== "READY" && <p>{normalized.row_count} dòng · {normalized.valid_count} hợp lệ · {normalized.invalid_count} cần kiểm tra</p>}
+                                </div>
+                                {normalized.quality_status !== "READY" && (view !== "errors" || tab !== "explore") ? (
+                                  <button className="text-button" onClick={() => viewNormalized(normalized.id, "errors")}>
+                                    Xem lỗi <ArrowRight size={15} aria-hidden="true" />
+                                  </button>
+                                ) : normalized.quality_status === "READY" && tab !== "normalize" &&
+                                  (view !== "canonical" || canonicalId !== normalized.id || tab !== "explore") && (
+                                  <button className="text-button" onClick={() => viewNormalized(normalized.id)}>
+                                    Xem kết quả <ArrowRight size={15} aria-hidden="true" />
+                                  </button>
+                                )}
+                              </> : activeMapping?.status === "APPROVED" ? <>
+                                <p role="status">{latestNormalization && ["FAILED", "BLOCKED"].includes(latestNormalization.status)
+                                  ? errorText[latestNormalization.error_code || ""] || "Chuẩn hóa chưa hoàn tất. Kiểm tra công việc rồi thử lại."
+                                  : staleCanonical ? "Bản chuẩn hóa cũ thuộc phiên bản ánh xạ trước. Hãy tạo bản mới." :
+                                  "Ánh xạ đã được xác nhận. Bạn có thể tạo dữ liệu chuẩn hóa."}</p>
+                                {canEdit && tab !== "normalize" && <button className="text-button" disabled={busy}
+                                  onClick={() => {
+                                    setTab("normalize");
+                                    requestAnimationFrame(() => document.getElementById("source-tab-normalize")?.focus());
+                                    void run(normalize);
+                                  }}>
+                                  Chuẩn hóa dữ liệu <ArrowRight size={15} aria-hidden="true" />
+                                </button>}
+                              </> : <p>Kiểm tra đề xuất ánh xạ để hệ thống hiểu đúng các cột dữ liệu.</p>}
+                            </div>
+                          )}
                           <div className="tab-content">
                             {tab === "mapping" && table && profile && detailScope===`${datasetId}:${tableId}` && (
                               <MappingStudio
@@ -1760,19 +1797,19 @@ export function App() {
                                   <div>
                                     <h2>Chuẩn hóa theo ánh xạ đã duyệt</h2>
                                   </div>
-                                  <button
+                                  {!normalized && !normalizing && <button
                                     className="button primary"
                                     disabled={
                                       busy ||
                                       !canEdit ||
-                                      !activeMapping ||
+                                      detailScope !== `${datasetId}:${tableId}` || !activeMapping ||
                                       activeMapping.status !== "APPROVED"
                                     }
                                     onClick={() => void run(normalize)}
                                   >
                                     <Layers3 size={17} />
                                     Chuẩn hóa dữ liệu
-                                  </button>
+                                  </button>}
                                 </div>
                                 {!activeMapping && (
                                   <Notice>
@@ -1818,12 +1855,7 @@ export function App() {
                                         </div>
                                         <button
                                           className="button secondary"
-                                          onClick={() => {
-                                            setCanonicalId(c.id);
-                                            setView("canonical");
-                                            setTab("explore");
-                                            setOffset(0);
-                                          }}
+                                          onClick={() => viewNormalized(c.id)}
                                         >
                                           Xem kết quả <ArrowRight size={15} />
                                         </button>
@@ -2030,6 +2062,7 @@ export function App() {
                     <ChevronDown size={15} aria-hidden="true" />
                     <strong>Hoạt động xử lý</strong>
                     <span>{activeJobs ? `${activeJobs} đang xử lý` : `${Math.min(jobs.length, 6)} hoạt động gần đây`}</span>
+                    {attentionJobs.length > 0 && <span className="jobs-attention">{attentionJobs.length} cần chú ý</span>}
                   </button>
                   <button
                     className="icon-button"

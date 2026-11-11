@@ -640,7 +640,7 @@ test("language workflow requires source/period/template confirmation before exis
   await expect(dialog).not.toBeVisible();
   await expect(
     page.getByText(
-      "Đã mở kế hoạch từ AI Assistant; kiểm tra và xác nhận trước khi duyệt.",
+      "Đã mở quy tắc. Kiểm tra nguồn và điều kiện trước khi xác nhận.",
     ),
   ).toBeVisible();
   const approve = page.getByRole("button", {
@@ -795,8 +795,8 @@ test("conversation history failure shows recoverable error", async ({
     else await route.continue();
   });
   const dialog = await openAssistant(page, s.project_id);
-  await page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true}).click();
-  const history = page.getByRole('dialog',{name:'Lịch sử',exact:true});
+  await page.locator('.sidebar').getByRole('button',{name:'Lịch sử hội thoại',exact:true}).click();
+  const history = page.getByRole('dialog',{name:'Lịch sử hội thoại',exact:true});
   await expect(history.getByRole("alert")).toContainText(
     "Lịch sử tạm chưa tải được",
   );

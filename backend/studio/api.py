@@ -1550,6 +1550,12 @@ def jobs(
                 "attempts": j.attempts,
                 "error_code": j.error_code,
                 "result": j.result,
+                "normalization": {
+                    "mapping_id": j.payload["mapping_id"],
+                    "dataset_id": j.payload["dataset_id"],
+                }
+                if j.kind == "normalize"
+                else None,
             }
             for j in rows
         ]
@@ -1655,6 +1661,8 @@ def enqueue_normalization(
     dataset = get_scoped(db, DatasetRow, dataset_id, actor)
     mapping = get_scoped(db, MappingRow, mapping_id, actor)
     table = get_scoped(db, TableRow, mapping.source_table_id, actor)
+    # Serialize requests for the same source table before looking for an active normalization.
+    db.refresh(table, with_for_update=True)
     version = db.get(VersionRow, table.dataset_version_id)
     if version is None or version.dataset_id != dataset.id or table.active_mapping_id != mapping.id:
         raise DomainError(
@@ -1668,12 +1676,35 @@ def enqueue_normalization(
         SchemaDefinition.model_validate(schema.definition),
         DatasetProfile.model_validate(table.profile),
     )
+    key = "normalize:" + idempotency_key
+    existing_key = db.scalar(
+        select(JobRow.id).where(
+            JobRow.workspace_id == actor.workspace_id,
+            JobRow.idempotency_key == key,
+        )
+    )
+    if not existing_key:
+        active = db.scalar(
+            select(JobRow)
+            .where(
+                JobRow.workspace_id == actor.workspace_id,
+                JobRow.project_id == dataset.project_id,
+                JobRow.kind == "normalize",
+                JobRow.status.in_(["QUEUED", "RUNNING", "RETRYABLE_FAILURE"]),
+                JobRow.payload["mapping_id"].astext == mapping.id,
+                JobRow.payload["normalization_revision"].astext == NORMALIZATION_REVISION,
+            )
+            .order_by(JobRow.created_at, JobRow.id)
+            .limit(1)
+        )
+        if active:
+            return {"job_id": active.id, "status": active.status}
     job = enqueue_job(
         db,
         actor.workspace_id,
         dataset.project_id,
         "normalize",
-        "normalize:" + idempotency_key,
+        key,
         {
             "dataset_id": dataset_id,
             "table_id": table.id,

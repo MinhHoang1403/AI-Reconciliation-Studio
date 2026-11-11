@@ -1189,7 +1189,7 @@ export function AssistantStudio({
         <p>Xóa nội dung hội thoại này? Lượt đối soát, quy tắc, nguồn dữ liệu và báo cáo được giữ nguyên.</p>
         <div className="modal-actions"><button className="button secondary" disabled={busy} onClick={()=>setConfirmDelete(false)}>Hủy</button><button className="button primary" disabled={busy} onClick={()=>void deleteConversation()}>Xác nhận xóa hội thoại</button></div>
       </Modal>
-      <Modal title="Lịch sử" open={historyOpen} onOpenChange={setHistoryOpen} returnFocus={historyTrigger}>
+      <Modal title="Lịch sử hội thoại" open={historyOpen} onOpenChange={setHistoryOpen} returnFocus={historyTrigger}>
         <div
           id="assistant-history-panel"
           className="assistant-history"

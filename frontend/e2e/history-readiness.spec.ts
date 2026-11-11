@@ -26,8 +26,8 @@ test("[MOCK CONTRACT] report history stays in place and clears denied conversati
   await page.goto("/#page=reports&project=history-project");
   await expect(page.getByRole("heading", { name: "Báo cáo đối soát" })).toBeVisible();
   const reportURL = page.url();
-  await page.getByRole("button", { name: "Lịch sử", exact: true }).click();
-  const modal = page.getByRole("dialog", { name: "Lịch sử", exact: true });
+  await page.getByRole("button", { name: "Lịch sử hội thoại", exact: true }).click();
+  const modal = page.getByRole("dialog", { name: "Lịch sử hội thoại", exact: true });
   await expect(modal.getByText(title)).toBeVisible();
   await expect(page).toHaveURL(reportURL);
   await modal.getByRole("button", { name: "Tải thêm hội thoại" }).click();
@@ -63,8 +63,8 @@ for(const width of [390,768,1366,1440,1920]){
     });
     await page.goto('/#page=assistant');await expect(page.getByLabel('Câu hỏi cho AI Assistant',{exact:true})).toBeEnabled();
     if(width<900)await page.getByRole('button',{name:'Mở điều hướng',exact:true}).click();
-    await page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true}).click();
-    const dialog=page.getByRole('dialog',{name:'Lịch sử',exact:true});
+    await page.locator('.sidebar').getByRole('button',{name:'Lịch sử hội thoại',exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'Lịch sử hội thoại',exact:true});
     await expect(dialog).toContainText('Dự án thử nghiệm lịch sử');
     await expect(dialog.getByRole('alert')).toContainText('Không tải được lịch sử');
     await expect(dialog.getByText('Chưa có hội thoại trong dự án này.',{exact:true})).toHaveCount(0);
@@ -78,7 +78,7 @@ for(const width of [390,768,1366,1440,1920]){
     await expect(dialog).not.toBeVisible();
     await expect(page.getByLabel('Câu hỏi cho AI Assistant',{exact:true})).toBeEnabled();
     if(width<900)await page.getByRole('button',{name:'Mở điều hướng',exact:true}).click();
-    await page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true}).click();
+    await page.locator('.sidebar').getByRole('button',{name:'Lịch sử hội thoại',exact:true}).click();
     await expect(dialog.locator('[aria-current=true]')).toContainText(conversation.title);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
     await mkdir('../runtime/demo-acceptance/history',{recursive:true});

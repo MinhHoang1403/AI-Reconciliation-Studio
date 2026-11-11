@@ -61,7 +61,7 @@ export function ProjectHistory({ projectId, projectName, onClose, onOpen, return
     return () => controller.abort();
   }, [projectId, cursor, retry]);
 
-  return <Modal title="Lịch sử" open wide returnFocus={returnFocus} onOpenChange={open => { if (!open) onClose(); }}>
+  return <Modal title="Lịch sử hội thoại" open wide returnFocus={returnFocus} onOpenChange={open => { if (!open) onClose(); }}>
     {projectId ? <div className="assistant-history" aria-label="Lịch sử hội thoại">
       <p>{projectName}</p>
       <label>Tìm trong hội thoại đã tải<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>

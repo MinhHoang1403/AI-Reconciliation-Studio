@@ -175,7 +175,9 @@ export interface Job {
   attempts: number;
   error_code: string | null;
   result: Record<string, unknown> | null;
+  normalization?: { mapping_id: string; dataset_id: string } | null;
 }
+export const isActiveJob = (job: Job) => ["QUEUED", "RUNNING", "RETRYABLE_FAILURE"].includes(job.status);
 export interface Preview {
   items: Record<string, unknown>[];
   total: number;
@@ -216,11 +218,11 @@ export const statusText: Record<string, string> = {
   RAW_UNVERIFIED: "Nguồn gốc chưa xác nhận",
   CANONICAL: "Dữ liệu đã chuẩn hóa",
   UPLOADED: "Đã tải lên",
-  PARSING: "Đang đọc",
+  PARSING: "Đang đọc dữ liệu",
   PARSED: "Đã đọc",
   PROFILED: "Đã phân tích",
-  NEEDS_MAPPING_REVIEW: "Cần xác nhận ánh xạ",
-  MAPPED: "Đã duyệt ánh xạ",
+  NEEDS_MAPPING_REVIEW: "Cần xác nhận cột",
+  MAPPED: "Sẵn sàng chuẩn hóa",
   NORMALIZING: "Đang chuẩn hóa",
   READY: "Đã chuẩn hóa",
   PARTIAL: "Cần kiểm tra",

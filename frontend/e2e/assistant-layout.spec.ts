@@ -55,7 +55,7 @@ for(const width of [390,768,1366,1440,1920]){
       await expect(input).toBeEnabled();
       if(name==="empty"){
         await expect(page.getByRole("heading",{name:"Bạn muốn xử lý dữ liệu gì?"})).toBeVisible();
-        await expect(page.getByRole("dialog",{name:"Lịch sử",exact:true})).toHaveCount(0);
+        await expect(page.getByRole("dialog",{name:"Lịch sử hội thoại",exact:true})).toHaveCount(0);
         await expect(page.getByLabel("Chọn kết quả phân tích",{exact:true})).toHaveCount(0);
         await expect(page.getByRole("button",{name:"← Trở về trang trước",exact:true})).toHaveCount(0);
       }
@@ -66,9 +66,9 @@ for(const width of [390,768,1366,1440,1920]){
       }
       if(name==="history"){
         const menu=page.getByRole("button",{name:"Mở điều hướng",exact:true});if(await menu.isVisible())await menu.click();
-        await page.getByRole("button",{name:"Lịch sử",exact:true}).click();
-        await expect(page.getByRole("dialog",{name:"Lịch sử",exact:true})).toContainText(conversation.title);
-        await shot(name);await page.keyboard.press("Escape");await expect(width<=900?page.getByRole("button",{name:"Mở điều hướng",exact:true}):page.getByRole("button",{name:"Lịch sử",exact:true})).toBeFocused();continue;
+        await page.getByRole("button",{name:"Lịch sử hội thoại",exact:true}).click();
+        await expect(page.getByRole("dialog",{name:"Lịch sử hội thoại",exact:true})).toContainText(conversation.title);
+        await shot(name);await page.keyboard.press("Escape");await expect(width<=900?page.getByRole("button",{name:"Mở điều hướng",exact:true}):page.getByRole("button",{name:"Lịch sử hội thoại",exact:true})).toBeFocused();continue;
       }
       if(name==="multiline"||name==="keyboard"){
         await input.fill(Array.from({length:12},(_,i)=>`Dòng yêu cầu ${i+1}: giữ nguyên mã và kiểm tra dữ liệu.`).join("\n"));await input.focus();
@@ -76,9 +76,9 @@ for(const width of [390,768,1366,1440,1920]){
       }
       if(name==="sidebar"){
         const menu=page.getByRole("button",{name:"Mở điều hướng",exact:true});if(await menu.isVisible())await menu.click();
-        await expect(page.locator('.sidebar nav').getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử','Cài đặt']);
-        await page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true}).focus();
-        await expect(page.locator('.sidebar').getByRole('button',{name:'Lịch sử',exact:true})).toBeFocused();
+        await expect(page.locator('.sidebar nav').getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử hội thoại','Cài đặt']);
+        await page.locator('.sidebar').getByRole('button',{name:'Lịch sử hội thoại',exact:true}).focus();
+        await expect(page.locator('.sidebar').getByRole('button',{name:'Lịch sử hội thoại',exact:true})).toBeFocused();
       }
       if(name==="evidence"){await page.getByRole("button",{name:"Xem dòng gốc",exact:true}).first().click();await expect(page.getByRole("dialog",{name:"Dòng dữ liệu nguồn",exact:true})).toContainText("000701");}
       if(name==="delete"){

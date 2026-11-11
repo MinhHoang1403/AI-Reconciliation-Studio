@@ -124,6 +124,11 @@ class PreviewResponse(Contract):
     view: str
 
 
+class NormalizationJobTarget(Contract):
+    mapping_id: str
+    dataset_id: str
+
+
 class JobView(Contract):
     id: str
     kind: str
@@ -131,6 +136,7 @@ class JobView(Contract):
     attempts: int
     error_code: str | None
     result: dict[str, Any] | None
+    normalization: NormalizationJobTarget | None = None
 
 
 class MappingList(Contract):

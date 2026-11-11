@@ -28,7 +28,7 @@ import {
   type Slot,
   type SourceEvidence,
 } from "./reconciliationTypes";
-import { errorText, type Job } from "./types";
+import { errorText, isActiveJob, type Job, type PreparationAction, type ProjectSummary } from "./types";
 import type { AssistantContext } from "./assistantTypes";
 
 echarts.use([
@@ -38,6 +38,34 @@ echarts.use([
   SVGRenderer,
 ]);
 type Mode = "home" | "reconcile" | "exceptions" | "reports";
+const uploadSource: PreparationAction = { kind: "UPLOAD", dataset_id: null, table_id: null, canonical_id: null };
+
+function sourcePreparation(summary: ProjectSummary, readyCount: number, canEdit: boolean, target: PreparationAction | null) {
+  if (summary.preparation_action?.kind === "WAIT") {
+    return {
+      message: "Dữ liệu đang được chuẩn bị. Xem tiến độ trước khi tiếp tục.",
+      label: "Xem công việc đang xử lý",
+      target: summary.preparation_action,
+    };
+  }
+  if (summary.dataset_count === 0) {
+    return {
+      message: "Bạn chưa có nguồn dữ liệu để đối soát.",
+      label: canEdit ? "Tải dữ liệu" : "Quản lý dữ liệu",
+      target: canEdit ? uploadSource : null,
+    };
+  }
+  if (readyCount === 1) {
+    const canAdd = !target && summary.dataset_count === 1 && canEdit;
+    return {
+      message: "Bạn đang có 1 nguồn sẵn sàng. Hãy chuẩn bị thêm ít nhất 1 nguồn để bắt đầu đối soát.",
+      label: canAdd ? "Tải thêm nguồn" : "Quản lý dữ liệu",
+      target: canAdd ? uploadSource : target,
+    };
+  }
+  return { message: "Một số nguồn chưa hoàn tất chuẩn bị dữ liệu.", label: "Kiểm tra nguồn cần chuẩn hóa", target };
+}
+
 const send = (body: unknown): RequestInit => ({
   method: "POST",
   body: JSON.stringify(body),
@@ -108,23 +136,31 @@ function StatusChart({ counts }: { counts: Record<string, number> }) {
 
 export function ReconciliationStudio({
   projectId,
+  summary = null,
+  jobs = [],
   mode,
   requestedRun,
   canEdit,
   onAsk,
   requestedPlan,
   onSetup,
+  onPreparation,
+  onWorkChanged,
   onRunSelected,
   onOpenExceptions,
   panel,
 }: {
   projectId: string;
+  summary?: ProjectSummary | null;
+  jobs?: Job[];
   mode: Mode;
   canEdit: boolean;
   onAsk: (context: AssistantContext) => void;
   requestedPlan: { id: string; request: number } | null;
   requestedRun: { id: string; request: number; caseId?: string | null } | null;
-  onSetup: () => void;
+  onSetup: (planId?: string) => void;
+  onPreparation?: (action: PreparationAction | null) => void;
+  onWorkChanged?: () => Promise<void>;
   onRunSelected: (id: string, caseId?: string) => void;
   onOpenExceptions?: (id: string) => void;
   panel?: { docked: boolean; onClose: () => void; returnFocus: RefObject<HTMLElement | null> };
@@ -168,6 +204,7 @@ export function ReconciliationStudio({
     [exportNotice, setExportNotice] = useState("");
   const [invalidRowsReviewedPlan, setInvalidRowsReviewedPlan] = useState<string | null>(null);
   const [templates, setTemplates] = useState<{ id: string; plan: Plan }[]>([]);
+  const [pendingPlans, setPendingPlans] = useState<Proposal[]>([]);
   const [historicalSources, setHistoricalSources] = useState<{
     projectId: string;
     query: string;
@@ -183,6 +220,9 @@ export function ReconciliationStudio({
   const analysisDisclosure = useRef<HTMLDetailsElement>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const showResults = mode !== "reconcile" || workView === "results";
+  const activeRun = jobs.find(job => job.kind === "reconcile" && isActiveJob(job));
+  const activeRunId = activeRun?.id;
+  const showPendingPlans = canEdit && (mode === "reconcile" || mode === "reports");
   const requestedRunId = requestedRun?.id;
   const requestedCaseId = requestedRun?.caseId;
   const requestedRunVersion = requestedRun?.request;
@@ -228,7 +268,7 @@ export function ReconciliationStudio({
         setReadiness(null);
         setScopeConfirmed(false);
         setMessage(
-          "Đã mở kế hoạch từ AI Assistant; kiểm tra và xác nhận trước khi duyệt.",
+          "Đã mở quy tắc. Kiểm tra nguồn và điều kiện trước khi xác nhận.",
         );
       })
       .catch((err) => {
@@ -312,7 +352,15 @@ export function ReconciliationStudio({
   }, [projectId, runOffset, fromPeriod, toPeriod, sourceFilter]);
   useEffect(() => {
     void refresh().catch((e) => setError(e.message));
-  }, [refresh]);
+  }, [refresh, activeRunId]);
+  useEffect(() => {
+    if (!showPendingPlans) return;
+    const read = new AbortController();
+    void api<{ items: Proposal[] }>(`/projects/${projectId}/reconciliation-plans?limit=20`, { signal: read.signal })
+      .then(result => { if (!read.signal.aborted) setPendingPlans(result.items); })
+      .catch(() => { if (!read.signal.aborted) setPendingPlans([]); });
+    return () => read.abort();
+  }, [projectId, showPendingPlans, mode, activeRunId]);
   useEffect(() => {
     setOffset(0);
     setSearch("");
@@ -400,6 +448,13 @@ export function ReconciliationStudio({
   const sources = catalogue.filter(
     (c) => !c.canonical.stale && c.canonical.quality_status !== "FAILED",
   );
+  const readyCount = sources.filter(c => c.canonical.quality_status === "READY").length;
+  const pendingPlan = showPendingPlans && pendingPlans.find(({ proposal: { plan } }) => plan &&
+    [plan.left.canonical_id, plan.right.canonical_id].every(id => sources.some(c => c.canonical.id === id)));
+  const nextSource = summary?.preparation_action ?? null;
+  const sourceTarget = nextSource && ["REVIEW_MAPPING", "NORMALIZE", "REVIEW_DATA"].includes(nextSource.kind)
+    ? nextSource : null;
+  const preparation = summary && sourcePreparation(summary, readyCount, canEdit, sourceTarget);
   const runPlan = templates.find(template => template.id === run?.contract_id)?.plan;
   const runSourceIds = runPlan ? [runPlan.left.canonical_id, runPlan.right.canonical_id] : [];
   const historicalQuery = new URLSearchParams(
@@ -672,27 +727,30 @@ export function ReconciliationStudio({
         </Notice>
       )}
       {busy && <Spinner />}
+      {activeRun && <Notice>{activeRun.status === "QUEUED" ? "Lần đối soát đang chờ xử lý." :
+        activeRun.status === "RETRYABLE_FAILURE" ? "Lần đối soát đang chờ thử lại." : "Đang đối soát và kiểm chứng kết quả."}</Notice>}
       {mode === "reconcile" && !showResults && (
-        <fieldset
+        listLoading ? <Spinner /> : sources.length < 2 ? (
+          <section className="card empty-state" aria-label="Chuẩn bị nguồn đối soát">
+            <h2>Chọn nguồn đối soát</h2>
+            {error ? <p>Dùng Cập nhật đối soát để tải lại nguồn.</p> : preparation ? <>
+              <p>{preparation.message}</p>
+              {!activeRun && onPreparation && <button className="button primary" onClick={() => onPreparation(preparation.target)}>{preparation.label}</button>}
+            </> : <p>Đang kiểm tra tình trạng nguồn trong dự án.</p>}
+          </section>
+        ) : <fieldset
           className="card rule-builder"
           disabled={!canEdit}
           aria-label="Thiết lập quy tắc"
         >
           <h2>Chọn nguồn đối soát</h2>
           <p>Chọn hai nguồn đã chuẩn hóa để kiểm tra phạm vi và quy tắc trước khi chạy.</p>
-          {listLoading ? (
-            <Spinner />
-          ) : error && !catalogue.length ? (
-            <Notice>
-              Chưa tải được nguồn. Dùng Cập nhật đối soát để thử lại.
-            </Notice>
-          ) : sources.length < 2 ? (
-            <Notice>
-              Cần ít nhất hai nguồn đã chuẩn hóa. Mở Dữ liệu để xác nhận ánh xạ
-              và chuẩn hóa.
-            </Notice>
-          ) : (
-            <>
+          {readyCount < 2 && <Notice tone="warning">
+            Một số nguồn đã chuẩn hóa còn dòng cần kiểm tra. Studio sẽ yêu cầu xem xét các dòng lỗi trước khi duyệt quy tắc.
+          </Notice>}
+          {!draft && pendingPlan && !activeRun && <Notice>
+            Quy tắc đối soát đang chờ bạn xác nhận. <button className="text-button" onClick={() => onSetup(pendingPlan.id)}>Xem và xác nhận quy tắc</button>
+          </Notice>}
               <div className="rule-grid">
                 {(["left", "right"] as const).map((side, i) => (
                   <DropdownSelect key={side} searchLabel="Tìm nguồn đối soát"
@@ -1319,6 +1377,7 @@ export function ReconciliationStudio({
                                 ...proposal,
                                 contract_id: rule.id,
                               });
+                              setPendingPlans(previous => previous.filter(item => item.id !== proposal.id));
                               setMessage(
                                 "Đã duyệt scope, grain, coverage và dấu số tiền theo nguồn. Có thể chạy đối soát.",
                               );
@@ -1328,7 +1387,7 @@ export function ReconciliationStudio({
                           <CheckCheck size={16} />
                           Xác nhận quy tắc và dấu số tiền
                         </button>
-                      ) : (
+                      ) : !activeRun && (
                         <button
                           className="button primary"
                           disabled={busy}
@@ -1341,7 +1400,12 @@ export function ReconciliationStudio({
                                 "/reconciliation-runs",
                                 send({ contract_id: proposal.contract_id }),
                               );
-                              await wait(accepted.job_id);
+                              void onWorkChanged?.();
+                              try {
+                                await wait(accepted.job_id);
+                              } finally {
+                                if (alive.current) void onWorkChanged?.();
+                              }
                               await refresh();
                               if (alive.current) {
                                 setSelectedCaseId("");
@@ -1359,8 +1423,6 @@ export function ReconciliationStudio({
                   )}
                 </>
               )}
-            </>
-          )}
         </fieldset>
       )}
       {showResults && <>
@@ -1369,16 +1431,23 @@ export function ReconciliationStudio({
       ) : runs.length === 0 && !runId && !error ? (
         <div className="card empty-state">
           <GitCompareArrows size={28} />
-          <h3>Chưa có lần đối soát trong bộ lọc</h3>
-          <p>
-            Chọn hai nguồn đã chuẩn hóa, xác nhận quy tắc rồi chạy để có kết quả đã
-            kiểm chứng.
-          </p>
-          {mode !== "reconcile" && (
-            <button className="button primary" onClick={onSetup}>
-              Thiết lập đối soát
-            </button>
-          )}
+          <h3>{fromPeriod || toPeriod || sourceFilter ? "Chưa có lần đối soát trong bộ lọc" : "Chưa có kết quả đối soát"}</h3>
+          {activeRun ? <p>Báo cáo sẽ có sau khi kết quả được xác minh.</p> :
+            fromPeriod || toPeriod || sourceFilter ? <p>Đổi bộ lọc để xem các lần đối soát khác.</p> :
+            !summary ? <p>Đang kiểm tra tình trạng nguồn trong dự án.</p> :
+            (sources.length < 2 || (readyCount < 2 && sourceTarget)) && preparation ? <>
+              <p>{preparation.message}</p>
+              {onPreparation && <button className="button primary" onClick={() => onPreparation(preparation.target)}>{preparation.label}</button>}
+            </> : pendingPlan ? <>
+              <p>Quy tắc đối soát đang chờ bạn xác nhận.</p>
+              <button className="button primary" onClick={() => onSetup(pendingPlan.id)}>Xem và xác nhận quy tắc</button>
+            </> : <>
+              <p>Chọn nguồn và xác nhận quy tắc để tạo kết quả đối soát.</p>
+              {mode !== "reconcile" && <button className="button primary" onClick={() => {
+                setWorkView("setup");
+                onSetup();
+              }}>Thiết lập đối soát</button>}
+            </>}
         </div>
       ) : (
         <>
