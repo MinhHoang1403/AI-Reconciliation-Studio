@@ -29,6 +29,7 @@ from studio.contracts import (
 )
 from studio.contracts.api import PreparedTable
 from studio.contracts.assistant import AssistantCommand
+from studio.data_quality import adjusted_frame, adjustments, decision_history, excluded_amounts
 from studio.database import (
     ArtifactRow,
     AttemptRow,
@@ -667,6 +668,9 @@ def _reuse_mapping(job_id: str, token: str) -> None:
                 "table_id": target_id,
                 "mapping_id": applied.id,
                 "normalization_revision": NORMALIZATION_REVISION,
+                **(
+                    {"quality_revision": target.quality_revision} if target.quality_revision else {}
+                ),
             },
         )
         _finish(
@@ -714,6 +718,34 @@ def _mapping(job_id: str, token: str) -> None:
                     raise DomainError(
                         "AI_DELIVERY_UNKNOWN", "Không tự gửi lại đề xuất AI sau khôi phục."
                     )
+                source_context = None
+                if isinstance(provider, GeminiProvider):
+                    version = db.get(VersionRow, table.dataset_version_id)
+                    assert version is not None
+                    dataset = db.get(DatasetRow, version.dataset_id)
+                    assert dataset is not None
+                    project = project_for_table(db, table)
+                    previous = (
+                        db.get(MappingRow, table.active_mapping_id)
+                        if table.active_mapping_id
+                        else None
+                    )
+                    source_context = {
+                        "file": dataset.name[:120],
+                        "sheet": table.sheet[:120],
+                        "business_scope": (
+                            None
+                            if project.business_scope.startswith("UNCONFIRMED:")
+                            else project.business_scope[:120]
+                        ),
+                        "approved_fields": {
+                            item.source_field: item.candidate_target
+                            for item in mapping_contract(previous).decisions
+                            if item.candidate_target
+                        }
+                        if previous is not None and previous.status == "APPROVED"
+                        else {},
+                    }
                 db.rollback()  # do not hold a PostgreSQL transaction while waiting for AI
                 if isinstance(provider, GeminiProvider):
 
@@ -726,7 +758,9 @@ def _mapping(job_id: str, token: str) -> None:
                             budget_db.commit()  # durable even if HTTP fails or worker crashes
                             return allowed
 
-                    proposal = provider.propose(profile, schema, policy, reserve)
+                    proposal = provider.propose(
+                        profile, schema, policy, reserve, source_context=source_context
+                    )
                 else:
                     proposal = provider.propose(profile, schema)
             if not cached:
@@ -910,10 +944,14 @@ def _normalize(job_id: str, token: str) -> None:
         db.refresh(table, with_for_update=True)
         if table.active_mapping_id != mapping.id or mapping.status != "APPROVED":
             raise DomainError("STALE_MAPPING", "Revision mapping đã được thay thế.")
+        quality_revision = job.payload.get("quality_revision", 0)
+        if table.quality_revision != quality_revision:
+            raise DomainError("QUALITY_SNAPSHOT_CHANGED", "Điều chỉnh nguồn đã thay đổi.")
         existing = db.scalar(
             select(CanonicalRow).where(
                 CanonicalRow.mapping_id == mapping.id,
                 CanonicalRow.normalization_revision == NORMALIZATION_REVISION,
+                CanonicalRow.quality_revision == quality_revision,
             )
         )
         if existing:
@@ -936,26 +974,40 @@ def _normalize(job_id: str, token: str) -> None:
         assert version is not None
         version_id, dataset_id = version.id, version.dataset_id
         table_id, sheet, mapping_id = table.id, table.sheet, mapping.id
+        workspace_id = job.workspace_id
+        replacements, excluded = adjustments(decision_history(db, table_id, quality_revision))
         db.rollback()
-        result = apply_transform_plan(
-            frame, plan, version_id, table_id, parsed.provenance[0].file_id, sheet
+        excluded_frame = frame.filter(pl.col("_source_row_id").is_in(sorted(excluded)))
+        if excluded_frame.height != len(excluded):
+            raise DomainError(
+                "LINEAGE_CONSERVATION_FAILED", "Không tìm thấy đủ dòng đã loại trong nguồn."
+            )
+        excluded_totals, incomplete_totals = excluded_amounts(
+            adjusted_frame(excluded_frame, replacements, set()),
+            plan,
         )
+        included = adjusted_frame(frame, replacements, excluded)
+        result = apply_transform_plan(
+            included, plan, version_id, table_id, parsed.provenance[0].file_id, sheet
+        )
+        if excluded and result.quality_status == "READY":
+            result.quality_status = "PARTIAL"
         outputs = []
         for kind, output in (("canonical", result.canonical), ("errors", result.errors)):
             artifact_id = identifier()
-            key = f"{job.workspace_id}/{version_id}/{kind}/{artifact_id}.parquet"
+            key = f"{workspace_id}/{version_id}/{kind}/{artifact_id}.parquet"
             sha256 = write_parquet(settings.storage_root, key, output)
             outputs.append(
                 ArtifactRow(
                     id=artifact_id,
-                    workspace_id=job.workspace_id,
+                    workspace_id=workspace_id,
                     dataset_version_id=version_id,
                     kind=kind,
                     sha256=sha256,
                     revision=NORMALIZATION_REVISION,
                     quality=result.quality_status,
                     storage_key=key,
-                    metadata_json={"mapping_id": mapping_id},
+                    metadata_json={"mapping_id": mapping_id, "quality_revision": quality_revision},
                 )
             )
         job = _fence(db, job_id, token)
@@ -966,11 +1018,17 @@ def _normalize(job_id: str, token: str) -> None:
             raise DomainError(
                 "STALE_MAPPING", "Mapping đã đổi trong lúc xử lý; chưa công bố kết quả."
             )
+        if table.quality_revision != quality_revision:
+            raise DomainError(
+                "QUALITY_SNAPSHOT_CHANGED",
+                "Điều chỉnh đã đổi trong lúc xử lý; chưa công bố kết quả.",
+            )
         # A second worker with a different idempotency key may have completed during IO.
         existing = db.scalar(
             select(CanonicalRow).where(
                 CanonicalRow.mapping_id == mapping_id,
                 CanonicalRow.normalization_revision == NORMALIZATION_REVISION,
+                CanonicalRow.quality_revision == quality_revision,
             )
         )
         if existing:
@@ -991,6 +1049,11 @@ def _normalize(job_id: str, token: str) -> None:
             entity_kind=schema.entity_kind,
             mapping_revision_id=mapping_id,
             normalization_revision=NORMALIZATION_REVISION,
+            quality_revision=quality_revision,
+            source_row_count=frame.height if quality_revision else None,
+            excluded_source_rows=len(excluded),
+            excluded_amounts=excluded_totals,
+            excluded_amounts_unavailable=incomplete_totals,
             row_count=result.row_count,
             valid_count=result.valid_count,
             invalid_count=result.invalid_count,
@@ -1005,7 +1068,8 @@ def _normalize(job_id: str, token: str) -> None:
                 source_table_id=table_id,
                 mapping_id=mapping_id,
                 normalization_revision=NORMALIZATION_REVISION,
-                contract=contract.model_dump(mode="json"),
+                quality_revision=quality_revision,
+                contract=contract.model_dump(mode="json", exclude_defaults=True),
             )
         )
         db.flush()

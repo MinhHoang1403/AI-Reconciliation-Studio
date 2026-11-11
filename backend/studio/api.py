@@ -64,6 +64,7 @@ from studio.contracts.api import (
     UploadResponse,
 )
 from studio.contracts.data_query import DataQuery, QueryResult
+from studio.data_quality import QualityInput, read_issues, record_decision
 from studio.database import (
     ArtifactRow,
     AuditRow,
@@ -1453,6 +1454,35 @@ def normalize(
     return result
 
 
+@app.get("/api/tables/{table_id}/quality-issues")
+def quality_issues(
+    table_id: str,
+    canonical_id: str,
+    db: DB,
+    actor: CurrentActor,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=50),
+) -> dict[str, Any]:
+    return read_issues(db, actor, table_id, canonical_id, offset, limit)
+
+
+@app.post("/api/tables/{table_id}/quality-decisions", status_code=202)
+def decide_quality(
+    table_id: str,
+    body: QualityInput,
+    db: DB,
+    actor: CurrentActor,
+    idempotency_key: Annotated[str, Header(min_length=1, max_length=160)],
+) -> dict[str, Any]:
+    entry, dataset_id, mapping_id = record_decision(db, actor, table_id, body, idempotency_key)
+    if entry.job_id is None:
+        queued = enqueue_normalization(dataset_id, mapping_id, db, actor, f"quality:{entry.id}")
+        entry.job_id = queued["job_id"]
+    result = {"decision_id": entry.id, "revision": entry.revision, "job_id": entry.job_id}
+    db.commit()
+    return result
+
+
 @app.get("/api/datasets/{dataset_id}/artifacts", response_model=ArtifactList)
 def artifacts(dataset_id: str, db: DB, actor: CurrentActor) -> dict[str, Any]:
     dataset = get_scoped(db, DatasetRow, dataset_id, actor)
@@ -1677,6 +1707,8 @@ def enqueue_normalization(
         DatasetProfile.model_validate(table.profile),
     )
     key = "normalize:" + idempotency_key
+    if table.quality_revision:
+        key += f":quality:{table.quality_revision}"
     existing_key = db.scalar(
         select(JobRow.id).where(
             JobRow.workspace_id == actor.workspace_id,
@@ -1693,6 +1725,8 @@ def enqueue_normalization(
                 JobRow.status.in_(["QUEUED", "RUNNING", "RETRYABLE_FAILURE"]),
                 JobRow.payload["mapping_id"].astext == mapping.id,
                 JobRow.payload["normalization_revision"].astext == NORMALIZATION_REVISION,
+                func.coalesce(JobRow.payload["quality_revision"].as_integer(), 0)
+                == table.quality_revision,
             )
             .order_by(JobRow.created_at, JobRow.id)
             .limit(1)
@@ -1710,6 +1744,7 @@ def enqueue_normalization(
             "table_id": table.id,
             "mapping_id": mapping.id,
             "normalization_revision": NORMALIZATION_REVISION,
+            **({"quality_revision": table.quality_revision} if table.quality_revision else {}),
         },
     )
     db.flush()

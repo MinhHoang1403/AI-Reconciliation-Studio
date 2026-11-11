@@ -258,6 +258,15 @@ class ProgressBlock(Contract):
     text: str
 
 
+class QualityDraft(Contract):
+    source_row_id: str
+    field: str
+    code: str
+    value: str
+    reason: str
+    row_index: int
+
+
 class DatasetBlock(Contract):
     type: Literal["dataset_summary"] = "dataset_summary"
     dataset_id: str
@@ -266,8 +275,10 @@ class DatasetBlock(Contract):
     name: str
     rows: int
     invalid_rows: int
+    excluded_rows: int = 0
     status: str
     transformations: list[str]
+    quality_draft: QualityDraft | None = None
 
 
 class TableBlock(Contract):

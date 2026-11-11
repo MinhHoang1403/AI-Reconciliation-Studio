@@ -461,6 +461,14 @@ main {
 .project-option small { margin-top: 3px; font-size: 10px; color: var(--text-muted); }
 .project-test-filter { margin-top: 12px; }
 .project-classification { border-top: 1px solid var(--surface-border); margin-top: 12px; padding-top: 12px; }
+.quality-resolution { display: grid; gap: 8px; margin-block: 16px; overflow-wrap: anywhere; }
+.quality-resolution :is(h4, h5, p) { margin: 0; }
+.quality-row { border-block-start: 1px solid var(--surface-border); padding-block: 12px; }
+.quality-row > div { display: grid; gap: 4px; margin-block-start: 8px; justify-items: start; }
+.quality-form { display: grid; gap: 12px; width: min(100%, 32rem); padding-block: 8px; }
+.quality-form label { display: grid; gap: 4px; }
+.quality-form :is(input, select) { min-width: 0; width: 100%; }
+.quality-error { color: var(--danger, #9f2424); }
 .project-classification p { margin: 8px 0; overflow-wrap: anywhere; }
 .project-test-badge { font-weight: 600; }
 .project-option[aria-selected="true"] strong { color: #1d4ed8; }

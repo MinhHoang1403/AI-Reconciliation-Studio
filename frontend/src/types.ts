@@ -165,6 +165,7 @@ export interface Canonical {
   row_count: number;
   valid_count: number;
   invalid_count: number;
+  excluded_source_rows?: number;
   quality_status: string;
   stale: boolean;
 }

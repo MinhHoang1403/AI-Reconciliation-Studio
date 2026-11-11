@@ -665,17 +665,18 @@ def test_displayed_page_changed_during_inference_never_uses_a_different_selectio
     assert not result["detail"]["blocks"] and result["context"]["group_id"] is None
 
 
-def mapping_fixture(pg, monkeypatch, *, second_source_error=False):  # noqa: F811
+def mapping_fixture(pg, monkeypatch, *, second_source_error=False, invalid_amount=False):  # noqa: F811
     import studio.agent_jobs as agents
 
     client, factory, worker = pg
     pid = project(client)
+    amount = b"invalid" if invalid_amount else b"12.75"
     files = [
         (
             "files",
             (
                 "synthetic.csv",
-                b"id,amount,date\n000701,25.00,2026-10-01\n000702,12.75,2026-10-02\n",
+                b"id,amount,date\n000701,25.00,2026-10-01\n000702," + amount + b",2026-10-02\n",
                 "text/csv",
             ),
         )
@@ -821,6 +822,49 @@ def test_agent_mock_mapping_review_atomic_resume_reopen_idempotency(pg, monkeypa
         ).status_code
         == 409
     )
+
+
+def test_agent_correction_uses_bound_issue_then_resumes(pg, monkeypatch):  # noqa: F811
+    client, factory, worker = pg
+    workflow, approval = mapping_fixture(pg, monkeypatch, invalid_amount=True)
+    path = f"/api/agent/workflows/{workflow['id']}"
+    response = client.post(
+        path + "/decisions", json=approval, headers={"Idempotency-Key": "approve-quality-fixture"}
+    )
+    assert response.status_code == 200, response.text
+    drain(factory, worker)
+    previous = client.get(path).json()
+    assert previous["state"] == "PARTIAL"
+    initial = next(b for b in previous["detail"]["blocks"] if b["type"] == "dataset_summary")
+    assert initial["invalid_rows"] == 1
+    request = ask_agent(
+        client,
+        workflow["context"],
+        workflow["conversation_id"],
+        key="quality-correction",
+        text="Sửa dòng này thành 1,250.25 theo chứng từ tổng hợp",
+    )
+    drain(factory, worker)
+    draft_workflow = workflow_for(client, factory, request["job_id"])
+    block = next(b for b in draft_workflow["detail"]["blocks"] if b["type"] == "dataset_summary")
+    draft = block["quality_draft"]
+    assert draft["value"] == "1,250.25" and block["canonical_id"] == initial["canonical_id"]
+    endpoint = f"/api/tables/{block['table_id']}/quality-decisions"
+    body = {key: draft[key] for key in ("source_row_id", "field", "code", "reason")} | dict(
+        canonical_id=block["canonical_id"], action="REPLACE", replacement=draft["value"]
+    )
+    headers = {"Idempotency-Key": "human-checked-document"}
+    response = client.post(endpoint, json=body, headers=headers)
+    assert response.status_code == 202, response.text
+    assert client.post(endpoint, json=body, headers=headers).json() == response.json()
+    drain(factory, worker)
+    for ident in (workflow["id"], draft_workflow["id"]):
+        refreshed = client.get(f"/api/agent/workflows/{ident}").json()
+        assert refreshed["state"] == "COMPLETED", refreshed
+        latest = next(b for b in refreshed["detail"]["blocks"] if b["type"] == "dataset_summary")
+        assert latest["invalid_rows"] == 0 and latest["canonical_id"] != initial["canonical_id"]
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 2
 
 
 def test_mapping_timeout_keeps_earlier_review_usable_without_resend(pg, monkeypatch):  # noqa: F811

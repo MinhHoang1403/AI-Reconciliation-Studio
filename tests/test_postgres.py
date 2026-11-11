@@ -1230,6 +1230,122 @@ def test_normalize_crash_before_publish_is_atomic_and_retry_safe(pg, monkeypatch
         assert len(list(db.scalars(select(CanonicalRow)))) == 1
 
 
+@pytest.mark.parametrize(
+    ("action", "replacement", "valid", "invalid", "excluded", "total"),
+    [
+        ("REPLACE", "1250.25", 11, 0, 0, "1305.25"),
+        ("EXCLUDE", None, 10, 0, 1, "55"),
+        ("KEEP_PENDING", None, 10, 1, 0, "55"),
+    ],
+)
+def test_quality_decisions_publish_a_new_snapshot(
+    pg, action, replacement, valid, invalid, excluded, total
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from decimal import Decimal
+
+    from studio.database import QualityDecisionRow
+
+    client, factory, worker = pg
+    raw = "Order ID,Gross amount\n" + "".join(f"{i:06d},{i}\n" for i in range(1, 11))
+    source = upload(client, project(client), (raw + "000011,invalid\n").encode())
+    drain(factory, worker)
+    table_id = client.get(f"/api/datasets/{source['id']}/tables").json()["items"][0]["id"]
+    mapping, _ = approve(client, table_id)
+    dataset = f"/api/datasets/{source['id']}"
+    table = f"/api/tables/{table_id}"
+    first = client.post(
+        f"{dataset}/normalize",
+        json={"mapping_id": mapping["id"]},
+        headers={"Idempotency-Key": "baseline-normalization"},
+    )
+    assert first.status_code == 202, first.text
+    drain(factory, worker)
+    initial = client.get(f"{dataset}/artifacts").json()["canonical_datasets"][0]
+    raw_before = client.get(f"{table}/preview?kind=raw").json()
+    baseline = client.get(f"{table}/preview?kind=canonical&canonical_id={initial['id']}").json()
+    issues = client.get(f"{table}/quality-issues?canonical_id={initial['id']}").json()
+    assert issues["total"] == 1 and issues["valid_records"] == 10
+    issue = issues["items"][0]["issues"][0]
+    assert issue["source_row"] == 12 and issue["raw_value"] == "invalid"
+    assert issue["source_label"] == "Gross amount" and issue["field"] == "gross_amount"
+    request = dict(
+        canonical_id=initial["id"],
+        source_row_id=issue["source_row_id"],
+        field=issue["field"],
+        code=issue["code"],
+        action=action,
+        replacement=replacement,
+        reason="Verified test document",
+    )
+    endpoint = f"{table}/quality-decisions"
+    headers = {"Idempotency-Key": "review-one-quality-issue"}
+    assert (
+        client.post(endpoint, json=request | {"reason": "   "}, headers=headers).status_code == 422
+    )
+    invalid_request = request | {"action": "REPLACE", "replacement": "bad"}
+    assert (
+        client.post(endpoint, json=invalid_request, headers=headers).json()["code"]
+        == "INVALID_DECIMAL"
+    )
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        concurrent = list(
+            pool.map(
+                lambda _: client.post(endpoint, json=request, headers=headers),
+                range(2),
+            )
+        )
+    accepted = concurrent[0]
+    assert accepted.status_code == 202, accepted.text
+    assert concurrent[1].json() == accepted.json()
+    assert client.post(endpoint, json=request, headers=headers).json() == accepted.json()
+    assert (
+        client.post(
+            endpoint,
+            json=request,
+            headers={"Idempotency-Key": "second-quality-attempt"},
+        ).json()["code"]
+        == "QUALITY_SNAPSHOT_CHANGED"
+    )
+    drain(factory, worker)
+    snapshots = client.get(f"{dataset}/artifacts").json()["canonical_datasets"]
+    assert len(snapshots) == 2
+    previous = next(item for item in snapshots if item["id"] == initial["id"])
+    assert previous["stale"] and previous["artifact"] == initial["artifact"]
+    current = next(item for item in snapshots if not item["stale"])
+    assert current["mapping_revision_id"] == mapping["id"] and current["quality_revision"] == 1
+    assert (current["valid_count"], current["invalid_count"], current["excluded_source_rows"]) == (
+        valid,
+        invalid,
+        excluded,
+    )
+    assert current["source_row_count"] == valid + invalid + excluded == 11
+    assert current["quality_status"] == ("READY" if action == "REPLACE" else "PARTIAL")
+    assert current["excluded_amounts_unavailable"] == bool(excluded)
+    assert client.get(f"{table}/preview?kind=raw").json() == raw_before
+    assert (
+        client.get(f"{table}/preview?kind=canonical&canonical_id={initial['id']}").json()
+        == baseline
+    )
+    rows = client.get(f"{table}/preview?kind=canonical&canonical_id={current['id']}").json()[
+        "items"
+    ]
+    amounts = [row["record_payload"]["gross_amount"] for row in rows if not row["invalid"]]
+    assert sum(Decimal(amount) for amount in amounts) == Decimal(total)
+    assert (
+        len({p["source_row_id"] for row in rows for p in row["source_provenance"]}) == 11 - excluded
+    )
+    with factory() as db:
+        saved = db.scalars(select(QualityDecisionRow)).one()
+        assert saved.actor_id == "test-owner" and saved.evidence["original_value"] == "invalid"
+        assert saved.request == request and saved.job_id == accepted.json()["job_id"]
+    refreshed = client.get(f"{table}/quality-issues?canonical_id={current['id']}").json()
+    assert refreshed["total"] == invalid
+    assert refreshed["decision_history"][0]["action"] == action
+    if action == "KEEP_PENDING":
+        assert refreshed["items"][0]["pending_reason"] == request["reason"]
+
+
 def test_zero_decimal_and_backend_summary(pg):
     client, factory, worker = pg
     pid = project(client)

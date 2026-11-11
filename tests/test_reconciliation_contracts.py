@@ -84,6 +84,22 @@ def test_T19_incomplete_coverage_needs_explicit_partial():
     assert validate_reconciliation_contract(p, sources(), "demo", "project") == p
 
 
+def test_source_exclusions_require_partial_coverage_before_missing_can_be_confirmed():
+    from studio.reconciliation_engine import coverage_complete
+
+    p = plan()
+    cats = sources()
+    cats[1].canonical.excluded_source_rows = 1
+    cats[1].canonical.quality_status = "PARTIAL"
+    for allow_partial in (False, True):
+        p.allow_partial = allow_partial
+        with pytest.raises(DomainError, match="QUALITY_SCOPE_REVIEW_REQUIRED"):
+            validate_reconciliation_contract(p, cats, "demo", "project")
+    p.right.completeness = "INCOMPLETE"
+    assert validate_reconciliation_contract(p, cats, "demo", "project") == p
+    assert not coverage_complete(p, p.right)
+
+
 def test_rule_precision_period_currency_and_rigid_fuzzy_constraints():
     p = plan()
     raw = p.comparison_metrics[0].model_dump()

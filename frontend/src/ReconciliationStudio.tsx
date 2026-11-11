@@ -753,7 +753,7 @@ export function ReconciliationStudio({
           <h2>Chọn nguồn đối soát</h2>
           <p>Chọn hai nguồn đã chuẩn hóa để kiểm tra phạm vi và quy tắc trước khi chạy.</p>
           {readyCount < 2 && <Notice tone="warning">
-            Một số nguồn đã chuẩn hóa còn dòng cần kiểm tra. Studio sẽ yêu cầu xem xét các dòng lỗi trước khi duyệt quy tắc.
+            Một số nguồn còn dòng cần kiểm tra hoặc đã loại. Hãy xem phạm vi trước khi duyệt quy tắc.
           </Notice>}
           {!draft && pendingPlan && !activeRun && <Notice>
             Quy tắc đối soát đang chờ bạn xác nhận. <button className="text-button" onClick={() => onSetup(pendingPlan.id)}>Xem và xác nhận quy tắc</button>
@@ -1302,8 +1302,9 @@ export function ReconciliationStudio({
                   {readiness && (
                     <Notice>
                       <p>
-                        Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa. Hãy xem xét các dòng trùng khóa.
+                        Đã kiểm tra cấu trúc bảng, phạm vi, chỉ tiêu, kỳ và khóa.
                       </p>
+                      {readiness.warnings?.map(warning => <p key={warning}>{warning}</p>)}
                       {readiness.sources.map((s) => (
                         <p key={s.side}>
                           {s.side === "left" ? "Nguồn trái" : "Nguồn phải"}:{" "}
@@ -1311,6 +1312,7 @@ export function ReconciliationStudio({
                           {s.out_of_scope_records} ngoài phạm vi,{" "}
                           {s.invalid_records} lỗi; {s.duplicate_key_rows} dòng
                           trùng khóa trong phạm vi.{" "}
+                          {!!s.excluded_source_rows && `${s.excluded_source_rows} dòng nguồn đã loại. `}
                           {s.coverage_complete
                             ? "Nguồn đầy đủ kỳ"
                             : "Nguồn chưa đủ kỳ: kết quả có thể đang chờ"}
@@ -1352,6 +1354,8 @@ export function ReconciliationStudio({
                       {!proposal.contract_id && partialSources.length > 0 && (
                         <Notice>
                           <p>Dòng lỗi chuẩn hóa đã được tách riêng trong {partialSources.map(source => `${source.name} (${source.canonical.invalid_count} dòng)`).join(", ")}.</p>
+                          {partialSources.map(source => !!source.canonical.excluded_source_rows &&
+                            <p key={source.canonical.id}>{source.name} có {source.canonical.excluded_source_rows} dòng nguồn đã loại.</p>)}
                           <label className="check-label">
                             <input
                               type="checkbox"
@@ -1359,7 +1363,9 @@ export function ReconciliationStudio({
                               disabled={busy}
                               onChange={(e) => setInvalidRowsReviewedPlan(e.target.checked ? proposal.id : null)}
                             />
-                            Tôi đã kiểm tra dòng lỗi và xác nhận đối soát phần dữ liệu hợp lệ.
+                            {partialSources.some(source => source.canonical.excluded_source_rows)
+                              ? "Tôi đã xem các dòng còn lỗi hoặc đã loại và xác nhận đối soát phần dữ liệu hợp lệ."
+                              : "Tôi đã kiểm tra dòng lỗi và xác nhận đối soát phần dữ liệu hợp lệ."}
                           </label>
                         </Notice>
                       )}
@@ -1510,6 +1516,15 @@ export function ReconciliationStudio({
                   <span key={state}>{label(state)} · {count}</span>
                 )}
               </p>
+              {run?.source_refs?.map((source, index) => !!source.excluded_source_rows &&
+                <p key={index}>
+                  {index === 0 ? "Nguồn trái" : "Nguồn phải"} có {source.excluded_source_rows} dòng đã loại.
+                  {source.excluded_amounts?.map(amount => <span key={`${amount.field}:${amount.currency}`}>
+                    {" "}{label(amount.field)} {formatDecimal(amount.amount)} {amount.currency}.
+                  </span>)}
+                  {source.excluded_amounts_unavailable && " Một số khoản chưa xác định được."}
+                </p>
+              )}
             </>}
           </section>
           {runId && !run && !error && <Spinner />}

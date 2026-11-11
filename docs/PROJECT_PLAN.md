@@ -990,6 +990,9 @@ Nguồn đã tham khảo/kiểm tra đến 27/10/2026. Tài liệu thương mạ
 | S15 | OWASP LLM Prompt Injection Prevention: <https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html> | tool authorization, untrusted input |
 | S16 | W3C WCAG 2.2: <https://www.w3.org/TR/WCAG22/> | accessibility targets |
 | S17 | OWASP File Upload Cheat Sheet: <https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html> | file safety controls |
+| S18 | PostgreSQL Explicit Locking: <https://www.postgresql.org/docs/current/explicit-locking.html> | khóa bảng nguồn theo dòng metadata khi lưu quyết định và công bố bản chuẩn hóa |
+| S19 | Microsoft Learn, Power Query — Dealing with errors: <https://learn.microsoft.com/en-us/power-query/dealing-with-errors> | phân biệt giữ lỗi, thay giá trị và loại dòng |
+| S20 | Azure Architecture Center — Retry Pattern: <https://learn.microsoft.com/en-us/azure/architecture/patterns/retry> | retry và idempotency của thao tác ghi |
 
 ### Quy tắc nghiên cứu bổ sung khi triển khai
 

@@ -68,6 +68,7 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
     const [batchDrafts, setBatchDrafts] = useState<Record<string, string>>({});
     const [batchBusy, setBatchBusy] = useState(false);
     const [resumeVersion, setResumeVersion] = useState(0);
+    const qualityPublished = useRef("");
     const resumeLock = useRef(false);
     const [sharedFacts,setSharedFacts]=useState<SharedMappingFacts|null>(null);
     const batchLock = useRef(false);
@@ -104,8 +105,15 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
         controller.current = new AbortController();
         let timer: ReturnType<typeof setTimeout>;
         let attempts = 0;
-        const poll = async () => { await refresh(); if (alive.current && !['COMPLETED', 'BLOCKED', 'FAILED', 'PARTIAL', 'CANCELLED_BEFORE_NEXT_STEP'].includes(current.current?.state || ''))
-            timer = setTimeout(() => void poll(), Math.min(4000, 800 + attempts++ * 150)); };
+        const poll = async () => {
+            await refresh();
+            const changed = current.current?.detail.blocks.some(
+                block => block.type === "dataset_summary" && block.canonical_id === qualityPublished.current,
+            );
+            if (changed || attempts >= 8) qualityPublished.current = "";
+            if (alive.current && (qualityPublished.current || !['COMPLETED', 'BLOCKED', 'FAILED', 'PARTIAL', 'CANCELLED_BEFORE_NEXT_STEP'].includes(current.current?.state || '')))
+                timer = setTimeout(() => void poll(), Math.min(4000, 800 + attempts++ * 150));
+        };
         void poll();
         return () => { alive.current = false; sequence.current++; controller.current.abort(); clearTimeout(timer); };
     }, [id, resumeVersion]);
@@ -168,6 +176,9 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
         <p>Áp dụng các lựa chọn trong thẻ của {openMappings.map(review => review.resource_label || "nguồn đã chọn").join(", ")}.</p>
         <button type="button" className="button primary" disabled={batchBusy} onClick={()=>void approveBatch()}>Duyệt {openMappings.length} nguồn và chuẩn hóa</button>
       </section>}
-      <AgentResultBlocks blocks={workflow.detail.blocks.filter((block,index,blocks)=>block.type!=="progress"||(!workflow.detail.reviews.some(r=>r.state==="OPEN"&&(r.question===block.text||r.reply_questions.includes(block.text)))&&!blocks.slice(0,index).some(previous=>previous.type==="progress"&&previous.text===block.text)))} context={workflow.context} onNavigate={onNavigate} workflowId={workflow.id} querySelection={workflow.detail.query_selection?.query}/>
+      <AgentResultBlocks blocks={workflow.detail.blocks.filter((block,index,blocks)=>block.type!=="progress"||(!workflow.detail.reviews.some(r=>r.state==="OPEN"&&(r.question===block.text||r.reply_questions.includes(block.text)))&&!blocks.slice(0,index).some(previous=>previous.type==="progress"&&previous.text===block.text)))} context={workflow.context} onNavigate={onNavigate} workflowId={workflow.id} querySelection={workflow.detail.query_selection?.query} onQualityPublished={id => {
+        qualityPublished.current = id;
+        setResumeVersion(value => value + 1);
+      }}/>
     </>}</section>;
 }

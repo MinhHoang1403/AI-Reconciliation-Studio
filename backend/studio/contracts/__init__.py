@@ -317,6 +317,11 @@ class CanonicalDataset(Contract):
     entity_kind: str
     mapping_revision_id: str
     normalization_revision: str
+    quality_revision: int = 0
+    excluded_source_rows: int = 0
+    excluded_amounts: list[dict[str, str]] = Field(default_factory=list)
+    excluded_amounts_unavailable: bool = False
+    source_row_count: int | None = None
     row_count: int
     valid_count: int
     invalid_count: int

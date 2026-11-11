@@ -36,6 +36,7 @@ SOURCE_ROWS = {
     "artifacts",
     "mapping_revisions",
     "canonical_datasets",
+    "data_quality_decisions",
 }
 OWNERSHIP_PARENT = {
     "dataset_versions": ("datasets", "dataset_id"),
@@ -43,6 +44,7 @@ OWNERSHIP_PARENT = {
     "artifacts": ("dataset_versions", "dataset_version_id"),
     "mapping_revisions": ("source_tables", "source_table_id"),
     "canonical_datasets": ("source_tables", "source_table_id"),
+    "data_quality_decisions": ("source_tables", "source_table_id"),
     "job_attempts": ("jobs", "job_id"),
     "ai_traces": ("jobs", "job_id"),
     "conversation_messages": ("conversations", "conversation_id"),

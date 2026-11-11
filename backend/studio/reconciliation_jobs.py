@@ -119,6 +119,7 @@ def execute_reconciliation(
                 or canonical is None
                 or canonical.stale
                 or table.active_mapping_id != source.canonical.mapping_revision_id
+                or table.quality_revision != source.canonical.quality_revision
             ):
                 raise DomainError(
                     "STALE_CANONICAL", "Nguồn thay đổi trong khi chạy; cần duyệt lại."
@@ -147,6 +148,7 @@ def execute_reconciliation(
                 or any(
                     s.completeness != "CONFIRMED" for s in (contract.plan.left, contract.plan.right)
                 )
+                or any(source.canonical.excluded_source_rows for source in cats)
                 else "VERIFIED"
             )
         )

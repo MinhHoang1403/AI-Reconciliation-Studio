@@ -38,6 +38,7 @@ import { ProjectSelector } from "./ProjectSelector";
 import { ProjectHistory } from "./ProjectHistory";
 import { ResourceManagement, type ManagedResource } from "./ResourceManagement";
 import { DataOverview } from "./DataOverview";
+import { DataQualityPanel } from "./DataQualityPanel";
 import {
   Badge,
   DataTable,
@@ -1740,7 +1741,7 @@ export function App() {
                               </> : normalized ? <>
                                 <div role="status">
                                   <strong>{normalized.quality_status === "READY" ? "Đã chuẩn hóa thành công." : "Dữ liệu cần kiểm tra lỗi."}</strong>
-                                  {normalized.quality_status !== "READY" && <p>{normalized.row_count} dòng · {normalized.valid_count} hợp lệ · {normalized.invalid_count} cần kiểm tra</p>}
+                                  {normalized.quality_status !== "READY" && <p>{normalized.valid_count} hợp lệ · {normalized.invalid_count} cần kiểm tra{normalized.excluded_source_rows ? ` · ${normalized.excluded_source_rows} dòng nguồn đã loại` : ""}</p>}
                                 </div>
                                 {normalized.quality_status !== "READY" && (view !== "errors" || tab !== "explore") ? (
                                   <button className="text-button" onClick={() => viewNormalized(normalized.id, "errors")}>
@@ -1923,10 +1924,19 @@ export function App() {
                                 {currentCanonical?.stale &&
                                   ["canonical", "errors"].includes(view) && (
                                     <Notice tone="warning">
-                                      Kết quả lịch sử thuộc ánh xạ cũ. Cần chuẩn
-                                      hóa lại theo cách đọc cột hiện hành.
+                                      Đây là bản chuẩn hóa lịch sử. Dùng bản hiện hành khi lập lần đối soát mới.
                                     </Notice>
                                   )}
+                                {view === "errors" && currentCanonical && (
+                                  <DataQualityPanel key={currentCanonical.id} tableId={tableId}
+                                    canonicalId={currentCanonical.id} onPublished={id => {
+                                      void loadDetails().then(() => {
+                                        if (scopeRef.current.tableId === tableId && scopeRef.current.datasetId === datasetId)
+                                          setCanonicalId(id);
+                                      })
+                                        .catch(err => setError(err.message));
+                                    }} />
+                                )}
                                 {view === "raw" && (
                                   <Notice>
                                     Các giá trị được đọc từ ô nguồn. Tệp gốc được giữ nguyên

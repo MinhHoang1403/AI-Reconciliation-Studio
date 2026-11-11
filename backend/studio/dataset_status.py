@@ -176,6 +176,7 @@ def read_processing_status(
                         CanonicalRow.source_table_id == table.id,
                         CanonicalRow.mapping_id == table.active_mapping_id,
                         CanonicalRow.normalization_revision == NORMALIZATION_REVISION,
+                        CanonicalRow.quality_revision == table.quality_revision,
                     )
                     .order_by(CanonicalRow.id)
                     .limit(1)

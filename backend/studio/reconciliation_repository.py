@@ -92,7 +92,11 @@ def catalogue_for_project(
             for d in approved.decisions
             if d.source_field in identifier_columns and d.candidate_target
         )
-        if table.active_mapping_id != mapping.id or mapping.status != "APPROVED":
+        if (
+            table.active_mapping_id != mapping.id
+            or mapping.status != "APPROVED"
+            or table.quality_revision != row.quality_revision
+        ):
             canonical.stale = True
         result.append(
             SourceCatalogue(
@@ -181,6 +185,15 @@ def load_canonical_records(
         raise DomainError("CANONICAL_COUNT_MISMATCH", "Số dòng canonical khác hợp đồng đã công bố.")
     if len({r.id for r in records}) != len(records):
         raise DomainError("DUPLICATE_RECORD_ID", "Canonical có ID trùng.")
+    if record_ids is None and canonical.source_row_count is not None:
+        members = [ref.source_row_id for record in records for ref in record.provenance]
+        if (
+            len(set(members)) != len(members)
+            or len(members) + canonical.excluded_source_rows != canonical.source_row_count
+        ):
+            raise DomainError(
+                "LINEAGE_CONSERVATION_FAILED", "Các bản ghi không bảo toàn đủ dòng nguồn."
+            )
     return records
 
 

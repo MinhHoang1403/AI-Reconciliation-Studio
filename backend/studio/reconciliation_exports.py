@@ -152,6 +152,7 @@ def report_sections(
             ["Rule JSON", rule.model_dump_json()],
         ],
     }
+    sections["Summary"].extend(quality_scope_rows(run))
     for name in (
         "full_match_rate",
         "linkage_rate",
@@ -334,9 +335,28 @@ def displayed_sections(
             ["Snapshot population", "FULL_VERIFIED_RUN"],
             ["Snapshot JSON", snapshot.model_dump_json()],
             ["Query JSON", result.query.model_dump_json()],
+            *quality_scope_rows(run),
         ],
         "Displayed results": rows,
     }
+
+
+def quality_scope_rows(run: RunRow) -> list[list[Any]]:
+    rows: list[list[Any]] = []
+    for side, source in zip(("Left", "Right"), run.source_refs, strict=False):
+        if not source.get("excluded_source_rows"):
+            continue
+        rows.append([f"{side} source rows excluded", source["excluded_source_rows"]])
+        for amount in source.get("excluded_amounts", []):
+            rows.append(
+                [
+                    f"{side} excluded known amount: {amount['field']} ({amount['currency']})",
+                    Decimal(amount["amount"]),
+                ]
+            )
+        if source.get("excluded_amounts_unavailable"):
+            rows.append([f"{side} excluded amounts", "Some amounts unavailable"])
+    return rows
 
 
 def write_xlsx(path: Path, sections: dict[str, list[list[Any]]]) -> None:

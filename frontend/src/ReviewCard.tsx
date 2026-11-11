@@ -508,7 +508,13 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     {!ready && <p className="muted">Mở phần chỉnh sửa hoặc bổ sung bằng tiếng Việt để hoàn tất các điều kiện còn thiếu.</p>}
     {partialSources.length > 0 && <Notice>
       <p>Dòng lỗi chuẩn hóa đã được tách riêng trong {partialSources.map(source => `${source?.name} (${source?.canonical.invalid_count} dòng)`).join(", ")}.</p>
-      <label><input type="checkbox" checked={invalidRowsReviewed} disabled={disabled} onChange={event => setInvalidRowsReviewed(event.target.checked)}/>Tôi đã kiểm tra dòng lỗi và xác nhận đối soát phần dữ liệu hợp lệ.</label>
+      {partialSources.map(source => !!source?.canonical.excluded_source_rows &&
+        <p key={source.canonical.id}>{source.name} có {source.canonical.excluded_source_rows} dòng nguồn đã loại.</p>)}
+      <label><input type="checkbox" checked={invalidRowsReviewed} disabled={disabled} onChange={event => setInvalidRowsReviewed(event.target.checked)}/>
+        {partialSources.some(source => source?.canonical.excluded_source_rows)
+          ? "Tôi đã xem các dòng còn lỗi hoặc đã loại và xác nhận đối soát phần dữ liệu hợp lệ."
+          : "Tôi đã kiểm tra dòng lỗi và xác nhận đối soát phần dữ liệu hợp lệ."}
+      </label>
     </Notice>}
     <footer className="review-approval">
       <p>{review.kind === "MAPPING" ? "Khi duyệt, hệ thống lưu cách ghép cột và tạo bản chuẩn hóa. Tệp gốc được giữ nguyên." : "Khi duyệt, hệ thống lưu quy tắc và bắt đầu đối soát trong phạm vi trên."}</p>

@@ -51,6 +51,12 @@ def validate_reconciliation_contract(
             "SOURCE_REVISION_INVALID",
             "Nguồn đã cũ, lỗi hoặc không đúng schema revision.",
         )
+        if canonical.excluded_source_rows:
+            _require(
+                plan.allow_partial and slot.completeness != "CONFIRMED",
+                "QUALITY_SCOPE_REVIEW_REQUIRED",
+                "Nguồn có dòng đã loại. Chọn phạm vi chưa đầy đủ và xác nhận chạy một phần.",
+            )
         _require(
             known(canonical.grain)
             and known(schema.grain)

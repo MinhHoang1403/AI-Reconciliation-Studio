@@ -26,6 +26,10 @@ $taskReservationMigration = 'backend/migrations/versions/retain_purged_reservati
 $taskReservationSource = git ls-tree --name-only $taskBackendRevision $taskReservationMigration
 if ($LASTEXITCODE -ne 0) { throw 'Cannot verify reservation ledger compatibility from repository history.' }
 $taskSupportsRetainedReservations = $taskReservationSource -eq $taskReservationMigration
+$taskQualityMigration = 'backend/migrations/versions/add_data_quality_decisions.py'
+$taskQualitySource = git ls-tree --name-only $taskBackendRevision $taskQualityMigration
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify data quality compatibility from repository history.' }
+$taskSupportsQuality = $taskQualitySource -eq $taskQualityMigration
 # Chỉ các migrations additive đã review; không downgrade DB hoặc suy compatibility tổng quát.
 $taskGuard = @'
 import sys
@@ -40,12 +44,15 @@ with SessionFactory() as db:
         )), 'Restore the audited finite environment before using a pre-nullable rollback image; retain all request history'
         assert db.scalar(text("SELECT count(*) FROM workspaces WHERE policy->'external_request_budget' = 'null'::jsonb")) == 0, 'Restore compatible finite workspace policy from the audited backup; never reset the request ledger'
     revision=db.scalar(text('SELECT version_num FROM alembic_version'))
-    purge_revisions = {'add_purge_receipts', 'retain_purged_reservations'}
+    purge_revisions = {'add_purge_receipts', 'retain_purged_reservations', 'add_data_quality_decisions'}
     lifecycle_revisions = purge_revisions | {'add_resource_lifecycle'}
     workflow_revisions = lifecycle_revisions | {'create_agent_workflows'}
     assert revision in workflow_revisions | {'create_reconciliation', 'create_conversations'}, 'Unknown schema: compatibility review required'
-    if revision == 'retain_purged_reservations':
+    if revision in {'retain_purged_reservations', 'add_data_quality_decisions'}:
         assert sys.argv[3] == 'True', 'Rollback image must retain provider reservations after workspace purge'
+    if revision == 'add_data_quality_decisions' and sys.argv[4] != 'True':
+        assert not db.scalar(text('SELECT EXISTS (SELECT 1 FROM data_quality_decisions)')), 'Use a rollback image that can read stored data quality decisions'
+        assert not db.scalar(text("SELECT EXISTS (SELECT 1 FROM agent_workflows WHERE jsonb_path_exists(detail, '$.blocks[*].quality_draft'))")), 'Use a rollback image that can read active data quality drafts'
     if revision in purge_revisions:
         assert not db.scalar(text('SELECT EXISTS (SELECT 1 FROM purge_receipts WHERE completed_at IS NULL)')), 'Finish pending filesystem deletion before rollback'
     if revision in lifecycle_revisions and sys.argv[2] != 'True':
@@ -59,7 +66,7 @@ with SessionFactory() as db:
     assert db.scalar(text("SELECT count(*) FROM workspaces WHERE id='demo'")) == 1
     print('PASS compatible additive schema and no active jobs', revision)
 '@
-$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle" "$taskSupportsRetainedReservations"
+$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle" "$taskSupportsRetainedReservations" "$taskSupportsQuality"
 if ($LASTEXITCODE -ne 0) { throw 'Rollback compatibility gate failed.' }
 if ($VerifyOnly) {
     Write-Output "Verified rollback images for $taskBackendRevision against the current deployment."

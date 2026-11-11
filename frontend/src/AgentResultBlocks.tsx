@@ -5,6 +5,7 @@ import { AriaComponent, GridComponent, TooltipComponent } from "echarts/componen
 import { SVGRenderer } from "echarts/renderers";
 import { api } from "./api";
 import { Badge, DataTable, formatDecimal, Modal, Notice, Spinner } from "./components";
+import { DataQualityPanel } from "./DataQualityPanel";
 import { label } from "./reconciliationTypes";
 import {statusText} from "./types";
 import type { AgentBlock, Chart, Query, QueryResult } from "./agentTypes";
@@ -163,12 +164,13 @@ function ResultChart({ data }: {
     </div>
     <details><summary>Giá trị chính xác và nguồn</summary><ul>{data.points.map(p => <li key={p.label}>{label(p.label)}: {p.value} {data.unit}</li>)}</ul><small>{data.source_refs.join(" · ")}</small></details></section>;
 }
-export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, querySelection }: {
+export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, querySelection, onQualityPublished }: {
     blocks: AgentBlock[];
     context: AssistantContext;
     onNavigate: (target: Suggestion, context: AssistantContext) => void;
     workflowId?: string;
     querySelection?: Query | null;
+    onQualityPublished?: (id: string) => void;
 }) {
     return <div className="agent-results">{blocks.map((block, i) => {
             if (block.type === "progress")
@@ -187,10 +189,19 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
                   <a className="button secondary" href={`/api/exports/${block.export_id}/download`}>Tải {block.discrepancies_only ? "giao dịch chênh lệch " : block.displayed_query ? "bảng đang xem " : ""}{block.format.toUpperCase()}</a>
                 </div>;
             if (block.type === "dataset_summary")
-                return <section className="agent-dataset" key={i}><h4>{block.name}</h4><Badge status={block.status}/><p>{block.status === "READY" ? "Đã chuẩn hóa" : "Đã xử lý"} {block.rows.toLocaleString("vi-VN")} dòng. {block.invalid_rows > 0 ? `${block.invalid_rows.toLocaleString("vi-VN")} dòng cần bạn kiểm tra; chưa thể dùng như dữ liệu đầy đủ.` : "Bạn có thể xem dữ liệu trước và sau khi chuẩn hóa."}</p><details><summary>Phép biến đổi đã duyệt</summary><p>{Array.from(new Set(block.transformations)).map(t=>transformLabels[t]||t).join("; ")}</p></details><button className="text-button" onClick={() => onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}>Kiểm tra dữ liệu trước/sau</button></section>;
+                return <section className="agent-dataset" key={block.canonical_id}>
+                  <h4>{block.name}</h4>
+                  {block.status === "READY" ? <>
+                    <Badge status={block.status}/>
+                    <p>Đã chuẩn hóa {block.rows.toLocaleString("vi-VN")} dòng. Có thể dùng nguồn này để lập quy tắc đối soát.</p>
+                  </> : <DataQualityPanel tableId={block.table_id} canonicalId={block.canonical_id}
+                    draft={block.quality_draft} followLatest onPublished={onQualityPublished} />}
+                  <details><summary>Phép biến đổi đã duyệt</summary><p>{Array.from(new Set(block.transformations)).map(t=>transformLabels[t]||t).join("; ")}</p></details>
+                  <button className="text-button" onClick={() => onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}>Kiểm tra dữ liệu trước/sau</button>
+                </section>;
             const snapshot = block.result.snapshot || block.result.run?.metric_snapshot;
             const reportRunId = snapshot?.run_id || block.result.run?.id;
-            return <section className="agent-facts" key={i}>{snapshot && <><h4>{block.result.run?.status==="PARTIAL_VERIFIED"?"Kết quả đã xác minh một phần":"Kết quả đã xác minh"}</h4><p>{(snapshot.comparison_counts?.EQUAL??0).toLocaleString("vi-VN")} nhóm khớp chính xác, {(snapshot.comparison_counts?.AMOUNT_MISMATCH??0).toLocaleString("vi-VN")} nhóm lệch tiền và {(snapshot.linkage_counts?.UNMATCHED??0).toLocaleString("vi-VN")} nhóm chưa tìm thấy đối ứng.</p>{!!snapshot.comparison_counts?.WITHIN_TOLERANCE&&<p>{snapshot.comparison_counts.WITHIN_TOLERANCE} nhóm trong sai số đã duyệt.</p>}<p>Tỷ lệ khớp: {snapshot.full_match_rate.percent ?? "N/A"}{snapshot.full_match_rate.percent !== null ? "%" : ""} ({snapshot.full_match_rate.numerator}/{snapshot.full_match_rate.denominator})</p>{snapshot.monetary.map(m => <p key={m.metric_id}>Chênh lệch tuyệt đối: {formatDecimal(m.absolute_variance)} {m.currency} · có dấu: {formatDecimal(m.signed_variance)} {m.currency}</p>)}<details><summary>Phạm vi và cách tính tỷ lệ</summary><p>Kỳ {snapshot.period_start} → {snapshot.period_end} · {snapshot.timezone}</p><p>{snapshot.eligible_definition}</p><p>Đơn vị so sánh: {snapshot.comparison_unit}</p>{Object.entries(snapshot.excluded_counts||{}).map(([name,count])=><p key={name}>{label(name)}: {count}</p>)}{snapshot.monetary.map(m=><p key={m.metric_id}>Chỉ tiêu: {m.metric_id} · {m.currency}</p>)}</details></>}
+            return <section className="agent-facts" key={i}>{snapshot && <><h4>{block.result.run?.status==="PARTIAL_VERIFIED"?"Kết quả đã xác minh một phần":"Kết quả đã xác minh"}</h4><p>{(snapshot.comparison_counts?.EQUAL??0).toLocaleString("vi-VN")} nhóm khớp chính xác, {(snapshot.comparison_counts?.AMOUNT_MISMATCH??0).toLocaleString("vi-VN")} nhóm lệch tiền và {(snapshot.linkage_counts?.UNMATCHED??0).toLocaleString("vi-VN")} nhóm chưa tìm thấy đối ứng.</p>{!!snapshot.comparison_counts?.WITHIN_TOLERANCE&&<p>{snapshot.comparison_counts.WITHIN_TOLERANCE} nhóm trong sai số đã duyệt.</p>}<p>Tỷ lệ khớp: {snapshot.full_match_rate.percent ?? "N/A"}{snapshot.full_match_rate.percent !== null ? "%" : ""} ({snapshot.full_match_rate.numerator}/{snapshot.full_match_rate.denominator})</p>{snapshot.monetary.map(m => <p key={m.metric_id}><strong>{label(m.metric_id)}</strong> · Chênh lệch tuyệt đối {formatDecimal(m.absolute_variance)} {m.currency} · Có dấu {formatDecimal(m.signed_variance)} {m.currency}</p>)}<details><summary>Phạm vi và cách tính tỷ lệ</summary><p>Kỳ {snapshot.period_start} → {snapshot.period_end} · {snapshot.timezone}</p><p>{snapshot.eligible_definition}</p><p>Đơn vị so sánh: {snapshot.comparison_unit}</p>{Object.entries(snapshot.excluded_counts||{}).map(([name,count])=><p key={name}>{label(name)}: {count}</p>)}</details></>}
       {(!snapshot||block.result.group)&&block.answer?.lines.map((line, j) => <p key={j}>{line.text}</p>)}
       {block.result.group && <><p>{label(block.result.group.linkage_state)} · {label(block.result.group.comparison_state)}</p><p>Nguyên nhân nghiệp vụ chưa được chứng minh nếu thiếu chứng từ hoặc quy định.</p></>}
       <button className="text-button" onClick={() => onNavigate(block.result.group ? "OPEN_EVIDENCE" : "OPEN_REPORT",

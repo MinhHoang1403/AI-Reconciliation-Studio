@@ -29,7 +29,7 @@ from studio.errors import DomainError
 from studio.profiling import find_mapping_candidates
 from studio.schema_mapping import validate_mapping
 
-PROMPT_REVISION = "schema-understanding-6"
+PROMPT_REVISION = "schema-understanding-7"
 TASK_IDS = {"classify_dataset", "infer_grain", "propose_mapping", "suggest_transformation"}
 
 
@@ -258,7 +258,10 @@ def build_evidence_context(profile: DatasetProfile, schema: SchemaDefinition) ->
 
 
 def build_prompt(
-    profile: DatasetProfile, schema: SchemaDefinition, task_id: str
+    profile: DatasetProfile,
+    schema: SchemaDefinition,
+    task_id: str,
+    source_context: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     if task_id not in TASK_IDS:
         raise DomainError("AI_TASK_NOT_ALLOWED", "Tác vụ AI chưa được hỗ trợ.")
@@ -277,7 +280,11 @@ def build_prompt(
         "amounts do not imply gross or net. "
         "Use source names (including Vietnamese), observed shapes/types, duplicates and the "
         "meaning of a row together. Prefer the business reference over an internal row number "
-        "or journal document ID. A duplicate reference needs review and does not become unique "
+        "or journal document ID. "
+        "Use file, sheet and project context only to distinguish plausible roles. "
+        "Previously approved fields are evidence for this source, never permission to approve "
+        "or assume the same date, currency or metric on other sources. "
+        "A duplicate reference needs review and does not become unique "
         "by choosing an unrelated row ID. For a generic event_date field, use the primary date "
         "of the event represented by this row. A sale row uses its sale date, an accounting entry "
         "uses its posting or recognition date, and a payment row uses its payment date. State "
@@ -299,6 +306,9 @@ def build_prompt(
         "Use concise Vietnamese questions and explanations. Return JSON ONLY matching this schema: "
         + json.dumps(draft_schema)
     )
+    evidence = build_evidence_context(profile, schema)
+    if source_context:
+        evidence["untrusted_data"]["source_context"] = source_context
     return [
         {"role": "system", "content": instructions},
         {
@@ -307,7 +317,7 @@ def build_prompt(
                 {
                     "task_id": task_id,
                     "revision": PROMPT_REVISION,
-                    "context": build_evidence_context(profile, schema),
+                    "context": evidence,
                 },
                 ensure_ascii=False,
             ),
@@ -478,6 +488,8 @@ class GeminiProvider:
         schema: SchemaDefinition,
         policy: WorkspacePolicy,
         reserve_request: Callable[[], bool],
+        *,
+        source_context: dict[str, Any] | None = None,
     ) -> SchemaProposal:
         # Constrain the draft shape with Gemini's JSON Schema subset. The local
         # contract still checks lengths, transform parameters and evidence.
@@ -517,7 +529,7 @@ class GeminiProvider:
             "required": ["entity_kind", "grain", "status", "decisions", "unresolved_questions"],
         }
         proposal = self.request_typed(
-            build_prompt(profile, schema, "propose_mapping"),
+            build_prompt(profile, schema, "propose_mapping", source_context),
             policy,
             reserve_request,
             lambda content: validate_ai_output(content, profile, schema),

@@ -118,6 +118,12 @@ export type Run = {
   contract_id: string;
   checks: { name: string; passed: boolean; details: string }[];
   metric_snapshot: Snapshot | null;
+  source_refs?: QualityScope[];
+};
+type QualityScope = {
+  excluded_source_rows?: number;
+  excluded_amounts?: { field: string; currency: string; amount: string }[];
+  excluded_amounts_unavailable?: boolean;
 };
 export type Group = {
   id: string;
@@ -185,7 +191,8 @@ export type SourceEvidence = {
   rule: { plan: Plan };
 };
 export type Readiness = {
-  sources: {
+  warnings?: string[];
+  sources: (QualityScope & {
     side: string;
     rows: number;
     in_scope_records: number;
@@ -193,7 +200,7 @@ export type Readiness = {
     invalid_records: number;
     duplicate_key_rows: number;
     coverage_complete: boolean;
-  }[];
+  })[];
 };
 export const reconciliationLabels: Record<string, string> = {
   ONE_TO_ONE: "Một–một",

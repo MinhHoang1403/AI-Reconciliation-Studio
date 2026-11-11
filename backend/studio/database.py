@@ -118,6 +118,24 @@ class TableRow(Base):
     parsed_contract: Mapped[dict[str, Any]] = mapped_column(JSONB)
     profile: Mapped[dict[str, Any]] = mapped_column(JSONB)
     active_mapping_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    quality_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class QualityDecisionRow(Base):
+    __tablename__ = "data_quality_decisions"
+    __table_args__ = (
+        UniqueConstraint("source_table_id", "revision"),
+        UniqueConstraint("source_table_id", "actor_id", "request_key"),
+    )
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
+    source_table_id: Mapped[str] = mapped_column(ForeignKey("source_tables.id", ondelete="CASCADE"))
+    revision: Mapped[int] = mapped_column(Integer)
+    actor_id: Mapped[str] = mapped_column(String(64))
+    request_key: Mapped[str] = mapped_column(String(200))
+    request: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    evidence: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class SchemaRow(Base):
@@ -145,12 +163,20 @@ class MappingRow(Base):
 
 class CanonicalRow(Base):
     __tablename__ = "canonical_datasets"
-    __table_args__ = (UniqueConstraint("mapping_id", "normalization_revision"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "mapping_id",
+            "normalization_revision",
+            "quality_revision",
+            name="uq_canonical_mapping_algorithm_quality",
+        ),
+    )
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=identifier)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
     source_table_id: Mapped[str] = mapped_column(ForeignKey("source_tables.id"), index=True)
     mapping_id: Mapped[str] = mapped_column(ForeignKey("mapping_revisions.id"))
     normalization_revision: Mapped[str] = mapped_column(String(60))
+    quality_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     contract: Mapped[dict[str, Any]] = mapped_column(JSONB)
     stale: Mapped[bool] = mapped_column(default=False)
 

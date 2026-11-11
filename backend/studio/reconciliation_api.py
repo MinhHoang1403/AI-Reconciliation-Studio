@@ -74,6 +74,35 @@ class PlanApprovalInput(Contract):
     invalid_rows_reviewed: StrictBool = False
 
 
+class SourceReadiness(Contract):
+    side: Literal["left", "right"]
+    canonical_id: str
+    mapping_id: str
+    grain: str
+    rows: int
+    key_groups: int
+    duplicate_key_rows: int
+    invalid_records: int
+    out_of_scope_records: int
+    in_scope_records: int
+    duplicate_population: Literal["IN_SCOPE"] = "IN_SCOPE"
+    coverage_complete: bool
+    excluded_source_rows: int
+    excluded_amounts: list[dict[str, str]]
+    excluded_amounts_unavailable: bool
+
+
+class PlanReadiness(Contract):
+    valid: Literal[True] = True
+    approval_required: Literal[True] = True
+    duplicate_handling: Literal["REVIEW; never arbitrary selection"] = (
+        "REVIEW; never arbitrary selection"
+    )
+    sources: list[SourceReadiness]
+    warnings: list[str]
+    next_action: Literal["REVIEW_QUALITY_SCOPE", "APPROVE_RULE"]
+
+
 class AIPlanInput(Contract):
     project_id: str
     request: PlanningRequest
@@ -254,8 +283,8 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         db.commit()
         return plan_view(db, row)
 
-    @router.post("/reconciliation-plans/validate")
-    def validate(body: PlanInput, db: DB, actor: User) -> dict[str, Any]:
+    @router.post("/reconciliation-plans/validate", response_model=PlanReadiness)
+    def validate(body: PlanInput, db: DB, actor: User) -> PlanReadiness:
         require_editor(actor, db, body.project_id)
         get_scoped(db, ProjectRow, body.project_id, actor)
         cats = selected_catalogue(
@@ -267,34 +296,44 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         for side, cat in zip(("left", "right"), cats, strict=True):
             rows = load_canonical_records(db, actor, cat.canonical)
             slot = body.plan.left if side == "left" else body.plan.right
+            classified = [(r, record_partition(r, body.plan, side)) for r in rows]
             keys = [
                 tuple(r.payload.get(getattr(p, side)) for p in body.plan.join_keys)
-                for r in rows
-                if record_partition(r, body.plan, side) == "IN_SCOPE"
+                for r, state in classified
+                if state == "IN_SCOPE"
             ]
             readiness.append(
-                dict(
+                SourceReadiness(
                     side=side,
                     rows=len(rows),
                     key_groups=len(set(keys)),
                     duplicate_key_rows=len(keys) - len(set(keys)),
-                    invalid_records=sum(
-                        record_partition(r, body.plan, side) == "INVALID" for r in rows
-                    ),
-                    out_of_scope_records=sum(
-                        record_partition(r, body.plan, side) == "OUT_OF_SCOPE" for r in rows
-                    ),
+                    invalid_records=sum(state == "INVALID" for _, state in classified),
+                    out_of_scope_records=sum(state == "OUT_OF_SCOPE" for _, state in classified),
                     in_scope_records=len(keys),
                     duplicate_population="IN_SCOPE",
                     coverage_complete=coverage_complete(body.plan, slot),
+                    canonical_id=cat.canonical.id,
+                    mapping_id=cat.canonical.mapping_revision_id,
+                    grain=cat.canonical.grain,
+                    excluded_source_rows=cat.canonical.excluded_source_rows,
+                    excluded_amounts=cat.canonical.excluded_amounts,
+                    excluded_amounts_unavailable=cat.canonical.excluded_amounts_unavailable,
                 )
             )
-        return {
-            "valid": True,
-            "approval_required": True,
-            "sources": readiness,
-            "duplicate_handling": "REVIEW; never arbitrary selection",
-        }
+        review = any(source.invalid_records or source.excluded_source_rows for source in readiness)
+        warnings = []
+        if review:
+            warnings.append("Phạm vi có dòng lỗi hoặc đã loại, cần người dùng xác nhận.")
+        if any(not source.coverage_complete for source in readiness):
+            warnings.append("Có nguồn chưa đầy đủ. Một số giao dịch sẽ chờ đối ứng.")
+        if any(source.duplicate_key_rows for source in readiness):
+            warnings.append("Có khóa trùng trong phạm vi, cần kiểm tra từng nhóm.")
+        return PlanReadiness(
+            sources=readiness,
+            warnings=warnings,
+            next_action="REVIEW_QUALITY_SCOPE" if review else "APPROVE_RULE",
+        )
 
     @router.post("/reconciliation-plans/ai", response_model=JobAccepted, status_code=202)
     def ai_plan(body: AIPlanInput | PlanInput, db: DB, actor: User, key: Key) -> dict[str, str]:
@@ -778,7 +817,7 @@ def approve_plan(
     if has_invalid_rows and not invalid_rows_reviewed:
         raise DomainError(
             "INVALID_ROWS_REVIEW_REQUIRED",
-            "Cần xác nhận các dòng lỗi chuẩn hóa đã được tách riêng trước khi đối soát.",
+            "Cần xác nhận phạm vi đối soát sau khi xem các dòng còn lỗi hoặc đã loại.",
             422,
         )
     validate_reconciliation_contract(proposal.plan, cats, actor.workspace_id, row.project_id)
@@ -860,7 +899,7 @@ def enqueue_approved_run(contract_id: str, db: Session, actor: Actor) -> dict[st
             contract_id=rule.id,
             input_signature=signature,
             engine_revision=ENGINE_REVISION,
-            source_refs=[c.canonical.model_dump(mode="json") for c in cats],
+            source_refs=[c.canonical.model_dump(mode="json", exclude_defaults=True) for c in cats],
         )
         db.add(existing)
         db.flush()

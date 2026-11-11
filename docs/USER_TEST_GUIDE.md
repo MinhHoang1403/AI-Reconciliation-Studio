@@ -247,6 +247,16 @@ Ví dụ câu hỏi trạng thái trên bộ G 1.000 giao dịch, cũng đã có
 
 ![Câu hỏi chuẩn hóa có phản hồi đã lưu và phân biệt với đối soát](images/user-guide/trang-thai-chuan-hoa.png)
 
+### 5.5. Xử lý dòng lỗi trong Chat hoặc Dữ liệu
+
+Mở **Dòng cần xử lý** trong kết quả chuẩn hóa của Assistant, hoặc chọn **Cảnh báo / lỗi** ở bảng nguồn trong **Dữ liệu**. Mỗi dòng hiện cột nguồn, giá trị gốc và trường chuẩn hóa liên quan. Một dòng có thể có nhiều lỗi.
+
+- **Sửa giá trị** khi có chứng từ hoặc căn cứ đã kiểm tra. Nhập giá trị theo định dạng đã duyệt và ghi lý do. Trong Chat, có thể nói “Sửa dòng này thành 1.250.000 theo chứng từ đã kiểm tra”. Assistant điền bản nháp nếu xác định được đúng một lỗi. Kiểm tra dòng và cột trước khi bấm **Xác nhận và kiểm tra lại**.
+- **Loại dòng khỏi phạm vi** khi nghiệp vụ cho phép. Ghi lý do và kiểm số dòng đã loại trong bản mới. Khi lập quy tắc, đánh dấu nguồn chưa đầy đủ và xác nhận chạy một phần. Báo cáo tách số dòng đã loại và cho biết khoản tiền nào chưa xác định được.
+- **Giữ để kiểm tra sau** khi chưa đủ căn cứ. Dòng vẫn cần xử lý. Người duyệt quy tắc có thể xác nhận chỉ sử dụng phần dữ liệu đủ điều kiện.
+
+Sau xác nhận, Studio chạy lại chuẩn hóa và lưu một phiên bản riêng. Có thể mở bản cũ từ **Phiên bản kết quả** để đối chiếu với bản mới và xem lại dữ liệu gốc.
+
 ## 6. Đối soát hai nguồn
 
 ### 6.1. Yêu cầu AI chuẩn bị quy tắc

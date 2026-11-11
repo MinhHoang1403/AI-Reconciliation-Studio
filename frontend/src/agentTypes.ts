@@ -149,8 +149,10 @@ export type AgentBlock = {
     name: string;
     rows: number;
     invalid_rows: number;
+    excluded_rows?: number;
     status: string;
     transformations: string[];
+    quality_draft?: { source_row_id: string; field: string; code: string; value: string; reason: string; row_index: number } | null;
 } | {
     type: "table";
     result: QueryResult;

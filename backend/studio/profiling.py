@@ -268,22 +268,32 @@ def find_mapping_candidates(
     O(source fields × target fields); generic labels never supply business roles.
     """
 
+    money_roles = {
+        "gross",
+        "net",
+        "fee",
+        "paid",
+        "expected",
+        "receivable",
+        "payable",
+        "refund",
+        "return",
+        "adjustment",
+    }
+
     def concepts(tokens: tuple[str, ...]) -> frozenset[str]:
         words = set(tokens)
         if "currency" in words:
             words -= {"id", "loai"}
-        if words & {
-            "gross",
-            "net",
-            "fee",
-            "paid",
-            "expected",
-            "receivable",
-            "payable",
-            "refund",
-            "return",
-            "adjustment",
-        }:
+        # "Phí" sau từ chỉ cơ sở là một điều kiện của chỉ tiêu, không phải
+        # chính chỉ tiêu. Chỉ dùng khi tên cột có tín hiệu là giá trị tiền.
+        if "amount" in words:
+            qualifiers = [word for word in tokens if word not in {"cac", "nhung", "amount"}]
+            for direction, qualified in zip(qualifiers, qualifiers[1:], strict=False):
+                if qualified == "fee" and direction in {"truoc", "sau"}:
+                    words.discard("fee")
+                    words.add("gross" if direction == "truoc" else "net")
+        if words & money_roles:
             words.discard("amount")
         return frozenset(words)
 
@@ -311,6 +321,12 @@ def find_mapping_candidates(
             if not (source.identifier_candidate and f.data_type == "decimal")
         ]
         semantic = concepts(name)
+        if {"gross", "net"} <= semantic:
+            output[source.column_id] = []
+            continue
+        short_roles = money_roles | {"currency", "quantity"}
+        if "amount" not in words:
+            short_roles -= {"refund", "return", "adjustment"}
         targets = [f.id for f in compatible if semantic in target_names[f.id]]
         if not targets and name and set(name) not in ({"amount"}, {"total"}, {"date"}, {"code"}):
             partial = [
@@ -324,29 +340,12 @@ def find_mapping_candidates(
                     and source.observations.get("numeric_locales")
                 )
                 and not (
-                    words
+                    semantic
                     & {"gross", "net", "fee", "refund", "quantity", "receivable", "payable"}
                     - set().union(*target_names[f.id])
                 )
                 and any(
-                    (
-                        len(alias) >= 2
-                        or bool(
-                            alias
-                            & {
-                                "gross",
-                                "net",
-                                "fee",
-                                "paid",
-                                "expected",
-                                "receivable",
-                                "payable",
-                                "currency",
-                                "quantity",
-                            }
-                        )
-                    )
-                    and alias < semantic
+                    (len(alias) >= 2 or bool(alias & short_roles)) and alias < semantic
                     for alias in target_names[f.id]
                 )
             ]

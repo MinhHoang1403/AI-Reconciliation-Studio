@@ -1,5 +1,6 @@
 """Agent dùng queue/fence hiện có; từng HTTP attempt được giữ ledger trước khi gửi."""
 
+import re
 import secrets
 import time
 from collections.abc import Callable
@@ -52,9 +53,12 @@ from studio.config import request_limit_reached, settings
 from studio.contracts import DatasetProfile, WorkspacePolicy
 from studio.contracts.agent import (
     AgentIntent,
+    DatasetBlock,
     IntentBatch,
     IntentCatalogue,
     NormalizationDraft,
+    ProgressBlock,
+    QualityDraft,
     ReconciliationSequence,
     ReviewInterpretation,
     ReviewReply,
@@ -86,6 +90,109 @@ from studio.repository import (
 
 Fence = Callable[[Session, str, str], JobRow]
 Finish = Callable[[Session, JobRow, dict[str, Any]], None]
+
+QUALITY_CORRECTION = re.compile(r"^\s*(?:hãy\s+)?sửa\s+dòng\b", re.IGNORECASE)
+QUALITY_VALUE = re.compile(
+    r"^\s*(?:hãy\s+)?sửa\s+dòng\s+(này|\d+)\s+thành\s+(.+?)\s+theo\s+(.+?)\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def quality_reply(
+    db: Session,
+    actor: Actor,
+    row: AgentWorkflowRow,
+    state: WorkflowState,
+    context: AssistantContext,
+) -> None:
+    """Chỉ điền bản nháp khi xác định duy nhất lỗi còn hiệu lực trong hội thoại."""
+    from studio.data_quality import read_issues
+
+    previous = db.scalars(
+        select(AgentWorkflowRow)
+        .where(
+            AgentWorkflowRow.conversation_id == row.conversation_id,
+            AgentWorkflowRow.workspace_id == actor.workspace_id,
+            AgentWorkflowRow.project_id == row.project_id,
+            AgentWorkflowRow.actor_id == actor.id,
+            AgentWorkflowRow.id != row.id,
+        )
+        .order_by(AgentWorkflowRow.created_at.desc(), AgentWorkflowRow.id.desc())
+        .limit(10)
+    )
+    blocks = next(
+        (
+            blocks
+            for prior in previous
+            if (
+                blocks := [
+                    block
+                    for block in WorkflowState.model_validate(prior.detail).blocks
+                    if isinstance(block, DatasetBlock)
+                    and (not context.dataset_id or context.dataset_id == block.dataset_id)
+                ]
+            )
+        ),
+        [],
+    )
+    form = QUALITY_VALUE.fullmatch(row.goal)
+    matches = []
+    incomplete = False
+    for block in blocks:
+        try:
+            issues = read_issues(db, actor, block.table_id, block.canonical_id, 0, 50)
+        except DomainError as exc:
+            if exc.status not in {404, 409}:
+                raise
+            continue
+        if not issues["current"] or not issues["total"]:
+            continue
+        state.blocks.append(block.model_copy(update={"quality_draft": None}))
+        incomplete = incomplete or issues["total"] > 50
+        if form and issues["total"] <= 50:
+            matches.extend(
+                (block, issue, index)
+                for index, source in enumerate(issues["items"])
+                for issue in source["issues"]
+                if form[1].lower() == "này" or str(source["source_row"]) == form[1]
+            )
+    if (
+        form
+        and not incomplete
+        and len(matches) == 1
+        and matches[0][1]["editable"]
+        and len(form[2]) <= 2048
+        and len(form[3]) <= 494
+    ):
+        block, issue, index = matches[0]
+        draft = QualityDraft(
+            source_row_id=issue["source_row_id"],
+            field=issue["field"],
+            code=issue["code"],
+            value=form[2],
+            reason=f"Theo {form[3]}",
+            row_index=index,
+        )
+        state.blocks = [block.model_copy(update={"quality_draft": draft})]
+    else:
+        state.blocks.insert(
+            0,
+            ProgressBlock(
+                text=(
+                    "Bạn muốn sửa dòng và cột nào? Chọn lỗi trong bản hiện hành, "
+                    "rồi nhập giá trị và căn cứ."
+                )
+            ),
+        )
+    if state.blocks and any(isinstance(block, DatasetBlock) for block in state.blocks):
+        state.dataset_ids = list(
+            dict.fromkeys(
+                block.dataset_id for block in state.blocks if isinstance(block, DatasetBlock)
+            )
+        )
+        state.intent = AgentIntent(intent="PREPARE_NORMALIZATION", dataset_ids=state.dataset_ids)
+    row.state = "PARTIAL"
+    save(row, state)
 
 
 def effective_request_context(
@@ -135,6 +242,8 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
             )
             if requests_reconciliation_sequence(message.text) and not job.payload.get("command"):
                 return False
+            if not job.payload.get("command") and QUALITY_CORRECTION.match(message.text):
+                return True
             catalogue = agent_catalogue(
                 db,
                 actor,
@@ -391,6 +500,10 @@ def interpret(
         parent = get_scoped(db, JobRow, row.parent_job_id, actor)
         command = parent.payload.get("command")
         goal = row.goal
+        if not command and QUALITY_CORRECTION.match(goal):
+            quality_reply(db, actor, row, state, context)
+            db.commit()
+            return
         sequence_requested = not command and requests_reconciliation_sequence(goal)
         if sequence_requested:
             require_editor(actor, db, row.id)
@@ -624,7 +737,14 @@ def execute_agent(
                 raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy công việc.", 404)
             if job.kind == "agent_resume":
                 # Nhận kết quả child trước khi chọn quyết định ngôn ngữ tiếp theo.
-                advance(db, row, approved_only=approved_refresh)
+                if job.payload.get("quality_refresh"):
+                    if row.state == "PARTIAL" and row.waiting_job_id is None:
+                        state = WorkflowState.model_validate(row.detail)
+                        if state.intent and state.intent.intent == "PREPARE_NORMALIZATION":
+                            row.state = "WAITING_REVIEW"
+                            advance(db, row, approved_only=True)
+                else:
+                    advance(db, row, approved_only=approved_refresh)
                 db.commit()
         kind = job.kind
     if kind == "agent_review":
@@ -1006,7 +1126,12 @@ def execute_agent(
                 .limit(3)
             ).all()
             mapping_context = {
-                "business_scope": project.business_scope[:500],
+                "source": source_label,
+                "business_scope": (
+                    None
+                    if project.business_scope.startswith("UNCONFIRMED:")
+                    else project.business_scope[:120]
+                ),
                 "request": row.goal[:1000],
                 "approved_patterns": [
                     {
@@ -1031,7 +1156,7 @@ def execute_agent(
                 profile,
                 policy,
                 reserve,
-                mapping_context | {"source": source_label} if provider.local else mapping_context,
+                mapping_context,
             ),
         )
         with factory() as db:
@@ -1079,13 +1204,14 @@ def execute_agent(
             finish(db, job, {"drafts": [draft.model_dump(mode="json")]})
             db.commit()
         return
-    if not approved_refresh:
+    if not approved_refresh and not job.payload.get("quality_refresh"):
         interpret(job_id, token, row_id, factory, fence, native_only=native_only)
     with factory() as db:
         job = fence(db, job_id, token)
         row = db.get(AgentWorkflowRow, row_id, with_for_update=True)
         assert row is not None
-        advance(db, row, approved_only=approved_refresh)
+        if not job.payload.get("quality_refresh"):
+            advance(db, row, approved_only=approved_refresh)
         if kind == "agent":
             conversation = db.get(
                 ConversationRow, row.conversation_id, with_for_update=True, populate_existing=True

@@ -133,9 +133,17 @@ def save(row: AgentWorkflowRow, state: WorkflowState) -> None:
             **({"sequence_clarifications": True} if not state.sequence_clarifications else {}),
             **({"resumable_job_id": True} if not state.resumable_job_id else {}),
             "blocks": {
-                index: {"discrepancies_only"}
+                index: (
+                    {"discrepancies_only"}
+                    if isinstance(block, DownloadBlock)
+                    else {
+                        **({"excluded_rows": True} if not block.excluded_rows else {}),
+                        **({"quality_draft": True} if block.quality_draft is None else {}),
+                    }
+                )
                 for index, block in enumerate(state.blocks)
-                if isinstance(block, DownloadBlock) and not block.discrepancies_only
+                if isinstance(block, DatasetBlock)
+                or (isinstance(block, DownloadBlock) and not block.discrepancies_only)
             },
             "intent": {"export_scope"},
             "reviews": {
@@ -371,6 +379,40 @@ def notify_job_finished(db: Session, job: JobRow) -> None:
         return
     if job.kind == "normalize" and job.status == "SUCCEEDED":
         resume_prepared_reviews(db, job.payload["table_id"])
+        if job.payload.get("quality_revision", 0):
+            partial = db.scalars(
+                select(AgentWorkflowRow)
+                .join(ConversationRow, ConversationRow.id == AgentWorkflowRow.conversation_id)
+                .join(
+                    MembershipRow,
+                    (MembershipRow.workspace_id == AgentWorkflowRow.workspace_id)
+                    & (MembershipRow.actor_id == AgentWorkflowRow.actor_id),
+                )
+                .where(
+                    AgentWorkflowRow.workspace_id == job.workspace_id,
+                    AgentWorkflowRow.project_id == job.project_id,
+                    AgentWorkflowRow.state == "PARTIAL",
+                    AgentWorkflowRow.detail["intent"]["intent"].astext == "PREPARE_NORMALIZATION",
+                    AgentWorkflowRow.detail.contains(
+                        {
+                            "blocks": [
+                                {"type": "dataset_summary", "table_id": job.payload["table_id"]},
+                            ]
+                        }
+                    ),
+                    ConversationRow.deleted_at.is_(None),
+                    MembershipRow.role.in_(["owner", "editor"]),
+                )
+            )
+            for workflow in partial:
+                enqueue_job(
+                    db,
+                    job.workspace_id,
+                    job.project_id,
+                    "agent_resume",
+                    f"agent-quality:{workflow.id}:{job.id}",
+                    {"workflow_id": workflow.id, "deterministic": True, "quality_refresh": True},
+                )
     rows = db.scalars(
         select(AgentWorkflowRow)
         .where(
@@ -829,6 +871,11 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                         c = canonical.contract
                         mapping = get_scoped(db, MappingRow, canonical.mapping_id, actor)
                         assert mapping.decision is not None
+                        state.blocks = [
+                            b
+                            for b in state.blocks
+                            if not isinstance(b, DatasetBlock) or b.table_id != table.table_id
+                        ]
                         state.blocks.append(
                             DatasetBlock(
                                 dataset_id=dataset.id,
@@ -837,6 +884,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                                 canonical_id=canonical.id,
                                 rows=c["row_count"],
                                 invalid_rows=c["invalid_count"],
+                                excluded_rows=c.get("excluded_source_rows", 0),
                                 status=c["quality_status"],
                                 transformations=[
                                     d["transformation_candidate"]["op"]
