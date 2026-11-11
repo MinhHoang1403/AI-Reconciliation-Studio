@@ -147,11 +147,19 @@ def save(row: AgentWorkflowRow, state: WorkflowState) -> None:
             },
             "intent": {"export_scope"},
             "reviews": {
-                "__all__": {
+                index: {
                     "reply_intent": {"export_scope"},
                     "options": {"__all__": {"intent": {"export_scope"}}},
+                    **({"source_evidence": True} if not review.source_evidence else {}),
+                    **({"scope_check_pending": True} if not review.scope_check_pending else {}),
                 }
+                for index, review in enumerate(state.reviews)
             },
+            **(
+                {"sequence_progress": {"propose_pairs", "planning_canonicals"}}
+                if state.sequence_progress and not state.sequence_progress.propose_pairs
+                else {}
+            ),
         },
     )
     row.updated_at = now()
@@ -294,14 +302,27 @@ def make_review(
         evidence_refs=[resource_id] + source_ids,
     )
     if kind == "RECONCILIATION":
+        from studio.reconciliation_repository import planning_source_evidence
+
         plan_row = get_scoped(db, PlanRow, resource_id, actor)
         proposal = PlanProposal.model_validate(plan_row.proposal)
         review.plan = proposal.plan
         review.suggestions = proposal.suggestions
         review.planning_request = state.intent.planning_request if state.intent else None
         review.planning_candidates = planning_candidates or []
+        if review.planning_request:
+            review.source_evidence = planning_source_evidence(
+                db, actor, row.project_id, review.planning_request
+            )
         if review.planning_candidates and review.plan is None:
             review.question = "Cột nào dùng để liên kết hai nguồn này?"
+        elif review.plan is None and review.planning_request:
+            from studio.reconciliation_planner import missing_confirmations
+
+            if missing_confirmations(review.planning_request):
+                review.scope_check_pending = True
+                review.question = "Xác nhận các thông tin nguồn còn thiếu."
+                review.reason = "Thông tin đã lưu và khoảng ngày quan sát được hiển thị bên dưới."
         if plan_row.origin == "DETERMINISTIC" and proposal.plan is None and proposal.reasoning:
             review.reason = proposal.reasoning
     state.reviews.append(review)
@@ -633,6 +654,115 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
     return True
 
 
+def advance_pair_proposals(
+    db: Session, row: AgentWorkflowRow, state: WorkflowState, catalogue: IntentCatalogue
+) -> None:
+    """Prepare both pairs before approval. Only explicit decisions enqueue a run."""
+    progress = state.sequence_progress
+    assert progress is not None and state.intent is not None
+    actor = owner(db, row)
+    require_editor(actor, db, row.id)
+    project_context = AssistantContext(project_id=row.project_id)
+    for review in state.reviews:
+        if review.kind == "RECONCILIATION" and review.state == "DECIDED" and review.result_id:
+            if any(step.resource_id == review.result_id for step in state.steps):
+                continue
+            reference = execute_tool(
+                db,
+                actor,
+                RunAction(
+                    name="run_approved_reconciliation",
+                    context=project_context,
+                    contract_id=review.result_id,
+                ),
+                f"{row.id}:approved:{review.id}",
+            )
+            assert isinstance(reference, JobReference)
+            wait_for(db, row, state, "run_approved_reconciliation", review.result_id, reference)
+            save(row, state)
+            return
+    current = [
+        review
+        for review in state.reviews[progress.review_start :]
+        if review.kind == "RECONCILIATION" and review.state in {"OPEN", "DECIDED"}
+    ]
+    if current:
+        review = current[-1]
+        if not (review.plan or review.planning_candidates or review.state == "DECIDED"):
+            row.state = "WAITING_REVIEW"
+            save(row, state)
+            return
+        progress.pair_index += 1
+        progress.review_start = len(state.reviews)
+    if progress.pair_index >= len(progress.sequence.pairs):
+        row.state = (
+            "WAITING_REVIEW" if any(r.state == "OPEN" for r in state.reviews) else "COMPLETED"
+        )
+        save(row, state)
+        return
+
+    # Pin every canonical the first time so a new revision never borrows prior scope facts.
+    ready = {
+        dataset.id: dataset.tables[0].canonical_id
+        for dataset in catalogue.datasets
+        if len(dataset.tables) == 1 and dataset.tables[0].canonical_status in {"READY", "PARTIAL"}
+    }
+    if not progress.planning_canonicals:
+        progress.planning_canonicals = {key: value for key, value in ready.items() if value}
+    if any(
+        ready.get(key) != progress.planning_canonicals.get(key) or not ready.get(key)
+        for key in state.dataset_ids
+    ):
+        raise DomainError(
+            "SOURCE_REVISION_INVALID",
+            "Mỗi nguồn cần có một bản chuẩn hóa hiện hành. Kiểm tra lại nguồn đã thay đổi.",
+        )
+    pair = progress.sequence.pairs[progress.pair_index]
+    left, right = (
+        progress.planning_canonicals[key] for key in (pair.left_dataset_id, pair.right_dataset_id)
+    )
+    prior = next(
+        (
+            review.planning_request
+            for review in reversed(state.reviews)
+            if review.kind == "RECONCILIATION" and (review.plan or review.planning_candidates)
+        ),
+        None,
+    )
+    slots = {s.canonical_id: s for s in (prior.left, prior.right)} if prior else {}
+    request = PlanningRequest(
+        left=slots.get(left, PlanningSource(canonical_id=left)).model_copy(
+            update={"role": "reference"}
+        ),
+        right=slots.get(right, PlanningSource(canonical_id=right)).model_copy(
+            update={"role": "counterpart"}
+        ),
+        period_start=prior.period_start if prior else progress.sequence.period_start,
+        period_end=prior.period_end if prior else progress.sequence.period_end,
+        timezone=prior.timezone if prior else progress.sequence.timezone,
+        effective_from=prior.effective_from if prior else progress.sequence.period_start,
+        effective_to=prior.effective_to if prior else None,
+        allow_partial=True
+        if prior
+        and prior.allow_partial
+        and any(
+            slots[ident].completeness != "CONFIRMED" for ident in (left, right) if ident in slots
+        )
+        else None,
+        intent=row.goal,
+    )
+    state.intent.planning_request = request
+    reference = execute_tool(
+        db,
+        actor,
+        PlanAction(name="prepare_reconciliation_plan", context=project_context, request=request),
+        f"{row.id}:proposal:{progress.pair_index}",
+    )
+    assert isinstance(reference, JobReference)
+    wait_for(db, row, state, "prepare_reconciliation_plan", left, reference)
+    save(row, state)
+
+
 def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) -> None:
     """Chọn bước bằng state/policy xác định; không để model quản lý retry hoặc completion."""
     if row.state in {"COMPLETED", "FAILED", "BLOCKED", "CANCELLED_BEFORE_NEXT_STEP", "PARTIAL"}:
@@ -649,6 +779,9 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
         for review in sorted(state.reviews, key=lambda item: item.resource_id):
             if review.kind == "MAPPING" and review.state == "OPEN":
                 lock_review_sources(db, actor, review)
+    waiting_step = next(
+        (s for s in state.steps if s.job_id and s.job_id == row.waiting_job_id), None
+    )
     if not consume_child(db, row, state):
         save(row, state)
         return
@@ -802,6 +935,12 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                     timezone=snapshot.timezone,
                 )
             )
+
+    if sequence and sequence.propose_pairs:
+        if waiting_step and waiting_step.tool == "run_approved_reconciliation":
+            facts()
+        advance_pair_proposals(db, row, state, catalogue)
+        return
 
     if intent.intent == "PREPARE_NORMALIZATION":
         require_editor(actor, db, row.id)

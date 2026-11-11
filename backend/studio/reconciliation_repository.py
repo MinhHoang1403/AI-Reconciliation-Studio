@@ -7,8 +7,10 @@ surface. Only backend-owned artifact paths and fixed parameterized queries enter
 import hashlib
 import json
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import duckdb
 import polars as pl
@@ -23,6 +25,9 @@ from studio.contracts.reconciliation import (
     MatchGroup,
     MatchResult,
     MetricSnapshot,
+    ObservedDateRange,
+    PlanningRequest,
+    PlanningSourceEvidence,
     ReconciliationRun,
     RunArtifactRef,
     SourceCatalogue,
@@ -123,6 +128,76 @@ def selected_catalogue(
     if any(i not in indexed for i in ids):
         raise DomainError("SOURCE_SCOPE_INVALID", "Chọn hai canonical thuộc đúng project.", 422)
     return [indexed[i] for i in ids]
+
+
+def planning_source_evidence(
+    db: Session, actor: Actor, project_id: str, request: PlanningRequest
+) -> list[PlanningSourceEvidence]:
+    """Summarize approved date fields in valid records; observations never fill coverage."""
+    cats = selected_catalogue(
+        db, actor, project_id, [request.left.canonical_id, request.right.canonical_id]
+    )
+    from studio.data_quality import decision_history
+    from studio.reconciliation_planner import validate_planning_request
+
+    validate_planning_request(request, cats, actor.workspace_id, project_id)
+    zone = ZoneInfo(request.timezone or "UTC")
+    result = []
+    for cat, slot in zip(cats, (request.left, request.right), strict=True):
+        canonical = cat.canonical
+        version = db.get(VersionRow, canonical.dataset_version_id)
+        assert version is not None and cat.mapping is not None
+        dataset = get_scoped(db, DatasetRow, version.dataset_id, actor)
+        fields = [
+            f.id
+            for f in cat.schema_definition.fields
+            if f.data_type == "date" and (slot.date_field is None or f.id == slot.date_field)
+        ]
+        bounds = {}
+        if fields:
+            for record in load_canonical_records(db, actor, canonical):
+                if record.invalid or any(
+                    record.payload.get(key) != value for key, value in (slot.filters or {}).items()
+                ):
+                    continue
+                for field in fields:
+                    stamp = record.payload.get(field)
+                    if isinstance(stamp, datetime) and stamp.utcoffset() is not None:
+                        day = stamp.astimezone(zone).date()
+                        first, last = bounds.get(field, (day, day))
+                        bounds[field] = min(first, day), max(last, day)
+        result.append(
+            PlanningSourceEvidence(
+                canonical_id=canonical.id,
+                name=cat.name,
+                uploaded_at=dataset.created_at,
+                dataset_revision=version.revision,
+                mapping_revision=cat.mapping.revision,
+                quality_revision=canonical.quality_revision,
+                valid_rows=canonical.valid_count,
+                invalid_rows=canonical.invalid_count,
+                excluded_rows=canonical.excluded_source_rows,
+                excluded_amounts=canonical.excluded_amounts,
+                excluded_amounts_unavailable=canonical.excluded_amounts_unavailable,
+                exclusion_reasons=list(
+                    dict.fromkeys(
+                        row.request["reason"]
+                        for row in decision_history(
+                            db, canonical.source_table_id, canonical.quality_revision
+                        )
+                        if row.request["action"] == "EXCLUDE"
+                    )
+                )[:3]
+                if canonical.excluded_source_rows
+                else [],
+                observed_dates=[
+                    ObservedDateRange(field=field, first=first, last=last)
+                    for field, (first, last) in bounds.items()
+                ],
+                observation_timezone=zone.key,
+            )
+        )
+    return result
 
 
 def _connection() -> duckdb.DuckDBPyConnection:

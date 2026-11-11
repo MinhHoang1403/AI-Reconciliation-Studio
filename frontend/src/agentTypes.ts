@@ -108,6 +108,23 @@ export type Review = {
     planning_candidates?: { id: string; plan: Plan; overlap: number;
         left_distinct_keys: number; right_distinct_keys: number;
         left_rows: number; right_rows: number }[];
+    source_evidence?: {
+        canonical_id: string;
+        name: string;
+        uploaded_at: string | null;
+        dataset_revision: number;
+        mapping_revision: number;
+        quality_revision: number;
+        valid_rows: number;
+        invalid_rows: number;
+        excluded_rows: number;
+        excluded_amounts: { field: string; amount: string; currency: string }[];
+        excluded_amounts_unavailable: boolean;
+        exclusion_reasons: string[];
+        observed_dates: { field: string; first: string; last: string }[];
+        observation_timezone: string;
+    }[];
+    scope_check_pending?: boolean;
     planning_request: Omit<Partial<Plan>, "left" | "right"> & {
         left: Partial<Slot> & {
             canonical_id: string;

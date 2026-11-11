@@ -11,6 +11,35 @@ from test_postgres import approve, drain, pg, project, upload  # noqa: F401, F81
 pytestmark = pytest.mark.integration
 
 
+def test_agent_source_evidence_reads_approved_dates_without_filling_business_facts(pg):  # noqa: F811
+    from studio.access import Actor
+    from studio.contracts.reconciliation import PlanningRequest, PlanningSource
+    from studio.reconciliation_repository import planning_source_evidence
+
+    _, factory, _ = pg
+    pid, plan = prepare_pair(pg)
+    request = PlanningRequest(
+        left=PlanningSource(canonical_id=plan.left.canonical_id, date_field="event_date"),
+        right=PlanningSource(canonical_id=plan.right.canonical_id, date_field="event_date"),
+        timezone="UTC",
+    )
+    with factory() as db:
+        evidence = planning_source_evidence(db, Actor("test-owner", "demo", "owner"), pid, request)
+    assert len(evidence) == 2
+    for source in evidence:
+        assert source.uploaded_at and source.dataset_revision == 1
+        (observed,) = source.observed_dates
+        assert observed.field == "event_date" and observed.first.year == 2026
+    for slot in (request.left, request.right):
+        assert (
+            slot.coverage_start
+            is slot.coverage_end
+            is slot.completeness
+            is slot.snapshot_at
+            is None
+        )
+
+
 def test_canonical_cursor_pages_do_not_limit_explicit_source_validation(pg):  # noqa: F811
     from copy import deepcopy
 

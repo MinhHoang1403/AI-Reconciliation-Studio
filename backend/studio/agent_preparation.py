@@ -207,6 +207,7 @@ def interpret_review_reply(
                             "expires_at",
                             "decision_sha256",
                             "pending_reply_job_id",
+                            "source_evidence",
                         },
                     ),
                     untrusted_reply=text,

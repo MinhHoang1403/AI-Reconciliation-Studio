@@ -22,6 +22,22 @@ from studio.contracts.agent import AgentIntent, IntentCatalogue
 from studio.errors import DomainError
 
 
+@pytest.mark.parametrize(
+    ("goal", "expected"),
+    [
+        ("Hãy đối soát ba nguồn doanh thu quý III/2026.", True),
+        ("Đề xuất đối soát 3 tệp trong dự án.", True),
+        ("Xem kết quả đối soát ba nguồn.", False),
+        ("Đừng đối soát ba nguồn.", False),
+        ("Chuẩn hóa ba nguồn rồi đối soát và xuất Excel.", False),
+    ],
+)
+def test_three_source_proposals_do_not_take_over_reads_or_export_sequences(goal, expected):
+    from studio.agent_intents import requests_three_source_reconciliation
+
+    assert requests_three_source_reconciliation(goal) is expected
+
+
 class ReviewDraftStateMachine(RuleBasedStateMachine):
     """Model editing sequences without cloud: partial edits, replay and invalid updates."""
 

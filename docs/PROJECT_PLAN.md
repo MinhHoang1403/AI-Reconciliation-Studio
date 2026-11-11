@@ -485,6 +485,8 @@ Contract validator **MUST** kiểm tra nguồn, join keys, entity grain, uniquen
 
 **Ví dụ ba file:** split dữ liệu nội bộ theo `platform` trước, đối soát riêng với Shopee và TikTok; **không** ba-way join trực tiếp. Khi nguồn đối ứng thiếu kỳ hoặc settlement chưa đến hạn, `PENDING`/`INSUFFICIENT_COVERAGE`, không gắn `MISSING_COUNTERPART` chắc chắn.
 
+Trong Chat, yêu cầu đối soát ba nguồn đã chuẩn hóa có thể lập hai đề xuất riêng trước khi duyệt. Thẻ nguồn đọc phiên bản, thời điểm tải và khoảng ngày quan sát từ bản chuẩn hóa hiện hành. Coverage, thời điểm nghiệp vụ chốt nguồn và độ đầy đủ phải dựa trên dữ kiện người dùng cung cấp hoặc xác nhận. Khi chọn phạm vi chưa xác nhận đầy đủ, đề xuất dùng chế độ đối soát một phần nếu hợp đồng cho phép. Nguồn có dòng đã loại công bố số dòng và tình trạng số tiền loại trừ. Hai cặp dùng lại xác nhận của cùng phiên bản nguồn, và mỗi quy tắc vẫn cần duyệt riêng.
+
 ### 18. Matching Algorithm — có thứ tự, bảo đảm không dùng trùng
 
 **Các bước:**

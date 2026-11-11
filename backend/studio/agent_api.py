@@ -403,7 +403,11 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     ) -> WorkflowView:
         row, state, review = editable_review(db, actor, workflow_id, body)
         if body.check_planning_scope and (
-            review.kind != "RECONCILIATION" or body.planning_request is None or review.plan
+            review.kind != "RECONCILIATION"
+            or body.planning_request is None
+            or review.plan
+            or review.planning_candidates
+            or row.waiting_job_id
         ):
             raise DomainError("INVALID_REVIEW_DRAFT", "Chỉ kiểm tra phạm vi đang thiếu.", 422)
         if sum(v is not None for v in (body.draft, body.plan, body.planning_request)) != 1:
@@ -455,6 +459,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                     f"{row.id}:scope:{review.id}:{digest(request.model_dump(mode='json'))}",
                 )
                 assert isinstance(reference, JobReference)
+                review.planning_request = request
                 review.state = "INVALIDATED"
                 state.intent.planning_request = request
                 wait_for(

@@ -19,6 +19,7 @@ from studio.contracts.reconciliation import (
     PlanningCandidate,
     PlanningRequest,
     PlanningSource,
+    PlanningSourceEvidence,
     PlanningSuggestions,
     ReconciliationPlan,
 )
@@ -62,6 +63,8 @@ class SequenceProgress(Contract):
     step_start: int = Field(default=0, ge=0, le=20)
     review_start: int = Field(default=0, ge=0, le=10)
     stage: Literal["NORMALIZE", "RECONCILE", "EXPORT"] = "NORMALIZE"
+    propose_pairs: bool = False
+    planning_canonicals: dict[str, str] = Field(default_factory=dict, max_length=3)
 
 
 class AgentIntent(Contract):
@@ -353,6 +356,8 @@ class ReviewRequest(Contract):
     suggestions: PlanningSuggestions | None = None
     planning_request: PlanningRequest | None = None
     planning_candidates: list[PlanningCandidate] = Field(default_factory=list, max_length=5)
+    source_evidence: list[PlanningSourceEvidence] = Field(default_factory=list, max_length=2)
+    scope_check_pending: bool = False
     decision_sha256: str | None = None
     result_id: str | None = None
     pending_reply_job_id: str | None = None

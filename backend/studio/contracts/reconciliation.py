@@ -219,6 +219,29 @@ class SourceCatalogue(Contract):
     mapping: MappingRevision | None = None
 
 
+class ObservedDateRange(Contract):
+    field: str
+    first: date
+    last: date
+
+
+class PlanningSourceEvidence(Contract):
+    canonical_id: str
+    name: str
+    uploaded_at: datetime | None = None
+    dataset_revision: int
+    mapping_revision: int
+    quality_revision: int
+    valid_rows: int
+    invalid_rows: int
+    excluded_rows: int
+    excluded_amounts: list[dict[str, str]] = Field(default_factory=list)
+    excluded_amounts_unavailable: bool = False
+    exclusion_reasons: list[str] = Field(default_factory=list, max_length=3)
+    observed_dates: list[ObservedDateRange] = Field(default_factory=list)
+    observation_timezone: str
+
+
 class SourceLocation(Contract):
     file_id: str
     source_table_id: str

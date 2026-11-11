@@ -84,6 +84,19 @@ def test_T19_incomplete_coverage_needs_explicit_partial():
     assert validate_reconciliation_contract(p, sources(), "demo", "project") == p
 
 
+def test_unknown_completeness_can_plan_partially_but_cutoff_remains_required():
+    from studio.contracts.reconciliation import PlanningRequest
+    from studio.reconciliation_planner import missing_confirmations
+
+    request = PlanningRequest.from_plan(plan())
+    request.right.completeness = "UNKNOWN"
+    assert "right.completeness" in missing_confirmations(request)
+    request.allow_partial = True
+    assert not missing_confirmations(request)
+    request.right.snapshot_at = None
+    assert missing_confirmations(request) == ["right.snapshot_at"]
+
+
 def test_source_exclusions_require_partial_coverage_before_missing_can_be_confirmed():
     from studio.reconciliation_engine import coverage_complete
 

@@ -96,77 +96,118 @@ function SourceDecisions({ draft, onChange, disabled }: {
 
 type PlanningScope = NonNullable<Review["planning_request"]>;
 
-function ScopeConfirmation({ request, catalogue, disabled, onConfirm }: {
+const planningSides = ["left", "right"] as const;
+type PlanningSide = typeof planningSides[number];
+
+function ScopeConfirmation({ request, catalogue, evidence, disabled, onConfirm }: {
     request: PlanningScope;
     catalogue: Catalogue[];
+    evidence: NonNullable<Review["source_evidence"]>;
     disabled: boolean;
     onConfirm: (scope: PlanningScope) => void;
 }) {
-    const [start, setStart] = useState(request.period_start || "");
-    const [end, setEnd] = useState(request.period_end || "");
-    const [month, setMonth] = useState("");
-    const [zone, setZone] = useState(request.timezone || "");
-    const [snapshot, setSnapshot] = useState("");
-    const [confirmed, setConfirmed] = useState(false);
-    const sides = ["left", "right"] as const;
-    const sources = sides.map(side => catalogue.find(source => source.canonical.id === request[side].canonical_id));
+    const [scope, setScope] = useState(request);
+    const sources = planningSides.map(side => catalogue.find(source => source.canonical.id === request[side].canonical_id));
     const dateFields = sources.map(source => source?.schema_definition.fields.filter(field => field.data_type === "date") || []);
-    const [dates, setDates] = useState(["", ""]);
-    const dateFor = (index: number) => dates[index] || request[sides[index]].date_field ||
-        (dateFields[index].length === 1 ? dateFields[index][0].id : "");
-    const snapshotNeeded = sides.some(side => !request[side].snapshot_at);
-    const ready = confirmed && start && end && start < end && zone && (!snapshotNeeded || snapshot) &&
-        sources.every(Boolean) && sides.every((side, index) => !!dateFor(index) && !!request[side].role);
-    function chooseMonth(value: string) {
-        setMonth(value);
-        const parts = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value);
-        if (!parts) return;
-        const year = Number(parts[1]);
-        const index = Number(parts[2]);
-        if (!year || (year === 9999 && index === 12)) return;
-        const nextYear = String(year + (index === 12 ? 1 : 0)).padStart(4, "0");
-        const nextMonth = String(index % 12 + 1).padStart(2, "0");
-        setStart(`${value}-01`);
-        setEnd(`${nextYear}-${nextMonth}-01`);
-        setConfirmed(false);
-    }
-    function confirm() {
-        if (!ready) return;
-        const slot = (side: typeof sides[number], index: number): PlanningScope["left"] => {
-            const source = sources[index];
-            const currency = source?.schema_definition.fields.find(field => field.id === "currency" && field.data_type === "string");
-            return { ...request[side], date_field: dateFor(index),
-                time_basis: request[side].time_basis || dateFor(index),
-                currency_field: request[side].currency_field ?? currency?.id ?? null,
-                coverage_start: request[side].coverage_start || start,
-                coverage_end: request[side].coverage_end || end,
-                snapshot_at: request[side].snapshot_at || `${snapshot}:00Z`,
-                completeness: request[side].completeness && request[side].completeness !== "UNKNOWN"
-                    ? request[side].completeness : "CONFIRMED",
-            };
-        };
-        onConfirm({ ...request, period_start: start, period_end: end, timezone: zone,
-            effective_from: request.effective_from || start, left: slot("left", 0), right: slot("right", 1) });
-    }
+    const dateFor = (side: PlanningSide, index: number) =>
+        scope[side].date_field || (dateFields[index].length === 1 ? dateFields[index][0].id : "");
+    const [timeBasis, setTimeBasis] = useState(request.left.time_basis || request.right.time_basis || "");
+    const firstDate = dateFor("left", 0);
+    const secondDate = dateFor("right", 1);
+    const commonBasis = timeBasis || (firstDate === secondDate ? firstDate : "");
+    const updateSlot = (side: PlanningSide, change: Partial<PlanningScope["left"]>) =>
+        setScope(previous => ({ ...previous, [side]: { ...previous[side], ...change } }));
+    const needsPartial = planningSides.some((side, index) => {
+        const slot = scope[side];
+        const source = evidence.find(item => item.canonical_id === slot.canonical_id);
+        return !!source?.excluded_rows || sources[index]?.canonical.quality_status === "PARTIAL" ||
+            ["INCOMPLETE", "UNKNOWN"].includes(slot.completeness || "") ||
+            (!!scope.period_start && !!slot.coverage_start && slot.coverage_start > scope.period_start) ||
+            (!!scope.period_end && !!slot.coverage_end && slot.coverage_end < scope.period_end);
+    });
+    const slots = planningSides.map((side, index) => ({
+        ...scope[side],
+        date_field: dateFor(side, index),
+        time_basis: scope[side].time_basis || commonBasis,
+        currency_field: scope[side].currency_field ??
+            sources[index]?.schema_definition.fields.find(field => field.id === "currency" && field.data_type === "string")?.id,
+        coverage_start: scope[side].coverage_start || scope.period_start,
+        coverage_end: scope[side].coverage_end || scope.period_end,
+    }));
+    const ready = scope.period_start && scope.period_end && scope.period_start < scope.period_end &&
+        scope.timezone && commonBasis && sources.every(Boolean) && (!needsPartial || scope.allow_partial) &&
+        slots.every((slot, index) => slot.role && slot.date_field && slot.snapshot_at && slot.completeness &&
+            slot.coverage_start && slot.coverage_end && slot.coverage_start < slot.coverage_end &&
+            !(slot.completeness === "CONFIRMED" && !!sources[index]?.canonical.excluded_source_rows));
+
     return <fieldset className="agent-form-grid">
-        <legend>Kỳ và phạm vi dữ liệu</legend>
-        <label>Tháng đối soát<input type="month" value={month} min="0001-01" max="9999-11" disabled={disabled} onChange={event=>chooseMonth(event.target.value)}/></label>
-        <label>Ngày đầu kỳ<input type="date" value={start} disabled={disabled} onChange={event=>{setStart(event.target.value);setMonth("");setConfirmed(false);}}/></label>
-        <label>Ngày sau cuối kỳ<input type="date" value={end} disabled={disabled} onChange={event=>{setEnd(event.target.value);setMonth("");setConfirmed(false);}}/></label>
-        <label>Múi giờ đối soát<select value={zone} disabled={disabled} onChange={event=>{setZone(event.target.value);setConfirmed(false);}}>
-            <option value="">Chọn múi giờ</option>{Array.from(new Set(["UTC", "Asia/Ho_Chi_Minh", ...(request.timezone ? [request.timezone] : [])])).map(value=><option key={value}>{value}</option>)}
-        </select></label>
-        {snapshotNeeded && <label>Thời điểm chốt dữ liệu (UTC)<input type="datetime-local" value={snapshot} disabled={disabled} onChange={event=>{setSnapshot(event.target.value);setConfirmed(false);}}/></label>}
-        {sides.map((side, index) => <label key={side}>Ngày dùng cho {sources[index]?.name || (index ? "nguồn đối ứng" : "nguồn tham chiếu")}
-            <select value={dateFor(index)} disabled={disabled} onChange={event=>{setDates(previous=>previous.map((value, i)=>i===index ? event.target.value : value));setConfirmed(false);}}>
-                <option value="">Chọn cột ngày</option>{dateFields[index].map(field=><option value={field.id} key={field.id}>{field.name}</option>)}
-            </select></label>)}
-        <p>Quy tắc dự kiến có hiệu lực từ {request.effective_from || start || "ngày đầu kỳ"}. Bạn sẽ được xem đề xuất trước khi duyệt.</p>
-        <label><input type="checkbox" checked={confirmed} disabled={disabled} onChange={event=>setConfirmed(event.target.checked)}/>
-            Tôi xác nhận các nguồn chưa khai báo độ phủ có đủ dữ liệu trong kỳ đã chọn.</label>
-        <button className="button secondary" type="button" disabled={disabled || !ready} onClick={confirm}>Kiểm tra phạm vi và tìm khóa</button>
+        <legend>Thông tin cần xác nhận</legend>
+        {!request.period_start && <label>Ngày đầu kỳ<input type="date" value={scope.period_start || ""} disabled={disabled}
+            onChange={event => setScope({ ...scope, period_start: event.target.value })}/></label>}
+        {!request.period_end && <label>Ngày sau cuối kỳ<input type="date" value={scope.period_end || ""} disabled={disabled}
+            onChange={event => setScope({ ...scope, period_end: event.target.value })}/></label>}
+        {!request.timezone && <label>Múi giờ đối soát<select value={scope.timezone || ""} disabled={disabled}
+            onChange={event => setScope({ ...scope, timezone: event.target.value })}>
+            <option value="">Chọn múi giờ</option><option value="Asia/Ho_Chi_Minh">Việt Nam</option><option value="UTC">UTC</option>
+        </select></label>}
+        {request.period_start && request.period_end && <p>Kỳ đối soát từ {request.period_start} đến trước {request.period_end}
+            {request.timezone && ` · ${request.timezone}`}.</p>}
+        {!request.left.time_basis && !request.right.time_basis && firstDate && secondDate && firstDate !== secondDate &&
+            <label>Ý nghĩa chung của hai cột ngày<select value={timeBasis} disabled={disabled}
+                onChange={event => setTimeBasis(event.target.value)}>
+                <option value="">Chọn ý nghĩa ngày</option><option value="event_date">Ngày phát sinh</option>
+                <option value="posting_date">Ngày hạch toán</option><option value="invoice_date">Ngày hóa đơn</option>
+                <option value="settlement_date">Ngày quyết toán</option>
+            </select></label>}
+        {planningSides.map((side, index) => {
+            const existing = request[side];
+            const slot = scope[side];
+            const name = sources[index]?.name || (index ? "Nguồn đối ứng" : "Nguồn tham chiếu");
+            const excluded = !!sources[index]?.canonical.excluded_source_rows;
+            const isComplete = existing.date_field && existing.time_basis && existing.coverage_start &&
+                existing.coverage_end && existing.snapshot_at &&
+                !(excluded && existing.completeness === "CONFIRMED") &&
+                (existing.completeness === "CONFIRMED" || (request.allow_partial && existing.completeness));
+            if (isComplete) return <p key={side}><strong>{name}</strong> · Đã có xác nhận phạm vi và thời điểm chốt.</p>;
+            return <fieldset className="agent-form-grid" key={side}>
+                <legend>{name}</legend>
+                {!existing.date_field && dateFields[index].length === 1 && <p>Cột ngày nghiệp vụ · {dateFields[index][0].name}</p>}
+                {!existing.date_field && dateFields[index].length !== 1 && <label>Cột ngày nghiệp vụ<select aria-label={`Cột ngày nghiệp vụ của ${name}`}
+                    value={dateFor(side, index)} disabled={disabled} onChange={event => updateSlot(side, { date_field: event.target.value })}>
+                    <option value="">Chọn cột ngày</option>{dateFields[index].map(field => <option value={field.id} key={field.id}>{field.name}</option>)}
+                </select></label>}
+                {!existing.coverage_start && <label>Phạm vi nguồn từ ngày<input type="date" value={slot.coverage_start || scope.period_start || ""}
+                    disabled={disabled} onChange={event => updateSlot(side, { coverage_start: event.target.value })}/></label>}
+                {!existing.coverage_end && <label>Phạm vi nguồn đến trước ngày<input type="date" value={slot.coverage_end || scope.period_end || ""}
+                    disabled={disabled} onChange={event => updateSlot(side, { coverage_end: event.target.value })}/></label>}
+                {!existing.snapshot_at && <label>Thời điểm nghiệp vụ chốt nguồn (UTC)<input type="datetime-local"
+                    aria-label={`Thời điểm nghiệp vụ chốt nguồn ${name} (UTC)`} value={slot.snapshot_at?.slice(0, 16) || ""}
+                    disabled={disabled} onChange={event => updateSlot(side, {
+                        snapshot_at: event.target.value ? `${event.target.value}:00Z` : "",
+                    })}/></label>}
+                {(!existing.completeness || (existing.completeness === "UNKNOWN" && !request.allow_partial) ||
+                    (excluded && existing.completeness === "CONFIRMED")) &&
+                    <label>Mức độ đầy đủ<select aria-label={`Mức độ đầy đủ của ${name}`} value={slot.completeness || ""}
+                        disabled={disabled} onChange={event => updateSlot(side, { completeness: event.target.value })}>
+                        <option value="">Chọn mức độ đầy đủ</option>
+                        {!excluded && <option value="CONFIRMED">Đã xác nhận đầy đủ trong phạm vi trên</option>}
+                        <option value="INCOMPLETE">Biết nguồn còn thiếu</option>
+                        <option value="UNKNOWN">Chưa có bằng chứng về độ đầy đủ</option>
+                    </select></label>}
+            </fieldset>;
+        })}
+        {needsPartial && !request.allow_partial && <label>
+            <input type="checkbox" checked={!!scope.allow_partial} disabled={disabled}
+                onChange={event => setScope({ ...scope, allow_partial: event.target.checked })}/>
+            Đề xuất đối soát một phần trên dữ liệu dùng được.
+        </label>}
+        <button className="button secondary" type="button" disabled={disabled || !ready} onClick={() => onConfirm({
+            ...scope, effective_from: scope.effective_from || scope.period_start,
+            left: slots[0], right: slots[1],
+        })}>Kiểm tra phạm vi và tìm khóa</button>
     </fieldset>;
 }
+
 function storedDraft(key: string, review: Review) {
     try {
         const saved = JSON.parse(sessionStorage.getItem(key) || "null");
@@ -352,10 +393,11 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
         .map(id => catalogue.find(item => item.canonical.id === id)) : [];
     const partialSources = planSources.filter(item => item?.canonical.quality_status === "PARTIAL");
     const scope = review.planning_request;
-    const needsScope = scope && scope.left.role && scope.right.role && (
+    const needsScope = scope && scope.left.role && scope.right.role && (review.scope_check_pending ||
         !scope.period_start || !scope.period_end || !scope.timezone || !scope.effective_from ||
         [scope.left, scope.right].some(slot => !slot.date_field || !slot.time_basis || !slot.coverage_start ||
-            !slot.coverage_end || !slot.snapshot_at || !slot.completeness || slot.completeness === "UNKNOWN")
+            !slot.coverage_end || !slot.snapshot_at || !slot.completeness ||
+            (slot.completeness === "UNKNOWN" && !scope.allow_partial))
     );
     async function checkScope(planningRequest: PlanningScope) {
         if (disabled || submitting.current) return;
@@ -471,6 +513,28 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
         {` · ${candidate.overlap} khóa có đối ứng (${candidate.left_distinct_keys} khóa nguồn A, ${candidate.right_distinct_keys} khóa nguồn B) · ${label(candidate.plan.cardinality)}`}
       </label>)}
     </fieldset>}
+    {review.kind === "RECONCILIATION" && !!review.source_evidence?.length && <div>
+      <h4>Dữ kiện đã kiểm tra</h4>
+      {review.source_evidence.map(source => <section key={source.canonical_id}>
+        <h5>{source.name}</h5>
+        <p>Tệp tải lần đầu {source.uploaded_at
+          ? new Date(source.uploaded_at).toLocaleString("vi-VN", { timeZone: "UTC" }) + " UTC"
+          : "chưa có thời điểm lưu"} · Phiên bản nguồn {source.dataset_revision} · Ánh xạ {source.mapping_revision}
+          {source.quality_revision > 0 && <> · Lần xử lý chất lượng {source.quality_revision}</>}</p>
+        <p>{source.valid_rows.toLocaleString("vi-VN")} dòng dùng được trong bản chuẩn hóa
+          {!!source.invalid_rows && <> · {source.invalid_rows} dòng chưa hợp lệ</>}
+          {!!source.excluded_rows && <> · {source.excluded_rows} dòng đã loại</>}.</p>
+        {source.excluded_amounts.map(item => <p key={item.field + item.currency}>
+          Số tiền đã loại {item.amount} {item.currency} · {fieldName(source.canonical_id, item.field)}
+        </p>)}
+        {source.excluded_amounts_unavailable && <p>Chưa xác định được một phần số tiền đã loại.</p>}
+        {source.exclusion_reasons?.map(reason => <p key={reason}>Lý do loại dòng · {reason}</p>)}
+        {source.observed_dates.map(range => <p key={range.field}>
+          {fieldName(source.canonical_id, range.field)} quan sát được từ {range.first} đến {range.last} ({source.observation_timezone}).
+        </p>)}
+      </section>)}
+      {needsScope && <p>Khoảng ngày quan sát được giúp kiểm tra kỳ. Thời điểm chốt và mức độ đầy đủ cần xác nhận theo nghiệp vụ.</p>}
+    </div>}
     {plan && <>
       <dl className="decision-facts">
         <div><dt>Nguồn A</dt><dd>{sourceName(plan.left.canonical_id)}</dd></div>
@@ -492,7 +556,8 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
       <details className="agent-review-editor"><summary>Kiểm tra phạm vi và chỉnh quy tắc</summary><PlanReview plan={plan} disabled={disabled} onChange={setPlan}/></details>
     </>}
     {review.kind === "RECONCILIATION" && !plan && scope && needsScope && <ScopeConfirmation
-        request={scope} catalogue={catalogue} disabled={disabled} onConfirm={value=>void checkScope(value)}/>}
+        request={scope} catalogue={catalogue} evidence={review.source_evidence || []}
+        disabled={disabled} onConfirm={value=>void checkScope(value)}/>}
     {review.kind === "RECONCILIATION" && !plan && !needsScope && !review.planning_candidates?.length && <Notice>
       Cần xác nhận khóa, chỉ tiêu hoặc phạm vi trước khi chạy.
       {" "}<a className="text-button" href={`#${new URLSearchParams({page: "reconcile", project: workflow.context.project_id})}`}>

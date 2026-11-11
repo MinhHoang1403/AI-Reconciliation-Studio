@@ -192,7 +192,8 @@ def missing_confirmations(request: PlanningRequest) -> list[str]:
                 "snapshot_at",
                 "completeness",
             )
-            if getattr(slot, name) is None or getattr(slot, name) == "UNKNOWN"
+            if getattr(slot, name) is None
+            or (getattr(slot, name) == "UNKNOWN" and not request.allow_partial)
         )
     return missing
 

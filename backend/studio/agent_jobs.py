@@ -23,6 +23,7 @@ from studio.agent_intents import (
     named_reconciliation_files,
     requests_reconciliation_sequence,
     requests_source_preparation,
+    requests_three_source_reconciliation,
     resolve_attached_normalization,
     resolve_deferred_export_read,
     resolve_named_reconciliation,
@@ -71,6 +72,7 @@ from studio.contracts.agent import (
     WorkflowState,
 )
 from studio.contracts.assistant import AssistantContext
+from studio.contracts.reconciliation import PlanningRequest
 from studio.database import (
     AgentWorkflowRow,
     AuditRow,
@@ -107,6 +109,49 @@ QUALITY_VALUE = re.compile(
     r"^\s*(?:hãy\s+)?sửa\s+dòng\s+(này|\d+)\s+thành\s+(.+?)\s+theo\s+(.+?)\s*[.!]?\s*$",
     re.IGNORECASE,
 )
+
+
+def asks_for_current_source_evidence(text: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"(?:(?:hay|vui long|ban|tu|chu dong) )*kiem tra (?:lai )?"
+            r"(?:du lieu|cac nguon|ba nguon|3 nguon)(?: hien (?:hanh|tai)| dang co)?"
+            r"(?: giup toi)?[.!?]*",
+            " ".join(plain_question(text).split()),
+        )
+    )
+
+
+def pending_planning_request(
+    db: Session, actor: Actor, conversation_id: str, project_id: str
+) -> PlanningRequest | None:
+    waiting = db.scalar(
+        select(AgentWorkflowRow)
+        .where(
+            AgentWorkflowRow.workspace_id == actor.workspace_id,
+            AgentWorkflowRow.actor_id == actor.id,
+            AgentWorkflowRow.project_id == project_id,
+            AgentWorkflowRow.conversation_id == conversation_id,
+            AgentWorkflowRow.state == "WAITING_REVIEW",
+            AgentWorkflowRow.detail.contains(
+                {"reviews": [{"kind": "RECONCILIATION", "state": "OPEN"}]}
+            ),
+        )
+        .order_by(AgentWorkflowRow.updated_at.desc(), AgentWorkflowRow.id.desc())
+        .limit(1)
+    )
+    if waiting is None:
+        return None
+    return next(
+        (
+            review.planning_request
+            for review in reversed(WorkflowState.model_validate(waiting.detail).reviews)
+            if review.kind == "RECONCILIATION"
+            and review.state == "OPEN"
+            and review.planning_request is not None
+        ),
+        None,
+    )
 
 
 def quality_reply(
@@ -253,13 +298,21 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
             )
             if not job.payload.get("command") and QUALITY_CORRECTION.match(message.text):
                 return True
+            if not job.payload.get("command") and asks_for_current_source_evidence(message.text):
+                return (
+                    pending_planning_request(db, actor, conversation.id, context.project_id)
+                    is not None
+                )
             if (
                 asks_processing_status(message.text)
                 or asks_source_inventory(message.text)
                 or requests_source_preparation(message.text)
             ):
                 return True
-            if requests_reconciliation_sequence(message.text) and not job.payload.get("command"):
+            if not job.payload.get("command") and (
+                requests_reconciliation_sequence(message.text)
+                or requests_three_source_reconciliation(message.text)
+            ):
                 return False
             catalogue = agent_catalogue(
                 db,
@@ -288,9 +341,17 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
             state = WorkflowState.model_validate(row.detail)
             reply = ReviewReply.model_validate(job.payload["reply"])
             review = next((r for r in state.reviews if r.id == reply.review_id), None)
-            if review is None or review.kind != "CLARIFICATION" or review.state != "OPEN":
+            if review is None or review.state != "OPEN":
                 return False
-            if requests_reconciliation_sequence(row.goal):
+            if review.kind == "RECONCILIATION":
+                return bool(
+                    review.planning_request and asks_for_current_source_evidence(reply.text)
+                )
+            if review.kind != "CLARIFICATION":
+                return False
+            if requests_reconciliation_sequence(row.goal) or requests_three_source_reconciliation(
+                row.goal
+            ):
                 return False
             catalogue = agent_catalogue(
                 db,
@@ -525,10 +586,51 @@ def interpret(
             quality_reply(db, actor, row, state, context)
             db.commit()
             return
+        if not command and asks_for_current_source_evidence(goal):
+            pending = pending_planning_request(db, actor, row.conversation_id, row.project_id)
+            if pending:
+                from studio.reconciliation_repository import planning_source_evidence
+
+                evidence = planning_source_evidence(db, actor, row.project_id, pending)
+                for source in evidence:
+                    rows = f"{source.valid_rows:,}".replace(",", ".")
+                    dates = ", ".join(
+                        f"{item.field} từ {item.first} đến {item.last}"
+                        for item in source.observed_dates
+                    )
+                    state.blocks.append(
+                        ProgressBlock(
+                            text=(
+                                f"{source.name} · phiên bản {source.dataset_revision}"
+                                f" · {rows} dòng dùng được"
+                                + (
+                                    f" · {source.excluded_rows} dòng đã loại"
+                                    if source.excluded_rows
+                                    else ""
+                                )
+                                + (f" · {dates} ({source.observation_timezone})" if dates else "")
+                            )
+                        )
+                    )
+                state.blocks.append(
+                    ProgressBlock(
+                        text="Đã kiểm tra lại bản chuẩn hóa. Xem dữ kiện trên thẻ đang chờ."
+                    )
+                )
+                state.intent = AgentIntent(intent="CHECK_DATASET_STATUS")
+                row.state = "COMPLETED"
+                save(row, state)
+                db.commit()
+                return
         status_request = asks_processing_status(goal) or asks_source_inventory(goal)
-        native_preparation = command is None and requests_source_preparation(goal)
+        propose_pairs = command is None and requests_three_source_reconciliation(goal)
+        native_preparation = (
+            command is None and not propose_pairs and requests_source_preparation(goal)
+        )
         prepare = command == "PREPARE_NORMALIZATION" or native_preparation
-        sequence_requested = not (command or prepare) and requests_reconciliation_sequence(goal)
+        sequence_requested = not (command or prepare) and (
+            propose_pairs or requests_reconciliation_sequence(goal)
+        )
         if sequence_requested:
             require_editor(actor, db, row.id)
             context = AssistantContext(project_id=context.project_id)
@@ -555,9 +657,9 @@ def interpret(
             return
         files = (
             None
-            if sequence_requested or command
+            if (sequence_requested and not propose_pairs) or command
             else (
-                (None if prepare else named_reconciliation_files(goal))
+                (None if prepare or propose_pairs else named_reconciliation_files(goal))
                 or tuple(explicit_source_filenames(goal))
                 or None
             )
@@ -703,7 +805,13 @@ def interpret(
             factory,
             fence,
             lambda provider, policy, reserve: (
-                interpret_reconciliation_sequence(provider, goal, [], catalogue, policy, reserve)
+                interpret_reconciliation_sequence(
+                    provider, goal, [], catalogue, policy, reserve, propose_pairs=True
+                )
+                if propose_pairs
+                else interpret_reconciliation_sequence(
+                    provider, goal, [], catalogue, policy, reserve
+                )
                 if sequence_requested
                 else interpret_requests(provider, [goal], catalogue, policy, reserve)
             ),
@@ -750,14 +858,16 @@ def interpret(
             if state.intent.intent == "PREPARE_NORMALIZATION" and not state.dataset_ids:
                 state.dataset_ids = state.intent.dataset_ids or ids
             if sequence:
-                initialize_sequence(state, sequence)
+                initialize_sequence(state, sequence, propose_pairs=propose_pairs)
             state.export_query = export_query_for_intent(state.intent, current_catalogue)
             save(row, state)
             db.commit()
 
 
-def initialize_sequence(state: WorkflowState, sequence: ReconciliationSequence) -> None:
-    state.sequence_progress = SequenceProgress(sequence=sequence)
+def initialize_sequence(
+    state: WorkflowState, sequence: ReconciliationSequence, *, propose_pairs: bool = False
+) -> None:
+    state.sequence_progress = SequenceProgress(sequence=sequence, propose_pairs=propose_pairs)
     state.dataset_ids = list(
         dict.fromkeys(
             ident
@@ -765,7 +875,10 @@ def initialize_sequence(state: WorkflowState, sequence: ReconciliationSequence) 
             for ident in (pair.left_dataset_id, pair.right_dataset_id)
         )
     )
-    state.prepare_upload = True
+    if propose_pairs:
+        state.intent = AgentIntent(intent="RECONCILE_DATASETS", dataset_ids=state.dataset_ids)
+    else:
+        state.prepare_upload = True
 
 
 def execute_agent(
@@ -878,11 +991,17 @@ def execute_agent(
                 + "\nNgười dùng trả lời: "
                 + reply.text
             )
-            sequence_reply = review.kind == "CLARIFICATION" and requests_reconciliation_sequence(
-                row.goal
+            propose_pairs = requests_three_source_reconciliation(row.goal)
+            sequence_reply = review.kind == "CLARIFICATION" and (
+                propose_pairs or requests_reconciliation_sequence(row.goal)
             )
             sequence_answers = [*state.sequence_clarifications[-3:], reply.text]
             original_goal = row.goal
+            inspect_sources = (
+                review.kind == "RECONCILIATION"
+                and review.planning_request is not None
+                and asks_for_current_source_evidence(reply.text)
+            )
             expected_selection = selection_fingerprint(catalogue)
             if review.kind == "CLARIFICATION":
                 catalogue = catalogue.model_copy(
@@ -895,10 +1014,12 @@ def execute_agent(
             if review.kind == "CLARIFICATION" and not sequence_reply
             else None
         )
-        if native_only and native_reply is None:
+        if native_only and native_reply is None and not inspect_sources:
             raise DomainError("STALE_CONTEXT", "Ngữ cảnh trả lời đã đổi; hãy kiểm tra lại.", 409)
         output = (
-            ReviewInterpretation(intent=native_reply)
+            ReviewInterpretation()
+            if inspect_sources
+            else ReviewInterpretation(intent=native_reply)
             if native_reply is not None
             else model_call(
                 job_id,
@@ -912,6 +1033,16 @@ def execute_agent(
                 fence,
                 lambda provider, policy, reserve: (
                     interpret_reconciliation_sequence(
+                        provider,
+                        original_goal,
+                        sequence_answers,
+                        catalogue,
+                        policy,
+                        reserve,
+                        propose_pairs=True,
+                    )
+                    if sequence_reply and propose_pairs
+                    else interpret_reconciliation_sequence(
                         provider, original_goal, sequence_answers, catalogue, policy, reserve
                     )
                     if sequence_reply
@@ -951,6 +1082,12 @@ def execute_agent(
                     "STALE_CONTEXT", "Review đã thay đổi; không ghi đè lựa chọn.", 409
                 )
             resolved_sequence = None
+            if inspect_sources and current.planning_request:
+                from studio.reconciliation_repository import planning_source_evidence
+
+                current.source_evidence = planning_source_evidence(
+                    db, actor, row.project_id, current.planning_request
+                )
             if isinstance(output, SequenceResolution):
                 state.sequence_clarifications = sequence_answers
                 if output.sequence is not None:
@@ -1077,7 +1214,8 @@ def execute_agent(
                 output.questions = output.intent.questions
             current.reply_questions = output.questions or (
                 []
-                if any([output.draft, output.plan, output.intent, output.planning_request])
+                if inspect_sources
+                or any([output.draft, output.plan, output.intent, output.planning_request])
                 else ["Cần thêm thông tin để tiếp tục."]
             )
             current.pending_reply_job_id = None
@@ -1100,7 +1238,7 @@ def execute_agent(
                 )
                 state.intent = output.intent
                 if resolved_sequence:
-                    initialize_sequence(state, resolved_sequence)
+                    initialize_sequence(state, resolved_sequence, propose_pairs=propose_pairs)
                 state.export_query = export_query_for_intent(state.intent, catalogue)
                 if reply.model_choice is not None:
                     state.model_choice = reply.model_choice
@@ -1130,6 +1268,8 @@ def execute_agent(
                         role="assistant",
                         text=""
                         if continued
+                        else "Đã kiểm tra lại bản chuẩn hóa. Xem dữ kiện trên thẻ đang chờ."
+                        if inspect_sources
                         else "Cần bổ sung thêm thông tin trên thẻ xác nhận."
                         if output.questions
                         else "Đã cập nhật bản xem trước. Hãy kiểm tra và xác nhận để tiếp tục.",
