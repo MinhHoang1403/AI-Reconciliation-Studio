@@ -344,13 +344,13 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     page.getByRole("region", { name: "Chi tiết giá trị nguồn", exact: true }),
   ).toContainText("12.75");
   await page.keyboard.press("Escape");
-  await page.getByLabel("Câu hỏi cho AI Assistant", { exact: true }).fill("Lệch bao nhiêu?");
+  await page.getByLabel("Câu hỏi cho AI Assistant", { exact: true }).fill("Tỷ lệ khớp là bao nhiêu?");
   await page.getByRole("button", { name: "Gửi câu hỏi", exact: true }).click();
   await expect(page.locator(".assistant-message.assistant")).toHaveCount(2);
-  await expect(answer).toContainText(/2[.,]75/);
+  await expect(answer).toContainText(/33[.,]33/);
   await page.reload();
   await expect(page.locator(".assistant-message.assistant")).toHaveCount(2);
-  await expect(answer).toContainText(/2[.,]75/);
+  await expect(answer).toContainText(/33[.,]33/);
   await page
     .getByRole("button", { name: "← Trở về trang trước", exact: true })
     .click();

@@ -722,7 +722,8 @@ export function App() {
     setOffset(0);
     setSearch("");
     setView(pendingTarget?.canonical_id ? "errors" : "raw");
-    setPreview(null);
+    // The preview is keyed by table, layer and filter. A shortcut to the same
+    // query can reuse it, while a different query is hidden until it loads.
   }, [tableId, datasetId, pendingTarget?.canonical_id]);
   useEffect(() => {
     void loadDetails().catch((err) => setError(err.message));
