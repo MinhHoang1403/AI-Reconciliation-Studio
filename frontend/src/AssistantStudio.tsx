@@ -1,6 +1,6 @@
 import { HistoryRows } from "./ProjectHistory";
 import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense, type RefObject } from "react";
-import { ArrowRight, ArrowUp, ChartNoAxesColumn, Files, FileSpreadsheet, Layers3, LoaderCircle, MessageSquarePlus, MoreHorizontal, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ArrowRight, ArrowUp, ChartNoAxesColumn, Files, FileSpreadsheet, Layers3, MessageSquarePlus, MoreHorizontal, Plus, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { AgentWorkflowPanel } from "./AgentWorkflowPanel";
 import type { Review } from "./agentTypes";
 import { api, ApiError } from "./api";
@@ -67,6 +67,7 @@ const labels: Record<string, string> = {
 };
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Không tải được hội thoại.";
+const terminalJobStates = new Set(["SUCCEEDED", "BLOCKED", "FAILED", "CANCELLED"]);
 
 function sameRequestExceptModel(previous: string, next: string, reuseUploadedScope = false) {
   try {
@@ -196,9 +197,15 @@ export function AssistantStudio({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const sendLock = useRef(false);
-  const focusAfterSend = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingJob, setPendingJob] = useState("");
+  const [submittedPrompt, setSubmittedPrompt] = useState("");
+  const showSubmittedPrompt = !!submittedPrompt && !messages.some(message =>
+    message.role === "user" && message.job_id === pendingJob);
+  const waitingForReply = !error && (showSubmittedPrompt || (!!pendingJob && !messages.some(message =>
+    message.job_id === pendingJob && (
+      message.role === "assistant" || terminalJobStates.has(message.job_status ?? "")
+    ))));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmWorkflow, setConfirmWorkflow] =
     useState<AssistantAnswer | null>(null);
@@ -306,7 +313,7 @@ export function AssistantStudio({
     });
     observer.observe(input);
     return()=>observer.disconnect();
-  },[text]);
+  },[text, submittedPrompt]);
   const draftKeyFor = (scope: AssistantContext, id = "new") =>
     `studio.assistant-draft.${draftOwner}.${JSON.stringify([scope.project_id, scope.run_id || "", scope.dataset_id || "", scope.group_id || "", scope.case_id || "", id])}`;
   const draftKey = useRef(draftKeyFor(initialContext));
@@ -337,15 +344,6 @@ export function AssistantStudio({
   const storageKey = conversationKeyFor(initialContext);
   const requestStorageKey = `studio.assistant-request.${draftOwner}.${initialContext.project_id}`;
   const getOptions = () => ({ signal: controller.current.signal });
-  useLayoutEffect(() => {
-    if (busy || loading || focusAfterSend.current === null) return;
-    const request = focusAfterSend.current;
-    focusAfterSend.current = null;
-    // Focus only after React has committed the enabled textarea. An animation
-    // frame can run before that commit when concurrent rendering is delayed.
-    if (alive.current && request === sequence.current)
-      composerInput.current?.focus({ preventScroll: true });
-  }, [busy, loading]);
   useEffect(() => {
     if (!initialConversationId || conversation) onContextChange(context);
   }, [context, conversation]);
@@ -415,12 +413,11 @@ export function AssistantStudio({
     for (let attempt = 0; alive.current && request === sequence.current; attempt++) {
       const job = await api<Job>(`/jobs/${jobId}`, getOptions());
       if (!alive.current || request !== sequence.current) return;
-      if (
-        ["SUCCEEDED", "BLOCKED", "FAILED", "CANCELLED"].includes(job.status)
-      ) {
-        setPendingJob("");
+      if (terminalJobStates.has(job.status)) {
         const page=await refreshMessages(id, request);
-        if (alive.current && request === sequence.current) setModelRefresh(value => value + 1);
+        if (!alive.current || request !== sequence.current) return;
+        setPendingJob("");
+        setModelRefresh(value => value + 1);
         if (job.status !== "SUCCEEDED"&&!page?.items.some(message=>message.job_id===jobId&&(message.role==="assistant"||message.error_code)))
           setError(
             `${jobErrors[job.error_code||""]||"Yêu cầu chưa có kết quả hợp lệ."} Lịch sử được giữ; không tự gửi lại nhà cung cấp AI.`,
@@ -444,6 +441,7 @@ export function AssistantStudio({
     setActiveWorkflowContext(null);
     setConversation(null);
     setPendingJob("");
+    setSubmittedPrompt("");
     setError("");
     setLoading(true);
     setHistoryOpen(false);
@@ -451,6 +449,7 @@ export function AssistantStudio({
       const page = await refreshMessages(id, request, cached);
       if (!page) return;
       restoreDraft(page.conversation.context, id);
+      setLoading(false);
       const last = page.items.at(-1);
       if (last?.role === "user") await waitForAnswer(last.job_id, id, request);
     } catch (err) {
@@ -539,6 +538,7 @@ export function AssistantStudio({
     setActiveWorkflowContext(null);
     setMoreMessages(false);
     setPendingJob("");
+    setSubmittedPrompt("");
     setError("");
     restoreDraft(next);
     setConfirmDelete(false);
@@ -559,6 +559,8 @@ export function AssistantStudio({
     const request = sequence.current;
     setBusy(true);
     setError("");
+    setSubmittedPrompt(text.trim() || "Chuẩn bị dữ liệu vừa tải");
+    composerInput.current?.focus({ preventScroll: true });
     let bootstrapProject="";
     let uploadedDatasetIds: string[] | undefined;
     try {
@@ -578,7 +580,11 @@ export function AssistantStudio({
         sessionStorage.removeItem(draftKey.current);
         sessionStorage.removeItem(`${draftKey.current}.task`);
         setReviewReply(null);setText("");
-        await refreshMessages(conversation.id,request);await waitForAnswer(accepted.job_id,conversation.id,request);return;
+        setPendingJob(accepted.job_id);
+        if (!await refreshMessages(conversation.id, request)) return;
+        setSubmittedPrompt("");
+        await waitForAnswer(accepted.job_id, conversation.id, request);
+        return;
       }
       if(files.length){
         const storage = `studio.attachment-request.${draftOwner}.${context.project_id || "new"}`;
@@ -684,8 +690,11 @@ export function AssistantStudio({
       setCommand(null);
       sessionStorage.removeItem(draftKey.current);
       sessionStorage.removeItem(`${draftKey.current}.task`);
-      await refreshMessages(active.id, request);
+      setPendingJob(accepted.job_id);
+      if (!await refreshMessages(active.id, request)) return;
+      setSubmittedPrompt("");
       await loadHistory();
+      if (!alive.current || request !== sequence.current) return;
       await waitForAnswer(accepted.job_id, active.id, request);
     } catch (err) {
       if(bootstrapProject&&alive.current){await onUploadProject(bootstrapProject);return;}
@@ -694,7 +703,7 @@ export function AssistantStudio({
     } finally {
       sendLock.current = false;
       if (alive.current && request === sequence.current) {
-        focusAfterSend.current = request;
+        setSubmittedPrompt("");
         setBusy(false);
       }
     }
@@ -824,7 +833,7 @@ export function AssistantStudio({
     setError("");setFiles(next);
   }
   return (
-    <section className={`assistant-studio ${messages.length?"has-conversation":"is-welcome"}`} aria-label="Hội thoại AI Assistant">
+    <section className={`assistant-studio ${messages.length || showSubmittedPrompt ? "has-conversation" : "is-welcome"}`} aria-label="Hội thoại AI Assistant">
       <div className="assistant-toolbar" aria-label="Công cụ hội thoại">
         <h1>AI Assistant</h1>
         <div className="assistant-toolbar-actions">
@@ -893,7 +902,7 @@ export function AssistantStudio({
                 </button>
               </Notice>
             )}
-            {loading && <Spinner />}
+            {loading && <p className="muted" role="status">Đang tải hội thoại…</p>}
             <div
               className="assistant-messages"
               role="log"
@@ -909,7 +918,7 @@ export function AssistantStudio({
                   Xem tin nhắn cũ hơn
                 </button>
               )}
-              {!loading && !messages.length && (
+              {!loading && !messages.length && !showSubmittedPrompt && (
                 <div className="agent-empty">
                   <h2>Bạn muốn xử lý dữ liệu gì?</h2>
                   <p>{context.project_id
@@ -1053,6 +1062,13 @@ export function AssistantStudio({
                   {message.role==="assistant"&&<MessageInfo createdAt={message.created_at} model={message.model_choice ? historicalModelLabel(message.model_choice) : undefined}/>}
                 </article>
               ))}
+              {showSubmittedPrompt && <article className="assistant-message user" aria-label="Tin nhắn của bạn">
+                <p>{submittedPrompt}</p>
+              </article>}
+              {waitingForReply && <div className="assistant-reply-activity" role="status">
+                <span className="visually-hidden">AI đang xử lý</span>
+                <span className="assistant-reply-dots" aria-hidden="true"><span/><span/><span/></span>
+              </div>}
             </div>
             {rule && (
               <section className="card" aria-label="Quy tắc áp dụng">
@@ -1088,20 +1104,6 @@ export function AssistantStudio({
                 }
               />
             )}
-            {pendingJob && (
-              <Notice>
-                Đang xử lý yêu cầu. Bạn có thể mở lại kết quả từ Lịch sử.
-                <button
-                  className="text-button"
-                  disabled={busy || loading}
-                  onClick={() =>
-                    conversation && void openConversation(conversation.id)
-                  }
-                >
-                  Cập nhật hội thoại
-                </button>
-              </Notice>
-            )}
             </div>
           </div>
           {newContent&&<button type="button" className="assistant-jump text-button" onClick={()=>scrollToTail(true)}>Tin nhắn mới · Xuống cuối</button>}
@@ -1123,7 +1125,7 @@ export function AssistantStudio({
               <textarea
                 ref={composerInput}
                 aria-label="Câu hỏi cho AI Assistant"
-                value={text}
+                value={submittedPrompt ? "" : text}
                 onChange={(event) => {
                   setText(event.target.value);
                   setCommand(null);
@@ -1139,7 +1141,8 @@ export function AssistantStudio({
                 maxLength={2000}
                 rows={1}
                 placeholder={reviewReply?"Bổ sung thông tin…":"Nhập yêu cầu…"}
-                disabled={busy||loading}
+                disabled={loading}
+                readOnly={busy}
               />
             </label>
             <div className="composer-actions">
@@ -1149,11 +1152,7 @@ export function AssistantStudio({
               title="Gửi câu hỏi"
               disabled={busy || loading || !!pendingJob || (!text.trim()&&!files.length)}
             >
-              {busy ? (
-                <LoaderCircle size={18} className="spin" aria-label="Đang gửi" />
-              ) : (
-                <ArrowUp size={20} aria-hidden="true" />
-              )}
+              <ArrowUp size={20} aria-hidden="true" />
             </button>
             </div>
           </form>

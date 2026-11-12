@@ -62,7 +62,7 @@ for(const width of [390,768,1366,1440,1920]){
       }
       if(name==="upload"){
         await page.locator('.assistant-composer input[type="file"]').setInputFiles({name:"Synthetic ledger with a long descriptive filename.csv",mimeType:"text/csv",buffer:Buffer.from("id,amount\n000701,25.00\n")});
-        await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();await expect(input).toBeDisabled();
+        await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();await expect(input).toHaveAttribute("readonly", "");
         await shot(name);release();await expect(page.getByRole("alert")).toContainText("lỗi upload");continue;
       }
       if(name==="history"){

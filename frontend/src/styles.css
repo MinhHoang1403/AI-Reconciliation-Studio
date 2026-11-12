@@ -1786,10 +1786,25 @@ pre {
 .assistant-controls select { width: 100%; min-width: 0; }
 .assistant-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .assistant-messages { display: grid; gap: 32px; overflow-wrap: anywhere; padding-top: 12px; }
+.assistant-reply-activity { display: flex; align-items: center; min-block-size: 26px; }
+.assistant-reply-dots { display: inline-flex; gap: var(--space-1); }
+.assistant-reply-dots > span {
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: assistant-reply-pulse 1.25s ease-in-out infinite;
+}
+.assistant-reply-dots > span:nth-child(2) { animation-delay: 160ms; }
+.assistant-reply-dots > span:nth-child(3) { animation-delay: 320ms; }
+@keyframes assistant-reply-pulse {
+  0%, 64%, 100% { opacity: .42; }
+  28% { opacity: 1; }
+}
 .assistant-message { min-width: 0; font-size: 16px; color: var(--ink); }
 .assistant-message.assistant { display: flex; flex-direction: column; gap: 10px; padding: 0; border: 0; box-shadow: none; }
 .assistant-message.assistant > .message-metadata { align-self: flex-start; margin: 0; }
-.assistant-message.user { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 12px; background: #fff; border: 1px solid #e5e7eb; border-radius: 24px; box-shadow: 0 2px 10px #00000004; padding: 14px 10px 14px 20px; width: fit-content; max-width: min(76ch, 88%); justify-self: end; }
+.assistant-message.user { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: start; column-gap: 12px; background: #fff; border: 1px solid #e5e7eb; border-radius: 24px; box-shadow: 0 2px 10px #00000004; padding: 14px 10px 14px 20px; width: fit-content; max-width: min(76ch, 88%); justify-self: end; }
 .assistant-message.user > p { grid-column: 1; grid-row: 1; min-width: 0; margin: 0; }
 .assistant-message.user > .message-metadata { grid-column: 2; grid-row: 1; }
 .message-metadata { position: relative; width: fit-content; margin-left: auto; color: var(--text-muted); font-size: 11px; }
@@ -1881,6 +1896,7 @@ pre {
 .agent-empty h2 {font-size: clamp(1.4rem, 2vw, 2rem); line-height: 1.35;}
 .agent-pagination, .agent-workflow-state { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
 .agent-workflow { display: grid; gap: var(--space-4); min-width: 0; max-width: 100%; }
+.agent-workflow[aria-busy="true"] { min-block-size: 26px; }
 .agent-workflow-state { color: var(--text-muted); font-size: 14px; }
 .agent-workflow-state[data-state="WAITING_REVIEW"] { color: var(--accent-hover); font-size: 15px; }
 .agent-workflow > .notice p, .agent-review > .notice p { margin: 0; }

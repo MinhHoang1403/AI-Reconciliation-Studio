@@ -48,6 +48,8 @@ Tài liệu dành cho người mới, dùng ứng dụng local tại <http://127
 
 Khi gửi câu mới, Chat đưa bạn xuống nội dung mới nhất. Khi AI thêm bảng hoặc tiến độ và bạn đang ở cuối, Chat tiếp tục theo dõi. Nếu bạn cuộn lên đọc tin cũ, Chat giữ vị trí; bấm **Tin nhắn mới · Xuống cuối** khi muốn quay về. **Xem tin nhắn cũ hơn** bổ sung lịch sử mà không kéo bạn xuống cuối.
 
+Ba chấm dưới tin nhắn cho biết Chat đang chờ phản hồi đầu tiên. Khi có kết quả, thẻ xác nhận hoặc tiến độ công việc, Chat hiển thị nội dung đó ngay. Nếu bật giảm chuyển động trong hệ điều hành, ba chấm đứng yên.
+
 ### Xem bản tự chuẩn bị ngay sau khi tải
 
 1. Chọn dự án rồi mở **Dữ liệu → Tải dữ liệu**. Chọn tệp và bấm nút tải.
@@ -383,7 +385,7 @@ Không xóa database, cookies, tệp gốc hoặc Docker volumes để sửa k�
 | Dấu hiệu | Nguyên nhân có thể | Cách kiểm tra và xử lý |
 | --- | --- | --- |
 | Không kết nối / cần kiểm tra local | Docker vừa khởi động hoặc xác minh cũ hết hiệu lực sau recreate | Dùng bước khởi động ở mục 10, rồi Thử kết nối lại; giữ dữ liệu |
-| AI đang chờ | Công việc đã nhận nhưng chưa kết thúc, hoặc chờ người dùng | Xem tiến độ/thẻ yêu cầu; dùng Cập nhật hội thoại, không gửi lặp |
+| AI đang chờ | Ba chấm báo đang chờ phản hồi. Thẻ xác nhận báo đang chờ bạn | Xem tiến độ hoặc trả lời thẻ. Nếu mất kết nối, dùng **Cập nhật hội thoại** |
 | Chưa đủ bằng chứng | Chưa chọn kết quả đã xác minh hoặc chưa đủ dữ kiện | Kiểm tra ngữ cảnh; hỏi trạng thái nguồn nếu chỉ cần biết chuẩn hóa, không ép kết luận tiền |
 | Chưa chuẩn hóa | Mới đọc tệp hoặc chưa duyệt ghép cột | Kiểm tra từng tệp, duyệt đúng ánh xạ, thực hiện chuẩn hóa |
 | Chờ phê duyệt | Đề xuất chưa có quyết định của người có quyền | Mở thẻ kiểm tra rồi dùng nút duyệt ghi rõ tác động; Chat không tự phê duyệt |

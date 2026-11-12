@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
-import { Notice, Spinner } from "./components";
+import { Notice } from "./components";
 import { AgentResultBlocks } from "./AgentResultBlocks";
 import { ReviewCard } from "./ReviewCard";
 import type { Review, Workflow, SharedMappingFacts } from "./agentTypes";
@@ -162,8 +162,8 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
             if (alive.current) setBatchBusy(false);
         }
     }
-    return <section className="agent-workflow" aria-label="Công việc của AI Assistant">{error && <Notice tone="error"><p>{error}</p><button className="text-button" onClick={() => void refresh()}>Cập nhật</button></Notice>}
-    {!workflow ? <Spinner /> : <><div className="agent-workflow-state" data-state={workflow.state}>
+    return <section className="agent-workflow" aria-label="Công việc của AI Assistant" aria-busy={!workflow && !error}>{error && <Notice tone="error"><p>{error}</p><button className="text-button" onClick={() => void refresh()}>Cập nhật</button></Notice>}
+    {workflow && <><div className="agent-workflow-state" data-state={workflow.state}>
       <strong role="status">{workflow.state === "WAITING_REVIEW" && openReviews.some(review=>review.kind === "CLARIFICATION")
         ? "Cần bạn bổ sung" : workflow.state === "COMPLETED" && workflow.detail.intent?.intent === "EXPLORE_DATA"
         ? "Đã đọc dữ liệu, chưa chuẩn hóa" : states[workflow.state] || "Chưa có trạng thái xử lý"}</strong>

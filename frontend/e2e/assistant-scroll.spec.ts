@@ -8,7 +8,9 @@ async function chatFixture(page:Page,{long=true,failed=false,withModels=false}={
   let messages=long?Array.from({length:24},(_,i)=>message(`history-${i}`,i%2?"assistant":"user",`Đoạn lịch sử ${i}. `+"Nội dung tổng hợp để kiểm tra vị trí đọc. ".repeat(12))):[];
   let accepted=0,settled=false,stage=0,jobPolls=0;
   const modelChoices: string[] = [];
-  let terminalError=false;
+  let terminalError="";
+  let acceptance = Promise.resolve();
+  let acknowledge = () => {};
   let review:Record<string,unknown>|null=null;
   let blocks:Record<string,unknown>[]=[{type:"progress",text:"Đang kiểm tra nguồn dữ liệu tổng hợp."}];
   if(failed)messages=[message("historical-failure","user","Yêu cầu cũ thất bại",{job_status:"FAILED",error_code:"INSUFFICIENT_EVIDENCE"})];
@@ -32,13 +34,14 @@ async function chatFixture(page:Page,{long=true,failed=false,withModels=false}={
     if(path==="/api/assistant/messages"){
       accepted++;
       modelChoices.push(route.request().postDataJSON().model_choice);
+      await acceptance;
       messages=[...messages,message("new-user","user",route.request().postDataJSON().text,{job_id:"new-job"})];
       return route.fulfill({status:202,json:{job_id:"new-job"}});
     }
     if(path==="/api/jobs/new-job"){
       jobPolls++;
-      if(settled&&!messages.some(m=>m.id==="new-assistant"))messages=[...messages,message("new-assistant","assistant",terminalError?"Dịch vụ AI đang giới hạn yêu cầu. Dữ liệu của bạn được giữ.":"",{job_id:"new-job",workflow_id:terminalError?null:"scroll-workflow",error_code:terminalError?"GEMINI_RATE_LIMITED":null})];
-      return route.fulfill({json:{id:"new-job",kind:"agent",status:terminalError?"BLOCKED":settled?"SUCCEEDED":"RUNNING",error_code:terminalError?"GEMINI_RATE_LIMITED":null}});
+      if(settled&&!messages.some(m=>m.id==="new-assistant"))messages=[...messages,message("new-assistant","assistant",terminalError?"Dịch vụ AI đang bận. Bạn có thể tiếp tục công việc sau.":"",{job_id:"new-job",workflow_id:terminalError?null:"scroll-workflow",error_code:terminalError||null})];
+      return route.fulfill({json:{id:"new-job",kind:"agent",status:terminalError?"BLOCKED":settled?"SUCCEEDED":"RUNNING",error_code:terminalError||null}});
     }
     if(path==="/api/jobs/historical-failure")return route.fulfill({json:{id:"historical-failure",status:"FAILED",error_code:"INSUFFICIENT_EVIDENCE"}});
     if(path==="/api/agent/workflows/scroll-workflow/decisions"){
@@ -56,11 +59,46 @@ async function chatFixture(page:Page,{long=true,failed=false,withModels=false}={
     count:()=>accepted,
     polls:()=>jobPolls,
     finish:()=>{settled=true;},
-    fail:()=>{terminalError=true;settled=true;},
+    fail:(code:string)=>{terminalError=code;settled=true;},
+    holdAcceptance:()=>{acceptance=new Promise<void>(resolve=>acknowledge=resolve);},
+    acknowledge:()=>acknowledge(),
     review:(kind:"CLARIFICATION"|"MAPPING")=>{stage++;review={id:"review",kind,question:"Bạn muốn tiếp tục với nguồn đã chọn?",reason:"Dữ liệu tổng hợp kiểm tra cuộn.",resource_id:"table",fingerprint:"a".repeat(64),nonce:"a".repeat(32),expires_at:"2099-01-01T00:00:00Z",state:"OPEN",expected_effects:[],reply_questions:[],pending_reply_job_id:null,reply_intent:null,plan:null,suggestions:null,planning_request:null,normalization_draft:kind==="MAPPING"?{table_id:"table",entity_kind:"test",grain:"Một dòng tổng hợp",fields:[{source_field:"c1",target_id:"reference",name:"Mã giao dịch",data_type:"string",business_key:true,semantic_metric:null,amount_basis:null,currency:null,unit:null,locale:null,date_format:null,timezone:null,question:""}]}:null,options:kind==="CLARIFICATION"?[{id:"selected",label:"Nguồn đã chọn",intent:{intent:"EXPLORE_DATA",dataset_ids:[]}}]:[]};},
     grow:(text:string)=>{stage++;blocks=[...blocks,{type:"progress",text}];},
     table:()=>{stage++;blocks=[...blocks,{type:"table",result:{query:{project_id:context.project_id,source_kind:"RAW_PREVIEW",source_id:"table",select_fields:["reference"],sort:[],filters:[],group_by:[],aggregations:[],limit:25,offset:0,null_policy:"PRESERVE",result_scope:"ALL_MATCHING",currency_field:null},fields:["reference"],rows:Array.from({length:25},(_,i)=>({reference:`000${i}`})),total_count:25,input_count:25,offset:0,limit:25,truncated:false,evidence_complete:true,verification_status:"RAW_UNVERIFIED",source_refs:["table"],warnings:[]}}];},
   };
+}
+
+for (const width of [390, 1440]) {
+  test(`[MOCK CONTRACT] reply dots follow the accepted job at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: width === 390 ? "reduce" : "no-preference" });
+    const fixture = await chatFixture(page, { long: false });
+    const input = page.getByLabel("Câu hỏi cho AI Assistant", { exact: true });
+    const activity = page.getByRole("status").filter({ hasText: "AI đang xử lý" });
+    const prompt = "Kiểm tra dữ liệu thử nghiệm";
+    fixture.holdAcceptance();
+    await input.fill(prompt);
+    await input.press("Enter");
+    await expect(page.getByRole("article", { name: "Tin nhắn của bạn" }).getByText(prompt)).toBeInViewport();
+    await expect(activity).toBeInViewport();
+    await expect(input).toBeFocused();
+    const dots = activity.locator(".assistant-reply-dots > span");
+    await expect(dots).toHaveCount(3);
+    await expect(dots.first()).toHaveCSS("animation-name", width === 390 ? "none" : "assistant-reply-pulse");
+    fixture.acknowledge();
+    await expect.poll(fixture.polls).toBeGreaterThan(0);
+    await expect(page.getByRole("article", { name: "Tin nhắn của bạn" }).getByText(prompt)).toHaveCount(1);
+    await page.reload();
+    await expect(activity).toBeInViewport();
+    fixture.review("MAPPING");
+    fixture.finish();
+    await expect(page.getByRole("button", { name: "Duyệt cách ghép cột và chuẩn hóa" })).toBeVisible();
+    await expect(activity).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Duyệt cách ghép cột và chuẩn hóa" })).toBeVisible();
+    await expect(activity).toHaveCount(0);
+    expect(fixture.count()).toBe(1);
+  });
 }
 
 test("[MOCK CONTRACT] switching model preserves draft, queued request and history after reload",async({page})=>{
@@ -182,16 +220,22 @@ for(const kind of ["CLARIFICATION","MAPPING"] as const){
   });
 }
 
-test("[MOCK CONTRACT] terminal provider error arrives visibly at the transcript tail",async({page})=>{
+for (const code of ["GEMINI_RATE_LIMITED", "GEMINI_UNAVAILABLE"]) {
+test(`[MOCK CONTRACT] terminal ${code} stops reply dots at the transcript tail`,async({page})=>{
   const fixture=await chatFixture(page);
   await readEarlier(page);
   await page.getByLabel("Câu hỏi cho AI Assistant",{exact:true}).fill("Yêu cầu kiểm tra lỗi dịch vụ");
-  await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();fixture.fail();
-  await expect(page.getByText("Dịch vụ AI đang giới hạn yêu cầu. Dữ liệu của bạn được giữ.",{exact:true})).toBeInViewport();
+  const activity = page.getByRole("status").filter({ hasText: "AI đang xử lý" });
+  await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();
+  await expect(activity).toBeInViewport();
+  fixture.fail(code);
+  await expect(page.getByText("Dịch vụ AI đang bận. Bạn có thể tiếp tục công việc sau.",{exact:true})).toBeInViewport();
+  await expect(activity).toHaveCount(0);
   await expect.poll(()=>gap(page)).toBeLessThan(10);
   await expect(page.getByLabel("Câu hỏi cho AI Assistant",{exact:true})).toBeEnabled();
   expect(fixture.count()).toBe(1);
 });
+}
 
 test("[MOCK CONTRACT] accepted slow job remains observable after the initial polling burst",async({page})=>{
   const fixture=await chatFixture(page,{long:false});
