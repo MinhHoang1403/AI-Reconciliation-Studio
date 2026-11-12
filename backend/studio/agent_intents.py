@@ -25,7 +25,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-66"
+INTENT_REVISION = "agent-intent-67"
 
 
 def requests_reconciliation_sequence(goal: str) -> bool:
@@ -2711,8 +2711,10 @@ def interpret_requests(
                 "dùng phải null hoặc rỗng, không tự điền theo mặc định từ nguồn tiền. "
                 "Ngoại lệ đang mở dùng EXCEPTIONS state eq OPEN; chưa xử lý dùng state in "
                 "OPEN/IN_REVIEW. "
-                "Thiếu đối ứng dùng VERIFIED_RUN linkage_state UNMATCHED; thiếu trái thêm "
-                "left_member_count eq 0 và right_member_count gt 0, ngược lại tương ứng. "
+                "Chỉ thấy giao dịch ở một nguồn: VERIFIED_RUN, linkage_state in "
+                "[UNMATCHED,PENDING] và số dòng nguồn có giao dịch gt 0, nguồn kia eq 0. "
+                "Trả linkage_state để phân biệt đang chờ và đã xác nhận thiếu. "
+                "Chỉ lọc UNMATCHED khi hỏi riêng giao dịch thiếu đối ứng đã xác nhận. "
                 "Liệt kê/chọn top giao dịch lệch tiền phải filters comparison_state eq "
                 "AMOUNT_MISMATCH. Chỉ sort absolute_variance không thay cho lọc lệch tiền. "
                 "Top N lớn nhất: thêm sort absolute_variance descending true và limit N, "
@@ -2877,8 +2879,11 @@ def interpret_requests(
                 " This is an explicit read request: preparation, reconciliation and resuming "
                 "business work are not authorized tools. Historical plan scope was omitted "
                 "because it is not a new planning instruction. Existing result transactions "
-                "and comparison groups use VERIFIED_RUN. Missing counterpart/thiếu đối ứng "
-                "means linkage_state eq UNMATCHED; unequal money means comparison_state eq "
+                "and comparison groups use VERIFIED_RUN. Transactions observed only in one source "
+                "include linkage_state in [UNMATCHED,PENDING], with that source member count gt 0 "
+                "and the other member count eq 0. Include linkage_state in a listing. "
+                "Use UNMATCHED alone for confirmed missing counterparts. Unequal money means "
+                "comparison_state eq "
                 "AMOUNT_MISMATCH; exact money match means comparison_state eq EQUAL. "
                 "EXCEPTIONS is for exception CASES or their workflow state, not ordinary "
                 "transaction groups. Counts use count with empty group_by; listing uses "
