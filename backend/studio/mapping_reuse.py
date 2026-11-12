@@ -66,6 +66,8 @@ def compatible_column_bindings(
             if field and decision.transformation_candidate.op in {
                 "cast_string_preserve",
                 "parse_date",
+                "parse_calendar_date",
+                "parse_offset_timestamp",
                 "parse_decimal",
             }:
                 aliases[decision.source_field] = {name(field.name), name(field.id)}
@@ -213,7 +215,12 @@ def _format_facts(profile: DatasetProfile, mapping: MappingRevision) -> dict[str
         observations = column.observations
         nonempty = observations.get("nonempty_count")
         operation = decision.transformation_candidate.op
-        if operation in {"parse_decimal", "parse_date"}:
+        if operation in {
+            "parse_decimal",
+            "parse_date",
+            "parse_calendar_date",
+            "parse_offset_timestamp",
+        }:
             field = "numeric_locales" if operation == "parse_decimal" else "date_formats"
             formats = observations.get(field)
             facts[str(decision.candidate_target)] = (

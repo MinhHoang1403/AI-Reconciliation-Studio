@@ -97,8 +97,15 @@ for(const width of [390,768,1366,1440,1920]){
       if(name==="permission")await expect(page.getByRole("button",{name:"Đính kèm CSV hoặc Excel",exact:true})).toBeDisabled();
       if(name==="review"){
         await expect(page.locator("textarea")).toHaveCount(1);
+        const mapping = page.getByRole("region", {name:"Quyết định cần xác nhận"});
+        await expect(mapping.getByRole("heading", {name:review.resource_label})).toBeVisible();
+        await expect(mapping.getByRole("checkbox")).toHaveCount(0);
+        const money = mapping.getByLabel("Khoản tiền này là gì?");
+        await expect(money).toBeVisible();
+        expect((await money.boundingBox())?.height).toBe(42);
         await expect(page.getByLabel("Ý nghĩa số tiền",{exact:true})).not.toBeVisible();
         await page.getByText("Xem và chỉnh các lựa chọn",{exact:true}).click();
+        await mapping.locator(".agent-field summary").filter({hasText:"Số tiền"}).click();
         await expect(page.getByLabel("Ý nghĩa số tiền",{exact:true})).toBeVisible();
         await page.getByText("Xem và chỉnh các lựa chọn",{exact:true}).click();
         await page.getByRole("button",{name:"Bổ sung bằng tiếng Việt",exact:true}).click();

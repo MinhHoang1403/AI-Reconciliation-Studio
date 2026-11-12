@@ -120,6 +120,16 @@ class MappingCheck(Contract):
     messages: list[str] = Field(default_factory=list)
     error_counts: dict[str, int] = Field(default_factory=dict)
     affected_rows: int = 0
+    date_kind: Literal["calendar", "offset", "local"] | None = None
+    date_formats: list[str] = Field(default_factory=list)
+
+
+class MappingKeyCandidate(Contract):
+    field_id: str
+    name: str
+    reference: bool
+    missing_rows: int
+    duplicate_rows: int
 
 
 class RelatedKeyCheck(Contract):
@@ -144,6 +154,8 @@ class MappingAssessment(Contract):
     error_counts: dict[str, int] = Field(default_factory=dict)
     source_sha256: str
     currencies: list[str] = Field(default_factory=list)
+    currency_counts: dict[str, int] = Field(default_factory=dict)
+    key_candidates: list[MappingKeyCandidate] = Field(default_factory=list)
     related_keys: list[RelatedKeyCheck] = Field(default_factory=list)
 
 

@@ -9,16 +9,28 @@ import polars as pl
 from sqlalchemy.orm import Session
 
 from studio.access import Actor
-from studio.agent_preparation import approval_from_draft, validate_draft
+from studio.agent_preparation import (
+    approval_from_draft,
+    profiled_type,
+    tax_amount_basis,
+    validate_draft,
+)
 from studio.contracts import DatasetProfile, MappingRevision, SourceColumn
 from studio.contracts.agent import (
     MappingAssessment,
     MappingCheck,
+    MappingKeyCandidate,
     NormalizationDraft,
     RelatedKeyCheck,
 )
 from studio.contracts.api import ApprovalInput, NormalizationPreflight
-from studio.date_parsing import date_format, date_zone, parse_date
+from studio.date_parsing import (
+    date_format,
+    date_zone,
+    parse_date,
+    parse_source_date,
+    source_date_operation,
+)
 from studio.errors import DomainError
 from studio.normalization import apply_transform_plan, parse_decimal
 from studio.profiling import (
@@ -29,6 +41,39 @@ from studio.profiling import (
 )
 from studio.schema_mapping import TransformPlan, compile_transform_plan
 
+UNKNOWN = {"", "unknown", "ambiguous", "n/a", "none", "needs_review"}
+KEY_GRAINS = (
+    ({"sale", "line"}, "Bán hàng", "Một dòng hàng trên đơn bán"),
+    ({"receipt"}, "Thu ngân", "Một phiếu thu"),
+    ({"journal", "entry"}, "Kế toán", "Một bút toán"),
+)
+
+
+def suggest_row_key(draft: NormalizationDraft, candidates: list[MappingKeyCandidate]) -> None:
+    selected = {f.source_field for f in draft.fields if f.business_key}
+    references = {c.field_id for c in candidates if c.reference}
+    if selected - references:
+        return
+    matches = []
+    for candidate in candidates:
+        if candidate.reference or candidate.missing_rows or candidate.duplicate_rows:
+            continue
+        tokens = set(field_name_tokens(candidate.name))
+        for role, entity, grain in KEY_GRAINS:
+            if role | {"id"} <= tokens and not tokens & {"customer", "supplier", "sku"}:
+                matches.append((candidate.field_id, entity, grain, role))
+    if len(matches) != 1:
+        return
+    field_id, entity, grain, role = matches[0]
+    if draft.grain.strip().casefold() in UNKNOWN:
+        draft.grain = grain
+    elif draft.grain != grain and not role <= set(field_name_tokens(draft.grain)):
+        return
+    if draft.entity_kind.strip().casefold() in UNKNOWN:
+        draft.entity_kind = entity
+    for field in draft.fields:
+        field.business_key = field.source_field == field_id
+
 
 def assess_mapping(
     draft: NormalizationDraft,
@@ -37,13 +82,15 @@ def assess_mapping(
     source_sha: str,
     *,
     enrich: bool = False,
+    preserve_timezone: bool = False,
 ) -> MappingAssessment:
     """Đo toàn bảng; chỉ enrich bản đề xuất, không sửa quyết định đã được người dùng chọn.
 
     [D] Chỉ format/locale duy nhất có bằng chứng mới được điền. Grain, timezone,
     gross/net của amount mơ hồ vẫn cần xác nhận. Không dùng confidence của LLM.
     """
-    validate_draft(draft, profile.source_table_id, profile)
+    if not enrich:
+        validate_draft(draft, profile.source_table_id, profile)
     draft = draft.model_copy(deep=True)
     fresh = profile_table(
         frame,
@@ -56,12 +103,55 @@ def assess_mapping(
         profile.artifact_id,
     )
     columns = {c.column_id: c for c in fresh.columns}
+    if enrich:
+        for field in draft.fields:
+            column = columns.get(field.source_field)
+            if column is None:
+                continue
+            if field.data_type == "decimal" and column.identifier_candidate:
+                field.data_type = "string"
+                field.semantic_metric = field.amount_basis = field.currency = field.unit = None
+                field.locale = None
+            elif (
+                field.data_type == "string"
+                and not field.business_key
+                and tax_amount_basis(column.name)
+            ):
+                field.data_type = profiled_type(column, normalized_name(column.name))
+        validate_draft(draft, profile.source_table_id, fresh)
     checks = []
     questions = []
+    key_candidates = [
+        MappingKeyCandidate(
+            field_id=c.column_id,
+            name=f.name,
+            reference=bool(
+                set(field_name_tokens(c.name)) & {"reference", "order", "tracking"}
+                and not {"sale", "line"} <= set(field_name_tokens(c.name))
+            ),
+            missing_rows=c.null_count + c.empty_count,
+            duplicate_rows=c.duplicate_count,
+        )
+        for f in draft.fields
+        if f.data_type == "string"
+        and ((c := columns[f.source_field]).identifier_candidate or f.business_key)
+    ]
     currency_columns = [c for c in fresh.columns if field_name_tokens(c.name) == ("currency",)]
-    currencies = set()
+    currency_counts: Counter[str] = Counter()
     for column in currency_columns:
-        currencies.update(frame[column.column_id].drop_nulls().unique().to_list())
+        currency_counts.update(value for value in frame[column.column_id].drop_nulls() if value)
+    currencies = set(currency_counts)
+    foreign_hint = any(
+        re.search(
+            r"\b(?:usd|eur|gbp|jpy|cny|krw|sgd|thb|aud|cad|chf|hkd)\b|[\$€£¥]",
+            normalized_name(c.name).replace("_", " "),
+        )
+        or (
+            isinstance(observed := c.observations.get("currency_counts"), dict)
+            and set(observed) - {"VND"}
+        )
+        for c in fresh.columns
+    )
     if enrich and len(currency_columns) == 1:
         currency_field = next(
             f for f in draft.fields if f.source_field == currency_columns[0].column_id
@@ -73,17 +163,28 @@ def assess_mapping(
         ):
             currency_field.target_id = "currency"
     currency_bound = len(currency_columns) == 1 and any(
-        f.target_id == "currency" and f.source_field == currency_columns[0].column_id
+        f.target_id == "currency"
+        and f.data_type == "string"
+        and f.source_field == currency_columns[0].column_id
         for f in draft.fields
     )
+    if enrich:
+        suggest_row_key(draft, key_candidates)
     for f in draft.fields:
         c = columns[f.source_field]
         notes: list[str] = []
         pending: list[str] = []
         errors: Counter[str] = Counter()
         name = normalized_name(c.name).replace("_", " ")
+        dates = c.observations.get("date_formats", {})
+        date_options = (
+            sorted(dates, key=lambda fmt: dates[fmt], reverse=True)
+            if isinstance(dates, dict)
+            else []
+        )
+        date_kind = None
         if enrich:
-            if f.data_type == "date":
+            if f.data_type == "date" and not preserve_timezone:
                 f.timezone = None
             # Khóa khách hàng không tự trở thành khóa giao dịch; uniqueness không chứng minh grain.
             if f.business_key and (
@@ -97,11 +198,13 @@ def assess_mapping(
             ):
                 f.business_key = False
                 notes.append("Đã bỏ gợi ý khóa: chưa có bằng chứng khóa theo ý nghĩa mỗi dòng.")
-            dates = c.observations.get("date_formats", {})
             if isinstance(dates, dict) and dates and not c.identifier_candidate:
                 maximum = max(dates.values())
                 best = [fmt for fmt, count in dates.items() if count == maximum]
-                if len(best) == 1 and (f.data_type == "date" or "date" in name or "ngay" in name):
+                if len(best) == 1 and (
+                    f.data_type == "date"
+                    or set(field_name_tokens(c.name)) & {"date", "timestamp", "time"}
+                ):
                     f.data_type, f.date_format = "date", best[0]
                     notes.append(f"Ngày đọc được: {maximum}/{c.observations['nonempty_count']}.")
                 elif f.data_type == "date" and len(best) > 1:
@@ -132,13 +235,21 @@ def assess_mapping(
                     and len(currencies) == 1
                     and all(re.fullmatch(r"[A-Z]{3}", code) for code in currencies)
                 ):
-                    f.currency = next(iter(currencies))
-                    f.unit = f.currency
+                    code = next(iter(currencies))
+                    f.unit = code if not f.unit or f.unit == f.currency else f.unit
+                    f.currency = code
                 elif currency_columns:
                     # Không chọn đa số, mã không đúng dạng hoặc cột bị xung đột.
                     f.currency = f.unit = None
+                elif not foreign_hint and not f.currency:
+                    f.currency = "VND"
+                    f.unit = f.unit or "VND"
                 basis = (f.amount_basis or "").strip().casefold()
-                if name in {"amount", "total", "so tien", "tong"} or (
+                tax_basis = tax_amount_basis(c.name)
+                if tax_basis:
+                    f.amount_basis = tax_basis
+                    f.semantic_metric = f.target_id
+                elif name in {"amount", "total", "so tien", "tong"} or (
                     basis in {"gross", "net"} and observed_amount_basis(c.name) != basis
                 ):
                     f.amount_basis = None
@@ -157,28 +268,48 @@ def assess_mapping(
                 f"{c.duplicate_count} giá trị lặp. Cần kiểm tra grain."
             )
         if f.data_type == "date":
+            operation = None
             if not f.date_format:
                 pending.append("Chọn định dạng ngày dựa vào dữ liệu nguồn.")
             else:
                 try:
                     canonical_format = date_format(f.date_format)
+                    operation = source_date_operation(canonical_format)
+                    date_kind = {
+                        "parse_calendar_date": "calendar",
+                        "parse_offset_timestamp": "offset",
+                        "parse_date": "local",
+                    }[operation]
                     if enrich:
                         f.date_format = canonical_format
                 except DomainError as exc:
                     pending.append(exc.message_vi)
-            if not f.timezone:
-                pending.append("Xác nhận múi giờ của nguồn; chuỗi ngày không chứng minh múi giờ.")
-            else:
-                date_zone(f.timezone)
-            if f.date_format and f.timezone and not pending:
+            if operation == "parse_date":
+                if not f.timezone:
+                    pending.append("Xác nhận múi giờ của thời điểm nguồn; UTC là đề xuất mặc định.")
+                else:
+                    try:
+                        date_zone(f.timezone)
+                    except DomainError as exc:
+                        pending.append(exc.message_vi)
+            if f.date_format and operation and not pending:
                 for value in frame[f.source_field]:
                     try:
-                        parse_date(value, f.date_format, f.timezone)
+                        if operation == "parse_date":
+                            assert f.timezone is not None
+                            parse_date(value, f.date_format, f.timezone)
+                        else:
+                            parse_source_date(value, f.date_format, operation)
                     except DomainError as exc:
                         errors[exc.code] += 1
         elif f.data_type == "decimal":
-            if not all((f.semantic_metric, f.amount_basis, f.currency, f.unit, f.locale)):
+            if any(
+                (value or "").strip().casefold() in UNKNOWN
+                for value in (f.semantic_metric, f.amount_basis, f.currency, f.unit, f.locale)
+            ):
                 pending.append("Xác nhận ý nghĩa, cơ sở số tiền và tiền tệ còn thiếu.")
+            if currency_columns and not currency_bound:
+                pending.append("Cần ánh xạ cột tiền tệ để kiểm tra đơn vị trên từng dòng.")
             if len(currencies) > 1:
                 notes.append(
                     "Nguồn có nhiều tiền tệ: "
@@ -201,10 +332,19 @@ def assess_mapping(
             MappingCheck(
                 field_id=f.source_field,
                 name=f.name,
-                state="NEEDS_CONFIRMATION" if pending else "VERIFIED",
+                state=(
+                    "BLOCKED"
+                    if errors
+                    and sum(errors.values()) == frame.height - c.null_count - c.empty_count
+                    else "NEEDS_CONFIRMATION"
+                    if pending
+                    else "VERIFIED"
+                ),
                 messages=notes + pending,
                 error_counts=dict(errors),
                 affected_rows=sum(errors.values()),
+                date_kind=date_kind,
+                date_formats=date_options if f.data_type == "date" else [],
             )
         )
     if draft.entity_kind.strip().lower() in {
@@ -223,6 +363,8 @@ def assess_mapping(
         preflight_ready=not questions,
         source_sha256=source_sha,
         currencies=sorted(currencies),
+        currency_counts=dict(currency_counts),
+        key_candidates=key_candidates,
     )
     if not questions:
         approval = approval_from_draft(draft, fresh, True)
@@ -249,7 +391,12 @@ def assess_mapping(
 
 
 def assess_table_mapping(
-    db: Session, actor: Actor, draft: NormalizationDraft, *, enrich: bool = False
+    db: Session,
+    actor: Actor,
+    draft: NormalizationDraft,
+    *,
+    enrich: bool = False,
+    preserve_timezone: bool = False,
 ) -> MappingAssessment:
     """Đọc artifact scoped/checksum, không ghi DB hoặc gọi provider."""
     from studio.config import settings
@@ -264,7 +411,12 @@ def assess_table_mapping(
         raise DomainError("PARSED_CHECKSUM_MISMATCH", "Dữ liệu nguồn không khớp checksum.")
     frame = pl.read_parquet(path)
     result = assess_mapping(
-        draft, frame, DatasetProfile.model_validate(table.profile), artifact.sha256, enrich=enrich
+        draft,
+        frame,
+        DatasetProfile.model_validate(table.profile),
+        artifact.sha256,
+        enrich=enrich,
+        preserve_timezone=preserve_timezone,
     )
     from sqlalchemy import select
 
@@ -337,7 +489,12 @@ def preflight_approval(
     frame = pl.read_parquet(path)
     invalid, counts, failed_fields = preflight_rows(frame, plan)
     for d in mapping.decisions:
-        if d.transformation_candidate.op not in {"parse_date", "parse_decimal"}:
+        if d.transformation_candidate.op not in {
+            "parse_date",
+            "parse_calendar_date",
+            "parse_offset_timestamp",
+            "parse_decimal",
+        }:
             continue
         nonempty = frame.filter(
             pl.col(d.source_field).is_not_null() & (pl.col(d.source_field) != "")

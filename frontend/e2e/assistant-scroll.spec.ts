@@ -62,7 +62,7 @@ async function chatFixture(page:Page,{long=true,failed=false,withModels=false}={
     fail:(code:string)=>{terminalError=code;settled=true;},
     holdAcceptance:()=>{acceptance=new Promise<void>(resolve=>acknowledge=resolve);},
     acknowledge:()=>acknowledge(),
-    review:(kind:"CLARIFICATION"|"MAPPING")=>{stage++;review={id:"review",kind,question:"Bạn muốn tiếp tục với nguồn đã chọn?",reason:"Dữ liệu tổng hợp kiểm tra cuộn.",resource_id:"table",fingerprint:"a".repeat(64),nonce:"a".repeat(32),expires_at:"2099-01-01T00:00:00Z",state:"OPEN",expected_effects:[],reply_questions:[],pending_reply_job_id:null,reply_intent:null,plan:null,suggestions:null,planning_request:null,normalization_draft:kind==="MAPPING"?{table_id:"table",entity_kind:"test",grain:"Một dòng tổng hợp",fields:[{source_field:"c1",target_id:"reference",name:"Mã giao dịch",data_type:"string",business_key:true,semantic_metric:null,amount_basis:null,currency:null,unit:null,locale:null,date_format:null,timezone:null,question:""}]}:null,options:kind==="CLARIFICATION"?[{id:"selected",label:"Nguồn đã chọn",intent:{intent:"EXPLORE_DATA",dataset_ids:[]}}]:[]};},
+    review:(kind:"CLARIFICATION"|"MAPPING")=>{stage++;review={id:"review",kind,question:"Bạn muốn tiếp tục với nguồn đã chọn?",reason:"Dữ liệu tổng hợp kiểm tra cuộn.",resource_id:"table",resource_label:"Nguồn tổng hợp.csv",extraction_review_required:kind==="MAPPING",fingerprint:"a".repeat(64),nonce:"a".repeat(32),expires_at:"2099-01-01T00:00:00Z",state:"OPEN",expected_effects:[],reply_questions:[],pending_reply_job_id:null,reply_intent:null,plan:null,suggestions:null,planning_request:null,normalization_draft:kind==="MAPPING"?{table_id:"table",entity_kind:"test",grain:"Một dòng tổng hợp",fields:[{source_field:"c1",target_id:"reference",name:"Mã giao dịch",data_type:"string",business_key:true,semantic_metric:null,amount_basis:null,currency:null,unit:null,locale:null,date_format:null,timezone:null,question:""}]}:null,options:kind==="CLARIFICATION"?[{id:"selected",label:"Nguồn đã chọn",intent:{intent:"EXPLORE_DATA",dataset_ids:[]}}]:[]};},
     grow:(text:string)=>{stage++;blocks=[...blocks,{type:"progress",text}];},
     table:()=>{stage++;blocks=[...blocks,{type:"table",result:{query:{project_id:context.project_id,source_kind:"RAW_PREVIEW",source_id:"table",select_fields:["reference"],sort:[],filters:[],group_by:[],aggregations:[],limit:25,offset:0,null_policy:"PRESERVE",result_scope:"ALL_MATCHING",currency_field:null},fields:["reference"],rows:Array.from({length:25},(_,i)=>({reference:`000${i}`})),total_count:25,input_count:25,offset:0,limit:25,truncated:false,evidence_complete:true,verification_status:"RAW_UNVERIFIED",source_refs:["table"],warnings:[]}}];},
   };
@@ -208,11 +208,11 @@ for(const kind of ["CLARIFICATION","MAPPING"] as const){
     await page.getByRole("button",{name:"Gửi câu hỏi",exact:true}).click();fixture.finish();
     await expect(page.getByText("Đang kiểm tra nguồn dữ liệu tổng hợp.",{exact:true})).toBeVisible();
     fixture.review(kind);
-    await expect(page.getByText("Bạn muốn tiếp tục với nguồn đã chọn?",{exact:true})).toBeAttached();
+    await expect(page.getByRole("heading",{name:kind==="MAPPING"?"Nguồn tổng hợp.csv":"Bạn muốn tiếp tục với nguồn đã chọn?",exact:true})).toBeAttached();
     await expect.poll(()=>gap(page)).toBeLessThan(10);
     if(kind==="CLARIFICATION")await page.getByRole("button",{name:"Nguồn đã chọn",exact:true}).click();
     else{
-      await page.getByLabel("Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.",{exact:true}).check();
+      await page.getByLabel("Tôi đã kiểm tra cảnh báo và vùng bảng nguồn.",{exact:true}).check();
       await page.getByRole("button",{name:"Duyệt cách ghép cột và chuẩn hóa",exact:true}).click();
     }
     await expect(page.getByText("Đã nhận xác nhận và tiếp tục công việc.",{exact:true})).toBeVisible();

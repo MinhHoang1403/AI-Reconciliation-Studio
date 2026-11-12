@@ -34,7 +34,7 @@ function MappingReview({ draft, onChange, disabled }: {
     function field(index: number, patch: Partial<DraftField>) { onChange({ ...draft, fields: draft.fields.map((f, i) => i === index ? { ...f, ...patch } : f) }); }
     return <div className="agent-review-fields"><label>Loại dữ liệu<input value={draft.entity_kind} disabled={disabled} onChange={e => onChange({ ...draft, entity_kind: e.target.value })}/></label>
     <label>Mỗi dòng thể hiện điều gì?<input value={draft.grain} disabled={disabled} onChange={e => onChange({ ...draft, grain: e.target.value })}/></label>
-    {draft.fields.map((f, i) => <details key={f.source_field} open={f.data_type !== "string" || !!f.question || f.business_key} className="agent-field">
+    {draft.fields.map((f, i) => <details key={f.source_field} className="agent-field">
       <summary>{f.name} · {f.data_type === "decimal" ? "Số tiền" : f.data_type === "date" ? "Ngày" : "Giữ nguyên văn bản"}</summary>
       {f.question && <p>{f.question}</p>}<div className="agent-form-grid">
       <label>Tên trường<input value={f.name} disabled={disabled} onChange={e => field(i, { name: e.target.value })}/></label>
@@ -42,7 +42,7 @@ function MappingReview({ draft, onChange, disabled }: {
       <label><input type="checkbox" checked={f.business_key} disabled={disabled} onChange={e => field(i, { business_key: e.target.checked })}/>Trường khóa nghiệp vụ</label>
       {f.data_type === "decimal" && <>
         <label>Ý nghĩa số tiền<input value={f.semantic_metric || ""} disabled={disabled} placeholder="Ví dụ: delivery_charge" onChange={e => field(i, { semantic_metric: e.target.value || null })}/></label>
-        <label>Cơ sở số tiền<select value={f.amount_basis || ""} disabled={disabled} onChange={e => field(i, { amount_basis: e.target.value || null })}><option value="">Chưa xác định</option>{Array.from(new Set(["gross", "net", "paid", "due", "fee", "expected", ...(f.amount_basis ? [f.amount_basis] : [])])).map(v => <option key={v} value={v}>{v}</option>)}</select></label>
+        <label>Cơ sở số tiền<select value={f.amount_basis || ""} disabled={disabled} onChange={e => field(i, { amount_basis: e.target.value || null })}><option value="">Chưa xác định</option>{Array.from(new Set([...Object.keys(amountBases), ...(f.amount_basis ? [f.amount_basis] : [])])).map(v => <option key={v} value={v}>{amountBases[v] || v}</option>)}</select></label>
         <label>Tiền tệ<input value={f.currency || ""} disabled={disabled} placeholder="VND / USD" maxLength={3} onChange={e => field(i, { currency: e.target.value.toUpperCase() || null })}/></label>
         <label>Đơn vị<input value={f.unit || ""} disabled={disabled} placeholder="VND" onChange={e => field(i, { unit: e.target.value || null })}/></label>
         <label>Định dạng số<select value={f.locale || ""} disabled={disabled} onChange={e => field(i, { locale: (e.target.value || null) as DraftField["locale"] })}><option value="">Cần xác nhận</option><option value="en-US">1,234.56</option><option value="vi-VN">1.234,56</option></select></label>
@@ -71,27 +71,128 @@ function PlanReview({ plan, onChange, disabled }: {
     <details><summary>Thông số quy tắc</summary><p>Khóa, chỉ tiêu, cardinality và sai số ở trên là đề xuất; trả lời bằng tiếng Việt để chỉnh lại trước khi duyệt.</p><p>Bộ lọc trái: {JSON.stringify(plan.left.filters)} · phải: {JSON.stringify(plan.right.filters)}</p></details>
   </div>;
 }
-function SourceDecisions({ draft, onChange, disabled }: {
+const amountBases: Record<string, string> = {
+    gross: "Trước khấu trừ", net: "Sau khấu trừ", expected: "Dự kiến phải thu", paid: "Đã thanh toán",
+    due: "Đến hạn", fee: "Phí", excluding_tax: "Chưa gồm thuế", tax: "Tiền thuế",
+    including_tax: "Đã gồm thuế", net_excluding_tax: "Doanh thu thuần chưa thuế",
+};
+const unknownFact = (value: string | null) => !value || ["", "unknown", "ambiguous", "n/a", "none", "needs_review"].includes(value.trim().toLowerCase());
+const dateExamples: Record<string, string> = {
+    "%Y-%m-%d": "2026-07-15", "%d/%m/%Y": "15/07/2026", "%m/%d/%Y": "07/15/2026",
+    "%Y-%m-%dT%H:%M:%S%z": "2026-07-15T09:30:00+07:00", "%Y-%m-%d %H:%M": "2026-07-15 09:30",
+    "%Y-%m-%d %H:%M:%S": "2026-07-15 09:30:00",
+};
+
+function SmartMapping({ draft, assessment, onChange, disabled }: {
     draft: NormalizationDraft;
+    assessment: MappingAssessment | null;
     onChange: (draft: NormalizationDraft) => void;
     disabled: boolean;
 }) {
-    const entered = (value: string) => value === "unknown" ? "" : value;
-    return <fieldset className="agent-form-grid">
-        <legend>Ý nghĩa dữ liệu</legend>
-        <label>Loại giao dịch<input value={entered(draft.entity_kind)} maxLength={100} disabled={disabled}
-            onChange={event => onChange({ ...draft, entity_kind: event.target.value || "unknown" })}/></label>
-        <label>Mỗi dòng đại diện cho điều gì?<input value={entered(draft.grain)} maxLength={200} disabled={disabled}
-            onChange={event => onChange({ ...draft, grain: event.target.value || "unknown" })}/></label>
-        <fieldset><legend>Cột dùng để nhận diện mỗi dòng</legend>
-            {draft.fields.filter(field => field.data_type === "string").map(field => (
-                <label key={field.source_field}><input type="checkbox" checked={field.business_key} disabled={disabled}
-                    onChange={event => onChange({ ...draft, fields: draft.fields.map(item =>
-                        item.source_field === field.source_field ? { ...item, business_key: event.target.checked } : item
-                    ) })}/>{field.name}</label>
-            ))}
-        </fieldset>
-    </fieldset>;
+    const [editing, setEditing] = useState("");
+    const money = draft.fields.filter(f => f.data_type === "decimal");
+    const dates = draft.fields.filter(f => f.data_type === "date");
+    const checkByField = new Map(assessment?.checks.map(check => [check.field_id, check]));
+    const dateKind = (f: DraftField) => checkByField.get(f.source_field)?.date_kind;
+    const needsZone = (f: DraftField) => !!f.date_format && !f.timezone && dateKind(f) === "local";
+    const zoneFields = dates.filter(needsZone);
+    const invalidDateFields = dates.filter(f => !f.date_format || (!dateKind(f) && checkByField.has(f.source_field)));
+    const pendingMoney = money.filter(f => editing === f.source_field ||
+        [f.semantic_metric, f.amount_basis, f.locale].some(unknownFact) || (!!f.currency && unknownFact(f.unit)));
+    const keyFields = draft.fields.filter(f => f.business_key);
+    const candidates = (assessment?.key_candidates || []).filter(candidate =>
+        draft.fields.some(f => f.source_field === candidate.field_id && f.data_type === "string"));
+    const references = candidates.filter(candidate => candidate.reference && !keyFields.some(f => f.source_field === candidate.field_id));
+    const observed = assessment?.currencies || [];
+    const selectedCurrencies = [...new Set(money.map(f => f.currency).filter(Boolean))];
+    const currency = selectedCurrencies.length === 1 ? selectedCurrencies[0] : null;
+    const needsCurrency = money.some(f => unknownFact(f.currency));
+    const currencyOptions = [...new Set(["VND", ...observed, ...selectedCurrencies, "USD"].filter((value): value is string => !!value && /^[A-Z]{3}$/.test(value)))];
+    const currenciesOutside = currency ? Object.entries(assessment?.currency_counts || {}).filter(([code]) => code !== currency) : [];
+    const changeField = (id: string, patch: Partial<DraftField>) =>
+        onChange({ ...draft, fields: draft.fields.map(f => f.source_field === id ? { ...f, ...patch } : f) });
+    const changeCurrency = (value: string) => {
+        if (value) onChange({ ...draft, fields: draft.fields.map(f => f.data_type === "decimal" && (!needsCurrency || unknownFact(f.currency))
+            ? { ...f, currency: value, unit: unknownFact(f.unit) || f.unit === f.currency ? value : f.unit } : f) });
+    };
+    const currencyControl = <label>{observed.length > 1 ? "Tiền tệ trong phạm vi chuẩn hóa" : "Tiền tệ của nguồn"}
+        <select value={needsCurrency ? "" : currency || ""} disabled={disabled} onChange={e => changeCurrency(e.target.value)}>
+            <option value="">Chọn tiền tệ</option>{currencyOptions.map(code => <option key={code} value={code}>
+                {code === "VND" && observed.includes("VND") && needsCurrency ? "VND (phạm vi đề xuất)" : code}
+            </option>)}
+        </select>
+    </label>;
+    const facts = [
+        { id: "entity_kind", label: "Loại giao dịch", max: 100 },
+        { id: "grain", label: "Mỗi dòng đại diện cho điều gì?", max: 200 },
+    ] as const;
+    const completeMoney = money.filter(f => !pendingMoney.includes(f));
+    return <div className="smart-mapping">
+        {facts.map(({id, label, max}) => (unknownFact(draft[id]) || editing === id) &&
+            <label key={id}>{label}<input value={unknownFact(draft[id]) ? "" : draft[id]} maxLength={max} disabled={disabled}
+                onFocus={() => setEditing(id)} onBlur={() => setEditing("")}
+                onChange={e => onChange({ ...draft, [id]: e.target.value || "unknown" })}/></label>)}
+        <div className="smart-mapping-facts">
+            {facts.every(({id}) => !unknownFact(draft[id])) && editing !== "grain" && editing !== "entity_kind" &&
+                <p><strong>{draft.entity_kind}</strong> · {draft.grain}</p>}
+            <p><strong>Khóa nhận diện dòng</strong> · {keyFields.map(f => f.name).join(" + ") || "Chưa chọn"}</p>
+            {references.length > 0 && <p className="muted">Mã liên kết · {references.map(f => f.name).join(", ")}</p>}
+            {candidates.length > 0 && <details>
+                <summary>{keyFields.length ? "Đổi khóa nhận diện" : "Chọn khóa nhận diện"}</summary>
+                <div className="smart-mapping-options">{candidates.map(candidate => <label key={candidate.field_id}>
+                    <input type="checkbox" checked={keyFields.some(f => f.source_field === candidate.field_id)} disabled={disabled}
+                        onChange={e => changeField(candidate.field_id, {business_key: e.target.checked})}/>
+                    <span>{candidate.name}<small>{candidate.reference && "Mã liên kết · "}
+                        {candidate.missing_rows} ô thiếu · {candidate.duplicate_rows} giá trị lặp</small></span>
+                </label>)}</div>
+            </details>}
+        </div>
+        {invalidDateFields.map(f => <label key={f.source_field}>Định dạng ngày của {f.name}
+            <select value={f.date_format || ""} disabled={disabled} onChange={e => changeField(f.source_field, { date_format: e.target.value || null })}>
+                <option value="">Chọn định dạng</option>{[...new Set([...(checkByField.get(f.source_field)?.date_formats || []), ...Object.keys(dateExamples), ...(f.date_format ? [f.date_format] : [])])]
+                    .map(fmt => <option value={fmt} key={fmt}>{dateExamples[fmt] || fmt}</option>)}
+            </select>
+        </label>)}
+        {zoneFields.length > 0 && <label>Múi giờ nguồn của {zoneFields.map(f => f.name).join(", ")}
+            <select aria-label="Múi giờ của nguồn" value="" disabled={disabled} onChange={e => {
+                const timezone = e.target.value;
+                if (timezone) onChange({ ...draft, fields: draft.fields.map(f => needsZone(f) ? { ...f, timezone } : f) });
+            }}>
+                <option value="">Chọn múi giờ gốc</option><option value="UTC">UTC (đề xuất)</option>
+                <option value="Asia/Ho_Chi_Minh">Việt Nam (Asia/Ho_Chi_Minh)</option>
+            </select>
+        </label>}
+        {!!dates.length && !zoneFields.length && !invalidDateFields.length && dates.every(f => dateKind(f)) &&
+            <details><summary>{dates.every(f => dateKind(f) === "calendar") ? "Ngày lịch · Giữ nguyên ngày nguồn" : "Múi giờ xử lý · UTC"}</summary>
+                {dates.map(f => <p key={f.source_field}>{f.name} · {dateKind(f) === "calendar" ? "Ngày lịch" : dateKind(f) === "offset" ? "Theo offset gốc" : f.timezone}</p>)}
+                {dates.some(f => dateKind(f) === "local") && <p>Đổi múi giờ gốc trong phần chỉnh sửa chi tiết.</p>}
+            </details>}
+        {needsCurrency ? currencyControl : !!money.length && <details><summary>Tiền tệ · {currency || "Theo từng chỉ tiêu"}</summary>{currencyControl}</details>}
+        {observed.length > 1 && <p className="smart-mapping-warning">{currenciesOutside.length
+            ? currenciesOutside.map(([code, count]) => `${count.toLocaleString("vi-VN")} dòng ngoài phạm vi ${currency} · ${code}`).join(" · ")
+            : `Nguồn có nhiều tiền tệ · ${observed.join(", ")}`}. Dữ liệu gốc được giữ để xử lý sau chuẩn hóa.</p>}
+        {!!money.length && <section className="smart-mapping-money" aria-label="Chỉ tiêu tiền">
+            {pendingMoney.length > 0 && <h5>Chỉ tiêu tiền cần bổ sung</h5>}
+            {pendingMoney.map(f => <fieldset key={f.source_field}><legend>{f.name}</legend>
+                {unknownFact(f.semantic_metric) || editing === f.source_field ? <label>Khoản tiền này là gì?<input value={f.semantic_metric || ""}
+                    maxLength={100} disabled={disabled} onFocus={() => setEditing(f.source_field)} onBlur={() => setEditing("")}
+                    onChange={e => changeField(f.source_field, {semantic_metric: e.target.value || null})}/></label> : null}
+                {unknownFact(f.amount_basis) && <label>Cơ sở tiền của {f.name}<select value="" disabled={disabled}
+                    onChange={e => changeField(f.source_field, {amount_basis: e.target.value || null})}>
+                    <option value="">Chọn cơ sở tiền</option>{Object.entries(amountBases).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                </select></label>}
+                {!f.locale && <label>Cách ghi số của {f.name}<select value="" disabled={disabled}
+                    onChange={e => changeField(f.source_field, {locale: (e.target.value || null) as DraftField["locale"]})}>
+                    <option value="">Chọn cách ghi</option><option value="en-US">1,234.56</option><option value="vi-VN">1.234,56</option>
+                </select></label>}
+                {unknownFact(f.unit) && f.currency && <button type="button" className="text-button" disabled={disabled}
+                    onClick={() => changeField(f.source_field, {unit: f.currency})}>Dùng đơn vị {f.currency}</button>}
+            </fieldset>)}
+            {completeMoney.length > 0 && <details><summary>{completeMoney.length} chỉ tiêu tiền đã có đề xuất</summary>
+                <ul>{completeMoney.map(f => <li key={f.source_field}>{f.name} · {amountBases[f.amount_basis || ""] || f.amount_basis} {f.currency && `· ${f.currency}`}</li>)}</ul>
+            </details>}
+        </section>}
+    </div>;
 }
 
 type PlanningScope = NonNullable<Review["planning_request"]>;
@@ -245,14 +346,14 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
             const key = previous.fields.some(field=>field.business_key) ? "" : sharedFacts.business_key;
             return {
                 ...previous,
-                entity_kind: previous.entity_kind === "unknown" ? sharedFacts.entity_kind : previous.entity_kind,
-                grain: previous.grain === "unknown" ? sharedFacts.grain : previous.grain,
+                entity_kind: unknownFact(previous.entity_kind) && !unknownFact(sharedFacts.entity_kind) ? sharedFacts.entity_kind.trim() : previous.entity_kind,
+                grain: unknownFact(previous.grain) && !unknownFact(sharedFacts.grain) ? sharedFacts.grain.trim() : previous.grain,
                 fields: previous.fields.map(field => ({...field,
                     ...(key && field.data_type === "string" && field.name === key ? {business_key:true} : {}),
-                    ...(field.data_type === "date" && !field.timezone ? {timezone:sharedFacts.timezone} : {}),
+                    ...(field.data_type === "date" && !field.timezone && sharedFacts.timezone ? {timezone:sharedFacts.timezone} : {}),
                     ...(field.data_type === "decimal" ? {
-                        amount_basis: field.amount_basis || sharedFacts.amount_basis,
-                        semantic_metric: field.semantic_metric || sharedFacts.semantic_metric,
+                        amount_basis: field.amount_basis || sharedFacts.amount_basis || null,
+                        semantic_metric: field.semantic_metric || (unknownFact(sharedFacts.semantic_metric) ? null : sharedFacts.semantic_metric.trim()),
                     } : {}),
                 })),
             };
@@ -261,12 +362,13 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     const [plan, setPlan] = useState(cached?.plan ?? review.plan ?? null);
     const [assessment,setAssessment]=useState<MappingAssessment|null>(null);
     const [checking,setChecking]=useState(false);
+    const [suggesting, setSuggesting] = useState(false);
     const [assessmentSignature,setAssessmentSignature]=useState('');
     const draftSignature=JSON.stringify(draft);
     useEffect(()=>{
       if(!draft)return;
       const controller=new AbortController();
-      setAssessment(null);setChecking(true);
+      setChecking(true);
       const timer=setTimeout(()=>{
         void api<MappingAssessment>('/agent/mapping-preflight',{method:'POST',body:draftSignature,signal:controller.signal})
         .then(result=>{if(!controller.signal.aborted){setAssessment(result);setAssessmentSignature(draftSignature);setError('');}})
@@ -326,10 +428,22 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
             setError(String(err)); });
         return () => controller.abort();
     }, [review.id, review.nonce]);
-    const disabled = busy || !canEdit || expired || !!review.pending_reply_job_id;
+    const disabled = busy || suggesting || !canEdit || expired || !!review.pending_reply_job_id;
     const replyDisabled = disabled || workflow.state !== "WAITING_REVIEW";
     const changed = JSON.stringify(draft) !== JSON.stringify(review.normalization_draft ?? null) ||
         JSON.stringify(plan) !== JSON.stringify(review.plan || proposedPlan(review, catalogue));
+    async function suggestMapping() {
+        setSuggesting(true);
+        setError("");
+        try {
+            const next = await api<MappingAssessment>("/agent/mapping-preflight?suggest=true", {method: "POST", body: draftSignature});
+            if (alive.current) setDraft(next.draft);
+        } catch (err) {
+            if (alive.current) setError(err instanceof Error ? err.message : "Không lấy được đề xuất mới.");
+        } finally {
+            if (alive.current) setSuggesting(false);
+        }
+    }
     function preserveLocal(next: Review) {
         const key=`studio.review-draft.${draftOwner}.${workflow.id}.${next.id}.${next.nonce}.${next.fingerprint}`;
         try { sessionStorage.setItem(key,JSON.stringify({
@@ -442,7 +556,7 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
                 setBusy(false);
         }
     }
-    const ready = review.kind === "MAPPING" ? !!assessment?.preflight_ready && assessmentSignature===draftSignature && !checking && (review.extraction_review_required!==true||extraction) && !!draft?.fields.every(f => f.data_type === "string" || (f.data_type === "decimal" ? f.locale && f.semantic_metric && f.amount_basis && f.currency && f.unit : f.date_format && f.timezone)) :
+    const ready = review.kind === "MAPPING" ? !!assessment?.preflight_ready && assessmentSignature===draftSignature && !checking && (review.extraction_review_required!==true||extraction) :
         review.kind === "RECONCILIATION" ? !!plan?.period_start && !!plan.period_end && !!plan.timezone && !!plan.effective_from && planSources.every(Boolean) && [plan.left, plan.right].every(s => s.date_field && s.time_basis && s.coverage_start && s.coverage_end && s.snapshot_at && s.completeness) : !!review.reply_intent;
     const batchPayload = review.kind === "MAPPING" && ready && !disabled ? JSON.stringify({
         review_id: review.id, nonce: review.nonce, fingerprint: review.fingerprint,
@@ -462,52 +576,42 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
       <button className="text-button" disabled={replyDisabled} onClick={()=>void requestReply()}>Trả lời bằng tiếng Việt</button>
       {review.pending_reply_job_id && <p role="status"><Spinner/> Đang đọc câu trả lời của bạn…</p>}
     </section>;
-    return <section className="agent-review" aria-label="Quyết định cần xác nhận">
+    return <section className={draft ? "agent-review smart-mapping-review" : "agent-review"} aria-label="Quyết định cần xác nhận">
     <header className="review-heading">
-      <h4>{review.question}</h4>
-      {review.resource_label && <p><strong>{review.resource_label}</strong></p>}
-      <p>{review.reason}</p>
+      <h4>{draft ? review.resource_label || "Đề xuất ghép cột" : review.question}</h4>
+      {draft ? assessment && <p className="muted">{assessment.source_rows.toLocaleString("vi-VN")} dòng · {draft.fields.length} cột · {assessment.verified_fields} trường đã kiểm tra
+        {!!assessment.pending_fields && ` · ${assessment.pending_fields} trường cần xem`}</p> : <>
+        {review.resource_label && <p><strong>{review.resource_label}</strong></p>}
+        <p>{review.reason}</p>
+      </>}
     </header>
     {error && <Notice tone="error">{error}</Notice>}{review.reply_questions.map(q => <Notice key={q}>{q}</Notice>)}
     {draft && <>
-      <dl className="decision-facts">
-        <div><dt>Loại dữ liệu</dt><dd>{draft.entity_kind || "Chưa xác định"}</dd></div>
-        <div><dt>Mỗi dòng đại diện cho</dt><dd>{draft.grain || "Chưa xác định"}</dd></div>
-        <div><dt>Khóa đề xuất</dt><dd>{draft.fields.filter(f => f.business_key).map(f => f.name).join(", ") || "Chưa chọn"}</dd></div>
-      </dl>
-      {checking && <p role="status"><Spinner/> Đang kiểm tra toàn bộ dữ liệu…</p>}
-      {assessment && <>
-        <p>{draft.fields.length} cột · {assessment.source_rows} dòng. {assessment.verified_fields} trường đã kiểm tra kỹ thuật; {assessment.pending_fields} trường cần xác nhận.</p>
-        {assessment.questions.length>0 && <section aria-label="Thông tin cần xác nhận"><h4>Cần bạn xác nhận</h4><ul>{assessment.questions.map(q=><li key={q}>{q}</li>)}</ul></section>}
-        {assessment.checks.some(c => c.affected_rows > 0 || c.messages.some(m => m.includes("nhiều tiền tệ"))) && <section className="review-affected" aria-label="Dữ liệu bất thường">
-          <h5>Dữ liệu bất thường</h5>
-          <ul>{assessment.checks.filter(c=>c.affected_rows>0||c.messages.some(m=>m.includes("nhiều tiền tệ"))).map(c=><li key={c.field_id}>
-            <strong>{c.name}</strong> · {c.affected_rows} dòng lỗi chuyển đổi.
-            {Object.entries(c.error_counts).length > 0 && <p>{Object.entries(c.error_counts).map(([code,count])=>`${qualityText[code] || errors[code] || code} (${count})`).join(" · ")}</p>}
-            {c.messages.filter(m=>m.includes("nhiều tiền tệ")).map(m=><p key={m}>{m}</p>)}
+      <SmartMapping draft={draft} assessment={assessment} onChange={setDraft} disabled={disabled}/>
+      {!assessment && checking && <p role="status"><Spinner/> Đang kiểm tra dữ liệu…</p>}
+      {assessment && assessmentSignature === draftSignature && <>
+        {assessment.preflight_ready && !!assessment.predicted_invalid_rows &&
+            <p className="smart-mapping-warning">{assessment.predicted_invalid_rows.toLocaleString("vi-VN")} dòng cần xử lý sau chuẩn hóa.</p>}
+        {assessment.checks.filter(check => check.state === "BLOCKED").map(check =>
+            <Notice key={check.field_id} tone="warning">{check.name} · {check.messages.join(" ")}</Notice>)}
+        <details><summary>Kiểm tra cột và bằng chứng</summary>
+          {assessment.questions.length > 0 && <ul>{assessment.questions.map(q => <li key={q}>{q}</li>)}</ul>}
+          <ul>{assessment.checks.map(check => <li key={check.field_id}><strong>{check.name}</strong>
+              {check.messages.map(message => <p key={message}>{message}</p>)}
+              {Object.entries(check.error_counts).length > 0 && <p>{Object.entries(check.error_counts)
+                  .map(([code,count]) => `${qualityText[code] || errors[code] || code} (${count})`).join(" · ")}</p>}
           </li>)}</ul>
-        </section>}
-        <details><summary>Đã xác định bằng bằng chứng</summary><ul>{assessment.checks.filter(c=>c.state==='VERIFIED').map(c=><li key={c.field_id}><strong>{c.name}</strong>{c.messages.map(m=><p key={m}>{m}</p>)}</li>)}</ul><p>Các phép kiểm kỹ thuật không tự xác nhận ý nghĩa nghiệp vụ. Bạn vẫn kiểm tra và duyệt đề xuất.</p></details>
-
-        {!!assessment.related_keys?.length&&<details><summary>Quan hệ tiềm năng giữa các nguồn</summary>{assessment.related_keys.map((r,i)=><p key={`${r.table_id}:${i}`}>{r.source_name}: {r.fields.join(' + ')}; {r.shared_keys} khóa xuất hiện ở cả hai nguồn, {r.left_duplicate_rows}/{r.right_duplicate_rows} dòng trùng khóa, {r.missing_key_rows} dòng thiếu khóa. Cần xác nhận ý nghĩa mỗi dòng và quan hệ một/nhiều trước khi đối soát; không tự duyệt từ thống kê.</p>)}</details>}
-        {assessment.preflight_ready && <Notice>Đã kiểm tra trước chuẩn hóa trên {assessment.source_rows} dòng; dự kiến {assessment.predicted_invalid_rows} dòng không hợp lệ. Dữ liệu gốc và bản cũ được giữ nguyên.</Notice>}
+          {!!assessment.related_keys?.length && <><h5>Quan hệ tiềm năng giữa các nguồn</h5>
+              {assessment.related_keys.map((r,i) => <p key={`${r.table_id}:${i}`}>{r.source_name} · {r.fields.join(" + ")}
+                  {" · "}{r.shared_keys} khóa chung · {r.left_duplicate_rows}/{r.right_duplicate_rows} dòng lặp · {r.missing_key_rows} dòng thiếu khóa.</p>)}</>}
+        </details>
       </>}
-      {workflow.detail.prepare_upload && <SourceDecisions draft={draft} onChange={setDraft} disabled={disabled}/>}
-      {draft.fields.some(f=>f.data_type==='date'&&!f.timezone)&&<label>Múi giờ của nguồn<select aria-label="Múi giờ của nguồn" disabled={disabled} defaultValue="" onChange={e=>{if(e.target.value)setDraft({...draft,fields:draft.fields.map(f=>f.data_type==='date'&&!f.timezone?{...f,timezone:e.target.value}:f)});}}><option value="">Chọn theo quy ước dữ liệu</option><option value="UTC">UTC</option><option value="Asia/Ho_Chi_Minh">Việt Nam (Asia/Ho_Chi_Minh)</option></select></label>}
-      {draft.fields.some(f=>f.data_type==='decimal'&&!f.currency)&&<label>Tiền tệ cho số tiền trong nguồn<select aria-label="Tiền tệ cho số tiền trong nguồn" disabled={disabled} defaultValue="" onChange={e=>{if(e.target.value)setDraft({...draft,fields:draft.fields.map(f=>f.data_type==='decimal'&&!f.currency?{...f,currency:e.target.value,unit:f.unit||e.target.value}:f)});}}><option value="">Chọn phạm vi tiền tệ; giá trị khác giữ lỗi riêng</option>{(assessment?.currencies||[]).map(c=><option key={c} value={c}>{c}</option>)}</select></label>}
-      {draft.fields.filter(f=>f.data_type==='decimal'&&(!f.amount_basis||!f.currency||!f.semantic_metric||!f.unit||!f.locale)).map(f=><fieldset key={f.source_field}><legend>{f.name} — quyết định về số tiền</legend>
-        {!f.amount_basis&&<label>Cơ sở tiền của {f.name}<select disabled={disabled} value="" onChange={e=>setDraft({...draft,fields:draft.fields.map(x=>x.source_field===f.source_field?{...x,amount_basis:e.target.value||null}:x)})}><option value="">Chưa xác định</option><option value="gross">Trước khấu trừ</option><option value="net">Sau khấu trừ</option><option value="expected">Dự kiến phải thu</option><option value="paid">Đã thanh toán</option><option value="fee">Phí</option></select></label>}
-        {!f.currency&&<label>Tiền tệ cho {f.name}<input disabled={disabled} placeholder="VND / USD; kiểm tra cảnh báo tiền tệ" maxLength={3} onBlur={e=>{const value=e.target.value.toUpperCase();if(value)setDraft({...draft,fields:draft.fields.map(x=>x.source_field===f.source_field?{...x,currency:value,unit:x.unit||value}:x)});}}/></label>}
-        {workflow.detail.prepare_upload && !f.semantic_metric && <label>Khoản tiền này là gì?<input disabled={disabled}
-          onBlur={event => {const value = event.target.value.trim(); if (value) setDraft({...draft,fields:draft.fields.map(x=>x.source_field===f.source_field?{...x,semantic_metric:value}:x)});}}/></label>}
-        {(!f.semantic_metric||!f.unit||!f.locale)&&!workflow.detail.prepare_upload&&<p>Mở phần chỉnh sửa để xác nhận ý nghĩa, đơn vị hoặc định dạng còn thiếu.</p>}
-        {workflow.detail.prepare_upload&&!f.locale&&<label>Cách ghi số của {f.name}<select value="" disabled={disabled}
-          onChange={event=>setDraft({...draft,fields:draft.fields.map(x=>x.source_field===f.source_field?{...x,locale:(event.target.value||null) as DraftField["locale"]}:x)})}>
-          <option value="">Chọn cách ghi</option><option value="en-US">1,234.56</option><option value="vi-VN">1.234,56</option>
-        </select></label>}
-      </fieldset>)}
-      {workflow.detail.prepare_upload && <details><summary>Chỉ tiêu tiền đã điền</summary><ul>{draft.fields.filter(f=>f.data_type==='decimal'&&f.semantic_metric&&f.amount_basis&&f.currency).map(f=><li key={f.source_field}>{f.name} · {f.semantic_metric} · {f.amount_basis} · {f.currency}</li>)}</ul></details>}
-      <details className="agent-review-editor"><summary>Xem và chỉnh các lựa chọn</summary><p>Chỉnh sửa chi tiết chỉ khi đề xuất chưa đúng. Các thay đổi được kiểm tra lại trước khi duyệt.</p><MappingReview draft={draft} disabled={disabled} onChange={v=>setDraft(v)}/></details>
+      <details className="agent-review-editor"><summary>Xem và chỉnh các lựa chọn</summary>
+        <button type="button" className="text-button" disabled={disabled || suggesting} onClick={() => void suggestMapping()}>
+            {suggesting ? "Đang cập nhật đề xuất…" : "Lấy lại đề xuất từ dữ liệu"}
+        </button>
+        <MappingReview draft={draft} disabled={disabled} onChange={setDraft}/>
+      </details>
     </>}
     {review.kind === "RECONCILIATION" && !!review.planning_candidates?.length && <fieldset>
       <legend>Phương án liên kết đã kiểm tra</legend>
@@ -581,8 +685,8 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     </div>
     {replyOpen && <form onSubmit={e=>{e.preventDefault();void sendInlineReply();}}><label>Câu trả lời cho thẻ này<textarea value={replyText} disabled={replyDisabled || !!replyPending.current} maxLength={2000} onChange={e=>{setReplyText(e.target.value);try{sessionStorage.setItem(replyKey,e.target.value);}catch{/* optional local recovery */}}}/></label><button type="submit" className="button secondary" disabled={replyDisabled || !replyText.trim()}>Gửi câu trả lời để xem trước</button></form>}
     {review.pending_reply_job_id && <p role="status">Đang đọc câu trả lời của bạn…</p>}
-    {draft && review.extraction_review_required!==false && <label><input type="checkbox" checked={extraction} disabled={disabled} onChange={e => setExtraction(e.target.checked)}/>Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.</label>}
-    {!ready && <p className="muted">Mở phần chỉnh sửa hoặc bổ sung bằng tiếng Việt để hoàn tất các điều kiện còn thiếu.</p>}
+    {draft && review.extraction_review_required===true && <label><input type="checkbox" checked={extraction} disabled={disabled} onChange={e => setExtraction(e.target.checked)}/>Tôi đã kiểm tra cảnh báo và vùng bảng nguồn.</label>}
+    {!ready && !draft && <p className="muted">Mở phần chỉnh sửa hoặc bổ sung bằng tiếng Việt để hoàn tất các điều kiện còn thiếu.</p>}
     {partialSources.length > 0 && <Notice>
       <p>Dòng lỗi chuẩn hóa đã được tách riêng trong {partialSources.map(source => `${source?.name} (${source?.canonical.invalid_count} dòng)`).join(", ")}.</p>
       {partialSources.map(source => !!source?.canonical.excluded_source_rows &&
@@ -594,7 +698,7 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
       </label>
     </Notice>}
     <footer className="review-approval">
-      <p>{review.kind === "MAPPING" ? "Khi duyệt, hệ thống lưu cách ghép cột và tạo bản chuẩn hóa. Tệp gốc được giữ nguyên." : "Khi duyệt, hệ thống lưu quy tắc và bắt đầu đối soát trong phạm vi trên."}</p>
+      {review.kind === "RECONCILIATION" && <p>Khi duyệt, hệ thống lưu quy tắc và bắt đầu đối soát trong phạm vi trên.</p>}
       <button className="button primary" disabled={disabled || !ready || (partialSources.length > 0 && !invalidRowsReviewed)} onClick={() => void action()}>{review.kind === "MAPPING" ? "Duyệt cách ghép cột và chuẩn hóa" : "Duyệt quy tắc và đối soát"}</button>
     </footer>
   </section>;

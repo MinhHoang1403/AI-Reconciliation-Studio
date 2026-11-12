@@ -13,7 +13,7 @@ import type { AssistantContext, Suggestion } from "./assistantTypes";
 import type { ColumnDef } from "@tanstack/react-table";
 echarts.use([BarChart, AriaComponent, GridComponent, TooltipComponent, SVGRenderer]);
 type SourceRef = {source_table_id:string;row:number;sheet:string};
-const transformLabels:Record<string,string>={cast_string_preserve:"Giữ nguyên văn bản và mã",parse_decimal:"Đọc số tiền theo định dạng đã duyệt",parse_date:"Đọc ngày theo định dạng và múi giờ đã duyệt",trim_if_approved:"Bỏ khoảng trắng theo quy tắc đã duyệt",normalize_enum:"Chuẩn hóa trạng thái theo quy tắc đã duyệt",coalesce_with_rule:"Chọn giá trị theo quy tắc đã duyệt",add_fields:"Cộng trường theo quy tắc đã duyệt",subtract_fields:"Trừ trường theo quy tắc đã duyệt",aggregate_by:"Gom nhóm theo quy tắc đã duyệt"};
+const transformLabels:Record<string,string>={cast_string_preserve:"Giữ nguyên văn bản và mã",parse_decimal:"Đọc số tiền theo định dạng đã duyệt",parse_date:"Đọc ngày hoặc thời điểm theo múi giờ đã duyệt",parse_calendar_date:"Giữ nguyên ngày lịch",parse_offset_timestamp:"Chuẩn hóa thời điểm có offset về UTC",trim_if_approved:"Bỏ khoảng trắng theo quy tắc đã duyệt",normalize_enum:"Chuẩn hóa trạng thái theo quy tắc đã duyệt",coalesce_with_rule:"Chọn giá trị theo quy tắc đã duyệt",add_fields:"Cộng trường theo quy tắc đã duyệt",subtract_fields:"Trừ trường theo quy tắc đã duyệt",aggregate_by:"Gom nhóm theo quy tắc đã duyệt"};
 const queryLabels:Record<string,string>={linkage_state:"Liên kết",comparison_state:"Kết quả so sánh",left_member_count:"Số dòng nguồn A",right_member_count:"Số dòng nguồn B",left_amount:"Số tiền nguồn A",right_amount:"Số tiền nguồn B",delta:"Chênh lệch có dấu",absolute_variance:"Chênh lệch tuyệt đối",tolerance:"Sai số cho phép",currency:"Tiền tệ",unit:"Đơn vị",type:"Loại ngoại lệ",state:"Xử lý ngoại lệ",notes:"Ghi chú"};
 const numericQueryFields = new Set(["left_member_count", "right_member_count", "left_amount", "right_amount", "delta", "absolute_variance", "tolerance"]);
 function QueryTable({ initial, workflowId, selection }: {
@@ -174,9 +174,10 @@ function ResultChartDetails({ data }: { data: Chart }) {
       {opened && <ResultChart data={data}/>}
     </details>;
 }
-function DatasetResult({ block, openSource, onQualityPublished }: {
+function DatasetResult({ block, openSource, onQualityPublished, projectId }: {
     block: Extract<AgentBlock, { type: "dataset_summary" }>;
     openSource: () => void;
+    projectId: string;
     onQualityPublished?: (id: string) => void;
 }) {
     const ready = block.status === "READY";
@@ -184,7 +185,7 @@ function DatasetResult({ block, openSource, onQualityPublished }: {
     const [detailsOpened, setDetailsOpened] = useState(false);
     const qualityVisible = keepQuality || !ready;
     const qualityPanel = <DataQualityPanel tableId={block.table_id} canonicalId={block.canonical_id} sourceName={block.name}
-      draft={block.quality_draft} followLatest={qualityVisible} onPublished={id=>{
+      draft={block.quality_draft} followLatest={qualityVisible} chatProjectId={projectId} onPublished={id=>{
         if (!ready) setKeepQuality(true);
         onQualityPublished?.(id);
       }}/>;
@@ -201,7 +202,7 @@ function DatasetResult({ block, openSource, onQualityPublished }: {
     </section>;
 }
 
-export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, querySelection, onQualityPublished, compactPreviews }: {
+export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, querySelection, onQualityPublished, compactPreviews, mappingReview }: {
     blocks: AgentBlock[];
     context: AssistantContext;
     onNavigate: (target: Suggestion, context: AssistantContext) => void;
@@ -209,11 +210,13 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
     querySelection?: Query | null;
     onQualityPublished?: (id: string) => void;
     compactPreviews?: boolean;
+    mappingReview?: boolean;
 }) {
     const sources = blocks.filter(block=>block.type === "dataset_summary");
     const hasFacts = blocks.some(block=>block.type === "facts");
     const readySources = sources.filter(block=>block.status === "READY").length;
     const remainingSources = sources.length - readySources;
+    const mappingProgress = mappingReview ? blocks.filter(block => block.type === "progress") : [];
     const showPreview = (block: AgentBlock) => compactPreviews && block.type === "table" && block.result.query.source_kind === "RAW_PREVIEW";
     const previews = blocks.flatMap((block, i) => showPreview(block) && block.type === "table"
       ? [<QueryTable key={i} initial={block.result} workflowId={workflowId} selection={querySelection}/>] : []);
@@ -225,7 +228,7 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
         {blocks.map((block, i) => {
             if (showPreview(block)) return null;
             if (block.type === "progress")
-                return <p key={i}>{block.text}</p>;
+                return mappingReview ? null : <p key={i}>{block.text}</p>;
             if (block.type === "table")
                 return <QueryTable key={i} initial={block.result} workflowId={workflowId} selection={querySelection}/>;
             if (block.type === "chart")
@@ -240,7 +243,7 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
                   <a className="button secondary" href={`/api/exports/${block.export_id}/download`}>Tải {block.discrepancies_only ? "giao dịch chênh lệch " : block.displayed_query ? "bảng đang xem " : ""}{block.format.toUpperCase()}</a>
                 </div>;
             if (block.type === "dataset_summary")
-                return <DatasetResult key={block.table_id} block={block} onQualityPublished={onQualityPublished}
+                return <DatasetResult key={block.table_id} block={block} onQualityPublished={onQualityPublished} projectId={context.project_id}
                   openSource={()=>onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}/>;
             const snapshot = block.result.snapshot || block.result.run?.metric_snapshot;
             const reportRunId = snapshot?.run_id || block.result.run?.id;
@@ -283,5 +286,8 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
             </section>;
         })}
         {previews.length > 0 && <details className="agent-previews"><summary>Dữ liệu gốc đã đọc ({previews.length} bảng)</summary>{previews}</details>}
+        {mappingProgress.length > 0 && <details><summary>Tiến độ đọc dữ liệu</summary>
+          {mappingProgress.map((block, i) => <p key={i}>{block.text}</p>)}
+        </details>}
     </div>;
 }

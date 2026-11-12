@@ -266,10 +266,12 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
     Key = Annotated[str, Header(min_length=1, max_length=160, alias="Idempotency-Key")]
 
     @router.post("/mapping-preflight", response_model=MappingAssessment)
-    def mapping_preflight(body: NormalizationDraft, db: DB, actor: User) -> MappingAssessment:
+    def mapping_preflight(
+        body: NormalizationDraft, db: DB, actor: User, suggest: bool = False
+    ) -> MappingAssessment:
         from studio.mapping_verification import assess_table_mapping
 
-        return assess_table_mapping(db, actor, body)
+        return assess_table_mapping(db, actor, body, enrich=suggest, preserve_timezone=suggest)
 
     @router.post("/source-rows", response_model=SourceRowResult)
     def source_row(body: SourceRowRequest, db: DB, actor: User) -> SourceRowResult:

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { api } from "./api";
-import { formatDecimal } from "./components";
+import { formatDecimal, Modal } from "./components";
 import { errorText, qualityText } from "./types";
 
 type Action = "REPLACE" | "EXCLUDE" | "KEEP_PENDING";
@@ -9,7 +9,7 @@ type Issue = { field: string; target_label: string; source_label: string | null;
 type Row = { source_row_id: string; source_row: number; issues: Issue[]; pending_reason: string | null };
 type Job = { id: string; status: string };
 type Snapshot = {
-  dataset: string; sheet: string; current: boolean; total: number; items: Row[];
+  dataset: string; sheet: string; current: boolean; total: number; items: Row[]; issue_counts?: Record<string, number>;
   valid_records: number; invalid_records: number; excluded_source_rows: number;
   excluded_amounts: { field: string; currency: string; amount: string }[];
   excluded_amounts_unavailable: boolean;
@@ -26,9 +26,10 @@ const confirmAction: Record<Action, string> = {
 const pageSize = 10;
 const pending = new Set(["QUEUED", "RUNNING", "RETRYABLE_FAILURE"]);
 
-export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublished, draft, sourceName }: {
+export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublished, draft, sourceName, chatProjectId }: {
   tableId: string; canonicalId: string; followLatest?: boolean; onPublished?: (id: string) => void;
   sourceName?: string;
+  chatProjectId?: string;
   draft?: { source_row_id: string; field: string; code: string; value: string; reason: string; row_index: number } | null;
 }) {
   const [snapshotId, setSnapshotId] = useState(canonicalId);
@@ -39,9 +40,14 @@ export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublish
   const [sending, setSending] = useState(false);
   const [updateMessage, setUpdateMessage] = useState("");
   const [selection, setSelection] = useState<{ row: Row; issue: Issue }>();
-  const [action, setAction] = useState<Action>("KEEP_PENDING");
+  const [action, setAction] = useState<Action | "">("");
   const [reason, setReason] = useState("");
   const [value, setValue] = useState("");
+  const [showRows, setShowRows] = useState(!!draft || !chatProjectId);
+  const [raw, setRaw] = useState<{ row: number; values?: Record<string, unknown>; error?: string }>();
+  const rawTrigger = useRef<HTMLButtonElement>(null);
+  const nextRow = useRef(false);
+  const rowButtons = useRef(new Map<string, HTMLButtonElement>());
   const request = useRef({ payload: "", key: "" });
   const openedDraft = useRef(false);
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -63,6 +69,14 @@ export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublish
           return;
         }
         setSnapshot(data);
+        if (nextRow.current) {
+          nextRow.current = false;
+          const row = data.items.find(item => !item.pending_reason);
+          if (row?.issues[0] && data.current) {
+            setSelection({ row, issue: row.issues[0] });
+            setAction(""); setReason(""); setValue("");
+          }
+        }
         if (draft && data.current && snapshotId === canonicalId && !openedDraft.current) {
           const row = data.items.find(item => item.source_row_id === draft.source_row_id);
           const issue = row?.issues.find(item => item.field === draft.field && item.code === draft.code);
@@ -103,6 +117,7 @@ export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublish
             : "Đã kiểm tra lại sau khi áp dụng quyết định.");
           if (savedAction && restoreFocus) statusRef.current?.focus({ preventScroll: true });
           submittedAction.current = null;
+          nextRow.current = !!chatProjectId && showRows;
           setPage(0); setSnapshotId(id); setSelection(undefined);
           callback.current?.(id);
         } else {
@@ -114,7 +129,7 @@ export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublish
     }
     void poll();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [jobId]);
+  }, [jobId, chatProjectId, showRows]);
   useEffect(() => { if (error) errorRef.current?.focus({ preventScroll: true }); }, [error]);
   useEffect(() => {
     if (selection && focusDecision.current) {
@@ -128,7 +143,7 @@ export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublish
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!selection || sending || jobId) return;
+    if (!selection || !action || sending || jobId) return;
     const body = JSON.stringify({
       canonical_id: snapshotId, source_row_id: selection.row.source_row_id,
       field: selection.issue.field, code: selection.issue.code, action, reason,
@@ -148,10 +163,28 @@ export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublish
     } finally { setSending(false); }
   }
 
+  useEffect(() => {
+    if (!raw || raw.values || raw.error || !chatProjectId) return;
+    const controller = new AbortController();
+    api<{ rows: Record<string, unknown>[] }>("/agent/source-rows", {
+      method: "POST", signal: controller.signal,
+      body: JSON.stringify({ project_id: chatProjectId, table_id: tableId, row: raw.row }),
+    }).then(result => {
+      if (!controller.signal.aborted) setRaw({ row: raw.row, values: result.rows[0] || {} });
+    }).catch(err => {
+      if (!controller.signal.aborted) setRaw({ row: raw.row, error: err.message || "Không đọc được dòng gốc." });
+    });
+    return () => controller.abort();
+  }, [raw, tableId, chatProjectId]);
+
   const excluded = snapshot?.decision_history.filter(entry => entry.action === "EXCLUDE") ?? [];
   const history = snapshot?.decision_history.filter(entry => entry.action !== "EXCLUDE") ?? [];
   const busy = sending || !!jobId;
   const missingInput = !reason.trim() || (action === "REPLACE" && !value.trim());
+  function closeSelection() {
+    if (chatProjectId && selection) triggerRef.current = rowButtons.current.get(selection.row.source_row_id) || null;
+    setSelection(undefined);
+  }
   return <section className="quality-resolution" aria-label="Dòng cần xử lý">
     <header className="quality-heading">
       <h4>{snapshot?.dataset || sourceName || "Dòng cần xử lý"}{snapshot && (snapshot.total
@@ -167,29 +200,60 @@ export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublish
       : updateMessage}</p>
     {!snapshot && !error && <p role="status">Đang đọc lỗi từ bản chuẩn hóa…</p>}
     {snapshot && <>
+      {chatProjectId && !!snapshot.total && <>
+        {!!Object.keys(snapshot.issue_counts || {}).length && <p className="muted">{Object.entries(snapshot.issue_counts || {}).map(([code, count]) =>
+          `${count.toLocaleString("vi-VN")} ${code === "CURRENCY_MISMATCH" ? "dòng khác tiền tệ" : (qualityText[code] || "dòng cần kiểm tra").toLocaleLowerCase("vi-VN")}`).join(" · ")}</p>}
+        <button type="button" className="text-button quality-action" aria-expanded={showRows} disabled={busy}
+          onClick={() => {
+            setShowRows(!showRows);
+            const row = !showRows ? snapshot.items.find(item => !item.pending_reason) || snapshot.items[0] : undefined;
+            if (row?.issues[0]) {
+              focusDecision.current = snapshot.current;
+              setSelection({ row, issue: row.issues[0] });
+              setAction(""); setReason(""); setValue("");
+            } else setSelection(undefined);
+          }}>
+          {showRows ? "Thu gọn các dòng" : `${snapshot.current ? "Xử lý" : "Xem"} ${snapshot.total.toLocaleString("vi-VN")} dòng`}
+        </button>
+      </>}
       {draft && snapshotId === canonicalId && snapshot.current && <p>Kiểm tra bản nháp rồi xác nhận để áp dụng cho đúng dòng và cột.</p>}
       {!snapshot.current && !jobId && snapshot.total > 0 && <p className="muted">Các dòng trong bản này chỉ có thể xem.</p>}
-      {snapshot.items.map(row => {
-        const singleIssue = row.issues.length === 1 ? row.issues[0] : undefined;
+      {showRows && snapshot.items.map(row => {
+        const issues = chatProjectId ? row.issues.filter((issue, index, all) =>
+          issue.code !== "CURRENCY_MISMATCH" || all.findIndex(other => other.code === issue.code && other.raw_value === issue.raw_value) === index) : row.issues;
+        const singleIssue = issues.length === 1 ? issues[0] : undefined;
         return <section className="quality-row" key={row.source_row_id}>
           <h5>Dòng nguồn {row.source_row} — {singleIssue
             ? qualityText[singleIssue.code] || "Giá trị cần kiểm tra"
-            : `${row.issues.length} lỗi`}</h5>
+            : `${issues.length} lỗi`}</h5>
           {row.pending_reason && <p className="quality-pending"><strong>Đã ghi nhận quyết định — Vẫn cần kiểm tra.</strong> {row.pending_reason}</p>}
-          {row.issues.map(issue => {
-            const open = selection?.row === row && selection.issue === issue;
+          {chatProjectId && <button type="button" className="text-button" disabled={busy} hidden={selection?.row === row}
+            ref={button => {if (button) rowButtons.current.set(row.source_row_id, button); else rowButtons.current.delete(row.source_row_id);}}
+            aria-label={singleIssue && snapshot.current ? `Xử lý lỗi ${singleIssue.target_label} · dòng ${row.source_row}` : undefined}
+            onClick={event => {
+              triggerRef.current = event.currentTarget;
+              focusDecision.current = snapshot.current;
+              setSelection({ row, issue: issues[0] }); setAction(""); setReason(""); setValue("");
+            }}>{snapshot.current ? "Xử lý dòng" : "Xem dòng"}</button>}
+          {(!chatProjectId || selection?.row === row) && issues.map(issue => {
+            const open = snapshot.current && selection?.row === row && selection.issue === issue;
             const original = (issue.original_value === undefined ? issue.raw_value : issue.original_value) ?? "Ô trống";
             return <div className="quality-issue" key={`${issue.field}:${issue.code}`}>
               {!singleIssue && <p><strong>{qualityText[issue.code] || "Giá trị chưa đáp ứng quy tắc đã xác nhận"}.</strong></p>}
               <p className="quality-value"><span>{issue.source_label ?? "Nhiều cột nguồn"}</span><span>Giá trị gốc <code>{original}</code></span></p>
-              {issue.source_label !== issue.target_label && <p className="muted">Trường đích {issue.target_label}</p>}
-              <p>Bản ghi chưa dùng được trong đối soát.</p>
+              {(!chatProjectId || !issue.source_label) && issue.source_label !== issue.target_label && <p className="muted">Trường đích {issue.target_label}</p>}
+              {issue.code === "CURRENCY_MISMATCH" && <p>Giao dịch {original} nằm ngoài phạm vi tiền tệ đã duyệt.</p>}
+              {!chatProjectId && <p>Bản ghi chưa dùng được trong đối soát.</p>}
+              {chatProjectId && <button type="button" className="text-button" onClick={event => {
+                rawTrigger.current = event.currentTarget;
+                setRaw({ row: row.source_row });
+              }}>Xem dòng gốc</button>}
               {snapshot.current && <button type="button" className="button secondary quality-action" disabled={busy} hidden={open} aria-expanded={open}
                 aria-label={`Xử lý lỗi ${issue.target_label} · dòng ${row.source_row}`}
                 onClick={event => {
                   triggerRef.current = event.currentTarget;
                   focusDecision.current = true;
-                  setSelection({ row, issue }); setAction(issue.editable ? "REPLACE" : "KEEP_PENDING");
+                  setSelection({ row, issue }); setAction(chatProjectId ? "" : issue.editable ? "REPLACE" : "KEEP_PENDING");
                   setReason(""); setValue(""); setError("");
                 }}>
                 Xử lý lỗi
@@ -197,30 +261,31 @@ export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublish
               {open && <form className="quality-form" onSubmit={submit} onKeyDown={event => {
                 if (event.key === "Escape" && !event.defaultPrevented && !busy) {
                   event.stopPropagation();
-                  setSelection(undefined);
+                  closeSelection();
                 }
               }}>
-                <label>Quyết định<select ref={decisionRef} value={action} disabled={busy} onChange={event => setAction(event.target.value as Action)}>
+                <label>Quyết định<select ref={decisionRef} value={action} disabled={busy} onChange={event => setAction(event.target.value as Action | "")}>
+                  {chatProjectId && <option value="">Chọn cách xử lý</option>}
                   {Object.entries(actions).filter(([key]) => issue.editable || key !== "REPLACE").map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </select></label>
                 {action === "REPLACE" && <label>Giá trị đã kiểm tra<input required maxLength={2048} value={value} onChange={event => setValue(event.target.value)} disabled={busy}/></label>}
                 {action === "EXCLUDE" && <p>Dòng này nằm ngoài bản chuẩn hóa mới. Bạn sẽ xác nhận phạm vi đối soát trước khi chạy.</p>}
-                <label>Lý do<input required maxLength={500} value={reason} onChange={event => setReason(event.target.value)} disabled={busy}/></label>
-                {missingInput && <p id={section} className="muted">
+                {action && <label>Lý do<input required maxLength={500} value={reason} onChange={event => setReason(event.target.value)} disabled={busy}/></label>}
+                {action && missingInput && <p id={section} className="muted">
                   {action === "REPLACE" ? "Nhập giá trị đã kiểm tra và lý do để xác nhận." : "Nhập lý do để xác nhận quyết định."}
                 </p>}
                 <div className="agent-pagination">
-                  <button type="submit" className="button primary" disabled={busy || missingInput} aria-describedby={missingInput ? section : undefined}>
+                  {action && <button type="submit" className="button primary" disabled={busy || missingInput} aria-describedby={missingInput ? section : undefined}>
                     {confirmAction[action]}
-                  </button>
-                  <button type="button" className="button secondary" disabled={busy} onClick={() => setSelection(undefined)}>Hủy</button>
+                  </button>}
+                  <button type="button" className="button secondary" disabled={busy} onClick={closeSelection}>Hủy</button>
                 </div>
               </form>}
             </div>;
           })}
         </section>;
       })}
-      {snapshot.total > pageSize && <div className="agent-pagination">
+      {showRows && snapshot.total > pageSize && <div className="agent-pagination">
         <button className="button secondary" disabled={page === 0 || busy} onClick={() => { setSelection(undefined); setPage(page - 1); }}>Trước</button>
         <span>Trang {page + 1} / {Math.ceil(snapshot.total / pageSize)}</span>
         <button className="button secondary" disabled={(page + 1) * pageSize >= snapshot.total || busy} onClick={() => { setSelection(undefined); setPage(page + 1); }}>Sau</button>
@@ -249,5 +314,15 @@ export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublish
         </li>)}
       </ul></details>}
     </>}
+    <Modal title={raw ? `Dòng nguồn ${raw.row}` : "Dữ liệu gốc"} open={!!raw} onOpenChange={open => {if (!open) setRaw(undefined);}} returnFocus={rawTrigger}>
+      {raw && <>
+      {raw.error ? <p role="alert">{raw.error}</p> : raw.values ? <dl className="quality-source-values">
+        {Object.entries(raw.values).map(([field, value]) => <div key={field}>
+          <dt>{field}</dt><dd>{value == null || value === "" ? "Ô trống" : String(value)}</dd>
+        </div>)}
+        {!Object.keys(raw.values).length && <div><dt>Dữ liệu gốc</dt><dd>Chưa tìm thấy dòng.</dd></div>}
+      </dl> : <p role="status">Đang đọc dòng gốc…</p>}
+      </>}
+    </Modal>
   </section>;
 }

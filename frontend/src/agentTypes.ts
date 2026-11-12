@@ -33,7 +33,10 @@ export type SharedMappingFacts = {
 };
 export type MappingAssessment = {
     draft: NormalizationDraft; source_rows: number; verified_fields: number; pending_fields: number;
-    checks: {field_id:string;name:string;state:string;messages:string[];error_counts:Record<string,number>;affected_rows:number}[];
+    checks: {field_id:string;name:string;state:string;messages:string[];error_counts:Record<string,number>;affected_rows:number;
+        date_kind?: "calendar" | "offset" | "local" | null; date_formats?: string[]}[];
+    currency_counts?: Record<string, number>;
+    key_candidates?: {field_id:string; name:string; reference:boolean; missing_rows:number; duplicate_rows:number}[];
     related_keys?:{table_id:string;source_name:string;fields:string[];shared_keys:number;left_duplicate_rows:number;right_duplicate_rows:number;missing_key_rows:number}[];currencies?:string[];questions:string[];preflight_ready:boolean;predicted_invalid_rows:number|null;error_counts:Record<string,number>;source_sha256:string;
 };
 export type Query = {

@@ -6,7 +6,7 @@ Reconstruct membership, scope, sums and comparisons before publishing one snapsh
 
 import json
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
 from uuid import NAMESPACE_URL, uuid5
 from zoneinfo import ZoneInfo
@@ -86,17 +86,22 @@ def verify_result(
             values = tuple(record.payload.get(getattr(pair, side)) for pair in plan.join_keys)
             keys[side, record.id] = tuple(str(v) if v is not None else None for v in values)
             stamp = record.payload.get(slot.date_field)
-            valid_date = isinstance(stamp, datetime) and stamp.utcoffset() is not None
+            day = (
+                (stamp.astimezone(zone).date() if stamp.utcoffset() is not None else None)
+                if isinstance(stamp, datetime)
+                else stamp
+                if isinstance(stamp, date)
+                else None
+            )
             if (
                 record.invalid
-                or not isinstance(stamp, datetime)
-                or not valid_date
+                or day is None
                 or any(not isinstance(v, str) or v == "" for v in values)
             ):
                 part = "INVALID"
             elif (
                 any(record.payload.get(k) != v for k, v in slot.filters.items())
-                or not plan.period_start <= stamp.astimezone(zone).date() < plan.period_end
+                or not plan.period_start <= day < plan.period_end
             ):
                 part = "OUT_OF_SCOPE"
             else:

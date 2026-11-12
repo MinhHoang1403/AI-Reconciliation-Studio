@@ -12,8 +12,9 @@ from studio.contracts import (
     MappingStatus,
     SchemaDefinition,
     SchemaProposal,
+    SourceDateTransform,
 )
-from studio.date_parsing import date_format, date_zone
+from studio.date_parsing import date_format, date_zone, parse_source_date
 from studio.errors import DomainError
 from studio.profiling import normalized_name
 
@@ -63,8 +64,11 @@ def validate_mapping(
             raise DomainError(
                 "TRANSFORM_TYPE_MISMATCH", "Trường số tiền cần phép chuyển đổi Decimal."
             )
-        if field.data_type == "date" and op != "parse_date":
-            raise DomainError("TRANSFORM_TYPE_MISMATCH", "Trường ngày cần định dạng và múi giờ.")
+        date_ops = {"parse_date", "parse_calendar_date", "parse_offset_timestamp"}
+        if (field.data_type == "date") != (op in date_ops):
+            raise DomainError(
+                "TRANSFORM_TYPE_MISMATCH", "Phép đọc ngày cần đúng kiểu và định dạng."
+            )
         if field.data_type == "string" and op not in {
             "cast_string_preserve",
             "trim_if_approved",
@@ -203,3 +207,5 @@ def validate_transform_runtime(plan: TransformPlan) -> None:
         if isinstance(transform, DateTransform):
             date_format(transform.format)
             date_zone(transform.timezone)
+        elif isinstance(transform, SourceDateTransform):
+            parse_source_date(None, transform.format, transform.op)

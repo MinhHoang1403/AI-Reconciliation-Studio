@@ -384,8 +384,10 @@ def test_chat_upload_prepares_reviews_from_profiles_without_provider_or_approval
     assert len([b for b in flow["detail"]["blocks"] if b["type"] == "table"]) == 2
     for review in flow["detail"]["reviews"]:
         draft = review["normalization_draft"]
-        assert draft["grain"] == "unknown"
-        assert not any(field["business_key"] for field in draft["fields"])
+        is_receipt = draft["fields"][0]["name"] == "Receipt ID"
+        assert draft["grain"] == ("Một phiếu thu" if is_receipt else "unknown")
+        assert draft["fields"][0]["business_key"] is is_receipt
+        assert not any(field["business_key"] for field in draft["fields"][1:])
         assert draft["fields"][1]["timezone"] is None
         assert draft["fields"][1]["date_format"] == "%Y-%m-%d"
         assert draft["fields"][2]["currency"] == "VND"
@@ -407,7 +409,6 @@ def test_chat_upload_prepares_reviews_from_profiles_without_provider_or_approval
         draft = review["normalization_draft"]
         draft.update(entity_kind="cash", grain="cash_event")
         draft["fields"][0]["business_key"] = True
-        draft["fields"][1]["timezone"] = "UTC"
         draft["fields"][2].update(amount_basis="gross", semantic_metric="received_cash")
         decisions.append(
             dict(
@@ -849,11 +850,11 @@ def test_mapping_preflight_is_scoped_read_only_and_rechecks_human_decisions(pg, 
     invalid["table_id"] = "foreign-table"
     assert client.post("/api/agent/mapping-preflight", json=invalid).status_code == 404
     bad_decision = deepcopy(decision)
-    bad_decision["decision"]["draft"]["fields"][2]["timezone"] = None
+    bad_decision["decision"]["draft"]["fields"][2]["date_format"] = "%d/%m/%Y"
     failed = client.post(
         "/api/agent/workflows/" + wf["id"] + "/decisions",
         json=bad_decision,
-        headers={"Idempotency-Key": "missing-timezone"},
+        headers={"Idempotency-Key": "incompatible-date-format"},
     )
     assert failed.status_code == 422 and failed.json()["code"] == "MAPPING_PREFLIGHT_REQUIRED"
     with factory() as db:

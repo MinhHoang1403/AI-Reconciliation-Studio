@@ -30,7 +30,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSuggestions
 from studio.errors import DomainError
 from studio.profiling import field_name_tokens, normalized_name
 
-PREPARATION_REVISION = "agent-normalization-9"
+PREPARATION_REVISION = "agent-normalization-10"
 LOCAL_PREPARATION_REVISION = "agent-mapping-semantics-3"
 REVIEW_REVISION = "agent-review-4"
 
@@ -328,12 +328,38 @@ def profiled_type(column: ColumnProfile, name: str) -> Literal["string", "date",
     count = column.observations.get("nonempty_count")
     money_name = bool(
         words & {"amount", "gross", "net", "fee", "total", "revenue"}
+        or tax_amount_basis(column.name)
         or re.match(r"^doanh\s+thu\b", name.strip())
     )
     if money_name and isinstance(numbers, dict) and isinstance(count, int) and count > 0:
         if 5 * max(numbers.values(), default=0) >= 4 * count:
             return "decimal"
     return "string"
+
+
+def tax_amount_basis(name: str) -> str | None:
+    """Chỉ đề xuất các cơ sở thuế được ghi rõ trên tên cột tiền."""
+    words = set(field_name_tokens(name))
+    if not words & {"vat", "gtgt", "thue", "tax"} or words & {
+        "rate",
+        "suat",
+        "ty",
+        "khong",
+        "hoac",
+        "or",
+    }:
+        return None
+    before = bool(words & {"chua", "truoc", "excluding", "exclusive", "pretax"})
+    after = bool(words & {"co", "gom", "including", "inclusive"})
+    if before and after:
+        return None
+    if before:
+        return "net_excluding_tax" if words & {"net", "thuan"} else "excluding_tax"
+    if after:
+        return "including_tax"
+    if words & {"vat", "gtgt"} and not words & {"total", "tong", "doanh", "revenue"}:
+        return "tax"
+    return None
 
 
 def propose_local_normalization(
@@ -515,6 +541,9 @@ def propose_normalization(
                 "Never guess timezone. Return date_format using Python directives like %Y-%m-%d, "
                 "not display labels YYYY-MM-DD. Use full-column observations, not first rows. "
                 "Customer codes are NOT transaction keys. Unique columns do not prove grain. "
+                "Treat account numbers as identifiers even when all values are digits. "
+                "Distinguish a row identifier from a cross-source order/document reference. "
+                "Keep pre-tax values, tax, tax-inclusive totals and net revenue distinct. "
                 "Suggest composite reference keys only with grain evidence. Preserve scope. "
                 "Do not map expected/completed status to paid. Separate gross/net/fees. "
                 "completed is not paid; payment_status meaning requires user confirmation. "
@@ -618,9 +647,18 @@ def approval_from_draft(
                 raise DomainError("REVIEW_REQUIRED", "Cần xác nhận định dạng số tiền.")
             transform = dict(op="parse_decimal", locale=f.locale)
         elif f.data_type == "date":
-            if not f.date_format or not f.timezone:
-                raise DomainError("REVIEW_REQUIRED", "Cần xác nhận định dạng ngày và múi giờ.")
-            transform = dict(op="parse_date", format=f.date_format, timezone=f.timezone)
+            from studio.date_parsing import source_date_operation
+
+            if not f.date_format:
+                raise DomainError("REVIEW_REQUIRED", "Cần xác nhận định dạng ngày.")
+            operation = source_date_operation(f.date_format)
+            transform = dict(op=operation, format=f.date_format)
+            if operation == "parse_date":
+                if not f.timezone:
+                    raise DomainError(
+                        "REVIEW_REQUIRED", "Cần xác nhận múi giờ của thời điểm nguồn."
+                    )
+                transform["timezone"] = f.timezone
         else:
             transform = dict(op="cast_string_preserve")
         decisions.append(

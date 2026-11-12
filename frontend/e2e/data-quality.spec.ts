@@ -81,7 +81,8 @@ for (const [width, decision] of [[390, "REPLACE"], [1440, "REPLACE"], [390, "EXC
       const trigger = page.getByRole("button", { name: /Xử lý lỗi Doanh thu gộp · dòng 12/ });
       await trigger.press("Enter");
       await expect(page.getByLabel("Quyết định")).toBeFocused();
-      await page.getByLabel("Lý do").press("Escape");
+      await expect(page.getByLabel("Lý do")).toHaveCount(0);
+      await page.getByLabel("Quyết định").press("Escape");
       await expect(trigger).toBeFocused();
       await trigger.press("Enter");
       await page.getByLabel("Quyết định").selectOption(decision);

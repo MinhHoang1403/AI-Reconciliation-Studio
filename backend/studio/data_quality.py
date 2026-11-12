@@ -231,6 +231,15 @@ def read_issues(
     actionable = errors.filter(pl.col("code") != "NULL")
     rows = actionable.select("source_row_id", "source_row").unique().sort("source_row")
     total = rows.select(pl.len()).collect().item()
+    issue_counts = {
+        row["code"]: row["len"]
+        for row in actionable.select("source_row_id", "code")
+        .unique()
+        .group_by("code")
+        .len()
+        .collect()
+        .iter_rows(named=True)
+    }
     ids = rows.slice(offset, limit).collect()["source_row_id"].to_list()
     grouped: dict[str, list[dict[str, Any]]] = {row_id: [] for row_id in ids}
     for issue in actionable.filter(pl.col("source_row_id").is_in(ids)).collect().to_dicts():
@@ -304,6 +313,7 @@ def read_issues(
             for entry in reversed(history[-20:])
         ],
         "total": total,
+        "issue_counts": issue_counts,
         "items": [
             {
                 "source_row_id": row_id,

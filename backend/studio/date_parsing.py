@@ -1,7 +1,7 @@
 """Ngày theo quy tắc đã duyệt; lỗi cấu hình không phải lỗi từng dòng."""
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from functools import lru_cache
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
@@ -43,6 +43,29 @@ def date_zone(value: str) -> ZoneInfo:
                 "Môi trường thiếu dữ liệu múi giờ; liên hệ người vận hành.",
             ) from exc
         raise DomainError("TIMEZONE_INVALID", "Múi giờ không tồn tại trong dữ liệu IANA.") from exc
+
+
+def source_date_operation(format_value: str) -> str:
+    directives = set(re.findall(r"%(.)", date_format(format_value)))
+    if not directives & set("HMSfz"):
+        return "parse_calendar_date"
+    if "z" in directives:
+        return "parse_offset_timestamp"
+    return "parse_date"
+
+
+def parse_source_date(raw: str | None, format_value: str, operation: str) -> date | None:
+    if source_date_operation(format_value) != operation:
+        raise DomainError("DATE_FORMAT_INVALID", "Định dạng không khớp kiểu ngày hoặc thời điểm.")
+    if raw in (None, ""):
+        return None
+    try:
+        parsed = datetime.strptime(str(raw), date_format(format_value))
+    except ValueError as exc:
+        raise DomainError(
+            "INVALID_DATE", "Giá trị ngày không khớp định dạng hoặc ngày không tồn tại."
+        ) from exc
+    return parsed.date() if operation == "parse_calendar_date" else parsed.astimezone(UTC)
 
 
 def parse_date(raw: str | None, format_value: str, timezone: str) -> datetime | None:

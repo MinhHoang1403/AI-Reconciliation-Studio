@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -13,6 +13,51 @@ from studio.verification import calculate_metric_snapshot, verify_result
 
 def by_key(result, key, side="left"):
     return [g for g in result.groups if g.key[-1] == key and any(m.side == side for m in g.members)]
+
+
+@pytest.mark.parametrize("timezone", ["UTC", "Asia/Ho_Chi_Minh", "America/New_York"])
+def test_calendar_days_keep_period_boundaries_in_any_zone(timezone):
+    rule = plan(
+        left="left",
+        right="right",
+        entity="sale",
+        platform="",
+        keys=["order_id"],
+        amount="amount",
+        metric="revenue",
+    )
+    rule.timezone = timezone
+    sides = [
+        [
+            CanonicalRecord(
+                id=f"{side}-{index}",
+                invalid=False,
+                quality_flags=[],
+                payload={
+                    "order_id": str(index),
+                    "event_date": day,
+                    "currency": "VND",
+                    "amount": Decimal("-25"),
+                },
+                provenance=[
+                    dict(
+                        file_id=side,
+                        source_table_id=side,
+                        source_row_id=str(index),
+                        sheet="CSV",
+                        row=index + 2,
+                    )
+                ],
+            )
+            for index, day in enumerate(
+                [rule.period_start, rule.period_end - timedelta(days=1), rule.period_end]
+            )
+        ]
+        for side in ("left", "right")
+    ]
+    result = match_records(rule, *sides)
+    assert result.partition_counts["left"] == {"INVALID": 0, "IN_SCOPE": 2, "OUT_OF_SCOPE": 1}
+    assert all(check.passed for check in verify_result(rule, *sides, result))
 
 
 def test_refund_batch_tolerance_and_currency_have_independent_signed_oracle():

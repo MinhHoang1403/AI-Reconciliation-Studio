@@ -3574,3 +3574,9 @@ Các commit ứng dụng đã push origin chính thức trên `codex/product-pol
 ### H. Bắt đầu thử tiếp
 
 Mở [Studio local](http://127.0.0.1:18180), theo [hướng dẫn mục 14–15](USER_TEST_GUIDE.md#14-chọn-model-trong-ô-chat). Phiên chưa lưu lựa chọn chọn Qwen 8B; lựa chọn cá nhân cũ được giữ. Model của job đã gửi không đổi khi chuyển bộ chọn. Tải ba tệp vào dự án TEST, dùng câu chuẩn hóa explicit kèm tệp, kiểm đủ ba thẻ và duyệt từng nguồn sau khi đọc cảnh báo. Không bấm gửi lại khi delivery chưa rõ; nếu provider lỗi, đọc thông báo và dùng đường thủ công. Không có fallback sang Gemini tự động.
+
+### Xác nhận ánh xạ theo ngoại lệ — 12/11/2026
+
+Theo yêu cầu mới, ánh xạ mới trong Assistant lưu ngày lịch bằng kiểu ngày Parquet. Thời điểm có offset được đọc theo offset nguồn và lưu UTC. Thời điểm thiếu offset vẫn cần quy ước nguồn, với UTC là đề xuất. Phép `parse_date` trong ánh xạ đã duyệt tiếp tục cho kết quả timestamp UTC như mô tả trong [kế hoạch ngày 05/11](PROJECT_PLAN.md#kiểm-chứng-ngày-và-ai-smart-mapping--05112026). Hai kiểu được đọc trong cùng kỳ đối soát. Ngày lịch được so trực tiếp với ngày đầu và ngày sau cuối kỳ. Thay đổi này không cần migration hoặc tạo lại artifact lịch sử.
+
+Assistant đề xuất VND khi thiếu cột tiền tệ và không có dấu hiệu trái ngược. Nguồn nhiều tiền tệ vẫn cần chọn phạm vi. Dòng khác tiền tệ giữ giá trị và đơn vị nguồn, có thể giữ chờ hoặc loại trừ với lý do do người dùng xác nhận.

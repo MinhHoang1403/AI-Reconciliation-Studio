@@ -217,6 +217,11 @@ class DateTransform(Contract):
     timezone: str = Field(min_length=1, max_length=60)
 
 
+class SourceDateTransform(Contract):
+    op: Literal["parse_calendar_date", "parse_offset_timestamp"]
+    format: str = Field(min_length=2, max_length=40)
+
+
 class EnumTransform(Contract):
     op: Literal["normalize_enum"]
     mapping_id: str
@@ -248,6 +253,7 @@ Transform = Annotated[
     | TrimTransform
     | DecimalTransform
     | DateTransform
+    | SourceDateTransform
     | EnumTransform
     | CoalesceTransform
     | ArithmeticTransform

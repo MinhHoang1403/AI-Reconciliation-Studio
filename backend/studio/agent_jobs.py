@@ -1447,6 +1447,11 @@ def execute_agent(
                             old.get("semantic_metric"),
                             old.get("amount_basis"),
                         )
+                        if not assessment.currencies or set(assessment.currencies) == {
+                            old.get("currency")
+                        }:
+                            field.currency = old.get("currency") or field.currency
+                            field.unit = old.get("unit") or field.unit
                 break
             finish(db, job, {"drafts": [draft.model_dump(mode="json")]})
             db.commit()

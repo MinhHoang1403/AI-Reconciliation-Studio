@@ -96,7 +96,14 @@ def profile_table(
             candidates.append("numeric_candidate")
         if nonempty and all(re.fullmatch(r"\d{4}-\d{2}-\d{2}.*", v) for v in nonempty):
             candidates.append("date_candidate")
-        identifier = any(re.fullmatch(r"0\d+", v) for v in nonempty) or bool(
+        words = set(field_name_tokens(col.name))
+        identifier = (
+            "id" in words
+            or "reference" in words
+            or "account" in words
+            or normalized_name(col.name).replace("_", " ").startswith("tai khoan")
+            or any(re.fullmatch(r"0\d+", v) for v in nonempty)
+        ) or bool(
             re.search(
                 r"(?:^|[^a-z0-9])(?:id|ma|reference|code)(?:$|[^a-z0-9])", normalized_name(col.name)
             )
@@ -225,6 +232,9 @@ FIELD_TERMS = {
     "ma so": "id",
     "so hoa don": "invoice id",
     "so phieu thu": "receipt id",
+    "so dong ban hang": "sale line id",
+    "so but toan": "journal entry id",
+    "lien ket": "reference",
     "ma": "id",
     "ngay": "date",
     "tien": "amount",
@@ -422,9 +432,15 @@ def column_observations(values: list[str]) -> dict[str, int | str | list[str] | 
         r"\d{4}-\d{2}-\d{2}": ["%Y-%m-%d"],
         r"\d{2}/\d{2}/\d{4}": ["%d/%m/%Y", "%m/%d/%Y"],
         r"\d{4}-\d{2}-\d{2}[ T].+": [
+            "%Y-%m-%dT%H:%M:%S.%f%z",
             "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%dT%H:%M%z",
+            "%Y-%m-%d %H:%M:%S%z",
+            "%Y-%m-%d %H:%M%z",
             "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%dT%H:%M",
             "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
         ],
     }
     for pattern, candidates in formats.items():

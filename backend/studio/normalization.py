@@ -16,9 +16,10 @@ from studio.contracts import (
     DecimalTransform,
     EnumTransform,
     SchemaDefinition,
+    SourceDateTransform,
     Transform,
 )
-from studio.date_parsing import parse_date
+from studio.date_parsing import parse_date, parse_source_date
 from studio.errors import DomainError
 from studio.schema_mapping import TransformPlan
 
@@ -78,6 +79,8 @@ def _transform(
         return parse_decimal(raw, transform.locale)
     if isinstance(transform, DateTransform):
         return parse_date(raw, transform.format, transform.timezone)
+    if isinstance(transform, SourceDateTransform):
+        return parse_source_date(raw, transform.format, transform.op)
     rules = {r.id: r for r in plan.mapping.rules}
     if isinstance(transform, EnumTransform):
         if raw is None:
@@ -274,7 +277,12 @@ def apply_transform_plan(
             combined.append(representative)
         records = combined
     _validate_lineage(records, frame.height)
-    canonical = _typed_frame(records, plan.schema)
+    calendar_fields = {
+        d.candidate_target
+        for d in plan.mapping.decisions
+        if d.transformation_candidate.op == "parse_calendar_date"
+    }
+    canonical = _typed_frame(records, plan.schema, calendar_fields)
     error_frame = pl.DataFrame(
         errors,
         schema={
@@ -299,7 +307,9 @@ def _validate_lineage(records: list[dict[str, Any]], source_count: int) -> None:
         raise DomainError("LINEAGE_CONSERVATION_FAILED", "Lineage không bảo toàn đủ dòng nguồn.")
 
 
-def _typed_frame(records: list[dict[str, Any]], schema: SchemaDefinition) -> pl.DataFrame:
+def _typed_frame(
+    records: list[dict[str, Any]], schema: SchemaDefinition, calendar_fields: set[str | None]
+) -> pl.DataFrame:
     payload_types: dict[str, Any] = {}
     for field in schema.fields:
         values = [
@@ -315,7 +325,9 @@ def _typed_frame(records: list[dict[str, Any]], schema: SchemaDefinition) -> pl.
                 )
             payload_types[field.id] = pl.Decimal(38, scale)
         elif field.data_type == "date":
-            payload_types[field.id] = pl.Datetime("us", "UTC")
+            payload_types[field.id] = (
+                pl.Date if field.id in calendar_fields else pl.Datetime("us", "UTC")
+            )
         else:
             payload_types[field.id] = pl.String
     if not records:

@@ -7,7 +7,7 @@ Complexity is O(n log n + bounded candidate pairs), with explicit row/pair caps.
 
 import json
 from collections import defaultdict
-from datetime import datetime, time
+from datetime import date, datetime, time
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
 from uuid import NAMESPACE_URL, uuid5
 from zoneinfo import ZoneInfo
@@ -52,12 +52,14 @@ def record_partition(record: CanonicalRecord, plan: ReconciliationPlan, side: st
     if (
         record.invalid
         or any(not isinstance(k, str) or k == "" for k in keys)
-        or not isinstance(stamp, datetime)
-        or stamp.utcoffset() is None
+        or not isinstance(stamp, date)
+        or (isinstance(stamp, datetime) and stamp.utcoffset() is None)
     ):
         return "INVALID"
     if any(record.payload.get(field) != value for field, value in slot.filters.items()):
         return "OUT_OF_SCOPE"
+    if not isinstance(stamp, datetime):
+        return "IN_SCOPE" if plan.period_start <= stamp < plan.period_end else "OUT_OF_SCOPE"
     zone = ZoneInfo(plan.timezone)
     start = datetime.combine(plan.period_start, time.min, zone)
     end = datetime.combine(plan.period_end, time.min, zone)

@@ -34,13 +34,13 @@ function CommonMappingFacts({reviews, storageKey, disabled, onApply}: {
         names.filter(candidate=>candidate===name).length===1));
     const {business_key,...required}=fields;
     const selectedKey=commonKeys.includes(business_key)?business_key:"";
-    const ready=Object.values(required).every(value=>value.trim()&&value.trim().toLowerCase()!=="unknown");
+    const ready=!!selectedKey||Object.values(required).some(value=>value.trim()&&value.trim().toLowerCase()!=="unknown");
     function edit(key:keyof typeof fields,value:string){setFields(previous=>({...previous,[key]:value}));}
-    return <details className="agent-shared-facts" open><summary>Nhập một lần cho các nguồn có cùng nghiệp vụ</summary>
+    return <details className="agent-shared-facts"><summary>Điền thông tin giống nhau cho các nguồn</summary>
         <section aria-label="Thông tin chung cho các nguồn">
             <p>Chỉ dùng khi mỗi dòng, ý nghĩa khoản tiền và múi giờ giống nhau. Lựa chọn đã có trong từng thẻ được giữ nguyên.</p>
             <ul>{reviews.map(review=><li key={review.id}>{review.resource_label}: {review.normalization_draft?.fields.filter(field=>field.data_type==="decimal").map(field=>field.name).join(", ")}</li>)}</ul>
-            <div className="agent-form-grid">
+            <div className="smart-mapping">
             <label>Loại dữ liệu dùng chung<input value={fields.entity_kind} maxLength={100} disabled={disabled} onChange={event=>edit("entity_kind",event.target.value)}/></label>
             <label>Mỗi dòng của các nguồn là gì?<input value={fields.grain} maxLength={200} disabled={disabled} onChange={event=>edit("grain",event.target.value)}/></label>
             <label>Múi giờ dùng chung<select aria-label="Múi giờ dùng chung" value={fields.timezone} disabled={disabled} onChange={event=>edit("timezone",event.target.value)}><option value="">Chọn theo quy ước nguồn</option><option value="UTC">UTC</option><option value="Asia/Ho_Chi_Minh">Việt Nam</option></select></label>
@@ -165,7 +165,9 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
     return <section className="agent-workflow" aria-label="Công việc của AI Assistant" aria-busy={!workflow && !error}>{error && <Notice tone="error"><p>{error}</p><button className="text-button" onClick={() => void refresh()}>Cập nhật</button></Notice>}
     {workflow && <><div className="agent-workflow-state" data-state={workflow.state}>
       <strong role="status">{workflow.state === "WAITING_REVIEW" && openReviews.some(review=>review.kind === "CLARIFICATION")
-        ? "Cần bạn bổ sung" : workflow.state === "COMPLETED" && workflow.detail.intent?.intent === "EXPLORE_DATA"
+        ? "Cần bạn bổ sung" : openMappings.length
+        ? `Cần bạn xác nhận cách ghép cột cho ${openMappings.length} nguồn`
+        : workflow.state === "COMPLETED" && workflow.detail.intent?.intent === "EXPLORE_DATA"
         ? "Đã đọc dữ liệu, chưa chuẩn hóa" : states[workflow.state] || "Chưa có trạng thái xử lý"}</strong>
       {["CREATED", "RUNNING", "WAITING_REVIEW"].includes(workflow.state) && <button className="text-button" onClick={() => void cancel()}>Dừng bước tiếp theo</button>}
     </div>
@@ -188,7 +190,7 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
         <p>Áp dụng các lựa chọn trong thẻ của {openMappings.map(review => review.resource_label || "nguồn đã chọn").join(", ")}.</p>
         <button type="button" className="button primary" disabled={batchBusy} onClick={()=>void approveBatch()}>Duyệt {openMappings.length} nguồn và chuẩn hóa</button>
       </section>}
-      {resultBlocks.length > 0 && <AgentResultBlocks blocks={resultBlocks} compactPreviews={compactPreviews} context={workflow.context} onNavigate={onNavigate} workflowId={workflow.id} querySelection={workflow.detail.query_selection?.query} onQualityPublished={id => {
+      {resultBlocks.length > 0 && <AgentResultBlocks blocks={resultBlocks} compactPreviews={compactPreviews} mappingReview={openMappings.length > 0} context={workflow.context} onNavigate={onNavigate} workflowId={workflow.id} querySelection={workflow.detail.query_selection?.query} onQualityPublished={id => {
         qualityPublished.current = id;
         setResumeVersion(value => value + 1);
       }}/>}

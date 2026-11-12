@@ -190,7 +190,7 @@ def sample():
     )
 
 
-def test_full_column_enrichment_does_not_guess_timezone_currency_or_customer_key():
+def test_calendar_date_needs_no_timezone_but_mixed_currency_and_customer_key_still_need_review():
     frame, profile, draft = sample()
     result = assess_mapping(draft, frame, profile, "sha", enrich=True)
     assert result.draft.fields[0].date_format == "%Y-%m-%d"
@@ -199,8 +199,69 @@ def test_full_column_enrichment_does_not_guess_timezone_currency_or_customer_key
     assert result.draft.fields[1].currency is None
     assert result.draft.fields[1].amount_basis is None
     assert not result.draft.fields[3].business_key
-    assert result.pending_fields == 2 and not result.preflight_ready
+    assert result.checks[0].date_kind == "calendar"
+    assert result.pending_fields == 1 and not result.preflight_ready
     assert draft.fields[0].date_format == "YYYY-MM-DD" and draft.fields[3].business_key
+
+
+@pytest.mark.parametrize(
+    ("raw", "kind", "timezone", "expected"),
+    [
+        ("2026-09-30", "calendar", None, "2026-09-30"),
+        ("2026-09-30T17:00:00Z", "offset", None, "2026-09-30T17:00:00+00:00"),
+        ("2026-10-01T00:00:00+07:00", "offset", None, "2026-09-30T17:00:00+00:00"),
+        ("2026-10-01 00:00", "local", "Asia/Ho_Chi_Minh", "2026-09-30T17:00:00+00:00"),
+    ],
+)
+def test_source_date_preflight_and_parquet_type(raw, kind, timezone, expected):
+    from studio.agent_preparation import approval_from_draft
+    from studio.contracts import MappingRevision
+    from studio.normalization import apply_transform_plan
+    from studio.schema_mapping import compile_transform_plan
+
+    frame, profile, draft = sample()
+    frame = frame.with_columns(pl.lit(raw).alias("c1"), pl.lit("VND").alias("c3"))
+    draft = assess_mapping(draft, frame, profile, "sha", enrich=True).draft
+    draft.fields[1].amount_basis = "gross"
+    candidate = assess_mapping(draft, frame, profile, "sha")
+    assert candidate.checks[0].date_kind == kind
+    assert candidate.preflight_ready is (kind != "local")
+    draft.fields[0].timezone = timezone
+    approval = approval_from_draft(draft, profile, False)
+    mapping = MappingRevision(
+        id="mapping",
+        workspace_id=profile.workspace_id,
+        source_table_id=draft.table_id,
+        source_signature="test",
+        schema_id=approval.schema_definition.id,
+        schema_revision=1,
+        business_scope="test",
+        revision=1,
+        status="APPROVED",
+        approved_by="test",
+        decisions=[
+            decision.model_copy(update={"decision": "APPROVED"}) for decision in approval.decisions
+        ],
+    )
+    plan = compile_transform_plan(mapping, approval.schema_definition, profile)
+    result = apply_transform_plan(frame, plan, "v", "t", "a", "CSV")
+    payload = result.canonical["record_payload"].struct.field(draft.fields[0].target_id)
+    assert payload.dtype == (pl.Date if kind == "calendar" else pl.Datetime("us", "UTC"))
+    assert payload[0].isoformat() == expected
+
+
+def test_vnd_default_applies_only_when_currency_evidence_is_absent():
+    frame, profile, draft = sample()
+    profile.columns[2].name = draft.fields[2].name = "Memo"
+    draft.fields[1].currency = draft.fields[1].unit = None
+    only_vnd = frame.with_columns(pl.lit("VND").alias("c3"))
+    assert (
+        assess_mapping(draft, only_vnd, profile, "sha", enrich=True).draft.fields[1].currency
+        == "VND"
+    )
+    assert (
+        assess_mapping(draft, frame, profile, "sha", enrich=True).draft.fields[1].currency is None
+    )
 
 
 @pytest.mark.parametrize(

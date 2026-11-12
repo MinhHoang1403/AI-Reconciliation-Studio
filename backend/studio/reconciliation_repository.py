@@ -7,7 +7,7 @@ surface. Only backend-owned artifact paths and fixed parameterized queries enter
 import hashlib
 import json
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -153,7 +153,7 @@ def planning_source_evidence(
             for f in cat.schema_definition.fields
             if f.data_type == "date" and (slot.date_field is None or f.id == slot.date_field)
         ]
-        bounds = {}
+        bounds: dict[str, tuple[date, date]] = {}
         if fields:
             for record in load_canonical_records(db, actor, canonical):
                 if record.invalid or any(
@@ -162,8 +162,12 @@ def planning_source_evidence(
                     continue
                 for field in fields:
                     stamp = record.payload.get(field)
-                    if isinstance(stamp, datetime) and stamp.utcoffset() is not None:
-                        day = stamp.astimezone(zone).date()
+                    if isinstance(stamp, date) and (
+                        not isinstance(stamp, datetime) or stamp.utcoffset() is not None
+                    ):
+                        day = (
+                            stamp.astimezone(zone).date() if isinstance(stamp, datetime) else stamp
+                        )
                         first, last = bounds.get(field, (day, day))
                         bounds[field] = min(first, day), max(last, day)
         result.append(
