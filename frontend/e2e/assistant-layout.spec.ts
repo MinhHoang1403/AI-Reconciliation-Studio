@@ -38,6 +38,7 @@ for(const width of [390,768,1366,1440,1920]){
       if(path==="/api/agent/workflows/old-visual-workflow"){await new Promise(resolve=>setTimeout(resolve,75));return route.fulfill({json:{id:"old-visual-workflow",conversation_id:conversation.id,context:{...context,run_id:"old-run"},state:"COMPLETED",updated_at:conversation.created_at,detail:{intent:{intent:"SUMMARIZE_RESULTS"},model_calls:0,error_code:null,steps:[],reviews:[],blocks:[{type:"progress",text:"Kết quả cũ giữ nguyên ngữ cảnh riêng."}]}}});}
       if(path==="/api/agent/workflows/visual-workflow")return route.fulfill({json:{id:"visual-workflow",conversation_id:conversation.id,context:scenario==="completed"?{...context,run_id:"visual-run"}:context,state:scenario==="review"||scenario==="permission"?"WAITING_REVIEW":scenario==="running"?"RUNNING":scenario==="partial"?"PARTIAL":scenario==="failed"?"FAILED":scenario==="unavailable"?"BLOCKED":"COMPLETED",updated_at:conversation.created_at,detail:{intent:{intent:"QUERY_DATA"},model_calls:0,error_code:scenario==="unavailable"?"GEMINI_UNAVAILABLE":scenario==="failed"?"NORMALIZATION_FAILED":null,steps:scenario==="running"?[{tool:"run_normalization",resource_id:"visual-table",job_id:"visual-job",status:"RUNNING"}]:[],reviews:scenario==="review"||scenario==="permission"?[review]:[],blocks:scenario==="export"?[{type:"download",export_id:"visual-export",format:"xlsx"}]:scenario==="longfilename"?[{type:"dataset_summary",dataset_id:"visual-dataset",table_id:"visual-table",canonical_id:"visual-canonical",name:"Synthetic ledger with long descriptive filename ".repeat(5)+".csv",rows:75,invalid_rows:2,status:"PARTIAL",transformations:["parse_decimal"]}]:scenario==="partial"?[{type:"progress",text:"Một phần dữ liệu cần kiểm tra; kết quả đã lưu được giữ."}]:scenario==="running"?[{type:"progress",text:"Worker đang xử lý nguồn dữ liệu. Kết quả chưa được công bố."}]:scenario==="table"||scenario==="evidence"?[table(true)]:scenario==="chart"?[chart]:scenario==="completed"?[{type:"dataset_summary",dataset_id:"visual-dataset",table_id:"visual-table",canonical_id:"visual-canonical",name:"Sổ cái tổng hợp.csv",rows:75,invalid_rows:0,status:"READY",transformations:["cast_string_preserve","parse_decimal"]},table(),chart]:[{type:"progress",text:"Đây là dữ liệu tổng hợp kiểm tra UI; không phải nghiệm thu suy luận live."}]}}});
       if(path==="/api/agent/source-rows")return route.fulfill({json:{rows:[{"Mã giao dịch (c1)":"000701","Số tiền (c2)":"25.00","Nội dung (c3)":"Dòng tổng hợp bất biến"}]}});
+      if(path.endsWith("/quality-issues"))return route.fulfill({json:{dataset:"Synthetic ledger with long descriptive filename ".repeat(5)+".csv",sheet:"CSV",current:false,total:2,items:[],valid_records:75,invalid_records:2,excluded_source_rows:0,excluded_amounts:[],excluded_amounts_unavailable:false,decision_history:[],latest_id:null,job:null}});
       if(path==="/api/agent/attachments"){await gate;return route.fulfill({status:422,json:{code:"VISUAL_UPLOAD_ERROR",message_vi:"Kiểm tra hiển thị lỗi upload tổng hợp; không có file thật được lưu."}});}
       if(route.request().method()!=="GET")throw new Error(`Unexpected visual mutation: ${path}`);
       return route.fulfill({json:{items:[],total:0}});
@@ -49,7 +50,7 @@ for(const width of [390,768,1366,1440,1920]){
     const input=page.getByLabel("Câu hỏi cho AI Assistant",{exact:true});
     for(const name of ["empty","short","long","upload","running","review","completed","table","chart","evidence","history","multiline","keyboard","sidebar","delete","error","permission","loading","partial","failed","unavailable","export","longfilename"]){
       scenario=name;gate=new Promise<void>(resolve=>release=resolve);
-      await page.goto("/#page=assistant");await expect(page.getByRole("status",{name:"Trạng thái kết nối"})).toHaveText("Đã kết nối");
+      await page.goto(`/?ui-case=${name}#page=assistant`);await expect(page.getByRole("status",{name:"Trạng thái kết nối"})).toHaveText("Đã kết nối");
       if(name==="loading"){await expect(input).toBeDisabled();await shot(name);release();await expect(input).toBeEnabled();continue;}
       if(name==="error"){await expect(page.getByRole("alert")).toContainText("Chưa tải được hội thoại");await shot(name);continue;}
       await expect(input).toBeEnabled();
@@ -76,7 +77,7 @@ for(const width of [390,768,1366,1440,1920]){
       }
       if(name==="sidebar"){
         const menu=page.getByRole("button",{name:"Mở điều hướng",exact:true});if(await menu.isVisible())await menu.click();
-        await expect(page.locator('.sidebar nav').getByRole('button')).toHaveText(['AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử hội thoại','Cài đặt']);
+        await expect(page.locator('.sidebar nav').getByRole('button')).toHaveText(['Dashboard','AI Assistant','Dữ liệu','Đối soát','Báo cáo','Lịch sử hội thoại','Cài đặt']);
         await page.locator('.sidebar').getByRole('button',{name:'Lịch sử hội thoại',exact:true}).focus();
         await expect(page.locator('.sidebar').getByRole('button',{name:'Lịch sử hội thoại',exact:true})).toBeFocused();
       }
@@ -310,7 +311,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     await expect(user.locator('.message-metadata small')).not.toBeVisible();
     await expect(user.getByLabel('Thông tin tin nhắn',{exact:true})).toBeFocused();
 
-    await expect(page.locator('.agent-workflow-state')).toHaveText('Đã đọc dữ liệu; chưa chuẩn hóa');
+    await expect(page.locator('.agent-workflow-state')).toHaveText('Đã đọc dữ liệu, chưa chuẩn hóa');
     const result=page.getByRole('region',{name:'Kết quả truy vấn',exact:true});
     await expect(result).toContainText('75 dòng dữ liệu');await expect(result).toContainText('Đang xem 10 dòng');
     await expect(result).toContainText('Ý nghĩa các cột chưa được xác nhận');
@@ -335,6 +336,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     countMode=true;await page.reload();
     await expect(result).toContainText('Kết quả đếm: 75 dòng dữ liệu');
     await expect(result).not.toContainText('1 nhóm kết quả');
+    await expect(result.getByRole('table')).toHaveCount(0);
     aggregate.result.rows[0].count_rows_0=0;await page.reload();
     await expect(result).toContainText('Kết quả đếm: 0 dòng dữ liệu');
     projectName='UAT F Biên & bảo mật — Nguồn giao dịch khu vực miền Nam tháng 10 năm 2026';

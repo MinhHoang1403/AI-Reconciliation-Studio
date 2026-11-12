@@ -93,6 +93,7 @@ export type Snapshot = {
   period_start: string;
   period_end: string;
   timezone: string;
+  source_canonical_ids?: string[];
   full_match_rate: Rate;
   linkage_rate: Rate;
   exception_rate: Rate;

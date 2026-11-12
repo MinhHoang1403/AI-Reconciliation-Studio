@@ -3,7 +3,7 @@ import { api, apiPages } from "./api";
 import { Notice, Spinner } from "./components";
 import type { DraftField, NormalizationDraft, Review, Workflow, MappingAssessment, SharedMappingFacts } from "./agentTypes";
 import { label, type Plan, type Catalogue, type Slot } from "./reconciliationTypes";
-import { errorText as errors } from "./types";
+import { errorText as errors, qualityText } from "./types";
 function proposedPlan(review: Review, catalogue: Catalogue[]): Plan | null {
     const request = review.planning_request, s = review.suggestions;
     if (!request || !s || !s.join_keys.length || !s.comparison_metrics.length || !s.cardinality || !s.aggregation || !s.comparison_grain)
@@ -453,7 +453,7 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
         return () => onBatchDraft?.(review.id, null);
     }, [batchPayload, onBatchDraft, review.id]);
     if (review.kind === "CLARIFICATION") return <section className="agent-clarification" aria-label="Câu hỏi bổ sung">
-      <div className="review-heading"><span>Thông tin cần bổ sung</span><h4>{review.question}</h4></div>
+      <div className="review-heading"><h4>{review.question}</h4></div>
       {error && <Notice tone="error">{error}</Notice>}
       {review.reply_questions.filter(q=>q!==review.question).map(q=><p key={q}>{q}</p>)}
       <div className="clarification-options">{review.options?.map(option=><button className="button secondary" key={option.id} disabled={disabled} onClick={()=>void action(option.intent)}>{option.label}</button>)}</div>
@@ -464,9 +464,8 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
     </section>;
     return <section className="agent-review" aria-label="Quyết định cần xác nhận">
     <header className="review-heading">
-      <span>{expired ? "Đã hết thời hạn" : review.pending_reply_job_id ? "Đang đọc câu trả lời" : "Chờ bạn xác nhận"}</span>
       <h4>{review.question}</h4>
-      {review.resource_label && <p>{review.resource_label}</p>}
+      {review.resource_label && <p><strong>{review.resource_label}</strong></p>}
       <p>{review.reason}</p>
     </header>
     {error && <Notice tone="error">{error}</Notice>}{review.reply_questions.map(q => <Notice key={q}>{q}</Notice>)}
@@ -480,7 +479,14 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
       {assessment && <>
         <p>{draft.fields.length} cột · {assessment.source_rows} dòng. {assessment.verified_fields} trường đã kiểm tra kỹ thuật; {assessment.pending_fields} trường cần xác nhận.</p>
         {assessment.questions.length>0 && <section aria-label="Thông tin cần xác nhận"><h4>Cần bạn xác nhận</h4><ul>{assessment.questions.map(q=><li key={q}>{q}</li>)}</ul></section>}
-        {assessment.checks.some(c => c.affected_rows > 0 || c.messages.some(m => m.includes("nhiều tiền tệ"))) && <section className="review-affected" aria-label="Dữ liệu bất thường"><h4>Dữ liệu bất thường</h4>{assessment.checks.filter(c=>c.affected_rows>0||c.messages.some(m=>m.includes('nhiều tiền tệ'))).map(c=><p key={c.field_id}>{c.name}: {c.affected_rows} dòng lỗi chuyển đổi. {Object.entries(c.error_counts).map(([code,count])=>`${errors[code]||code}: ${count}`).join('; ')}{c.messages.filter(m=>m.includes('nhiều tiền tệ')).map(m=><span key={m}> {m}</span>)}</p>)}</section>}
+        {assessment.checks.some(c => c.affected_rows > 0 || c.messages.some(m => m.includes("nhiều tiền tệ"))) && <section className="review-affected" aria-label="Dữ liệu bất thường">
+          <h5>Dữ liệu bất thường</h5>
+          <ul>{assessment.checks.filter(c=>c.affected_rows>0||c.messages.some(m=>m.includes("nhiều tiền tệ"))).map(c=><li key={c.field_id}>
+            <strong>{c.name}</strong> · {c.affected_rows} dòng lỗi chuyển đổi.
+            {Object.entries(c.error_counts).length > 0 && <p>{Object.entries(c.error_counts).map(([code,count])=>`${qualityText[code] || errors[code] || code} (${count})`).join(" · ")}</p>}
+            {c.messages.filter(m=>m.includes("nhiều tiền tệ")).map(m=><p key={m}>{m}</p>)}
+          </li>)}</ul>
+        </section>}
         <details><summary>Đã xác định bằng bằng chứng</summary><ul>{assessment.checks.filter(c=>c.state==='VERIFIED').map(c=><li key={c.field_id}><strong>{c.name}</strong>{c.messages.map(m=><p key={m}>{m}</p>)}</li>)}</ul><p>Các phép kiểm kỹ thuật không tự xác nhận ý nghĩa nghiệp vụ. Bạn vẫn kiểm tra và duyệt đề xuất.</p></details>
 
         {!!assessment.related_keys?.length&&<details><summary>Quan hệ tiềm năng giữa các nguồn</summary>{assessment.related_keys.map((r,i)=><p key={`${r.table_id}:${i}`}>{r.source_name}: {r.fields.join(' + ')}; {r.shared_keys} khóa xuất hiện ở cả hai nguồn, {r.left_duplicate_rows}/{r.right_duplicate_rows} dòng trùng khóa, {r.missing_key_rows} dòng thiếu khóa. Cần xác nhận ý nghĩa mỗi dòng và quan hệ một/nhiều trước khi đối soát; không tự duyệt từ thống kê.</p>)}</details>}
@@ -515,14 +521,10 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
           " · Các nhóm trùng khóa được đưa vào rà soát."}
       </label>)}
     </fieldset>}
-    {review.kind === "RECONCILIATION" && !!review.source_evidence?.length && <div>
+    {review.kind === "RECONCILIATION" && !!review.source_evidence?.length && <div className="review-source-evidence">
       <h4>Dữ kiện đã kiểm tra</h4>
       {review.source_evidence.map(source => <section key={source.canonical_id}>
         <h5>{source.name}</h5>
-        <p>Tệp tải lần đầu {source.uploaded_at
-          ? new Date(source.uploaded_at).toLocaleString("vi-VN", { timeZone: "UTC" }) + " UTC"
-          : "chưa có thời điểm lưu"} · Phiên bản nguồn {source.dataset_revision} · Ánh xạ {source.mapping_revision}
-          {source.quality_revision > 0 && <> · Lần xử lý chất lượng {source.quality_revision}</>}</p>
         <p>{source.valid_rows.toLocaleString("vi-VN")} dòng dùng được trong bản chuẩn hóa
           {!!source.invalid_rows && <> · {source.invalid_rows} dòng chưa hợp lệ</>}
           {!!source.excluded_rows && <> · {source.excluded_rows} dòng đã loại</>}.</p>
@@ -534,6 +536,12 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
         {source.observed_dates.map(range => <p key={range.field}>
           {fieldName(source.canonical_id, range.field)} quan sát được từ {range.first} đến {range.last} ({source.observation_timezone}).
         </p>)}
+        <details><summary>Phiên bản nguồn</summary>
+          <p>Tệp tải lần đầu {source.uploaded_at
+            ? new Date(source.uploaded_at).toLocaleString("vi-VN", { timeZone: "UTC" }) + " UTC"
+            : "chưa có thời điểm lưu"} · Phiên bản nguồn {source.dataset_revision} · Ánh xạ {source.mapping_revision}
+            {source.quality_revision > 0 && <> · Lần xử lý chất lượng {source.quality_revision}</>}</p>
+        </details>
       </section>)}
       {needsScope && <p>Khoảng ngày quan sát được giúp kiểm tra kỳ. Thời điểm chốt và mức độ đầy đủ cần xác nhận theo nghiệp vụ.</p>}
     </div>}
@@ -566,11 +574,13 @@ export function ReviewCard({ review, workflow, canEdit, draftOwner, refresh, onR
         Mở Đối soát để thiết lập quy tắc
       </a>
     </Notice>}
-    {expired && <Notice>Thẻ đã hết thời hạn. Nếu nguồn còn nguyên, bạn có thể mở lại để tiếp tục.<button type="button" className="text-button" disabled={busy || !canEdit || !!review.pending_reply_job_id} onClick={()=>void saveOrRenew(true)}>Mở lại thẻ xác nhận</button></Notice>}
-    <button className="text-button" disabled={replyDisabled} onClick={()=>void requestReply()}>Bổ sung bằng tiếng Việt</button>
+    {expired && <Notice><p>Thẻ đã hết thời hạn. Nếu nguồn còn nguyên, bạn có thể mở lại để tiếp tục.</p><button type="button" className="text-button" disabled={busy || !canEdit || !!review.pending_reply_job_id} onClick={()=>void saveOrRenew(true)}>Mở lại thẻ xác nhận</button></Notice>}
+    <div className="review-secondary-actions">
+      <button className="text-button" disabled={replyDisabled} onClick={()=>void requestReply()}>Bổ sung bằng tiếng Việt</button>
+      <button type="button" className="text-button" disabled={disabled || !changed} onClick={()=>void saveOrRenew()}>Lưu bản nháp</button>
+    </div>
     {replyOpen && <form onSubmit={e=>{e.preventDefault();void sendInlineReply();}}><label>Câu trả lời cho thẻ này<textarea value={replyText} disabled={replyDisabled || !!replyPending.current} maxLength={2000} onChange={e=>{setReplyText(e.target.value);try{sessionStorage.setItem(replyKey,e.target.value);}catch{/* optional local recovery */}}}/></label><button type="submit" className="button secondary" disabled={replyDisabled || !replyText.trim()}>Gửi câu trả lời để xem trước</button></form>}
-    <button type="button" className="text-button" disabled={disabled || !changed} onClick={()=>void saveOrRenew()}>Lưu bản nháp</button>
-    {review.pending_reply_job_id && <Spinner />}<p className="muted">Câu trả lời được diễn giải để bạn kiểm tra; hệ thống chưa phê duyệt thay bạn.</p>
+    {review.pending_reply_job_id && <p role="status">Đang đọc câu trả lời của bạn…</p>}
     {draft && review.extraction_review_required!==false && <label><input type="checkbox" checked={extraction} disabled={disabled} onChange={e => setExtraction(e.target.checked)}/>Tôi đã kiểm tra cảnh báo/vùng bảng nguồn nếu có.</label>}
     {!ready && <p className="muted">Mở phần chỉnh sửa hoặc bổ sung bằng tiếng Việt để hoàn tất các điều kiện còn thiếu.</p>}
     {partialSources.length > 0 && <Notice>

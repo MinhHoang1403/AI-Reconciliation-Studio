@@ -951,40 +951,24 @@ export function AssistantStudio({
                   ) : (
                     message.answer && (
                       <>
-                        <details className="assistant-mode">
-                          <summary>
-                            {labels[message.answer.status] ||
-                              message.answer.status}
-                          </summary>
-                          <p>
-                            {labels[message.answer.mode] || message.answer.mode}{" "}
-                            · Không phải bằng chứng gọi AI live.
-                          </p>
-                        </details>
-                        {message.answer.lines.map((line, index) => (
+                        {message.answer.lines.map((line, index) => {
+                          const display = line.text.replace(
+                            /\b[A-Z_]+\b/g,
+                            (value) => reconciliationLabels[value] || value,
+                          );
+                          return (
                           <div className="assistant-claim" key={index}>
-                            <span
-                              className={`claim-label ${line.classification.toLowerCase()}`}
-                            >
-                              {labels[line.classification] ||
-                                line.classification}
-                            </span>
-                            <p>
-                              {line.text.replace(
-                                /\b[A-Z_]+\b/g,
-                                (value) => reconciliationLabels[value] || value,
-                              )}
-                            </p>
-                            {line.text.replace(
-                              /\b[A-Z_]+\b/g,
-                              (value) => reconciliationLabels[value] || value,
-                            ) !== line.text && (
+                            {line.classification !== "VERIFIED_FACT" && <strong className={`claim-label ${line.classification.toLowerCase()}`}>
+                              {labels[line.classification] || line.classification}
+                            </strong>}
+                            <p>{display}</p>
+                            {display !== line.text && (
                               <details>
                                 <summary>Thuật ngữ gốc</summary>
                                 <p>{line.text}</p>
                               </details>
                             )}
-                            {line.reference_ids.slice(0, 3).map((id) => {
+                            <div className="assistant-actions">{line.reference_ids.slice(0, 3).map((id) => {
                               const ref =
                                 message.answer!.fact_set.references.find(
                                   (r) => r.id === id,
@@ -1001,10 +985,10 @@ export function AssistantStudio({
                                     ? `${ref.sheet} · dòng ${ref.row}`
                                     : ref.group_id
                                       ? "Nhóm đối soát"
-                                      : "MetricSnapshot"}
+                                      : "Số liệu đã xác minh"}
                                 </button>
                               ) : null;
-                            })}
+                            })}</div>
                             {line.reference_ids.length > 3 && (
                               <small>
                                 Hiển thị 3/{line.reference_ids.length} tham
@@ -1012,7 +996,8 @@ export function AssistantStudio({
                               </small>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                         {message.answer.fact_set.rule_id && (
                           <details>
                             <summary>Chi tiết quy tắc và phiên bản</summary>
@@ -1051,6 +1036,11 @@ export function AssistantStudio({
                             Xem đề xuất đối soát
                           </button>
                         )}
+                        <details className="assistant-mode">
+                          <summary>{message.answer.status === "ANSWERED" ? "Thông tin về câu trả lời"
+                            : labels[message.answer.status] || message.answer.status}</summary>
+                          <p>Chế độ xử lý · {labels[message.answer.mode] || message.answer.mode}</p>
+                        </details>
                       </>
                     )
                   )}

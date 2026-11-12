@@ -137,7 +137,15 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
         if (alive.current)
             setError(String(err));
     } }
-    const openMappings = workflow?.detail.reviews.filter(review => review.kind === "MAPPING" && review.state === "OPEN") || [];
+    const openReviews = workflow?.detail.reviews.filter(review => review.state === "OPEN") ?? [];
+    const openMappings = openReviews.filter(review => review.kind === "MAPPING");
+    const resultBlocks = workflow?.detail.blocks.filter((block, index, blocks) =>
+        block.type !== "progress" || (
+            !openReviews.some(review=>review.question === block.text || review.reply_questions.includes(block.text)) &&
+            !blocks.slice(0, index).some(previous=>previous.type === "progress" && previous.text === block.text)
+        ),
+    ) ?? [];
+    const compactPreviews = openReviews.length > 0 || resultBlocks.some(block=>block.type === "dataset_summary" || block.type === "facts");
     const canBatch = canEdit && openMappings.length >= 2 && openMappings.every(review => !!batchDrafts[review.id]);
     async function approveBatch() {
         if (!canBatch || batchLock.current) return;
@@ -154,10 +162,15 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
             if (alive.current) setBatchBusy(false);
         }
     }
-    return <section className="agent-workflow" aria-label="Công việc của AI Assistant">{error && <Notice tone="error">{error}<button className="text-button" onClick={() => void refresh()}>Cập nhật</button></Notice>}
-    {!workflow ? <Spinner /> : <><p className="agent-workflow-state" role="status">{["CREATED","RUNNING"].includes(workflow.state)&&<Spinner/>}<strong>{workflow.state==="WAITING_REVIEW"&&workflow.detail.reviews.some(r=>r.state==="OPEN"&&r.kind==="CLARIFICATION")?"Cần bạn bổ sung":workflow.state === "COMPLETED" && workflow.detail.intent?.intent === "EXPLORE_DATA" ? "Đã đọc dữ liệu; chưa chuẩn hóa" : states[workflow.state] || "Chưa có trạng thái xử lý"}</strong>{["CREATED", "RUNNING", "WAITING_REVIEW"].includes(workflow.state) && <button className="text-button" onClick={() => void cancel()}>Dừng bước tiếp theo</button>}</p>
+    return <section className="agent-workflow" aria-label="Công việc của AI Assistant">{error && <Notice tone="error"><p>{error}</p><button className="text-button" onClick={() => void refresh()}>Cập nhật</button></Notice>}
+    {!workflow ? <Spinner /> : <><div className="agent-workflow-state" data-state={workflow.state}>
+      <strong role="status">{workflow.state === "WAITING_REVIEW" && openReviews.some(review=>review.kind === "CLARIFICATION")
+        ? "Cần bạn bổ sung" : workflow.state === "COMPLETED" && workflow.detail.intent?.intent === "EXPLORE_DATA"
+        ? "Đã đọc dữ liệu, chưa chuẩn hóa" : states[workflow.state] || "Chưa có trạng thái xử lý"}</strong>
+      {["CREATED", "RUNNING", "WAITING_REVIEW"].includes(workflow.state) && <button className="text-button" onClick={() => void cancel()}>Dừng bước tiếp theo</button>}
+    </div>
       {workflow.detail.error_code && <Notice tone="warning">
-        {errors[workflow.detail.error_code]||"Chưa đủ điều kiện để tiếp tục. Dữ liệu và kết quả đã lưu được giữ."}
+        <p>{errors[workflow.detail.error_code]||"Chưa đủ điều kiện để tiếp tục. Dữ liệu và kết quả đã lưu được giữ."}</p>
         {canEdit && workflow.detail.resumable_job_id &&
           <button type="button" className="text-button" onClick={() => void resumeProvider()}>Tiếp tục công việc</button>}
         {workflow.detail.intent?.intent === "PREPARE_NORMALIZATION" && (
@@ -166,19 +179,19 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
           </button>
         )}
       </Notice>}
-      {workflow.detail.steps.length>0&&<details className="agent-processing"><summary>Chi tiết xử lý</summary><ol className="agent-steps">{workflow.detail.steps.map((s, i) => <li key={i}>{tools[s.tool] || s.tool} · {statusText[s.status]||label(s.status)}</li>)}</ol></details>}
       {workflow.detail.prepare_upload && openMappings.length>=2 && openMappings.every(review=>review.normalization_draft?.fields.filter(field=>field.data_type==="decimal").length===1) && <CommonMappingFacts
         key={openMappings.map(review=>`${review.id}:${review.nonce}`).join("|")}
         reviews={openMappings} storageKey={`studio.common-mapping.${draftOwner}.${id}.${openMappings.map(review=>`${review.id}:${review.nonce}:${review.fingerprint}`).join("|")}`}
         disabled={!canEdit||batchBusy||!["WAITING_REVIEW","RUNNING"].includes(workflow.state)} onApply={facts=>{setBatchDrafts({});setSharedFacts(previous=>({...facts,revision:(previous?.revision||0)+1}));}}/>}
-      {workflow.detail.reviews.filter(r => r.state === "OPEN").map(r => <ReviewCard key={`${r.id}:${r.nonce}`} review={r} workflow={workflow} draftOwner={draftOwner} canEdit={canEdit && !batchBusy && ["WAITING_REVIEW", "RUNNING"].includes(workflow.state)} refresh={refresh} onReply={onReply} onBatchDraft={workflow.detail.prepare_upload ? batchDraft : undefined} sharedFacts={sharedFacts}/>)}
+      {openReviews.map(r => <ReviewCard key={`${r.id}:${r.nonce}`} review={r} workflow={workflow} draftOwner={draftOwner} canEdit={canEdit && !batchBusy && ["WAITING_REVIEW", "RUNNING"].includes(workflow.state)} refresh={refresh} onReply={onReply} onBatchDraft={workflow.detail.prepare_upload ? batchDraft : undefined} sharedFacts={sharedFacts}/>)}
       {(canBatch || batchBusy) && <section aria-label="Duyệt các nguồn đang hiển thị">
         <p>Áp dụng các lựa chọn trong thẻ của {openMappings.map(review => review.resource_label || "nguồn đã chọn").join(", ")}.</p>
         <button type="button" className="button primary" disabled={batchBusy} onClick={()=>void approveBatch()}>Duyệt {openMappings.length} nguồn và chuẩn hóa</button>
       </section>}
-      <AgentResultBlocks blocks={workflow.detail.blocks.filter((block,index,blocks)=>block.type!=="progress"||(!workflow.detail.reviews.some(r=>r.state==="OPEN"&&(r.question===block.text||r.reply_questions.includes(block.text)))&&!blocks.slice(0,index).some(previous=>previous.type==="progress"&&previous.text===block.text)))} context={workflow.context} onNavigate={onNavigate} workflowId={workflow.id} querySelection={workflow.detail.query_selection?.query} onQualityPublished={id => {
+      {resultBlocks.length > 0 && <AgentResultBlocks blocks={resultBlocks} compactPreviews={compactPreviews} context={workflow.context} onNavigate={onNavigate} workflowId={workflow.id} querySelection={workflow.detail.query_selection?.query} onQualityPublished={id => {
         qualityPublished.current = id;
         setResumeVersion(value => value + 1);
-      }}/>
+      }}/>}
+      {workflow.detail.steps.length>0&&<details className="agent-processing"><summary>Chi tiết xử lý</summary><ol className="agent-steps">{workflow.detail.steps.map((s, i) => <li key={i}>{tools[s.tool] || s.tool} · {statusText[s.status]||label(s.status)}</li>)}</ol></details>}
     </>}</section>;
 }

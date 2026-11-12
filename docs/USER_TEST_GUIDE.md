@@ -251,13 +251,13 @@ Ví dụ câu hỏi trạng thái trên bộ G 1.000 giao dịch, cũng đã có
 
 ### 5.5. Xử lý dòng lỗi trong Chat hoặc Dữ liệu
 
-Mở **Dòng cần xử lý** trong kết quả chuẩn hóa của Assistant, hoặc chọn **Cảnh báo / lỗi** ở bảng nguồn trong **Dữ liệu**. Mỗi dòng hiện cột nguồn, giá trị gốc và trường chuẩn hóa liên quan. Một dòng có thể có nhiều lỗi.
+Trong kết quả chuẩn hóa của Assistant, tìm tên nguồn và số dòng cần kiểm tra. Bấm **Xử lý lỗi** ngay dưới dòng cần quyết định. Trong **Dữ liệu**, chọn **Cảnh báo / lỗi** ở bảng nguồn. Mỗi dòng hiện cột nguồn, giá trị gốc và trường chuẩn hóa liên quan.
 
 - **Sửa giá trị** khi có chứng từ hoặc căn cứ đã kiểm tra. Nhập giá trị theo định dạng đã duyệt và ghi lý do. Trong Chat, có thể nói “Sửa dòng này thành 1.250.000 theo chứng từ đã kiểm tra”. Assistant điền bản nháp nếu xác định được đúng một lỗi. Kiểm tra dòng và cột trước khi bấm **Xác nhận và kiểm tra lại**.
-- **Loại dòng khỏi phạm vi** khi nghiệp vụ cho phép. Ghi lý do và kiểm số dòng đã loại trong bản mới. Khi lập quy tắc, đánh dấu nguồn chưa đầy đủ và xác nhận chạy một phần. Báo cáo tách số dòng đã loại và cho biết khoản tiền nào chưa xác định được.
-- **Giữ để kiểm tra sau** khi chưa đủ căn cứ. Dòng vẫn cần xử lý. Người duyệt quy tắc có thể xác nhận chỉ sử dụng phần dữ liệu đủ điều kiện.
+- **Loại dòng khỏi phạm vi** khi nghiệp vụ cho phép. Ghi lý do, bấm **Xác nhận loại trừ** rồi xem mục **Đã loại trừ khỏi phạm vi**. Khi lập quy tắc, đánh dấu nguồn chưa đầy đủ và xác nhận chạy một phần. Báo cáo tách số dòng đã loại và cho biết khi số tiền chưa xác định được.
+- **Giữ để kiểm tra sau** khi chưa đủ căn cứ. Ghi lý do rồi bấm **Xác nhận giữ để kiểm tra sau**. Dòng hiển thị **Đã ghi nhận quyết định — Vẫn cần kiểm tra**. Người duyệt quy tắc có thể xác nhận chỉ sử dụng phần dữ liệu đủ điều kiện.
 
-Sau xác nhận, Studio chạy lại chuẩn hóa và lưu một phiên bản riêng. Có thể mở bản cũ từ **Phiên bản kết quả** để đối chiếu với bản mới và xem lại dữ liệu gốc.
+Sau xác nhận, Studio chạy lại chuẩn hóa và lưu một phiên bản riêng. Mở **Quyết định gần đây trong bản này** để xem giá trị trước và sau khi sửa. Với nguồn đã chuẩn hóa xong, mục này nằm trong **Chi tiết chuẩn hóa và quyết định về dữ liệu**. Có thể mở bản cũ từ **Phiên bản kết quả** để đối chiếu với bản mới và xem lại dữ liệu gốc.
 
 ## 6. Đối soát hai nguồn
 
