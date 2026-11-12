@@ -6,8 +6,14 @@ execution; duplicate keys remain review cases, never permission to choose a matc
 
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from studio.contracts.reconciliation import PlanningSuggestions, ReconciliationPlan, SourceCatalogue
+from studio.contracts.reconciliation import (
+    ObservedComparison,
+    PlanningSuggestions,
+    ReconciliationPlan,
+    SourceCatalogue,
+)
 from studio.errors import DomainError
+from studio.profiling import field_name_tokens
 
 
 def _require(condition: bool, code: str, message: str) -> None:
@@ -20,7 +26,12 @@ def known(value: str | None) -> bool:
 
 
 def validate_reconciliation_contract(
-    plan: ReconciliationPlan, catalogue: list[SourceCatalogue], workspace_id: str, project_id: str
+    plan: ReconciliationPlan,
+    catalogue: list[SourceCatalogue],
+    workspace_id: str,
+    project_id: str,
+    *,
+    observation: ObservedComparison | None = None,
 ) -> ReconciliationPlan:
     """Return the unchanged valid plan or a coded failure; never infer missing semantics.
 
@@ -29,6 +40,43 @@ def validate_reconciliation_contract(
     not an inferred marketplace sign or fee conversion. Approval remains separate.
     """
     indexed = {c.canonical.id: c for c in catalogue}
+    if observation:
+        from studio.observed_reconciliation import EQUIVALENCE_CONFIRMATION
+
+        _require(
+            plan.allow_partial
+            and plan.cardinality == "ONE_TO_ONE"
+            and plan.aggregation == "NONE"
+            and plan.comparison_grain == "observed_order_reference"
+            and len(plan.join_keys) == len(plan.comparison_metrics) == 1
+            and not (plan.attributes or plan.fuzzy_fields or plan.fuzzy_block_keys)
+            and plan.timezone == "UTC"
+            and all(
+                metric.absolute_tolerance == 0
+                and metric.relative_tolerance is None
+                and metric.rounding_scale is None
+                and metric.currency == metric.unit == "VND"
+                and metric.amount_basis == "net_excluding_tax"
+                for metric in plan.comparison_metrics
+            )
+            and all(
+                slot.completeness == "UNKNOWN"
+                and slot.settlement_due_at is None
+                and slot.time_basis == "observed_source_calendar_day"
+                and not slot.filters
+                for slot in (plan.left, plan.right)
+            )
+            and (
+                (observation.confirmed_by is None and observation.confirmation is None)
+                or (
+                    bool(observation.confirmed_by)
+                    and observation.confirmation == EQUIVALENCE_CONFIRMATION
+                )
+            )
+            and all(cat.mapping and cat.mapping.policy_application for cat in catalogue),
+            "OBSERVATION_SCOPE_INVALID",
+            "Phạm vi đối chiếu quan sát chưa đủ căn cứ.",
+        )
     _require(len(indexed) == len(catalogue), "SOURCE_CATALOGUE_INVALID", "Nguồn bị lặp.")
     selected = []
     for slot in (plan.left, plan.right):
@@ -69,7 +117,7 @@ def validate_reconciliation_contract(
         if plan.entity_kind == "order":
             compatible_entities.add("order_line")
         _require(
-            canonical.entity_kind in compatible_entities,
+            bool(observation) or canonical.entity_kind in compatible_entities,
             "ENTITY_INCOMPATIBLE",
             "Loại dữ liệu không tương thích với đối tượng đối soát.",
         )
@@ -144,7 +192,10 @@ def validate_reconciliation_contract(
     if plan.cardinality == "ONE_TO_ONE":
         _require(
             plan.aggregation == "NONE"
-            and left.canonical.grain == right.canonical.grain == plan.comparison_grain,
+            and (
+                bool(observation)
+                or left.canonical.grain == right.canonical.grain == plan.comparison_grain
+            ),
             "CARDINALITY_GRAIN_INVALID",
             "1:1 cần cùng grain và không aggregation.",
         )
@@ -177,6 +228,14 @@ def validate_reconciliation_contract(
             "JOIN_KEY_TYPE_INVALID",
             "Khóa định danh cần chuỗi được bảo toàn, không dùng số tiền làm khóa.",
         )
+        if observation:
+            for fields, key in ((maps[0], pair.left), (maps[1], pair.right)):
+                words = set(field_name_tokens(fields[key].name))
+                _require(
+                    "order" in words and bool(words & {"id", "reference"}),
+                    "OBSERVATION_KEY_REQUIRED",
+                    "Chưa có mã đơn hàng để đối chiếu.",
+                )
     for metric in plan.comparison_metrics:
         _require(
             metric.left in maps[0] and metric.right in maps[1],
@@ -185,13 +244,21 @@ def validate_reconciliation_contract(
         )
         for fields, key in ((maps[0], metric.left), (maps[1], metric.right)):
             field = fields[key]
+            confirmed_equivalence = bool(
+                observation
+                and observation.confirmed_by
+                and observation.confirmation
+                and field.amount_basis in {"excluding_tax", "net_excluding_tax"}
+                and metric.amount_basis == "net_excluding_tax"
+                and metric.metric_id == "net_revenue_excluding_tax"
+            )
             _require(
                 field.data_type == "decimal"
                 and known(field.semantic_metric)
-                and field.semantic_metric == metric.metric_id
+                and (field.semantic_metric == metric.metric_id or confirmed_equivalence)
                 and field.currency == metric.currency
                 and known(field.amount_basis)
-                and field.amount_basis == metric.amount_basis
+                and (field.amount_basis == metric.amount_basis or confirmed_equivalence)
                 and known(field.unit)
                 and field.unit == metric.unit,
                 "RULE_UNVERIFIED",

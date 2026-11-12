@@ -16,6 +16,8 @@ class DatasetStatus(StrEnum):
     PARSING = "PARSING"
     PARSED = "PARSED"
     PROFILED = "PROFILED"
+    PREPARING = "PREPARING"
+    EXPLORATION_ONLY = "EXPLORATION_ONLY"
     NEEDS_MAPPING_REVIEW = "NEEDS_MAPPING_REVIEW"
     MAPPED = "MAPPED"
     NORMALIZING = "NORMALIZING"
@@ -281,6 +283,17 @@ class SchemaProposal(Contract):
     unresolved_questions: list[str] = Field(default_factory=list, max_length=20)
 
 
+class MappingPolicyApplication(Contract):
+    revision: Literal["automatic-preparation-1"]
+    source_artifact_id: str
+    source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    source_rows: int = Field(ge=1)
+    invalid_rows: int = Field(ge=0)
+    error_counts: dict[str, int]
+    currency_basis: Literal["SOURCE", "WORKSPACE_VND", "VND_SCOPE"]
+    applied_at: datetime
+
+
 class MappingRevision(Contract):
     id: str
     workspace_id: str
@@ -295,6 +308,9 @@ class MappingRevision(Contract):
     approved_by: str | None = None
     approved_at: datetime | None = None
     rules: list["ApprovedTransformRule"] = Field(default_factory=list)
+    policy_application: MappingPolicyApplication | None = Field(
+        default=None, exclude_if=lambda application: application is None
+    )
 
 
 class ApprovedTransformRule(Contract):

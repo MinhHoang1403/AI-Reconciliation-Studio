@@ -17,6 +17,80 @@ from test_reconciliation_postgres import prepare_pair
 pytestmark = pytest.mark.integration
 
 
+def test_automatic_upload_and_observed_comparison_need_no_mapping_review(pg, monkeypatch):  # noqa: F811
+    from studio.database import ReconciliationContractRow, RunRow
+    from studio.observed_reconciliation import EQUIVALENCE_CONFIRMATION
+
+    client, factory, worker = pg
+    pid = project(client)
+
+    def forbidden(*args):
+        pytest.fail("Deterministic preparation and observation must not call a provider")
+
+    monkeypatch.setattr(worker, "_mapping", forbidden)
+    headers = (
+        ("sales.csv", "so_dong_ban_hang,ma_don_hang,ngay_ban,doanh_thu_thuan_chua_vat,tien_te"),
+        ("cash.csv", "so_phieu_thu,ma_don_hang_lien_ket,ngay_thu,gia_tri_hang_chua_vat,tien_te"),
+        (
+            "ledger.csv",
+            "so_but_toan,tham_chieu_don_hang,ngay_hach_toan,doanh_thu_chua_thue,tien_te",
+        ),
+    )
+    files = [
+        (
+            "files",
+            (
+                name,
+                (
+                    header + "\n" + f"0001,A1,2026-07-01,{amount}.25,VND\n"
+                    "0002,A2,2026-07-02,-10.00,VND\n"
+                    f"0003,A3,2026-07-03,10.00,{'USD' if name == 'ledger.csv' else 'VND'}\n"
+                ).encode(),
+                "text/csv",
+            ),
+        )
+        for (name, header), amount in zip(headers, (100, 101, 102), strict=True)
+    ]
+    uploaded = client.post("/api/datasets/uploads", data={"project_id": pid}, files=files)
+    assert uploaded.status_code == 202, uploaded.text
+    context = {"project_id": pid}
+    cid = conversation(client, context)
+    request = ask_agent(
+        client, context, cid, text=f"Đối soát ba nguồn. {EQUIVALENCE_CONFIRMATION}."
+    )
+    drain(factory, worker, limit=30)
+    workflow = workflow_for(client, factory, request["job_id"])
+    assert workflow["state"] == "COMPLETED", workflow
+    assert workflow["detail"]["reviews"] == []
+    assert workflow["detail"]["model_calls"] == 0
+    with factory() as db:
+        mappings = list(db.scalars(select(MappingRow).where(MappingRow.status == "APPROVED")))
+        assert len(mappings) == 3
+        assert all(row.decision["approved_by"] is None for row in mappings)
+        assert {row.decision["policy_application"]["currency_basis"] for row in mappings} == {
+            "SOURCE",
+            "VND_SCOPE",
+        }
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 3
+        runs = list(db.scalars(select(RunRow)))
+        assert len(runs) == 2
+        assert all(run.status == "PARTIAL_VERIFIED" for run in runs)
+        assert all(all(check["passed"] for check in run.checks) for run in runs)
+        assert {r.metric_snapshot["monetary"][0]["signed_variance"] for r in runs} == {"-1.00"}
+        assert all(
+            row.definition["approved_by"] is None
+            for row in db.scalars(select(ReconciliationContractRow))
+        )
+    replay = client.post("/api/datasets/uploads", data={"project_id": pid}, files=files)
+    assert replay.status_code == 202 and all(item["reused"] for item in replay.json()["items"])
+    again = ask_agent(client, context, cid, key="again", text="Đối soát ba nguồn giúp mình")
+    drain(factory, worker)
+    assert workflow_for(client, factory, again["job_id"])["state"] == "COMPLETED"
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(RunRow)) == 2
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 3
+
+
 @pytest.mark.parametrize("encoding", ["legacy", "transient"])
 def test_legacy_clarification_decision_replay_preserves_digest_and_creates_no_job(
     pg,  # noqa: F811
@@ -343,7 +417,7 @@ def test_chat_upload_prepares_reviews_from_profiles_without_provider_or_approval
     pid = project(client)
     response = client.post(
         "/api/agent/attachments",
-        data={"project_id": pid},
+        data={"project_id": pid, "automatic_preparation": "false"},
         files=[
             (
                 "files",

@@ -9,7 +9,7 @@ const features = [
   { page: "assistant", icon: Sparkles, title: "AI Assistant", action: "Mở AI Assistant",
     description: "Trao đổi với AI để kiểm tra và xử lý dữ liệu." },
   { page: "data", icon: Database, title: "Dữ liệu", action: "Quản lý dữ liệu",
-    description: "Quản lý nguồn, xác nhận ánh xạ và chuẩn hóa." },
+    description: "Tải tệp và xem dữ liệu đã chuẩn bị." },
   { page: "reconcile", icon: Layers3, title: "Đối soát", action: "Mở đối soát",
     description: "Thiết lập quy tắc và kiểm tra chênh lệch giữa các nguồn." },
   { page: "reports", icon: FileSpreadsheet, title: "Báo cáo", action: "Xem báo cáo",
@@ -21,8 +21,9 @@ const nextActions: Partial<Record<PreparationAction["kind"], string>> = {
   REVIEW_MAPPING: "Kiểm tra ánh xạ",
   NORMALIZE: "Chuẩn hóa dữ liệu",
   REVIEW_DATA: "Kiểm tra lỗi dữ liệu",
+  OPEN_ASSISTANT: "Kiểm tra trong AI Assistant",
 };
-const workflow = ["Tải dữ liệu", "Xác nhận cột", "Chuẩn hóa", "Đối soát", "Xem báo cáo"];
+const workflow = ["Tải dữ liệu", "Chuẩn bị và kiểm tra", "Đối soát", "Xem báo cáo"];
 
 function LatestResult({ projectId, runId, onOpen }: {
   projectId: string;

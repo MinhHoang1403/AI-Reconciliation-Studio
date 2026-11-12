@@ -83,7 +83,13 @@ def execute_reconciliation(
             job.project_id,
             [contract.plan.left.canonical_id, contract.plan.right.canonical_id],
         )
-        validate_reconciliation_contract(contract.plan, cats, actor.workspace_id, job.project_id)
+        validate_reconciliation_contract(
+            contract.plan,
+            cats,
+            actor.workspace_id,
+            job.project_id,
+            observation=contract.observation,
+        )
         left, right = [load_canonical_records(db, actor, c.canonical) for c in cats]
         run_id, project_id, workspace_id = run.id, run.project_id, run.workspace_id
         run.status = "RUNNING"
@@ -132,6 +138,7 @@ def execute_reconciliation(
             warnings=result.warnings,
             matching_ms=match_ms,
             verification_ms=verify_ms,
+            **({"observed_scope": True} if contract.observation else {}),
         )
         run.checks = [c.model_dump(mode="json") for c in checks]
         run.metric_snapshot = snapshot.model_dump(mode="json") if snapshot else None

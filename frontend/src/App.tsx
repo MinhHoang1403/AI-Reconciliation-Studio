@@ -230,7 +230,7 @@ export function App() {
   const [encoding, setEncoding] = useState("utf-8-sig");
   const [delimiter, setDelimiter] = useState("");
   const [headerRow, setHeaderRow] = useState("");
-  const [requestAiMapping, setRequestAiMapping] = useState(true);
+  const [requestAiMapping, setRequestAiMapping] = useState(false);
   const [sidebar, setSidebar] = useState(false);
   const [compactNavigation, setCompactNavigation] = useState(
     () => localStorage.getItem("studio.navigation-compact") === "true",
@@ -929,6 +929,13 @@ export function App() {
       setPage("reconcile");
       return;
     }
+    if (action.kind === "OPEN_ASSISTANT") {
+      navigate("assistant", {
+        project_id: projectId,
+        ...(action.dataset_id ? { dataset_id: action.dataset_id } : {}),
+      });
+      return;
+    }
     if (!action.dataset_id) return;
     const selectedProject = projectId;
     const dataset = await api<Dataset>(`/datasets/${action.dataset_id}`);
@@ -974,6 +981,7 @@ export function App() {
   async function upload() {
     const form = new FormData();
     form.append("project_id", projectId);
+    form.append("automatic_preparation", "true");
     form.append("request_ai_mapping", String(requestAiMapping));
     files.forEach((f) => form.append("files", f));
     form.append(
@@ -1003,7 +1011,7 @@ export function App() {
     setSuccess(
       result.items.every((x) => x.reused)
         ? "Đã tìm thấy dữ liệu cùng nội dung và cấu hình trong dự án; tái sử dụng kết quả hiện có."
-        : "Đã lưu tệp gốc. Đang đọc dữ liệu.",
+        : "Đã lưu tệp gốc. Studio đang tự chuẩn bị dữ liệu trong nền.",
     );
   }
   async function normalize() {
@@ -2271,7 +2279,7 @@ export function App() {
                 checked={requestAiMapping}
                 onChange={(event) => setRequestAiMapping(event.target.checked)}
               />
-              Dùng AI đề xuất cách đọc cột
+              Dùng AI gợi ý thêm khi dữ liệu chưa đủ căn cứ
             </label>
             <div className="form-grid">
               <label>

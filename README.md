@@ -8,7 +8,7 @@ Làm việc với nhiều bảng dữ liệu thường bắt đầu bằng việ
 
 ## Bạn có thể làm gì?
 
-- **Chuẩn bị dữ liệu:** đọc CSV/XLSX, xem các sheet, đề xuất cách ghép cột và chuẩn hóa theo ý nghĩa bạn xác nhận.
+- **Chuẩn bị dữ liệu:** tự đọc và kiểm tra CSV/XLSX sau khi tải lên, chuẩn hóa khi đủ căn cứ và giữ riêng những dòng có vấn đề.
 - **Đối soát nhiều nguồn:** tìm giao dịch khớp, lệch tiền, thiếu đối ứng hoặc còn mơ hồ; hỗ trợ ghép khóa và gộp dòng theo quy tắc được duyệt.
 - **Hỏi và phân tích:** tra cứu bằng tiếng Việt, lọc dữ liệu, hỏi tiếp theo ngữ cảnh và xem biểu đồ từ kết quả có cấu trúc.
 - **Kiểm tra bằng chứng:** mở từng dòng gốc, xem dữ liệu trước/sau chuẩn hóa và kiểm tra hai phía của giao dịch.
@@ -18,7 +18,7 @@ Các tệp có cấu trúc khác nhau không cần bị ép thành cùng một b
 
 ## Cách hoạt động
 
-**Tải tệp → Xem bản tự chuẩn bị → Xác nhận nghiệp vụ → Chuẩn hóa → Đối soát → Kiểm chứng → Xuất báo cáo.**
+**Tải tệp → Studio tự chuẩn bị → Hỏi trong AI Assistant → Kiểm chứng và xuất báo cáo.**
 
 AI giúp hiểu yêu cầu và đề xuất cách làm. Hệ thống tính toán tiền bằng Decimal và kiểm chứng riêng việc phân nhóm, sử dụng dòng nguồn và bảo toàn số tiền. AI không tự phê duyệt quy tắc tài chính hoặc sửa dữ liệu gốc để làm kết quả khớp.
 
@@ -30,16 +30,17 @@ Xem [hướng dẫn từng bước và bộ dữ liệu tự kiểm thử](docs/
 
 Trong bản giao diện mới, bộ chọn **Trợ lý cho tin nhắn mới** nằm trong **Tùy chọn hội thoại**. Quyền của không gian làm việc và khả dụng của từng trợ lý quyết định mục nào chọn được. Xem phiên bản hiện hành và số liệu kiểm thử trong [báo cáo triển khai](docs/IMPLEMENTATION_STATUS.md).
 
-1. Mở **Dữ liệu** và tải CSV/XLSX. Chọn tệp hoặc sheet để xem **Giá trị gốc**, **Tự chuẩn bị** và **Cảnh báo / lỗi**.
-2. Dùng **AI Assistant** để nêu mục tiêu và bổ sung dữ kiện. Duyệt cách ghép cột hoặc quy tắc mới khi cần.
-3. Mở **Đối soát** để chạy quy tắc đã duyệt. Vào **Báo cáo** để xem kết quả, bằng chứng và tải Excel.
+1. Tải CSV/XLSX từ **Dữ liệu** hoặc **AI Assistant**. Studio xử lý nền ngay sau khi tải.
+2. Hỏi **AI Assistant** về dữ liệu gốc, bản đã xử lý, các dòng lỗi hoặc yêu cầu đối chiếu. Khi cần, bổ sung ý nghĩa của một trường ngay trong Chat.
+3. Xem kết quả và tải báo cáo trong Chat. **Dữ liệu**, **Đối soát** và **Báo cáo** vẫn cung cấp công cụ kiểm tra chi tiết và thiết lập nghiệp vụ.
 4. Dùng **Lịch sử** để tiếp tục công việc. Mở **Cài đặt** để xem quyền, chính sách chia sẻ và chọn mật độ bảng.
 5. Chủ không gian có thể mở **Quản lý dự án** hoặc **Quản lý nguồn**, xem tác động rồi lưu trữ hoặc **Đưa vào Thùng rác** khi được phép. Dùng danh sách tương ứng trong trình quản lý để khôi phục.
 
 Ví dụ yêu cầu:
 
-- “Kiểm tra hai tệp vừa tải và cho tôi xem cấu trúc dữ liệu.”
-- “Đề xuất cách chuẩn hóa các cột; hỏi lại những điểm chưa rõ.”
+- “Ba tệp của mình đã xử lý xong chưa?”
+- “Cho mình xem 10 dòng dữ liệu gốc.”
+- “Đối soát ba nguồn giúp mình.”
 - “Cho tôi xem ba nhóm giao dịch lệch tiền lớn nhất của kết quả đang xem.”
 - “Giải thích nhóm thứ hai.”
 - “Xuất kết quả đối soát đang xem ra Excel.”

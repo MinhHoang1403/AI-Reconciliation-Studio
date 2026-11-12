@@ -1,5 +1,11 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Tự chuẩn bị dữ liệu và đối chiếu từ Chat — 13/11/2026
+
+Luồng upload mặc định có bước chuẩn bị theo chính sách xác định. Bản xem, canonical và các dòng cần kiểm tra dùng riêng hợp đồng và trạng thái. Chat đọc nguồn hiện hành và có thể xếp hàng đối chiếu bán hàng với thu ngân, rồi thu ngân với kế toán trên phần dữ liệu quan sát được. Cổng so sánh yêu cầu doanh thu thuần chưa VAT đã được chứng minh hoặc xác nhận trực tiếp. Xem [kiến trúc](ARCHITECTURE.md) và [hướng dẫn rollback](TESTING_GUIDE.md).
+
+Chạy bộ ba tệp 3.000 dòng trong schema PostgreSQL TEST cho kết quả 2.998, 2.997 và 2.997 dòng sử dụng được. Hai lượt `PARTIAL_VERIFIED` có 2.978 và 2.960 nhóm so sánh được. Tổng chênh lệch có dấu lần lượt 105.000 và −205.000 VND, tổng tuyệt đối 645.000 và 1.265.000 VND, khớp đáp án của bộ TEST. Dòng USD được giữ ngoài phạm vi so sánh VND.
+
 ## Ứng viên phát hành và hoàn thiện giao diện — 10/11/2026
 
 Ứng viên trên `codex/studio-product-quality`. Các ca dùng một Docker Compose, qua Nginx tại cổng 18180, với schema và kho tệp TEST riêng trước khi đưa ứng viên vào `studio.public`.

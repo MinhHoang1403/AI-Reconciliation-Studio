@@ -789,18 +789,23 @@ def upload(
     client,
     project_id,
     raw=b"Order ID,Gross amount\n000123,1234.50\n000124,invalid\n000125,\n000126,0\n",
+    *,
+    request_ai_mapping=None,
 ):
+    data = {"project_id": project_id}
+    if request_ai_mapping is not None:
+        data["request_ai_mapping"] = str(request_ai_mapping).lower()
     response = client.post(
         "/api/datasets/uploads",
-        data={"project_id": project_id},
+        data=data,
         files={"files": ("synthetic.csv", raw, "text/csv")},
     )
     assert response.status_code == 202, response.text
     return response.json()["items"][0]
 
 
-def drain(factory, worker):
-    for _ in range(10):
+def drain(factory, worker, limit=10):
+    for _ in range(limit):
         with factory() as db:
             claimed = worker.claim_job(db)
         if claimed is None:
@@ -811,7 +816,7 @@ def drain(factory, worker):
 
 def test_mapping_reproposal_joins_pending_job_and_replays_the_same_request(pg):
     client, factory, worker = pg
-    source = upload(client, project(client))
+    source = upload(client, project(client), request_ai_mapping=True)
     with factory() as db:
         claim = worker.claim_job(db)
         assert claim is not None and claim[0] == source["job_id"]
@@ -1362,7 +1367,8 @@ def test_zero_decimal_and_backend_summary(pg):
         1,
         1,
     )
-    assert summary["preparation_action"]["kind"] == "REVIEW_MAPPING"
+    assert summary["preparation_action"]["kind"] == "OPEN_ASSISTANT"
+    assert client.get(f"/api/datasets/{item['id']}").json()["status"] == "EXPLORATION_ONLY"
     assert summary["preparation_action"]["table_id"] == table["id"]
     approved, _ = approve(client, table["id"])
     assert client.get(f"/api/projects/{pid}/summary").json()["preparation_action"] == {
@@ -1591,7 +1597,7 @@ def test_gemini_worker_uses_durable_budget_and_validated_proposal(pg, monkeypatc
         ).model_dump()
         db.commit()
     pid = project(client)
-    first = upload(client, pid)
+    first = upload(client, pid, request_ai_mapping=True)
     drain(factory, worker)
     with factory() as db:
         job = db.scalar(select(JobRow).where(JobRow.kind == "mapping"))
@@ -1609,7 +1615,7 @@ def test_gemini_worker_uses_durable_budget_and_validated_proposal(pg, monkeypatc
             )
             == 1
         )
-    second = upload(client, pid, b"Order ID,Gross amount\n000555,5.00\n")
+    second = upload(client, pid, b"Order ID,Gross amount\n000555,5.00\n", request_ai_mapping=True)
     assert second["id"] != first["id"]
     drain(factory, worker)
     with factory() as db:
@@ -1876,7 +1882,7 @@ def test_parse_can_publish_while_mapping_inference_is_waiting(pg, monkeypatch):
 
     client, factory, worker = pg
     pid = project(client)
-    upload(client, pid)
+    upload(client, pid, request_ai_mapping=True)
     with factory() as db:
         parsed = worker.claim_job(db)
     worker.process_job(*parsed)
@@ -1921,6 +1927,13 @@ def test_parse_can_publish_while_mapping_inference_is_waiting(pg, monkeypatch):
             flow = workflow_for(client, factory, request["job_id"])
             assert flow["state"] == "COMPLETED" and flow["detail"]["model_calls"] == 0
             assert not waiting.done()
+            with factory() as db:
+                preparation = worker.claim_job(db, inference_busy=True)
+                assert db.get(JobRow, preparation[0]).kind == "automatic_preparation"
+            worker.process_job(*preparation)
+            assert (
+                client.get(f"/api/datasets/{incoming['id']}").json()["status"] == "EXPLORATION_ONLY"
+            )
             with factory() as db:
                 assert worker.claim_job(db, inference_busy=True) is None
         finally:

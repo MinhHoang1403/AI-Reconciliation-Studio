@@ -135,8 +135,31 @@ def compile_transform_plan(
     mapping: MappingRevision, schema: SchemaDefinition, profile: DatasetProfile
 ) -> TransformPlan:
     """F10: compile only approved typed AST with scoped, approved rule references."""
-    if mapping.status != MappingStatus.APPROVED or not mapping.approved_by:
+    policy = mapping.policy_application
+    if mapping.status != MappingStatus.APPROVED or not (mapping.approved_by or policy):
         raise DomainError("MAPPING_NOT_APPROVED", "Ánh xạ chưa được phê duyệt.")
+    if policy and (
+        mapping.approved_by is not None
+        or mapping.approved_at is not None
+        or mapping.workspace_id != profile.workspace_id
+        or mapping.source_table_id != profile.source_table_id
+        or policy.source_artifact_id != profile.artifact_id
+        or policy.source_rows != profile.row_count
+        or policy.invalid_rows >= policy.source_rows
+        or mapping.rules
+        or not schema.business_key_fields
+        or any(
+            d.transformation_candidate.op
+            not in {
+                "cast_string_preserve",
+                "parse_decimal",
+                "parse_calendar_date",
+                "parse_offset_timestamp",
+            }
+            for d in mapping.decisions
+        )
+    ):
+        raise DomainError("MAPPING_POLICY_INVALID", "Bằng chứng áp dụng tự động không khớp nguồn.")
     if mapping.schema_id != schema.id or mapping.schema_revision != schema.revision:
         raise DomainError("SCHEMA_REVISION_MISMATCH", "Phiên bản schema không tương thích.")
     proposal = SchemaProposal(

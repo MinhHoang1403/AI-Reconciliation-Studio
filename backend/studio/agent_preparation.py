@@ -624,18 +624,34 @@ def approval_from_draft(
     draft: NormalizationDraft,
     profile: DatasetProfile,
     extraction_reviewed: bool,
+    *,
+    automatic: bool = False,
 ) -> ApprovalInput:
     """Chỉ dùng sau review nonce hợp lệ; compile/validate approval vẫn do module cũ thực hiện."""
     validate_draft(draft, draft.table_id, profile)
     fields = []
     decisions = []
+    reference_fields = (
+        [
+            c.column_id
+            for c in profile.columns
+            if "order" in field_name_tokens(c.name)
+            and set(field_name_tokens(c.name)) & {"id", "reference"}
+        ]
+        if automatic
+        else []
+    )
     for f in draft.fields:
         fields.append(
             SchemaField(
                 id=f.target_id,
                 name=f.name,
                 data_type=f.data_type,
-                required=f.business_key,
+                required=f.business_key
+                or (
+                    automatic
+                    and (f.data_type in {"date", "decimal"} or reference_fields == [f.source_field])
+                ),
                 semantic_metric=f.semantic_metric,
                 amount_basis=f.amount_basis,
                 currency=f.currency,

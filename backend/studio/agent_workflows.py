@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import secrets
 from datetime import date, timedelta
 from typing import Any, get_args
@@ -23,7 +24,7 @@ from studio.agent_tools import (
     RunAction,
     execute_tool,
 )
-from studio.assistant import deterministic_answer
+from studio.assistant import deterministic_answer, plain_question
 from studio.assistant_api import own_conversation
 from studio.assistant_tools import agent_catalogue, build_fact_set
 from studio.config import settings
@@ -76,6 +77,122 @@ from studio.repository import enqueue_job, get_scoped, mapping_archived
 
 def digest(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def publish_source_inspection(
+    db: Session,
+    row: AgentWorkflowRow,
+    state: WorkflowState,
+    actor: Actor,
+    context: AssistantContext,
+    request: tuple[str, int, str | None],
+) -> None:
+    """Publish actual scoped rows and issue summaries without changing source data."""
+    from studio.data_query import compare_source_row
+
+    mode, count, requested = request
+    context = AssistantContext(
+        project_id=context.project_id, dataset_id=None if requested else context.dataset_id
+    )
+    catalogue = agent_catalogue(db, actor, context, state.dataset_ids if not requested else [])
+    sources = catalogue.datasets
+    if requested:
+
+        def words(value: str) -> str:
+            return " ".join(re.findall(r"[a-z0-9]+", plain_question(value)))
+
+        name = words(requested)
+        sources = [item for item in sources if name and f" {name} " in f" {words(item.name)} "]
+        if len(sources) != 1:
+            state.blocks.append(
+                ProgressBlock(text="Chưa xác định được đúng nguồn. Hãy nêu tên tệp cần xem.")
+            )
+            return
+    targets = [(item, table) for item in sources for table in item.tables]
+    if mode == "compare":
+        if len(targets) != 1:
+            state.blocks.append(ProgressBlock(text=f"Bạn muốn xem dòng {count} của nguồn nào?"))
+            return
+        dataset, table = targets[0]
+        state.blocks.append(
+            compare_source_row(db, actor, row.project_id, table, dataset.name, count)
+        )
+        return
+    if not sources:
+        state.blocks.append(ProgressBlock(text="Dự án chưa có nguồn dữ liệu."))
+        return
+    for item in sources:
+        if not item.tables:
+            text = "Đọc tệp thất bại." if item.status == "FAILED" else "Đang đọc tệp."
+            state.blocks.append(ProgressBlock(text=f"{item.name} · {text}"))
+    for dataset, table in targets[: settings.agent_max_tool_calls]:
+        title = f"{dataset.name} · {table.sheet}"
+        canonical = (
+            get_scoped(db, CanonicalRow, table.canonical_id, actor) if table.canonical_id else None
+        )
+        mapping = get_scoped(db, MappingRow, canonical.mapping_id, actor) if canonical else None
+        if mode == "quality" and canonical and mapping:
+            c = canonical.contract
+            state.blocks.append(
+                DatasetBlock(
+                    dataset_id=dataset.id,
+                    canonical_id=canonical.id,
+                    table_id=table.table_id,
+                    name=dataset.name,
+                    rows=c["row_count"],
+                    invalid_rows=c["invalid_count"],
+                    excluded_rows=c.get("excluded_source_rows", 0),
+                    status=c["quality_status"],
+                    transformations=[
+                        d["transformation_candidate"]["op"]
+                        for d in (mapping.decision or {})["decisions"]
+                    ],
+                )
+            )
+            continue
+        if mode == "processed" and canonical and mapping:
+            c = canonical.contract
+            policy = (mapping.decision or {}).get("policy_application")
+            explanation = (
+                "Áp dụng quy tắc đã kiểm chứng tự động." if policy else "Áp dụng quy tắc đã duyệt."
+            )
+            state.blocks.append(
+                ProgressBlock(
+                    text=(
+                        f"{title} · {c['valid_count']} dòng dùng được, "
+                        f"{c['invalid_count']} dòng cần kiểm tra. {explanation}"
+                    )
+                )
+            )
+            kind, source_id = "CANONICAL", canonical.id
+        elif mode == "raw":
+            kind, source_id = "RAW_PREVIEW", table.table_id
+        elif table.prepared_artifact_id:
+            kind = "PREPARED_ISSUES" if mode == "quality" else "PREPARED"
+            source_id = table.table_id
+            state.blocks.append(
+                ProgressBlock(
+                    text=f"{title} · Bản chuẩn bị để xem. Còn thiếu căn cứ đối soát tài chính."
+                )
+            )
+        else:
+            state.blocks.append(ProgressBlock(text=f"{title} · Hiện chỉ có dữ liệu gốc để xem."))
+            continue
+        result = execute_tool(
+            db,
+            actor,
+            QueryAction(
+                name="query_dataset",
+                query=DataQuery(
+                    project_id=row.project_id, source_kind=kind, source_id=source_id, limit=count
+                ),
+            ),
+            row.id,
+        )
+        assert isinstance(result, QueryResult)
+        state.blocks.append(TableBlock(result=result, title=title))
+    if len(targets) > settings.agent_max_tool_calls:
+        state.blocks.append(ProgressBlock(text="Hãy nêu tên nguồn để xem các bảng còn lại."))
 
 
 def owner(db: Session, row: AgentWorkflowRow) -> Actor:
@@ -610,8 +727,16 @@ def consume_child(db: Session, row: AgentWorkflowRow, state: WorkflowState) -> b
     step.status = "SUCCEEDED" if child.status == "SUCCEEDED" else "BLOCKED"
     row.waiting_job_id = None
     if child.status != "SUCCEEDED":
+        if state.observed_comparison:
+            return True
         if (
-            child.kind == "parse"
+            (
+                child.kind in {"parse", "automatic_preparation"}
+                or (
+                    child.kind in {"normalize", "mapping_reuse"}
+                    and step.tool == "automatic_preparation"
+                )
+            )
             and state.intent
             and state.intent.intent == "PREPARE_NORMALIZATION"
         ):
@@ -989,6 +1114,140 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                 )
             )
 
+    if state.observed_comparison:
+        from studio.observed_reconciliation import (
+            EQUIVALENCE_CONFIRMATION,
+            ROLE_ORDER,
+            observed_order_plan,
+        )
+        from studio.reconciliation_api import enqueue_approved_run, enqueue_observed_run
+
+        require_editor(actor, db, row.id)
+        active = db.scalar(
+            select(JobRow)
+            .where(
+                JobRow.workspace_id == actor.workspace_id,
+                JobRow.project_id == row.project_id,
+                JobRow.status.in_(("QUEUED", "RUNNING", "RETRYABLE_FAILURE")),
+                (
+                    (JobRow.kind == "parse")
+                    & JobRow.payload["dataset_id"].astext.in_(state.dataset_ids)
+                )
+                | (
+                    JobRow.kind.in_(("automatic_preparation", "mapping_reuse", "normalize"))
+                    & JobRow.payload["table_id"].astext.in_(
+                        [
+                            table.table_id
+                            for dataset in catalogue.datasets
+                            for table in dataset.tables
+                        ]
+                    )
+                ),
+            )
+            .order_by(JobRow.created_at, JobRow.id)
+            .limit(1)
+        )
+        if active:
+            wait_for(
+                db,
+                row,
+                state,
+                "automatic_preparation",
+                active.id,
+                JobReference(job_id=active.id, status=active.status),
+            )
+            save(row, state)
+            return
+        if waiting_step and waiting_step.tool == "compare_observed" and waiting_step.result_id:
+            run = get_scoped(db, RunRow, waiting_step.result_id, actor)
+            if run.status == "PARTIAL_VERIFIED":
+                facts()
+            else:
+                state.blocks.append(ProgressBlock(text="Kết quả một cặp chưa vượt qua kiểm chứng."))
+        roles = {
+            role: [
+                d.tables[0].canonical_id
+                for d in catalogue.datasets
+                if len(d.tables) == 1
+                and d.tables[0].canonical_id
+                and d.tables[0].schema_definition
+                and d.tables[0].schema_definition.entity_kind == role
+            ]
+            for role in ROLE_ORDER
+        }
+        needs_declaration = False
+        for left, right in zip(ROLE_ORDER, ROLE_ORDER[1:], strict=False):
+            pair = f"{left} ↔ {right}"
+            if any(s.tool == "compare_observed" and s.resource_id == pair for s in state.steps):
+                continue
+            if len(roles[left]) != 1 or len(roles[right]) != 1:
+                notice = f"{pair}: chưa đủ căn cứ để chọn một bản dữ liệu hiện hành cho mỗi nguồn."
+                if not any(isinstance(b, ProgressBlock) and b.text == notice for b in state.blocks):
+                    state.blocks.append(ProgressBlock(text=notice))
+                continue
+            ids = [roles[left][0], roles[right][0]]
+            existing_contract = db.scalar(
+                select(ReconciliationContractRow)
+                .where(
+                    ReconciliationContractRow.workspace_id == actor.workspace_id,
+                    ReconciliationContractRow.project_id == row.project_id,
+                    ReconciliationContractRow.definition["observation"]["revision"].astext
+                    == "observed-order-revenue-1",
+                    ReconciliationContractRow.definition["plan"]["left"]["canonical_id"].astext
+                    == ids[0],
+                    ReconciliationContractRow.definition["plan"]["right"]["canonical_id"].astext
+                    == ids[1],
+                )
+                .limit(1)
+            )
+            try:
+                if existing_contract:
+                    accepted = enqueue_approved_run(existing_contract.id, db, actor)
+                else:
+                    plan, receipt = observed_order_plan(
+                        db, actor, row.project_id, ids, state.observed_comparison == "DECLARED"
+                    )
+                    accepted = enqueue_observed_run(db, actor, row.project_id, plan, receipt)
+            except DomainError as exc:
+                if exc.code not in {
+                    "OBSERVATION_SCOPE_INVALID",
+                    "OBSERVATION_METRIC_REQUIRED",
+                    "OBSERVATION_KEY_REQUIRED",
+                }:
+                    raise
+                needs_declaration |= exc.code == "OBSERVATION_METRIC_REQUIRED"
+                if not any(
+                    isinstance(b, ProgressBlock) and b.text == exc.message_vi for b in state.blocks
+                ):
+                    state.blocks.append(ProgressBlock(text=exc.message_vi))
+                continue
+            state.blocks.append(ProgressBlock(text=pair))
+            wait_for(
+                db,
+                row,
+                state,
+                "compare_observed",
+                pair,
+                JobReference(job_id=accepted["job_id"], status=accepted["status"]),
+            )
+            save(row, state)
+            return
+        if needs_declaration:
+            state.blocks.append(
+                ProgressBlock(
+                    text=(
+                        "Nếu đúng với nghiệp vụ, hãy nhắn "
+                        f"“Đối soát ba nguồn. {EQUIVALENCE_CONFIRMATION}.”"
+                    )
+                )
+            )
+        row.context = context.model_dump(mode="json")
+        row.state = (
+            "COMPLETED" if sum(isinstance(b, FactsBlock) for b in state.blocks) == 2 else "PARTIAL"
+        )
+        save(row, state)
+        return
+
     if sequence and sequence.propose_pairs:
         if waiting_step and waiting_step.tool == "run_approved_reconciliation":
             facts()
@@ -1031,22 +1290,23 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                 ):
                     state.blocks.append(ProgressBlock(text=message))
         if state.prepare_upload and not state.blocks:
-            if add_source_previews():
-                state.blocks.append(
-                    ProgressBlock(
-                        text="Đã đọc dữ liệu; chưa chuẩn hóa. Bản tự chuẩn bị có thể xem ngay."
-                    )
-                )
+            add_source_previews()
         waiting_tables = []
         for dataset in catalogue.datasets:
             for table in dataset.tables:
-                if state.prepare_upload and not table.canonical_id and not approved_only:
+                if (
+                    (state.prepare_upload or table.automatic_preparation)
+                    and not table.canonical_id
+                    and not approved_only
+                ):
                     existing = db.scalar(
                         select(JobRow)
                         .where(
                             JobRow.workspace_id == actor.workspace_id,
                             JobRow.project_id == row.project_id,
-                            JobRow.kind.in_(("mapping_reuse", "normalize")),
+                            JobRow.kind.in_(
+                                ("automatic_preparation", "mapping_reuse", "normalize")
+                            ),
                             JobRow.status.in_(("QUEUED", "RUNNING", "RETRYABLE_FAILURE")),
                             JobRow.payload["table_id"].astext == table.table_id,
                         )
@@ -1058,14 +1318,30 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                             db,
                             row,
                             state,
-                            "run_normalization"
-                            if existing.kind == "normalize"
-                            else "reuse_mapping",
+                            "automatic_preparation"
+                            if table.automatic_preparation
+                            else (
+                                "run_normalization"
+                                if existing.kind == "normalize"
+                                else "reuse_mapping"
+                            ),
                             table.table_id,
                             JobReference(job_id=existing.id, status=existing.status),
                         )
                         save(row, state)
                         return
+                    if table.automatic_preparation:
+                        from studio.dataset_status import read_processing_status, status_description
+
+                        for item in read_processing_status(db, actor, context, [dataset.id]):
+                            if item.table_id == table.table_id:
+                                notice = status_description(item)
+                                if not any(
+                                    isinstance(b, ProgressBlock) and b.text == notice
+                                    for b in state.blocks
+                                ):
+                                    state.blocks.append(ProgressBlock(text=notice))
+                        continue
                     if (table.column_count or len(table.columns)) > 40:
                         notice = (
                             f"{dataset.name} · {table.sheet}: bảng có hơn 40 cột. "

@@ -150,7 +150,7 @@ def apply_transform_plan(
             try:
                 value = _transform(raw, row, decision.transformation_candidate, plan)
                 payload[target] = value
-                if value is None:
+                if value is None or (value == "" and targets[target].required):
                     code = "REQUIRED_NULL" if targets[target].required else "NULL"
                     flags.append(f"{code}:{target}")
                     errors.append(
@@ -186,6 +186,8 @@ def apply_transform_plan(
                 and payload.get("currency") not in (None, field.currency)
             ):
                 invalid = True
+                if any(flag.startswith("CURRENCY_MISMATCH:") for flag in flags):
+                    continue
                 flags.append(f"CURRENCY_MISMATCH:{field.id}")
                 errors.append(
                     {
@@ -299,6 +301,64 @@ def apply_transform_plan(
     return NormalizationResult(
         canonical, error_frame, quality, len(records), len(records) - invalid_count, invalid_count
     )
+
+
+def verify_automatic_normalization(
+    source: pl.DataFrame,
+    result: NormalizationResult,
+    plan: TransformPlan,
+) -> None:
+    """Check exact payload, row ownership and preflight counts before publishing."""
+    proof = plan.mapping.policy_application
+    assert proof is not None
+    originals = {row["_source_row_id"]: row for row in source.iter_rows(named=True)}
+    flags_by_row: dict[str, set[str]] = {}
+    for issue in result.errors.iter_rows(named=True):
+        flags_by_row.setdefault(issue["source_row_id"], set()).add(
+            f"{issue['code']}:{issue['field']}"
+        )
+    if (
+        result.row_count != source.height
+        or result.valid_count + result.invalid_count != source.height
+    ):
+        raise DomainError("NORMALIZATION_VERIFICATION_FAILED", "Số dòng chuẩn hóa không khớp.")
+    for item in result.canonical.iter_rows(named=True):
+        raw = originals.pop(item["source_row_id"], None)
+        if (
+            raw is None
+            or len(item["source_provenance"]) != 1
+            or item["source_provenance"][0]["row"] != raw["_source_row"]
+            or item["source_provenance"][0]["source_row_id"] != item["source_row_id"]
+            or set(item["quality_flags"]) != flags_by_row.get(item["source_row_id"], set())
+        ):
+            raise DomainError("NORMALIZATION_VERIFICATION_FAILED", "Nguồn gốc bản ghi không khớp.")
+        payload = item["record_payload"]
+        for decision in plan.mapping.decisions:
+            assert decision.candidate_target is not None
+            target, value = decision.candidate_target, raw[decision.source_field]
+            operation = decision.transformation_candidate
+            if operation.op == "cast_string_preserve":
+                expected = value
+            elif payload[target] is None:
+                if value and not any(flag.endswith(f":{target}") for flag in item["quality_flags"]):
+                    raise DomainError(
+                        "NORMALIZATION_VERIFICATION_FAILED", "Thiếu bằng chứng giá trị lỗi."
+                    )
+                continue
+            elif isinstance(operation, DecimalTransform):
+                text = (
+                    value.replace(",", "")
+                    if operation.locale == "en-US"
+                    else value.replace(".", "").replace(",", ".")
+                )
+                expected = Decimal(text)
+            else:
+                assert isinstance(operation, SourceDateTransform)
+                expected = parse_source_date(value, operation.format, operation.op)
+            if payload[target] != expected:
+                raise DomainError(
+                    "NORMALIZATION_VERIFICATION_FAILED", "Giá trị chuẩn hóa không khớp nguồn."
+                )
 
 
 def _validate_lineage(records: list[dict[str, Any]], source_count: int) -> None:

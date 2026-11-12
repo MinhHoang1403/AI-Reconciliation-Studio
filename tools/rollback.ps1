@@ -1,13 +1,21 @@
 param(
     [ValidatePattern('^([a-f0-9]{7,40})?$')][string]$ReleaseRevision = '',
+    [switch]$PreviousPreparation,
     [switch]$VerifyOnly
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
+if ($ReleaseRevision -and $PreviousPreparation) { throw 'Choose one rollback image pair.' }
 $taskImages = @{}
 $taskRevisions = @{}
 foreach ($taskService in @('backend', 'frontend')) {
-    $taskTag = if ($ReleaseRevision) { "ai-reconciliation-studio-${taskService}:accepted-main-$ReleaseRevision" } else { "ai-reconciliation-studio-${taskService}:rollback" }
+    $taskTag = if ($ReleaseRevision) {
+        "ai-reconciliation-studio-${taskService}:accepted-main-$ReleaseRevision"
+    } elseif ($PreviousPreparation) {
+        "ai-reconciliation-studio-${taskService}:pre-automatic-preparation"
+    } else {
+        "ai-reconciliation-studio-${taskService}:rollback"
+    }
     $taskImage = docker image inspect $taskTag --format '{{json .}}' | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or $taskImage.Config.Labels.'org.opencontainers.image.source' -ne 'https://github.com/MinhHoang1403/AI-Reconciliation-Studio.git' -or $taskImage.Config.Labels.'org.opencontainers.image.revision' -notmatch '^[a-f0-9]{40}$' -or ($ReleaseRevision -and -not $taskImage.Config.Labels.'org.opencontainers.image.revision'.StartsWith($ReleaseRevision))) { throw 'Rollback source/image identity mismatch.' }
     $taskImages[$taskService] = $taskTag
@@ -30,6 +38,9 @@ $taskQualityMigration = 'backend/migrations/versions/add_data_quality_decisions.
 $taskQualitySource = git ls-tree --name-only $taskBackendRevision $taskQualityMigration
 if ($LASTEXITCODE -ne 0) { throw 'Cannot verify data quality compatibility from repository history.' }
 $taskSupportsQuality = $taskQualitySource -eq $taskQualityMigration
+$taskPreparationSource = git ls-tree --name-only $taskBackendRevision backend/studio/observed_reconciliation.py
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify automatic preparation compatibility from repository history.' }
+$taskSupportsPreparation = $taskPreparationSource -eq 'backend/studio/observed_reconciliation.py'
 # Chỉ các migrations additive đã review; không downgrade DB hoặc suy compatibility tổng quát.
 $taskGuard = @'
 import sys
@@ -63,10 +74,20 @@ with SessionFactory() as db:
         assert db.scalar(text("SELECT count(*) FROM agent_workflows WHERE state IN ('CREATED','RUNNING')")) == 0, 'Wait for workflows to settle'
         # Reviews remain untouched; resumption requires a compatible accepted source.
         print('Agent reviews are retained; resumption depends on the selected accepted source')
+    if revision == 'add_data_quality_decisions' and sys.argv[5] != 'True':
+        assert not db.scalar(text("""
+            SELECT EXISTS (SELECT 1 FROM jobs WHERE kind = 'automatic_preparation')
+                OR EXISTS (SELECT 1 FROM mapping_revisions WHERE decision ? 'policy_application')
+                OR EXISTS (SELECT 1 FROM reconciliation_contracts WHERE definition ? 'observation')
+                OR EXISTS (
+                    SELECT 1 FROM agent_workflows
+                    WHERE jsonb_path_exists(detail, '$.blocks[*] ? (@.type == "source_comparison")')
+                )
+        """)), 'New preparation history requires compatible images or an explicit restore of the pre-release backup'
     assert db.scalar(text("SELECT count(*) FROM workspaces WHERE id='demo'")) == 1
     print('PASS compatible additive schema and no active jobs', revision)
 '@
-$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle" "$taskSupportsRetainedReservations" "$taskSupportsQuality"
+$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle" "$taskSupportsRetainedReservations" "$taskSupportsQuality" "$taskSupportsPreparation"
 if ($LASTEXITCODE -ne 0) { throw 'Rollback compatibility gate failed.' }
 if ($VerifyOnly) {
     Write-Output "Verified rollback images for $taskBackendRevision against the current deployment."

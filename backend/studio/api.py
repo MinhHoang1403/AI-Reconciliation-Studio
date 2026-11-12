@@ -157,11 +157,16 @@ async def redact_unexpected_failures(request: Request, call_next: Any) -> Respon
 def database(request: Request) -> Generator[Session, None, None]:
     with SessionFactory() as db:
         path = request.url.path
-        read_checks = {"/api/assistant/tools", "/api/agent/queries", "/api/agent/source-rows",
-            "/api/reconciliation-plans/validate"}
+        read_checks = {
+            "/api/assistant/tools",
+            "/api/agent/queries",
+            "/api/agent/source-rows",
+            "/api/reconciliation-plans/validate",
+        }
         db.info["resource_write"] = (
             request.method in {"POST", "PUT", "PATCH", "DELETE"}
-            and path not in read_checks and not path.endswith("/mapping-preflight")
+            and path not in read_checks
+            and not path.endswith("/mapping-preflight")
         )
         yield db
 
@@ -209,6 +214,7 @@ def permanent_deletion_confirm(
     token = request.cookies.get("studio_session")
     session_hash = session_token_hash(token) if token else None
     return confirm_purge(db, actor, kind, resource_id, body, session_hash=session_hash)
+
 
 @app.get("/api/permanent-deletion-receipts/{receipt_id}", response_model=PurgeStatus)
 def permanent_deletion_status(receipt_id: str, request: Request, db: DB) -> PurgeStatus:
@@ -467,9 +473,11 @@ def projects(
         require_owner(actor, db, "workspace")
     query = query.where(
         ProjectRow.deleted_at.is_not(None)
-        if lifecycle == "deleted" else ProjectRow.deleted_at.is_(None),
+        if lifecycle == "deleted"
+        else ProjectRow.deleted_at.is_(None),
         ProjectRow.archived_at.is_not(None)
-        if lifecycle == "archived" else ProjectRow.archived_at.is_(None),
+        if lifecycle == "archived"
+        else ProjectRow.archived_at.is_(None),
     )
     if not include_test:
         query = query.where(classification != ProjectClassification.TEST)
@@ -810,9 +818,11 @@ def datasets(
         require_owner(actor, db, project_id)
     query = query.where(
         DatasetRow.deleted_at.is_not(None)
-        if lifecycle == "deleted" else DatasetRow.deleted_at.is_(None),
+        if lifecycle == "deleted"
+        else DatasetRow.deleted_at.is_(None),
         DatasetRow.archived_at.is_not(None)
-        if lifecycle == "archived" else DatasetRow.archived_at.is_(None),
+        if lifecycle == "archived"
+        else DatasetRow.archived_at.is_(None),
     )
     if search.strip():
         literal = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -837,9 +847,21 @@ def upload(
     project_id: Annotated[str, Form()],
     files: Annotated[list[UploadFile], File()],
     parse_options: Annotated[str, Form()] = "{}",
-    request_ai_mapping: Annotated[bool, Form()] = True,
+    request_ai_mapping: Annotated[bool | None, Form()] = None,
+    automatic_preparation: Annotated[bool | None, Form()] = None,
 ) -> dict[str, Any]:
-    result = persist_uploads(db, actor, project_id, files, parse_options, request_ai_mapping)
+    automatic = (
+        automatic_preparation if automatic_preparation is not None else request_ai_mapping is None
+    )
+    result = persist_uploads(
+        db,
+        actor,
+        project_id,
+        files,
+        parse_options,
+        bool(request_ai_mapping),
+        automatic_preparation=automatic,
+    )
     db.commit()
     return result
 
@@ -851,6 +873,8 @@ def persist_uploads(
     files: list[UploadFile],
     parse_options: str = "{}",
     request_ai_mapping: bool = True,
+    *,
+    automatic_preparation: bool = False,
 ) -> dict[str, Any]:
     """Giữ cùng validation/raw/dedup; caller công bố metadata và queue trong transaction."""
     require_editor(actor, db)
@@ -967,6 +991,11 @@ def persist_uploads(
                 "version_id": version.id,
                 "file_id": file_id,
                 "request_ai_mapping": request_ai_mapping,
+                **(
+                    {"automatic_preparation": True}
+                    if automatic_preparation and not document
+                    else {}
+                ),
             },
         )
         db.add(

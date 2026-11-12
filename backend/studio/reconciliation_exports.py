@@ -147,8 +147,16 @@ def report_sections(
             ["Field", "Value"],
             ["Contract ID", rule.id],
             ["Revision", rule.revision],
-            ["Approved by", rule.approved_by],
-            ["Approved at", rule.approved_at.isoformat()],
+            ["Approved by", rule.approved_by or ""],
+            ["Approved at", rule.approved_at.isoformat() if rule.approved_at else ""],
+            *(
+                [
+                    ["Scope", "Đối chiếu dữ liệu quan sát được"],
+                    ["Policy", rule.observation.revision],
+                ]
+                if rule.observation
+                else []
+            ),
             ["Rule JSON", rule.model_dump_json()],
         ],
     }

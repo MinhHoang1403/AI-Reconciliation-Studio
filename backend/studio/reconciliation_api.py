@@ -23,6 +23,7 @@ from studio.contracts.reconciliation import (
     ExceptionCase,
     MatchGroup,
     MetricSnapshot,
+    ObservedComparison,
     PlanningRequest,
     PlanProposal,
     ReconciliationContract,
@@ -861,6 +862,77 @@ def approve_plan(
     return contract
 
 
+def enqueue_observed_run(
+    db: Session,
+    actor: Actor,
+    project_id: str,
+    plan: ReconciliationPlan,
+    observation: ObservedComparison,
+) -> dict[str, Any]:
+    """Publish a scoped policy receipt and queue the same independently verified engine."""
+    require_editor(actor, db, project_id)
+    cats = selected_catalogue(
+        db, actor, project_id, [plan.left.canonical_id, plan.right.canonical_id]
+    )
+    validate_reconciliation_contract(
+        plan, cats, actor.workspace_id, project_id, observation=observation
+    )
+    key = hashlib.sha256(
+        f"{actor.workspace_id}:{project_id}:{observation.revision}:{plan.model_dump_json()}".encode()
+    ).hexdigest()
+    plan_id = str(uuid5(NAMESPACE_URL, f"studio:observation:{key}"))
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(:key)"),
+        {"key": int.from_bytes(bytes.fromhex(key[:16]), "big", signed=True)},
+    )
+    existing = db.scalar(
+        select(ReconciliationContractRow).where(ReconciliationContractRow.plan_id == plan_id)
+    )
+    if existing is not None:
+        return enqueue_approved_run(existing.id, db, actor)
+    db.add(
+        PlanRow(
+            id=plan_id,
+            workspace_id=actor.workspace_id,
+            project_id=project_id,
+            origin="SYSTEM",
+            proposal=PlanProposal(status="PROPOSED", plan=plan).model_dump(mode="json"),
+            created_by=actor.id,
+        )
+    )
+    db.flush()
+    contract = ReconciliationContract(
+        id=identifier(),
+        workspace_id=actor.workspace_id,
+        project_id=project_id,
+        revision=1,
+        plan=plan,
+        approved_by=None,
+        approved_at=None,
+        observation=observation,
+    )
+    db.add(
+        ReconciliationContractRow(
+            id=contract.id,
+            workspace_id=actor.workspace_id,
+            project_id=project_id,
+            plan_id=plan_id,
+            definition=contract.model_dump(mode="json"),
+            source_signatures=template_signatures(cats),
+        )
+    )
+    db.add(
+        AuditRow(
+            workspace_id=actor.workspace_id,
+            actor_id="system",
+            action="APPLY_OBSERVATION_POLICY",
+            resource_id=contract.id,
+        )
+    )
+    db.flush()
+    return enqueue_approved_run(contract.id, db, actor)
+
+
 def enqueue_approved_run(contract_id: str, db: Session, actor: Actor) -> dict[str, Any]:
     require_editor(actor, db, contract_id)
     rule = get_scoped(db, ReconciliationContractRow, contract_id, actor)
@@ -871,7 +943,9 @@ def enqueue_approved_run(contract_id: str, db: Session, actor: Actor) -> dict[st
         rule.project_id,
         [contract.plan.left.canonical_id, contract.plan.right.canonical_id],
     )
-    validate_reconciliation_contract(contract.plan, cats, actor.workspace_id, rule.project_id)
+    validate_reconciliation_contract(
+        contract.plan, cats, actor.workspace_id, rule.project_id, observation=contract.observation
+    )
     signature = hashlib.sha256(
         json.dumps(
             dict(

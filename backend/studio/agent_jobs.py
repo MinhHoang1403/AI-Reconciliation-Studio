@@ -28,6 +28,7 @@ from studio.agent_intents import (
     resolve_deferred_export_read,
     resolve_named_reconciliation,
     resolve_native_read,
+    source_inspection_request,
 )
 from studio.agent_preparation import (
     LOCAL_PREPARATION_REVISION,
@@ -46,6 +47,7 @@ from studio.agent_workflows import (
     lock_review_sources,
     own_workflow,
     owner,
+    publish_source_inspection,
     review_fingerprint,
     save,
     wait_for,
@@ -93,6 +95,7 @@ from studio.dataset_status import (
     status_description,
 )
 from studio.errors import DomainError, request_failure_message
+from studio.observed_reconciliation import observed_request
 from studio.repository import (
     get_scoped,
     mapping_archived,
@@ -192,7 +195,7 @@ def quality_reply(
         [],
     )
     form = QUALITY_VALUE.fullmatch(row.goal)
-    matches = []
+    matches: list[tuple[DatasetBlock, dict[str, Any], int]] = []
     incomplete = False
     for block in blocks:
         try:
@@ -273,6 +276,25 @@ def effective_request_context(
     return AssistantContext.model_validate(previous.context) if previous else context
 
 
+def automatic_observation_sources(db: Session, actor: Actor, project_id: str) -> list[str]:
+    datasets = select_project_datasets(db, actor, project_id, [])
+    if len(datasets) != 3:
+        return []
+    ids = [dataset.id for dataset in datasets]
+    prepared = set(
+        db.scalars(
+            select(JobRow.payload["dataset_id"].astext).where(
+                JobRow.workspace_id == actor.workspace_id,
+                JobRow.project_id == project_id,
+                JobRow.kind == "parse",
+                JobRow.payload["dataset_id"].astext.in_(ids),
+                JobRow.payload.contains({"automatic_preparation": True}),
+            )
+        )
+    )
+    return ids if prepared == set(ids) else []
+
+
 def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
     """Read-only eligibility hint; never mutate payload/idempotency or call a provider.
 
@@ -297,6 +319,14 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
                 db, actor, conversation.id, AssistantContext.model_validate(message.context)
             )
             if not job.payload.get("command") and QUALITY_CORRECTION.match(message.text):
+                return True
+            if not job.payload.get("command") and source_inspection_request(message.text):
+                return True
+            if (
+                not job.payload.get("command")
+                and observed_request(message.text) is not None
+                and automatic_observation_sources(db, actor, context.project_id)
+            ):
                 return True
             if not job.payload.get("command") and asks_for_current_source_evidence(message.text):
                 return (
@@ -586,6 +616,28 @@ def interpret(
             quality_reply(db, actor, row, state, context)
             db.commit()
             return
+        inspection = source_inspection_request(goal) if not command else None
+        if inspection:
+            publish_source_inspection(db, row, state, actor, context, inspection)
+            state.intent = AgentIntent(intent="CHECK_DATASET_STATUS")
+            row.state = "COMPLETED"
+            save(row, state)
+            db.commit()
+            return
+        observe = observed_request(goal) if not command else None
+        if observe is not None:
+            ids = automatic_observation_sources(db, actor, context.project_id)
+            if ids:
+                require_editor(actor, db, row.id)
+                state.dataset_ids = ids
+                state.observed_comparison = "DECLARED" if observe else "REQUESTED"
+                state.intent = AgentIntent(intent="RECONCILE_DATASETS", dataset_ids=ids)
+                row.context = AssistantContext(project_id=context.project_id).model_dump(
+                    mode="json"
+                )
+                save(row, state)
+                db.commit()
+                return
         if not command and asks_for_current_source_evidence(goal):
             pending = pending_planning_request(db, actor, row.conversation_id, row.project_id)
             if pending:

@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, get_args
+from typing import Any, Literal, get_args
 
 import polars as pl
 from pydantic import JsonValue
@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from studio.access import Actor
 from studio.config import settings
 from studio.contracts import CanonicalDataset, SchemaDefinition
+from studio.contracts.agent import SourceComparisonBlock, SourceValueChange, TableContext
 from studio.contracts.data_query import DataQuery, QueryResult
 from studio.contracts.reconciliation import (
     ComparisonMetric,
@@ -68,6 +69,87 @@ STATUS_VALUES = {
     },
     "EXCEPTIONS": {"state": list(get_args(CaseState))},
 }
+
+
+def compare_source_row(
+    db: Session, actor: Actor, project_id: str, table_context: TableContext, name: str, row: int
+) -> SourceComparisonBlock:
+    """Compare one physical source row against its current, checksum-checked view."""
+    from studio.database import MappingRow
+    from studio.repository import mapping_contract
+
+    deadline = time.monotonic() + settings.agent_query_timeout_seconds
+    raw_query = DataQuery(
+        project_id=project_id, source_kind="RAW_PREVIEW", source_id=table_context.table_id
+    )
+    raw = _source(db, actor, raw_query, deadline)
+    originals = _collect_bounded(
+        raw.frame.filter(pl.col("_source_row") == row).head(1), deadline
+    ).to_dicts()
+    if not originals:
+        raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy dòng này trong bảng.", 404)
+    old = originals[0]
+    values = {}
+    target_by_source = {}
+    scope: Literal["CANONICAL", "PREPARED", "RAW"] = "RAW"
+    if table_context.canonical_id:
+        scope = "CANONICAL"
+        query = raw_query.model_copy(
+            update={"source_kind": scope, "source_id": table_context.canonical_id}
+        )
+        source = _source(db, actor, query, deadline)
+        matches = _collect_bounded(
+            source.frame.filter(
+                pl.col("source_provenance")
+                .list.eval(pl.element().struct.field("source_row_id") == old["_source_row_id"])
+                .list.any()
+            ).head(1),
+            deadline,
+        ).to_dicts()
+        if matches and len(matches[0]["source_provenance"]) != 1:
+            raise DomainError(
+                "INSUFFICIENT_EVIDENCE", "Dòng này thuộc một nhóm đã gộp; xem bằng chứng của nhóm."
+            )
+        values = matches[0] if matches else {}
+        if not table_context.mapping_id:
+            raise DomainError("INSUFFICIENT_EVIDENCE", "Thiếu quy tắc của bản chuẩn hóa hiện hành.")
+        mapping = mapping_contract(get_scoped(db, MappingRow, table_context.mapping_id, actor))
+        target_by_source = {d.source_field: d.candidate_target for d in mapping.decisions}
+    elif table_context.prepared_artifact_id:
+        scope = "PREPARED"
+        prepared = _source(db, actor, raw_query.model_copy(update={"source_kind": scope}), deadline)
+        items = _collect_bounded(
+            prepared.frame.filter(pl.col("_source_row") == row).head(1), deadline
+        ).to_dicts()
+        values = items[0] if items else {}
+        target_by_source = {field: field for field in raw.fields}
+    fields = []
+    for field_id in raw.fields:
+        target = target_by_source.get(field_id)
+        before = json_value(old[field_id])
+        after = json_value(values.get(target)) if target else None
+        errors = values.get("quality_flags", values.get("_preparation_flags", []))
+        outcome = (
+            "Chưa có phép biến đổi"
+            if target is None
+            else "Dòng ngoài bản hiện hành"
+            if not values
+            else "Giá trị cần kiểm tra"
+            if any(flag.endswith(f":{target}") and not flag.startswith("NULL:") for flag in errors)
+            else "Giữ nguyên"
+            if before == after
+            else "Đã xử lý theo quy tắc lưu"
+        )
+        fields.append(
+            SourceValueChange(
+                field=raw.labels[field_id],
+                original=str(before) if before is not None else None,
+                processed=str(after) if after is not None else None,
+                outcome=outcome,
+            )
+        )
+    fields.sort(key=lambda item: item.outcome == "Giữ nguyên")
+    return SourceComparisonBlock(name=name, row=row, scope=scope, fields=fields)
 
 
 def resolve_verified_metric(
@@ -233,7 +315,13 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
         raise DomainError("RESOURCE_NOT_FOUND", "Quyền truy cập không còn hợp lệ.", 404)
     if query.metric_id and query.source_kind != "VERIFIED_RUN":
         raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ chọn metric cho kết quả đã xác minh.")
-    if query.source_kind in {"RAW_PREVIEW", "PREPARED", "PREPARED_FINDINGS", "CANONICAL"}:
+    if query.source_kind in {
+        "RAW_PREVIEW",
+        "PREPARED",
+        "PREPARED_FINDINGS",
+        "PREPARED_ISSUES",
+        "CANONICAL",
+    }:
         canonical = None
         if query.source_kind == "CANONICAL":
             row = get_scoped(db, CanonicalRow, query.source_id, actor)
@@ -241,13 +329,19 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
             if row.stale:
                 raise DomainError("STALE_CONTEXT", "Dữ liệu chuẩn hóa đã cũ.", 409)
             table = get_scoped(db, TableRow, row.source_table_id, actor)
+            if (
+                table.active_mapping_id != row.mapping_id
+                or table.quality_revision != row.quality_revision
+            ):
+                raise DomainError("STALE_CONTEXT", "Dữ liệu chuẩn hóa đã cũ.", 409)
             artifact = get_scoped(db, ArtifactRow, canonical.artifact.id, actor)
         else:
             table = get_scoped(db, TableRow, query.source_id, actor)
             artifact = get_scoped(db, ArtifactRow, table.artifact_id, actor)
         if project_for_table(db, table).id != query.project_id:
             raise DomainError("RESOURCE_NOT_FOUND", "Nguồn không thuộc dự án.", 404)
-        if query.source_kind in {"PREPARED", "PREPARED_FINDINGS"}:
+        parsed_artifact = artifact
+        if query.source_kind in {"PREPARED", "PREPARED_FINDINGS", "PREPARED_ISSUES"}:
             artifact = read_prepared_artifact(db, actor, table, artifact)
         path = storage_path(settings.storage_root, artifact.storage_key)
         if checksum(path) != artifact.sha256:
@@ -282,6 +376,33 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
                 )
                 fields.insert(0, "date_findings")
                 labels["date_findings"] = "Cột có ngày không hợp lệ"
+            elif query.source_kind == "PREPARED_ISSUES":
+                from studio.data_quality import artifact_scan
+
+                flags = pl.col("_preparation_flags")
+                descriptions = {
+                    "INVALID_DATE": "Ngày không hợp lệ",
+                    "INVALID_DECIMAL": "Số tiền không hợp lệ",
+                    "DECIMAL_PRECISION_EXCEEDED": "Số tiền vượt độ chính xác hỗ trợ",
+                }
+                issue_labels = {
+                    f"{code}:{field}": f"{label} · {description}"
+                    for field, label in labels.items()
+                    for code, description in descriptions.items()
+                }
+                issues = frame.filter(flags.list.len() > 0).select(
+                    "_source_row_id",
+                    flags.list.eval(
+                        pl.element().replace_strict(issue_labels, default="Giá trị cần kiểm tra")
+                    )
+                    .list.join(" · ")
+                    .alias("source_issue"),
+                )
+                frame = artifact_scan(parsed_artifact).join(
+                    issues, on="_source_row_id", validate="1:1"
+                )
+                fields.insert(0, "source_issue")
+                labels["source_issue"] = "Vấn đề phát hiện"
             frame = frame.with_columns(
                 pl.concat_list(
                     pl.struct(

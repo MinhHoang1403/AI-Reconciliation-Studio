@@ -372,6 +372,10 @@ def run_contract(row: RunRow) -> ReconciliationRun:
             status=row.status,
             engine_revision=row.engine_revision,
             source_refs=row.source_refs,
+            observed_scope=bool((row.result_metadata or {}).get("observed_scope")),
+            partition_counts=(row.result_metadata or {}).get("partition_counts", {})
+            if (row.result_metadata or {}).get("observed_scope")
+            else {},
             checks=row.checks,
             result_ref=ref,
             metric_snapshot=MetricSnapshot.model_validate(row.metric_snapshot)

@@ -1,5 +1,15 @@
 # Kiến trúc ứng dụng
 
+## Chuẩn bị dữ liệu và đối chiếu từ Assistant
+
+Sau upload CSV/XLSX, Worker lưu bảng đã đọc và bản xem đã chuẩn bị, rồi dùng hàng đợi PostgreSQL để kiểm tra từng bảng. Chính sách xác định [D] dùng tên trường, hồ sơ toàn bảng, phép chuyển đổi đã có và kiểm tra độc lập trước khi công bố canonical. Chỉ áp dụng khi xác định được mã nhận diện dòng, ý nghĩa mỗi dòng, ngày, đơn vị và tiền tệ. Quy ước triển khai `AUTOMATIC_PREPARATION_CURRENCY=VND` cho phép dùng VND khi cột tiền tệ vắng mặt và nguồn không có dấu hiệu ngoại tệ. Chọn `NONE` để yêu cầu bằng chứng tiền tệ từ nguồn. Trên nguồn có cột tiền tệ rõ và có cả VND lẫn ngoại tệ, chính sách VND lưu các dòng ngoài phạm vi cùng giá trị gốc và cờ lỗi.
+
+Bản xem chuẩn bị chỉ chuyển các định dạng ngày và Decimal có bằng chứng toàn cột. Trường chưa rõ kiểu giữ nguyên, dòng có lỗi chuyển đổi giữ tham chiếu dòng gốc. Chi phí kiểm tra tuyến tính theo số ô. AI là tùy chọn theo chính sách hiện có và chỉ bổ sung gợi ý, còn thẩm quyền áp dụng chính sách nằm trong biên nhận riêng. Cùng công việc và biên nhận được khôi phục qua hàng đợi và khóa hiện có.
+
+Đối chiếu ba nguồn dùng hai lượt kiểm chứng hiện có, bán hàng với thu ngân và thu ngân với kế toán. Mỗi cặp dùng mã đơn chính xác, ngày lịch, VND, Decimal và sai số bằng 0. Chính sách yêu cầu chỉ tiêu doanh thu thuần chưa VAT cùng nghĩa hoặc xác nhận trực tiếp của người có quyền chỉnh sửa. Khoảng ngày là phạm vi quan sát, mức bao phủ là `UNKNOWN` và nhóm một phía vẫn chờ xác định. Các chỉ tiêu chênh lệch tính theo từng cặp. Xem [hợp đồng dữ liệu](DATA_CONTRACTS.md).
+
+Đường này mở rộng yêu cầu xác nhận thủ công ở [kế hoạch §12–13](PROJECT_PLAN.md) theo yêu cầu chuẩn bị tự động. Quy tắc đầy đủ và nghiệp vụ ngoài phạm vi chính sách tiếp tục qua cổng phê duyệt hiện có.
+
 **Kiểm toán 08/11/2026 — binding nguồn Planner:** compiler giữ xác nhận theo đúng cặp canonical có revision, chặn thay tệp được nhắc tường minh bằng nguồn khác, và chỉ cấp capability dùng lại run khi có scope hiện hành đã duyệt. Wire gọn của Ollama chỉ là cách truyền nội bộ cho Planner; Backend mở rộng về cùng DTO trước validation. Không thêm gateway, service, migration, thư viện hoặc công thức tài chính. Lỗi Ollama được ghi `BLOCKED` ở cả job và attempt; reservation và quy tắc không gửi lại delivery unknown giữ nguyên. Chi tiết ở [hợp đồng dữ liệu](DATA_CONTRACTS.md).
 
 `tools/start.ps1` chặn build thông thường khi build inputs chưa commit, vì nhãn Git của Buildx có thể chỉ ghi HEAD trong khi source đã thay đổi. Ứng viên nghiệm thu chưa commit phải có nhãn theo hash nội dung và đối chiếu source/image/HTTP riêng, không được mô tả là image của commit gốc. Khi đã commit và đạt cổng phát hành, build thông thường dùng revision Git. Cùng một Compose project, volumes và quy trình xác minh loopback được bảo toàn.

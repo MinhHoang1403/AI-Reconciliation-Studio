@@ -309,6 +309,7 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         key: Key,
         files: Annotated[list[UploadFile], File()],
         project_id: Annotated[str | None, Form()] = None,
+        automatic_preparation: Annotated[bool, Form()] = True,
     ) -> dict[str, Any]:
         from studio.api import persist_uploads
 
@@ -324,6 +325,8 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         if any(i.extension not in AGENT_UPLOAD_EXTENSIONS for i in inspections):
             raise DomainError("AGENT_FILE_TYPE_UNSUPPORTED", "Chat hiện nhận CSV và XLSX.")
         request_hash = digest([project_id, [(i.sha256, i.filename) for i in inspections]])
+        if not automatic_preparation:
+            request_hash = digest([request_hash, False])
         identity = f"agent-attachments:{actor.workspace_id}:{actor.id}:{key}"
         db.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"), {"key": identity}
@@ -362,7 +365,14 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         if receipt.status == "SUCCEEDED":
             assert receipt.result is not None
             return receipt.result
-        uploaded = persist_uploads(db, actor, project.id, files, request_ai_mapping=False)
+        uploaded = persist_uploads(
+            db,
+            actor,
+            project.id,
+            files,
+            request_ai_mapping=False,
+            automatic_preparation=automatic_preparation,
+        )
         result = dict(
             project_id=project.id,
             project_name=project.name,

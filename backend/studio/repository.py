@@ -154,15 +154,24 @@ def preparation_overview(db: Session, project_id: str, active_jobs: int) -> dict
             action = PreparationAction(kind="REVIEW_DATA", dataset_id=failed_dataset.id)
         elif review:
             action = PreparationAction(
-                kind="REVIEW_MAPPING", dataset_id=review[1].id, table_id=review[0].id
+                kind="OPEN_ASSISTANT"
+                if review[1].status == "EXPLORATION_ONLY"
+                else "REVIEW_MAPPING",
+                dataset_id=review[1].id,
+                table_id=review[0].id,
             )
         elif normalize:
             action = PreparationAction(
                 kind="NORMALIZE", dataset_id=normalize[1].id, table_id=normalize[0].id
             )
         elif quality:
+            mapping = db.get(MappingRow, quality[0].active_mapping_id)
             action = PreparationAction(
-                kind="REVIEW_DATA",
+                kind=(
+                    "OPEN_ASSISTANT"
+                    if mapping and (mapping.decision or {}).get("policy_application")
+                    else "REVIEW_DATA"
+                ),
                 dataset_id=quality[1].id,
                 table_id=quality[0].id,
                 canonical_id=quality[2],
@@ -421,8 +430,7 @@ def create_mapping(
     )
     removed_number = cast(func.substr(AuditRow.action, len(REMOVED_MAPPING_REVISION) + 1), Integer)
     removed = db.scalar(
-        select(func.max(removed_number))
-        .where(
+        select(func.max(removed_number)).where(
             AuditRow.workspace_id == table.workspace_id,
             AuditRow.resource_id == table.id,
             AuditRow.action.startswith(REMOVED_MAPPING_REVISION, autoescape=True),

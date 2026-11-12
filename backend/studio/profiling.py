@@ -4,6 +4,11 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections.abc import Callable
+from datetime import date
+from decimal import Decimal
+from functools import partial
+from typing import Literal
 
 import polars as pl
 
@@ -11,10 +16,15 @@ from studio.contracts import ColumnProfile, DatasetProfile, SchemaDefinition, So
 from studio.contracts.api import PreparationColumn
 
 PREPARATION_REVISION = "tabular-preparation-1"
+TECHNICAL_PREPARATION_REVISION = "tabular-preparation-2"
 
 
 def prepare_table(
-    frame: pl.DataFrame, profile: DatasetProfile, *, extraction_warnings: bool
+    frame: pl.DataFrame,
+    profile: DatasetProfile,
+    *,
+    extraction_warnings: bool,
+    automatic: bool = False,
 ) -> tuple[pl.DataFrame, list[PreparationColumn]]:
     """Prepare a lexical snapshot with lossless ISO calendar dates where proven.
 
@@ -22,6 +32,8 @@ def prepare_table(
     identifiers, empty strings and unknown semantics remain unchanged. Mixed or
     invalid date columns stay lexical and retain their original values.
     """
+    if automatic and not extraction_warnings:
+        return prepare_typed_view(frame, profile)
     casts = []
     findings = []
     summary = []
@@ -65,6 +77,110 @@ def prepare_table(
         pl.concat_list(findings).list.drop_nulls() if findings else pl.lit([], pl.List(pl.String))
     )
     return frame.with_columns(casts).with_columns(flags.alias("_preparation_flags")), summary
+
+
+def observed_decimal_locale(
+    values: pl.Series,
+    observations: dict[str, int],
+) -> Literal["en-US", "vi-VN"] | None:
+    """Use full-column format evidence, abstaining on unresolved separators."""
+    from studio.errors import DomainError
+    from studio.normalization import parse_decimal
+
+    en, vi = observations.get("en-US", 0), observations.get("vi-VN", 0)
+    if not max(en, vi):
+        return None
+    only_en = only_vi = ambiguous = False
+    for value in values:
+        try:
+            left = parse_decimal(value, "en-US")
+        except DomainError:
+            left = None
+        try:
+            right = parse_decimal(value, "vi-VN")
+        except DomainError:
+            right = None
+        only_en |= left is not None and right is None
+        only_vi |= right is not None and left is None
+        ambiguous |= left is not None and right is not None and left != right
+    if (only_en and only_vi) or (not (only_en or only_vi) and ambiguous):
+        return None
+    return "vi-VN" if only_vi else "en-US"
+
+
+def prepare_typed_view(
+    frame: pl.DataFrame,
+    profile: DatasetProfile,
+) -> tuple[pl.DataFrame, list[PreparationColumn]]:
+    """Persist safe lexical conversions for exploration with row-level issue flags."""
+    from studio.agent_preparation import profiled_type
+    from studio.date_parsing import parse_source_date, source_date_operation
+    from studio.errors import DomainError
+    from studio.normalization import parse_decimal
+
+    casts, summary = [], []
+    flags: list[list[str]] = [[] for _ in range(frame.height)]
+    for c in profile.columns:
+        source = frame[c.column_id]
+        data_type: Literal["string", "date", "timestamp", "decimal"] = "string"
+        kind = profiled_type(c, normalized_name(c.name).replace("_", " "))
+        date_counts = c.observations.get("date_formats")
+        decimal_counts = c.observations.get("numeric_locales")
+        formatter: Callable[[str | None], date | Decimal | None] | None = None
+        dtype: type[pl.Date] | pl.Datetime | pl.Decimal | None = None
+        invalid_date = invalid_decimal = 0
+        if kind == "date" and isinstance(date_counts, dict) and date_counts:
+            highest = max(date_counts.values())
+            formats = [fmt for fmt, count in date_counts.items() if count == highest]
+            if len(formats) == 1:
+                fmt = formats[0]
+                operation = source_date_operation(fmt)
+                if operation != "parse_date":
+                    data_type = "date" if operation == "parse_calendar_date" else "timestamp"
+                    dtype = pl.Date if data_type == "date" else pl.Datetime("us", "UTC")
+                    formatter = partial(parse_source_date, format_value=fmt, operation=operation)
+        if kind == "decimal" and isinstance(decimal_counts, dict):
+            locale = observed_decimal_locale(source, decimal_counts)
+            if locale:
+                formatter = partial(parse_decimal, locale=locale)
+                data_type = "decimal"
+        if formatter is not None:
+            converted, column_issues = [], []
+            for index, raw in enumerate(source):
+                try:
+                    converted.append(formatter(raw))
+                except DomainError as exc:
+                    column_issues.append((index, exc.code))
+                    converted.append(None)
+            if data_type == "decimal":
+                amounts = [amount for amount in converted if isinstance(amount, Decimal)]
+                scale = max(
+                    (max(0, -int(value.as_tuple().exponent)) for value in amounts), default=0
+                )
+                if not any(value.adjusted() + 1 + scale > 38 for value in amounts):
+                    dtype = pl.Decimal(38, scale)
+            if dtype is not None:
+                casts.append(pl.Series(c.column_id, converted, dtype=dtype))
+                for index, code in column_issues:
+                    flags[index].append(f"{code}:{c.column_id}")
+            else:
+                data_type = "string"
+            invalid_date = len(column_issues) if kind == "date" else 0
+            invalid_decimal = len(column_issues) if kind == "decimal" else 0
+        summary.append(
+            PreparationColumn(
+                column_id=c.column_id,
+                data_type=data_type,
+                null_count=c.null_count,
+                empty_count=c.empty_count,
+                duplicate_count=c.duplicate_count,
+                invalid_date_count=invalid_date,
+                invalid_decimal_count=invalid_decimal,
+            )
+        )
+    return frame.with_columns(casts).with_columns(
+        pl.Series("_preparation_flags", flags, dtype=pl.List(pl.String))
+    ), summary
 
 
 def normalized_name(value: str) -> str:

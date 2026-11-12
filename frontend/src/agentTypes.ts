@@ -176,6 +176,13 @@ export type AgentBlock = {
 } | {
     type: "table";
     result: QueryResult;
+    title?: string;
+} | {
+    type: "source_comparison";
+    name: string;
+    row: number;
+    scope: "RAW" | "PREPARED" | "CANONICAL";
+    fields: {field:string; original:string|null; processed:string|null; outcome:string}[];
 } | {
     type: "facts";
     result: {

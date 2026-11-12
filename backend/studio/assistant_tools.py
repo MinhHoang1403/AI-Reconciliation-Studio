@@ -149,6 +149,8 @@ def agent_catalogue(
         )
     datasets = select_project_datasets(db, actor, context.project_id, dataset_ids, selected_names)
     sources = []
+    from studio.normalization import NORMALIZATION_REVISION
+
     for dataset in datasets:
         tables = list(
             db.scalars(
@@ -172,14 +174,18 @@ def agent_catalogue(
             raise DomainError("INPUT_AMBIGUOUS", "Nguồn có nhiều bảng; chọn bảng cần xử lý.")
         items = []
         for table in tables:
-            if len(table.profile["columns"]) > 40:
-                raise DomainError("AGENT_CONTEXT_LIMIT", "Bảng vượt giới hạn40cột của tác vụ AI.")
+            artifact = db.get(ArtifactRow, table.artifact_id)
+            prepared = (artifact.metadata_json.get("prepared") or {}) if artifact else {}
+            if len(table.profile["columns"]) > 40 and not prepared.get("automatic"):
+                raise DomainError("AGENT_CONTEXT_LIMIT", "Bảng vượt giới hạn 40 cột của tác vụ AI.")
             canonical = (
                 db.scalar(
                     select(CanonicalRow).where(
                         CanonicalRow.source_table_id == table.id,
                         CanonicalRow.workspace_id == actor.workspace_id,
                         CanonicalRow.mapping_id == table.active_mapping_id,
+                        CanonicalRow.quality_revision == table.quality_revision,
+                        CanonicalRow.normalization_revision == NORMALIZATION_REVISION,
                         CanonicalRow.stale.is_(False),
                     )
                 )
@@ -199,6 +205,7 @@ def agent_catalogue(
                     row_count=table.row_count,
                     column_count=len(table.profile["columns"]),
                     prepared_artifact_id=prepared.get("prepared_artifact_id"),
+                    automatic_preparation=bool(prepared.get("automatic")),
                     columns=[
                         SourceColumn(
                             id=c["column_id"],

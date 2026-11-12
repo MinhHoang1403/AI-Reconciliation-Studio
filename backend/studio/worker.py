@@ -21,6 +21,8 @@ from studio.contracts import (
     DatasetProfile,
     EvidenceRef,
     FileArtifact,
+    MappingPolicyApplication,
+    MappingRevision,
     MappingStatus,
     ParsedTableArtifact,
     SchemaDefinition,
@@ -62,10 +64,16 @@ from studio.mapping_reuse import (
     exact_reuse_source,
     passes_reuse_preflight,
 )
-from studio.normalization import NORMALIZATION_REVISION, apply_transform_plan
+from studio.mapping_verification import AUTOMATIC_PREPARATION_REVISION, automatic_mapping
+from studio.normalization import (
+    NORMALIZATION_REVISION,
+    apply_transform_plan,
+    verify_automatic_normalization,
+)
 from studio.parsing import FileInspection, ParseConfig, parse_to_artifacts, verify_parse
 from studio.profiling import (
     PREPARATION_REVISION,
+    TECHNICAL_PREPARATION_REVISION,
     default_schema,
     prepare_table,
     profile_table,
@@ -81,6 +89,7 @@ from studio.repository import (
     reserve_document_request,
     reserve_gemini_request,
 )
+from studio.resource_lifecycle import active_project, lifecycle_state
 from studio.schema_mapping import TransformPlan, compile_transform_plan, validate_mapping
 from studio.storage import checksum, storage_path, write_parquet
 
@@ -331,8 +340,10 @@ def _approved_mapping_draft(
     if len(eligible) == 1:
         template, grant_id, (approved, bindings) = eligible[0]
     locked = db.get(MappingRow, template.id, with_for_update={"read": True}, populate_existing=True)
-    if locked is None or locked.status != "APPROVED" or db.scalar(
-        select(mapping_archived()).where(MappingRow.id == template.id)
+    if (
+        locked is None
+        or locked.status != "APPROVED"
+        or db.scalar(select(mapping_archived()).where(MappingRow.id == template.id))
     ):
         return None
     old, schema = approved.mapping, approved.schema
@@ -375,6 +386,7 @@ def _parse(job_id: str, token: str) -> None:
         raw_path = storage_path(settings.storage_root, raw.storage_key)
         raw_sha = raw.sha256
         config = ParseConfig.model_validate(version.parse_config)
+        automatic = bool(job.payload.get("automatic_preparation"))
         db.rollback()
         if checksum(raw_path) != raw_sha:
             raise DomainError("RAW_CHECKSUM_MISMATCH", "Tệp nguồn không khớp checksum.")
@@ -409,7 +421,13 @@ def _parse(job_id: str, token: str) -> None:
             )
             profile = profile_table(frame, parsed.columns, table_id, workspace_id, artifact_id)
             prepared_frame, summary = prepare_table(
-                frame, profile, extraction_warnings=bool(parsed.warnings)
+                frame,
+                profile,
+                extraction_warnings=bool(parsed.warnings),
+                automatic=automatic,
+            )
+            prepared_revision = (
+                TECHNICAL_PREPARATION_REVISION if automatic else PREPARATION_REVISION
             )
             prepared_id = identifier()
             prepared_key = f"{workspace_id}/{version_id}/prepared/{prepared_id}.parquet"
@@ -417,9 +435,10 @@ def _parse(job_id: str, token: str) -> None:
                 prepared_artifact_id=prepared_id,
                 source_artifact_id=artifact_id,
                 source_revision=source_revision,
-                preparation_revision=PREPARATION_REVISION,
+                preparation_revision=prepared_revision,
                 row_count=frame.height,
                 quality_summary=summary,
+                automatic=automatic,
             )
             # Use the existing tabular storage kind so older releases can list
             # these artifacts. Only the explicit prepared ref selects this view.
@@ -429,7 +448,7 @@ def _parse(job_id: str, token: str) -> None:
                 dataset_version_id=version_id,
                 kind="parsed",
                 sha256=write_parquet(settings.storage_root, prepared_key, prepared_frame),
-                revision=PREPARATION_REVISION,
+                revision=prepared_revision,
                 quality="REVIEW_REQUIRED",
                 storage_key=prepared_key,
                 metadata_json={"view": "prepared", "source_table_id": table_id},
@@ -493,13 +512,22 @@ def _parse(job_id: str, token: str) -> None:
                             "draft_id": mapping.id,
                             "template_id": template_id,
                             "grant_id": grant_id,
+                            **(
+                                {"automatic_preparation": True}
+                                if job.payload.get("automatic_preparation")
+                                else {}
+                            ),
                         },
                     )
+                elif job.payload.get("automatic_preparation"):
+                    _enqueue_automatic_preparation(db, job, table.id)
                 continue
             schema = default_schema(job.workspace_id, identifier())
             fallback = manual_proposal(profile, schema)
             create_mapping(db, table, fallback.model_dump(mode="json"), schema)
-            if job.payload.get("request_ai_mapping", True):
+            if job.payload.get("automatic_preparation"):
+                _enqueue_automatic_preparation(db, job, table.id)
+            elif job.payload.get("request_ai_mapping", True):
                 enqueue_job(
                     db,
                     job.workspace_id,
@@ -510,12 +538,210 @@ def _parse(job_id: str, token: str) -> None:
                 )
         dataset = db.get(DatasetRow, job.payload["dataset_id"])
         assert dataset is not None
-        dataset.status = "NEEDS_MAPPING_REVIEW"
+        dataset.status = "PREPARING" if automatic else "NEEDS_MAPPING_REVIEW"
         _finish(
             db,
             job,
             {"table_ids": [t.id for _, _, t, _ in pending], "reused_templates": reused_templates},
         )
+        db.commit()
+
+
+def _enqueue_automatic_preparation(db: Session, job: JobRow, table_id: str) -> None:
+    enqueue_job(
+        db,
+        job.workspace_id,
+        job.project_id,
+        "automatic_preparation",
+        f"prepare:{table_id}:{AUTOMATIC_PREPARATION_REVISION}",
+        {"table_id": table_id, "suggest_with_ai": bool(job.payload.get("request_ai_mapping"))},
+    )
+
+
+def _refresh_preparation_status(db: Session, dataset: DatasetRow, version_id: str) -> None:
+    """Keep the dataset summary coherent while independent sheets complete."""
+    db.refresh(dataset, with_for_update=True)
+    tables = list(db.scalars(select(TableRow).where(TableRow.dataset_version_id == version_id)))
+    jobs = list(
+        db.scalars(
+            select(JobRow).where(
+                JobRow.project_id == dataset.project_id,
+                JobRow.workspace_id == dataset.workspace_id,
+                JobRow.kind.in_(("automatic_preparation", "mapping_reuse", "normalize")),
+                JobRow.payload["table_id"].astext.in_([table.id for table in tables]),
+            )
+        )
+    )
+    if any(job.status in {"QUEUED", "RUNNING", "RETRYABLE_FAILURE"} for job in jobs):
+        dataset.status = "PREPARING"
+        return
+    current = {
+        row.source_table_id: row
+        for row in db.scalars(
+            select(CanonicalRow).where(
+                CanonicalRow.source_table_id.in_([table.id for table in tables]),
+                CanonicalRow.stale.is_(False),
+                CanonicalRow.normalization_revision == NORMALIZATION_REVISION,
+            )
+        )
+    }
+    if current:
+        dataset.status = (
+            "READY"
+            if all(
+                (row := current.get(table.id))
+                and row.mapping_id == table.active_mapping_id
+                and row.quality_revision == table.quality_revision
+                and row.contract["quality_status"] == "READY"
+                for table in tables
+            )
+            else "PARTIAL"
+        )
+    else:
+        dataset.status = (
+            "FAILED"
+            if any(job.status in {"FAILED", "BLOCKED"} for job in jobs)
+            else "EXPLORATION_ONLY"
+        )
+
+
+def _automatic_preparation(job_id: str, token: str) -> None:
+    """Inspect immutable input, then recheck the fenced source before publishing authority."""
+    from studio.agent_preparation import approval_from_draft
+
+    with SessionFactory() as db:
+        job = db.get(JobRow, job_id)
+        assert job is not None
+        table = db.get(TableRow, job.payload["table_id"])
+        assert table is not None
+        artifact = db.get(ArtifactRow, table.artifact_id)
+        assert artifact is not None
+        profile = DatasetProfile.model_validate(table.profile)
+        parsed = ParsedTableArtifact.model_validate(table.parsed_contract)
+        path, source_sha = (
+            storage_path(settings.storage_root, artifact.storage_key),
+            artifact.sha256,
+        )
+        db.rollback()
+        if checksum(path) != source_sha:
+            raise DomainError("PARSED_CHECKSUM_MISMATCH", "Dữ liệu nguồn không khớp checksum.")
+        assessment = None
+        if not parsed.warnings and len(profile.columns) <= 40:
+            frame = pl.read_parquet(path)
+            assessment, currency_basis = automatic_mapping(
+                frame,
+                profile,
+                source_sha,
+                currency_scope=settings.automatic_preparation_currency,
+            )
+        job = _fence(db, job_id, token)
+        active_project(db, job.project_id, job.workspace_id)
+        db.refresh(table, with_for_update=True)
+        version = db.get(VersionRow, table.dataset_version_id)
+        dataset = db.get(DatasetRow, version.dataset_id) if version else None
+        if (
+            dataset is None
+            or lifecycle_state(dataset) != "active"
+            or dataset.project_id != job.project_id
+            or table.workspace_id != job.workspace_id
+            or table.artifact_id != profile.artifact_id
+            or table.profile != profile.model_dump(mode="json")
+        ):
+            raise DomainError("STALE_CONTEXT", "Nguồn đã thay đổi trong lúc chuẩn bị.")
+        if table.active_mapping_id:
+            _finish(
+                db,
+                job,
+                {"preparation_status": "EXISTING_MAPPING", "mapping_id": table.active_mapping_id},
+            )
+        elif assessment is None or not assessment.preflight_ready:
+            questions = (
+                assessment.questions if assessment else ["Cấu trúc bảng cần được kiểm tra thêm."]
+            )
+            if job.payload.get("suggest_with_ai"):
+                enqueue_job(
+                    db,
+                    job.workspace_id,
+                    job.project_id,
+                    "mapping",
+                    f"mapping:auto:{table.id}:{PROMPT_REVISION}",
+                    {"table_id": table.id},
+                )
+            _finish(db, job, {"preparation_status": "EXPLORATION_ONLY", "reasons": questions})
+        else:
+            body = approval_from_draft(assessment.draft, profile, False, automatic=True)
+            proposal = SchemaProposal(
+                entity_kind=body.schema_definition.entity_kind,
+                grain=body.schema_definition.grain,
+                status="PROPOSED",
+                decisions=body.decisions,
+            )
+            row = create_mapping(
+                db, table, proposal.model_dump(mode="json"), body.schema_definition
+            )
+            persisted = db.get(SchemaRow, row.schema_id)
+            assert persisted is not None and assessment.predicted_invalid_rows is not None
+            schema = SchemaDefinition.model_validate(persisted.definition)
+            mapping = MappingRevision(
+                id=row.id,
+                workspace_id=row.workspace_id,
+                source_table_id=table.id,
+                source_signature=row.signature,
+                schema_id=schema.id,
+                schema_revision=schema.revision,
+                business_scope=row.business_scope,
+                revision=row.revision,
+                status=MappingStatus.APPROVED,
+                decisions=[
+                    d.model_copy(update={"decision": MappingStatus.APPROVED})
+                    for d in body.decisions
+                ],
+                policy_application=MappingPolicyApplication(
+                    revision=AUTOMATIC_PREPARATION_REVISION,
+                    source_artifact_id=profile.artifact_id,
+                    source_sha256=source_sha,
+                    source_rows=assessment.source_rows,
+                    invalid_rows=assessment.predicted_invalid_rows,
+                    error_counts=assessment.error_counts,
+                    currency_basis=currency_basis,
+                    applied_at=now(),
+                ),
+            )
+            compile_transform_plan(mapping, schema, profile)
+            row.status, row.decision = "APPROVED", mapping.model_dump(mode="json")
+            table.active_mapping_id, dataset.status = row.id, "MAPPED"
+            db.add(
+                AuditRow(
+                    workspace_id=job.workspace_id,
+                    actor_id="system",
+                    action="APPLY_MAPPING_POLICY",
+                    resource_id=row.id,
+                )
+            )
+            normalize = enqueue_job(
+                db,
+                job.workspace_id,
+                job.project_id,
+                "normalize",
+                f"normalize:policy:{row.id}:{NORMALIZATION_REVISION}",
+                {
+                    "dataset_id": dataset.id,
+                    "table_id": table.id,
+                    "mapping_id": row.id,
+                    "normalization_revision": NORMALIZATION_REVISION,
+                },
+            )
+            _finish(
+                db,
+                job,
+                {
+                    "preparation_status": "APPLIED",
+                    "mapping_id": row.id,
+                    "normalize_job_id": normalize.id,
+                },
+            )
+        assert version is not None
+        _refresh_preparation_status(db, dataset, version.id)
         db.commit()
 
 
@@ -567,6 +793,8 @@ def _reuse_mapping(job_id: str, token: str) -> None:
 
         def review_required(code: str, counts: dict[str, int] | None = None) -> None:
             claimed = _fence(db, job_id, token)
+            if payload.get("automatic_preparation") and code != "PARSED_CHECKSUM_MISMATCH":
+                _enqueue_automatic_preparation(db, claimed, payload["table_id"])
             _finish(
                 db,
                 claimed,
@@ -648,7 +876,7 @@ def _reuse_mapping(job_id: str, token: str) -> None:
         target.active_mapping_id = applied.id
         dataset = db.get(DatasetRow, dataset_id)
         assert dataset is not None
-        dataset.status = "MAPPED"
+        dataset.status = "PREPARING" if payload.get("automatic_preparation") else "MAPPED"
         db.add(
             AuditRow(
                 workspace_id=claimed.workspace_id,
@@ -969,6 +1197,9 @@ def _normalize(job_id: str, token: str) -> None:
         path = storage_path(settings.storage_root, parsed_row.storage_key)
         if checksum(path) != parsed_row.sha256:
             raise DomainError("PARSED_CHECKSUM_MISMATCH", "Artifact parsed bị thay đổi.")
+        policy = plan.mapping.policy_application
+        if policy and policy.source_sha256 != parsed_row.sha256:
+            raise DomainError("MAPPING_POLICY_INVALID", "Checksum không khớp quyết định tự động.")
         frame = pl.read_parquet(path)
         version = db.get(VersionRow, table.dataset_version_id)
         assert version is not None
@@ -990,6 +1221,15 @@ def _normalize(job_id: str, token: str) -> None:
         result = apply_transform_plan(
             included, plan, version_id, table_id, parsed.provenance[0].file_id, sheet
         )
+        if policy:
+            verify_automatic_normalization(included, result, plan)
+            if not quality_revision and (
+                result.invalid_count != policy.invalid_rows
+                or dict(result.errors["code"].value_counts().iter_rows()) != policy.error_counts
+            ):
+                raise DomainError(
+                    "NORMALIZATION_VERIFICATION_FAILED", "Số lỗi khác kết quả kiểm tra trước."
+                )
         if excluded and result.quality_status == "READY":
             result.quality_status = "PARTIAL"
         outputs = []
@@ -1007,7 +1247,11 @@ def _normalize(job_id: str, token: str) -> None:
                     revision=NORMALIZATION_REVISION,
                     quality=result.quality_status,
                     storage_key=key,
-                    metadata_json={"mapping_id": mapping_id, "quality_revision": quality_revision},
+                    metadata_json={
+                        "mapping_id": mapping_id,
+                        "quality_revision": quality_revision,
+                        **({"mapping_policy_revision": policy.revision} if policy else {}),
+                    },
                 )
             )
         job = _fence(db, job_id, token)
@@ -1050,7 +1294,7 @@ def _normalize(job_id: str, token: str) -> None:
             mapping_revision_id=mapping_id,
             normalization_revision=NORMALIZATION_REVISION,
             quality_revision=quality_revision,
-            source_row_count=frame.height if quality_revision else None,
+            source_row_count=frame.height if quality_revision or policy else None,
             excluded_source_rows=len(excluded),
             excluded_amounts=excluded_totals,
             excluded_amounts_unavailable=incomplete_totals,
@@ -1099,6 +1343,8 @@ def _normalize(job_id: str, token: str) -> None:
         else:
             dataset.status = "PARTIAL"
         _finish(db, job, {"canonical_id": canonical_id, "quality_status": result.quality_status})
+        if (parsed_row.metadata_json.get("prepared") or {}).get("automatic"):
+            _refresh_preparation_status(db, dataset, version_id)
         db.commit()
 
 
@@ -1126,6 +1372,7 @@ def process_job(job_id: str, token: str, *, native_only: bool = False) -> None:
             "parse": _parse,
             "mapping": _mapping,
             "mapping_reuse": _reuse_mapping,
+            "automatic_preparation": _automatic_preparation,
             "normalize": _normalize,
             "document_parse": _document,
             "export": lambda job_id, token: execute_export(
@@ -1185,6 +1432,18 @@ def process_job(job_id: str, token: str, *, native_only: bool = False) -> None:
                 dataset = db.get(DatasetRow, job.payload["dataset_id"])
                 if dataset:
                     dataset.status = "FAILED"
+            if kind in {"automatic_preparation", "mapping_reuse", "normalize"}:
+                table = db.get(TableRow, job.payload.get("table_id"))
+                parsed = db.get(ArtifactRow, table.artifact_id) if table else None
+                if (
+                    table
+                    and parsed
+                    and (parsed.metadata_json.get("prepared") or {}).get("automatic")
+                ):
+                    version = db.get(VersionRow, table.dataset_version_id)
+                    dataset = db.get(DatasetRow, version.dataset_id) if version else None
+                    if dataset and version:
+                        _refresh_preparation_status(db, dataset, version.id)
             if kind == "reconcile" and job.status in {"FAILED", "BLOCKED"}:
                 from studio.database import RunRow
 

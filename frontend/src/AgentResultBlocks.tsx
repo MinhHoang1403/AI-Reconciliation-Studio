@@ -16,10 +16,11 @@ type SourceRef = {source_table_id:string;row:number;sheet:string};
 const transformLabels:Record<string,string>={cast_string_preserve:"Giữ nguyên văn bản và mã",parse_decimal:"Đọc số tiền theo định dạng đã duyệt",parse_date:"Đọc ngày hoặc thời điểm theo múi giờ đã duyệt",parse_calendar_date:"Giữ nguyên ngày lịch",parse_offset_timestamp:"Chuẩn hóa thời điểm có offset về UTC",trim_if_approved:"Bỏ khoảng trắng theo quy tắc đã duyệt",normalize_enum:"Chuẩn hóa trạng thái theo quy tắc đã duyệt",coalesce_with_rule:"Chọn giá trị theo quy tắc đã duyệt",add_fields:"Cộng trường theo quy tắc đã duyệt",subtract_fields:"Trừ trường theo quy tắc đã duyệt",aggregate_by:"Gom nhóm theo quy tắc đã duyệt"};
 const queryLabels:Record<string,string>={linkage_state:"Liên kết",comparison_state:"Kết quả so sánh",left_member_count:"Số dòng nguồn A",right_member_count:"Số dòng nguồn B",left_amount:"Số tiền nguồn A",right_amount:"Số tiền nguồn B",delta:"Chênh lệch có dấu",absolute_variance:"Chênh lệch tuyệt đối",tolerance:"Sai số cho phép",currency:"Tiền tệ",unit:"Đơn vị",type:"Loại ngoại lệ",state:"Xử lý ngoại lệ",notes:"Ghi chú"};
 const numericQueryFields = new Set(["left_member_count", "right_member_count", "left_amount", "right_amount", "delta", "absolute_variance", "tolerance"]);
-function QueryTable({ initial, workflowId, selection }: {
+function QueryTable({ initial, workflowId, selection, title }: {
     initial: QueryResult;
     workflowId?: string;
     selection?: Query | null;
+    title?: string;
 }) {
     const [data, setData] = useState(initial);
     const [busy, setBusy] = useState(false);
@@ -102,12 +103,14 @@ function QueryTable({ initial, workflowId, selection }: {
       <span>Trang {Math.floor(data.offset / data.limit) + 1} · {data.rows.length} dòng trong trang</span>
       <button className="button secondary" disabled={busy || !data.truncated} onClick={() => void page(data.offset + data.limit)}>Tiếp</button>{busy && <Spinner />}</div>;
     return <section className="agent-table" aria-label="Kết quả truy vấn">
+    {title && <h4>{title}</h4>}
     {countOnly && count != null && <p>Kết quả đếm: <strong>{typeof count === "number" ? count.toLocaleString("vi-VN") : String(count)} {countUnit}</strong> phù hợp với điều kiện bạn chọn.</p>}
     {!countOnly && <p><strong>{data.total_count.toLocaleString("vi-VN")} {grouped ? "nhóm kết quả" : "dòng dữ liệu"}</strong>{data.total_count === 0 ? ". Chưa tìm thấy dữ liệu phù hợp với điều kiện bạn chọn." : ". Bạn có thể xem dữ liệu và mở từng dòng gốc bên dưới."}</p>}
     {!countOnly && data.rows.length > 0 && <p className="muted">Đang xem {previewRows.length} dòng trong trang {Math.floor(data.offset / data.limit) + 1}{data.rows.length > 10 ? `; trang này có ${data.rows.length} dòng.` : "."}</p>}
     {data.query.source_kind === "RAW_PREVIEW" && <p>Đây là dữ liệu gốc đã đọc từ tệp. Ý nghĩa các cột chưa được xác nhận; dữ liệu chưa được chuẩn hóa.</p>}
     {data.query.source_kind === "PREPARED" && <p>Đây là bản tự chuẩn bị để xem và tìm kiếm. Cần xác nhận ý nghĩa nghiệp vụ trước khi dùng để đối soát.</p>}
     {data.query.source_kind === "PREPARED_FINDINGS" && <p>Chỉ gồm dòng có cảnh báo ngày trong bản tự chuẩn bị. Bảng giữ nguyên giá trị nguồn và vị trí dòng.</p>}
+    {data.query.source_kind === "PREPARED_ISSUES" && <p>Các dòng có cảnh báo định dạng, kèm giá trị gốc.</p>}
     {data.verification_status === "PARTIAL_VERIFIED" && <Notice tone="warning">Kết quả chỉ được kiểm chứng một phần. Hãy kiểm tra các dữ liệu chưa đủ điều kiện trước khi kết luận.</Notice>}
     {!countOnly && data.warnings.map(w => <p className="muted" key={w}>{w}</p>)}
     {!data.evidence_complete && <Notice tone="warning">Chỉ hiển thị một phần bằng chứng; thông tin nguồn đầy đủ vẫn được lưu.</Notice>}
@@ -219,7 +222,7 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
     const mappingProgress = mappingReview ? blocks.filter(block => block.type === "progress") : [];
     const showPreview = (block: AgentBlock) => compactPreviews && block.type === "table" && block.result.query.source_kind === "RAW_PREVIEW";
     const previews = blocks.flatMap((block, i) => showPreview(block) && block.type === "table"
-      ? [<QueryTable key={i} initial={block.result} workflowId={workflowId} selection={querySelection}/>] : []);
+      ? [<QueryTable key={i} initial={block.result} title={block.title} workflowId={workflowId} selection={querySelection}/>] : []);
     return <div className="agent-results">
         {sources.length > 1 && <p className="agent-conclusion">
           {readySources > 0 && <strong>{readySources} nguồn sẵn sàng lập quy tắc đối soát.</strong>}
@@ -230,7 +233,24 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
             if (block.type === "progress")
                 return mappingReview ? null : <p key={i}>{block.text}</p>;
             if (block.type === "table")
-                return <QueryTable key={i} initial={block.result} workflowId={workflowId} selection={querySelection}/>;
+                return <QueryTable key={i} initial={block.result} title={block.title} workflowId={workflowId} selection={querySelection}/>;
+            if (block.type === "source_comparison") {
+                const columns: ColumnDef<Record<string, unknown>>[] = [
+                    {accessorKey:"field", header:"Trường"},
+                    {accessorKey:"original", header:"Giá trị gốc", cell: cell=>String(cell.getValue() ?? "Ô trống")},
+                    {accessorKey:"processed", header:"Sau xử lý", cell: cell=>String(cell.getValue() ?? "—")},
+                    {accessorKey:"outcome", header:"Trạng thái"},
+                ];
+                return <section className="agent-table" key={i}>
+                  <h4>{block.name} · Dòng {block.row}</h4>
+                  {block.scope === "PREPARED" && <p>Bản chuẩn bị để xem. Ngữ nghĩa tài chính còn cần kiểm chứng.</p>}
+                  {block.scope === "RAW" && <p>Nguồn hiện chỉ có dữ liệu gốc.</p>}
+                  <DataTable rows={block.fields.slice(0, 6)} columns={columns}/>
+                  {block.fields.length > 6 && <details><summary>Các trường còn lại</summary>
+                    <DataTable rows={block.fields.slice(6)} columns={columns}/>
+                  </details>}
+                </section>;
+            }
             if (block.type === "chart")
                 return hasFacts ? <ResultChartDetails key={i} data={block}/> : <ResultChart key={i} data={block}/>;
             if (block.type === "download")
@@ -247,24 +267,28 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
                   openSource={()=>onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}/>;
             const snapshot = block.result.snapshot || block.result.run?.metric_snapshot;
             const reportRunId = snapshot?.run_id || block.result.run?.id;
+            const observed = block.result.run?.observed_scope;
             const pairNames = snapshot?.source_canonical_ids?.map(id=>sources.find(source=>source.canonical_id === id)?.name);
             const otherGroups = [["PENDING", "đang chờ"], ["AMBIGUOUS", "cần xem lại liên kết"], ["INVALID", "dữ liệu lỗi"]]
               .flatMap(([state, description])=>{
+                if (observed && state === "PENDING") return [];
                 const count = snapshot?.linkage_counts?.[state];
                 return count ? [`${count.toLocaleString("vi-VN")} nhóm ${description}`] : [];
               });
             return <section className="agent-facts" key={i}>
               {snapshot && <>
                 <header>
-                  <h4>{block.result.run?.status === "PARTIAL_VERIFIED" ? "Kết quả đã xác minh một phần" : "Kết quả đã xác minh"}</h4>
+                  <h4>{observed ? "Đối chiếu dữ liệu quan sát được" : block.result.run?.status === "PARTIAL_VERIFIED" ? "Kết quả đã xác minh một phần" : "Kết quả đã xác minh"}</h4>
                   {pairNames?.length === 2 && pairNames.every(Boolean) && <p className="muted">{pairNames.join(" ↔ ")}</p>}
                 </header>
-                <p>{(snapshot.comparison_counts?.EQUAL ?? 0).toLocaleString("vi-VN")} nhóm khớp chính xác, {" "}
+                <p>{(snapshot.comparison_counts?.EQUAL ?? 0).toLocaleString("vi-VN")} nhóm khớp chính xác{", "}
                   {(snapshot.comparison_counts?.AMOUNT_MISMATCH ?? 0).toLocaleString("vi-VN")} nhóm lệch tiền và {" "}
-                  {(snapshot.linkage_counts?.UNMATCHED ?? 0).toLocaleString("vi-VN")} nhóm thiếu đối ứng.</p>
+                  {(snapshot.linkage_counts?.[observed ? "PENDING" : "UNMATCHED"] ?? 0).toLocaleString("vi-VN")} nhóm {observed ? "chưa thấy đối ứng trong dữ liệu" : "thiếu đối ứng"}.</p>
+                {observed && <p>Đã kiểm chứng trên phần đủ điều kiện. Độ đầy đủ của kỳ còn chưa xác định.</p>}
                 {!!snapshot.comparison_counts?.WITHIN_TOLERANCE && <p>{snapshot.comparison_counts.WITHIN_TOLERANCE} nhóm trong sai số đã duyệt.</p>}
                 {otherGroups.length > 0 && <p>{otherGroups.join(" · ")}</p>}
                 {snapshot.monetary.map(m => <p key={m.metric_id}>
+                  {observed && <>{m.comparable_groups.toLocaleString("vi-VN")} nhóm so sánh được · </>}
                   {snapshot.monetary.length > 1 && <><strong>{label(m.metric_id)}</strong> · </>}
                   Chênh lệch tuyệt đối <strong>{formatDecimal(m.absolute_variance)} {m.currency}</strong> · Có dấu {formatDecimal(m.signed_variance)} {m.currency}
                 </p>)}
@@ -273,6 +297,12 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
                   <p>Kỳ {snapshot.period_start} → {snapshot.period_end} · {snapshot.timezone}</p>
                   <p>{snapshot.eligible_definition}</p>
                   <p>Đơn vị so sánh · {snapshot.comparison_unit}</p>
+                  {observed && block.result.run?.source_refs?.map((source, index)=>{
+                      const partition = block.result.run?.partition_counts?.[index === 0 ? "left" : "right"];
+                      return <p key={index}>{pairNames?.[index] ?? (index === 0 ? "Nguồn trái" : "Nguồn phải")} · {source.source_row_count ?? source.row_count} dòng gốc
+                        {partition && <>{" · "}{partition.IN_SCOPE ?? 0} dòng trong phạm vi · {partition.INVALID ?? 0} dòng lỗi</>}
+                        {!!source.excluded_source_rows && ` · ${source.excluded_source_rows} dòng có quyết định loại`}</p>;
+                  })}
                   {Object.entries(snapshot.excluded_counts || {}).map(([name, count])=><p key={name}>{label(name)} · {count}</p>)}
                 </details>
               </>}

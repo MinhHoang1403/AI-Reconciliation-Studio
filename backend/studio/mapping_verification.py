@@ -2,7 +2,7 @@
 
 import re
 from collections import Counter
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 import polars as pl
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from studio.access import Actor
 from studio.agent_preparation import (
     approval_from_draft,
+    profiled_fields,
     profiled_type,
     tax_amount_basis,
     validate_draft,
@@ -37,11 +38,13 @@ from studio.profiling import (
     field_name_tokens,
     normalized_name,
     observed_amount_basis,
+    observed_decimal_locale,
     profile_table,
 )
 from studio.schema_mapping import TransformPlan, compile_transform_plan
 
 UNKNOWN = {"", "unknown", "ambiguous", "n/a", "none", "needs_review"}
+AUTOMATIC_PREPARATION_REVISION = "automatic-preparation-1"
 KEY_GRAINS = (
     ({"sale", "line"}, "Bán hàng", "Một dòng hàng trên đơn bán"),
     ({"receipt"}, "Thu ngân", "Một phiếu thu"),
@@ -83,6 +86,7 @@ def assess_mapping(
     *,
     enrich: bool = False,
     preserve_timezone: bool = False,
+    automatic: bool = False,
 ) -> MappingAssessment:
     """Đo toàn bảng; chỉ enrich bản đề xuất, không sửa quyết định đã được người dùng chọn.
 
@@ -211,7 +215,11 @@ def assess_mapping(
                     f.date_format = None
             if f.data_type == "decimal":
                 locales = c.observations.get("numeric_locales", {})
-                if isinstance(locales, dict) and locales:
+                if automatic:
+                    f.locale = observed_decimal_locale(
+                        frame[f.source_field], locales if isinstance(locales, dict) else {}
+                    )
+                elif isinstance(locales, dict) and locales:
                     maximum = max(locales.values())
                     best = [loc for loc, count in locales.items() if count == maximum]
                     if maximum and len(best) == 1:
@@ -367,7 +375,7 @@ def assess_mapping(
         key_candidates=key_candidates,
     )
     if not questions:
-        approval = approval_from_draft(draft, fresh, True)
+        approval = approval_from_draft(draft, fresh, True, automatic=automatic)
         # Mapping chỉ tồn tại trong bộ nhớ để dùng chung compiler; không ghi approval giả vào DB.
         decisions = [d.model_copy(update={"decision": "APPROVED"}) for d in approval.decisions]
         mapping = MappingRevision(
@@ -388,6 +396,61 @@ def assess_mapping(
         result.predicted_invalid_rows = invalid
         result.error_counts = dict(counts)
     return result
+
+
+def automatic_mapping(
+    frame: pl.DataFrame,
+    profile: DatasetProfile,
+    source_sha: str,
+    *,
+    currency_scope: str,
+) -> tuple[MappingAssessment, Literal["SOURCE", "WORKSPACE_VND", "VND_SCOPE"]]:
+    """[D] Only independently observed structure can authorize an automatic mapping.
+
+    Model output never enters this gate. Unknown grain, an unproven currency,
+    missing monetary semantics or local timestamps remain in the prepared view.
+    """
+    draft = NormalizationDraft(
+        table_id=profile.source_table_id,
+        entity_kind="unknown",
+        grain="unknown",
+        fields=profiled_fields(profile),
+    )
+    columns = {c.column_id: c for c in profile.columns}
+    for field in draft.fields:
+        if field.data_type == "decimal" and (
+            basis := observed_amount_basis(columns[field.source_field].name)
+        ):
+            field.amount_basis, field.semantic_metric = basis, field.target_id
+    assessment = assess_mapping(draft, frame, profile, source_sha, enrich=True, automatic=True)
+    money = [field for field in assessment.draft.fields if field.data_type == "decimal"]
+    currency_basis: Literal["SOURCE", "WORKSPACE_VND", "VND_SCOPE"] = "SOURCE"
+    if not assessment.currencies:
+        currency_basis = "WORKSPACE_VND"
+        if currency_scope != "VND":
+            assessment.preflight_ready = False
+            assessment.questions.append("Chưa có quy ước tiền tệ cho nguồn này.")
+    elif (
+        len(assessment.currencies) > 1
+        and currency_scope == "VND"
+        and "VND" in assessment.currencies
+        and all(re.fullmatch(r"[A-Z]{3}", code) for code in assessment.currencies)
+    ):
+        currency_basis = "VND_SCOPE"
+        for field in money:
+            field.currency = field.unit = "VND"
+        assessment = assess_mapping(assessment.draft, frame, profile, source_sha, automatic=True)
+    if (
+        not money
+        or not any(field.business_key for field in assessment.draft.fields)
+        or not any(field.data_type == "date" for field in assessment.draft.fields)
+        or any(check.date_kind == "local" for check in assessment.checks)
+        or assessment.predicted_invalid_rows == frame.height
+        or bool(assessment.currencies and sum(assessment.currency_counts.values()) != frame.height)
+    ):
+        assessment.preflight_ready = False
+        assessment.questions.append("Cần căn cứ về mã nhận diện dòng, ngày và chỉ tiêu tiền.")
+    return assessment, currency_basis
 
 
 def assess_table_mapping(

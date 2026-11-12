@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     max_upload_files: int = Field(default=10, ge=1, le=20)
     max_rows: int = Field(default=100000, ge=1, le=1000000)
     max_columns: int = Field(default=200, ge=1, le=1000)
+    automatic_preparation_currency: Literal["VND", "NONE"] = "VND"
     max_zip_bytes: int = 100 * 1024 * 1024
     qwen_base_url: str = ""
     qwen_model: str = "knowledge"

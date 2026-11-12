@@ -14,8 +14,10 @@ from studio.contracts import Contract
 from studio.contracts.assistant import AssistantContext
 from studio.database import (
     AgentWorkflowRow,
+    ArtifactRow,
     CanonicalRow,
     ConversationRow,
+    JobRow,
     MappingRow,
     TableRow,
     VersionRow,
@@ -33,11 +35,17 @@ class ProcessingStatus(Contract):
     version_id: str | None = None
     mapping_id: str | None = None
     canonical_id: str | None = None
+    valid_rows: int | None = None
+    invalid_rows: int | None = None
+    excluded_rows: int = 0
+    automatic: bool = False
     state: Literal[
         "UPLOADED",
         "PARSING",
         "PARSE_FAILED",
         "PARSED",
+        "PREPARING",
+        "EXPLORATION_ONLY",
         "MAPPING_REVIEW",
         "MAPPED",
         "READY",
@@ -219,6 +227,25 @@ def read_processing_status(
                 )
             )
         for table in tables:
+            artifact = db.get(ArtifactRow, table.artifact_id)
+            automatic = bool(
+                artifact and (artifact.metadata_json.get("prepared") or {}).get("automatic")
+            )
+            preparation = (
+                db.scalar(
+                    select(JobRow)
+                    .where(
+                        JobRow.project_id == dataset.project_id,
+                        JobRow.workspace_id == actor.workspace_id,
+                        JobRow.kind.in_(["automatic_preparation", "mapping_reuse", "normalize"]),
+                        JobRow.payload["table_id"].astext == table.id,
+                    )
+                    .order_by(JobRow.created_at.desc(), JobRow.id.desc())
+                    .limit(1)
+                )
+                if automatic
+                else None
+            )
             mapping = (
                 db.get(MappingRow, table.active_mapping_id) if table.active_mapping_id else None
             )
@@ -289,6 +316,12 @@ def read_processing_status(
                 if canonical and mapping and mapping.status == "APPROVED"
                 else "STALE"
                 if history
+                else "PREPARING"
+                if preparation and preparation.status in {"QUEUED", "RUNNING", "RETRYABLE_FAILURE"}
+                else "FAILED"
+                if preparation and preparation.status in {"FAILED", "BLOCKED"}
+                else "EXPLORATION_ONLY"
+                if automatic and not mapping
                 else "MAPPED"
                 if mapping and mapping.status == "APPROVED"
                 else "MAPPING_REVIEW"
@@ -303,6 +336,12 @@ def read_processing_status(
                     row_count=table.row_count,
                     mapping_id=mapping.id if mapping else None,
                     canonical_id=canonical.id if canonical else None,
+                    valid_rows=canonical.contract["valid_count"] if canonical else None,
+                    invalid_rows=canonical.contract["invalid_count"] if canonical else None,
+                    excluded_rows=canonical.contract.get("excluded_source_rows", 0)
+                    if canonical
+                    else 0,
+                    automatic=automatic,
                     state=state,
                 )
             )
@@ -321,6 +360,8 @@ def status_description(item: ProcessingStatus) -> str:
         "PARSED": (
             "Đã đọc dữ liệu, chưa chuẩn hóa. Cần đề xuất ghép cột và xác nhận trước khi chuẩn hóa."
         ),
+        "PREPARING": "Đang chuẩn bị và kiểm tra dữ liệu.",
+        "EXPLORATION_ONLY": "Đã chuẩn bị để xem. Còn thiếu căn cứ đối soát tài chính.",
         "MAPPING_REVIEW": "Đang chờ kiểm tra, xác nhận cách ghép cột; chưa chuẩn hóa.",
         "MAPPED": (
             "Cách ghép cột đã được duyệt, nhưng chưa có bản chuẩn hóa hiện hành"
@@ -339,6 +380,20 @@ def status_description(item: ProcessingStatus) -> str:
             "h xạ và chuẩn hóa lại."
         ),
     }
+    description = descriptions[item.state]
+    if item.automatic and item.state == "READY":
+        description = "Đã chuẩn bị và kiểm chứng dữ liệu."
+    elif (
+        item.automatic
+        and item.state == "PARTIAL"
+        and item.valid_rows is not None
+        and item.invalid_rows is not None
+    ):
+        valid = f"{item.valid_rows:,}".replace(",", ".")
+        invalid = f"{item.invalid_rows:,}".replace(",", ".")
+        description = (
+            f"Đã chuẩn bị, có ngoại lệ. {valid} dòng dùng được, {invalid} dòng cần kiểm tra."
+        )
     return (
         f"{item.name}"
         + (f" · {item.sheet}" if item.sheet else "")
@@ -348,5 +403,5 @@ def status_description(item: ProcessingStatus) -> str:
             else ""
         )
         + ": "
-        + descriptions[item.state]
+        + description
     )

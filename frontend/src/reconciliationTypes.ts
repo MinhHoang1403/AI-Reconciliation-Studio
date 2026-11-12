@@ -120,8 +120,12 @@ export type Run = {
   checks: { name: string; passed: boolean; details: string }[];
   metric_snapshot: Snapshot | null;
   source_refs?: QualityScope[];
+  observed_scope?: boolean;
+  partition_counts?: Record<string, Record<string, number>>;
 };
 type QualityScope = {
+  row_count?: number;
+  source_row_count?: number | null;
   excluded_source_rows?: number;
   excluded_amounts?: { field: string; currency: string; amount: string }[];
   excluded_amounts_unavailable?: boolean;

@@ -3,6 +3,8 @@ export type Status =
   | "PARSING"
   | "PARSED"
   | "PROFILED"
+  | "PREPARING"
+  | "EXPLORATION_ONLY"
   | "NEEDS_MAPPING_REVIEW"
   | "MAPPED"
   | "NORMALIZING"
@@ -36,6 +38,7 @@ export interface PreparationAction {
     | "REVIEW_MAPPING"
     | "NORMALIZE"
     | "REVIEW_DATA"
+    | "OPEN_ASSISTANT"
     | "RECONCILE";
   dataset_id: string | null;
   table_id: string | null;
@@ -64,11 +67,12 @@ export interface Table {
     review_required: true;
     quality_summary: {
       column_id: string;
-      data_type: "string" | "date";
+      data_type: "string" | "date" | "timestamp" | "decimal";
       null_count: number;
       empty_count: number;
       duplicate_count: number;
       invalid_date_count: number;
+      invalid_decimal_count?: number;
     }[];
   } | null;
 }
@@ -220,6 +224,8 @@ export const statusText: Record<string, string> = {
   CANONICAL: "Dữ liệu đã chuẩn hóa",
   UPLOADED: "Đã tải lên",
   PARSING: "Đang đọc dữ liệu",
+  PREPARING: "Đang chuẩn bị dữ liệu",
+  EXPLORATION_ONLY: "Đã chuẩn bị để xem",
   PARSED: "Đã đọc",
   PROFILED: "Đã phân tích",
   NEEDS_MAPPING_REVIEW: "Cần xác nhận cột",

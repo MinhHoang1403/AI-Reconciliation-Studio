@@ -198,6 +198,12 @@ class CandidateProposal(PlanProposal):
     candidates: list[PlanningCandidate] = Field(default_factory=list, max_length=5)
 
 
+class ObservedComparison(Contract):
+    revision: Literal["observed-order-revenue-1"] = "observed-order-revenue-1"
+    confirmed_by: str | None = None
+    confirmation: str | None = None
+
+
 class ReconciliationContract(Contract):
     id: str
     workspace_id: str
@@ -205,8 +211,20 @@ class ReconciliationContract(Contract):
     revision: int = Field(ge=1)
     plan: ReconciliationPlan
     status: Literal["APPROVED"] = "APPROVED"
-    approved_by: str
-    approved_at: datetime
+    approved_by: str | None
+    approved_at: datetime | None
+    observation: ObservedComparison | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def approval_authority(self) -> "ReconciliationContract":
+        if self.observation:
+            if self.approved_by is not None or self.approved_at is not None:
+                raise ValueError("OBSERVATION_AUTHORITY_INVALID")
+        elif not self.approved_by or self.approved_at is None:
+            raise ValueError("RECONCILIATION_APPROVAL_REQUIRED")
+        return self
 
 
 class SourceCatalogue(Contract):
@@ -351,6 +369,10 @@ class VerificationCheck(Contract):
 
 
 class ReconciliationRun(Contract):
+    observed_scope: bool = Field(default=False, exclude_if=lambda value: not value)
+    partition_counts: dict[str, dict[str, int]] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
     id: str
     workspace_id: str
     project_id: str

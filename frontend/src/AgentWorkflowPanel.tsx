@@ -11,6 +11,7 @@ const states: Record<string, string> = { CREATED: "Đã nhận yêu cầu", RUNN
     WAITING_REVIEW: "Cần bạn xác nhận", COMPLETED: "Đã hoàn thành", PARTIAL: "Hoàn thành một phần",
     FAILED: "Xử lý thất bại", BLOCKED: "Chưa thể tiếp tục", CANCELLED_BEFORE_NEXT_STEP: "Đã dừng các bước tiếp theo" };
 const tools: Record<string, string> = { parse: "Đọc dữ liệu", propose_mapping: "Chuẩn bị đề xuất",
+    automatic_preparation: "Tự chuẩn bị dữ liệu", compare_observed: "Đối chiếu và kiểm chứng",
     reuse_mapping: "Kiểm tra mẫu đã duyệt",
     run_normalization: "Chuẩn hóa", prepare_reconciliation_plan: "Đề xuất quy tắc đối soát",
     run_approved_reconciliation: "Đối soát và kiểm chứng", start_export: "Tạo báo cáo",
@@ -167,6 +168,8 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
       <strong role="status">{workflow.state === "WAITING_REVIEW" && openReviews.some(review=>review.kind === "CLARIFICATION")
         ? "Cần bạn bổ sung" : openMappings.length
         ? `Cần bạn xác nhận cách ghép cột cho ${openMappings.length} nguồn`
+        : workflow.state === "RUNNING" && workflow.detail.steps.some(step => step.tool === "automatic_preparation" && step.status === "QUEUED")
+        ? "Đang chuẩn bị dữ liệu"
         : workflow.state === "COMPLETED" && workflow.detail.intent?.intent === "EXPLORE_DATA"
         ? "Đã đọc dữ liệu, chưa chuẩn hóa" : states[workflow.state] || "Chưa có trạng thái xử lý"}</strong>
       {["CREATED", "RUNNING", "WAITING_REVIEW"].includes(workflow.state) && <button className="text-button" onClick={() => void cancel()}>Dừng bước tiếp theo</button>}

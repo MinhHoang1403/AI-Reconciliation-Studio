@@ -41,7 +41,13 @@ class QueryOperations(Contract):
 
 
 QuerySourceKind = Literal[
-    "RAW_PREVIEW", "PREPARED", "PREPARED_FINDINGS", "CANONICAL", "VERIFIED_RUN", "EXCEPTIONS"
+    "RAW_PREVIEW",
+    "PREPARED",
+    "PREPARED_FINDINGS",
+    "PREPARED_ISSUES",
+    "CANONICAL",
+    "VERIFIED_RUN",
+    "EXCEPTIONS",
 ]
 
 

@@ -173,6 +173,7 @@ class TableContext(Contract):
     row_count: int
     column_count: int | None = None
     prepared_artifact_id: str | None = None
+    automatic_preparation: bool = Field(default=False, exclude_if=lambda value: not value)
     columns: list[SourceColumn] = Field(max_length=40)
     canonical_id: str | None = None
     canonical_status: Literal["READY", "PARTIAL", "FAILED"] | None = None
@@ -255,9 +256,11 @@ class WorkflowStep(Contract):
         "parse",
         "propose_mapping",
         "reuse_mapping",
+        "automatic_preparation",
         "run_normalization",
         "prepare_reconciliation_plan",
         "run_approved_reconciliation",
+        "compare_observed",
         "start_export",
         "query_dataset",
         "read_verified_facts",
@@ -299,6 +302,22 @@ class DatasetBlock(Contract):
 class TableBlock(Contract):
     type: Literal["table"] = "table"
     result: QueryResult
+    title: str | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
+class SourceValueChange(Contract):
+    field: str
+    original: str | None
+    processed: str | None
+    outcome: str
+
+
+class SourceComparisonBlock(Contract):
+    type: Literal["source_comparison"] = "source_comparison"
+    name: str
+    row: int
+    scope: Literal["CANONICAL", "PREPARED", "RAW"]
+    fields: list[SourceValueChange]
 
 
 class FactsBlock(Contract):
@@ -337,7 +356,13 @@ class DownloadBlock(Contract):
 
 
 ResultBlock = Annotated[
-    ProgressBlock | DatasetBlock | TableBlock | FactsBlock | ChartBlock | DownloadBlock,
+    ProgressBlock
+    | DatasetBlock
+    | TableBlock
+    | SourceComparisonBlock
+    | FactsBlock
+    | ChartBlock
+    | DownloadBlock,
     Field(discriminator="type"),
 ]
 
@@ -387,6 +412,9 @@ class QuerySelection(Contract):
 
 
 class WorkflowState(Contract):
+    observed_comparison: Literal["REQUESTED", "DECLARED"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     intent: AgentIntent | None = None
     prepare_upload: bool = False
     steps: list[WorkflowStep] = Field(default_factory=list, max_length=20)

@@ -60,11 +60,12 @@ class UploadResponse(Contract):
 
 class PreparationColumn(Contract):
     column_id: str
-    data_type: Literal["string", "date"]
+    data_type: Literal["string", "date", "timestamp", "decimal"]
     null_count: int
     empty_count: int
     duplicate_count: int
     invalid_date_count: int = 0
+    invalid_decimal_count: int = Field(default=0, exclude_if=lambda count: count == 0)
 
 
 class PreparedTable(Contract):
@@ -76,6 +77,7 @@ class PreparedTable(Contract):
     review_required: Literal[True] = True
     eligible_scope: Literal["EXPLORATION"] = "EXPLORATION"
     quality_summary: list[PreparationColumn]
+    automatic: bool = Field(default=False, exclude_if=lambda value: not value)
 
 
 class TableView(Contract):
@@ -154,7 +156,15 @@ class JobAccepted(Contract):
 
 
 class PreparationAction(Contract):
-    kind: Literal["UPLOAD", "WAIT", "REVIEW_MAPPING", "NORMALIZE", "REVIEW_DATA", "RECONCILE"]
+    kind: Literal[
+        "UPLOAD",
+        "WAIT",
+        "REVIEW_MAPPING",
+        "NORMALIZE",
+        "REVIEW_DATA",
+        "RECONCILE",
+        "OPEN_ASSISTANT",
+    ]
     dataset_id: str | None = None
     table_id: str | None = None
     canonical_id: str | None = None

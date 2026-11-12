@@ -1190,6 +1190,10 @@ def routing_sources(catalogue: IntentCatalogue) -> list[dict[str, Any]]:
 def resolve_ranked_results(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
     """Resolve explicit top-N and ordinal follow-up on the current verified run."""
     normalized = " ".join(plain_question(goal).split()).rstrip("?.!")
+    if re.fullmatch(
+        r"(?:khoan|giao dich|nhom) nao (?:lech|chenh lech) (?:lon|nhieu) nhat", normalized
+    ):
+        normalized = "xem mot khoan lech tien lon nhat"
     numbers = {"mot": 1, "nhat": 1, "hai": 2, "ba": 3, "bon": 4, "nam": 5}
     number = r"[1-9][0-9]?|mot|hai|ba|bon|nam"
     run_id = catalogue.context.run_id
@@ -1325,8 +1329,8 @@ def resolve_run_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | Non
         )
     )
     report = re.fullmatch(
-        r"(?:hay )?(?:xuat|tai) (?:bao cao|(?:toan bo )?ket qua(?: doi soat)?"
-        r"(?: nay| dang (?:mo|xem)| hien tai)?) "
+        r"(?:hay )?(?:xuat|tai) (?:(?:bao cao|(?:toan bo )?ket qua(?: doi soat)?"
+        r"(?: nay| dang (?:mo|xem)| hien tai)?) )?"
         r"(?:(?:thanh|ra|sang|duoi dang) )?(?:tep |file )?(excel|xlsx|csv)",
         normalized,
     )
@@ -1704,6 +1708,48 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
             else [],
         ),
     )
+
+
+def source_inspection_request(goal: str) -> tuple[str, int, str | None] | None:
+    """A closed Vietnamese grammar for common project-source reads."""
+    text = " ".join(plain_question(goal).replace("_", " ").split()).rstrip("?.!")
+    listing = re.fullmatch(
+        r"(?:(?:cho (?:minh|toi|em)|hay|vui long) )?(?:xem|mo|liet ke) "
+        r"(?:(\d{1,2}) (?:dong|hang)(?: dau)? )?(du lieu goc|du lieu da chuan hoa|"
+        r"da chuan hoa|du lieu sau chuan hoa|du lieu da xu ly|du lieu loi)"
+        r"(?: (?:cua|trong) (.{1,180}))?",
+        text,
+    )
+    if listing:
+        modes = {"du lieu goc": "raw", "du lieu loi": "quality"}
+        return (
+            modes.get(listing[2], "processed"),
+            min(50, max(1, int(listing[1] or 10))),
+            listing[3],
+        )
+    first_rows = re.fullmatch(
+        r"(?:(?:cho (?:minh|toi|em)|hay|vui long) )?(?:xem|mo|liet ke) "
+        r"(\d{1,2}) (?:dong|hang) dau (?:cua|trong) (.{1,180})",
+        text,
+    )
+    if first_rows:
+        return "raw", min(50, max(1, int(first_rows[1]))), first_rows[2]
+    compare = re.fullmatch(
+        r"(?:hay |kiem tra )?dong (\d{1,6})(?: (?:cua|trong) (.{1,180}?))? "
+        r"(?:(?:truoc va sau (?:chuan hoa|xu ly) khac(?: nhau)? (?:gi|the nao))|"
+        r"(?:khac (?:gi|the nao) truoc khi (?:chuan hoa|xu ly)))",
+        text,
+    )
+    if compare:
+        return "compare", max(1, int(compare[1])), compare[2]
+    quality = re.fullmatch(
+        r"(?:(?:ba|hai|cac|3|2) (?:nguon|tep|file)(?: cua (?:minh|toi))? )?"
+        r"(?:co (?:bao nhieu dong (?:bi loi|loi|khong hop le)|loi gi|van de gi)|"
+        r"(?:xem|liet ke) (?:cac |nhung )?(?:dong loi|loi du lieu|ngoai le du lieu))"
+        r"(?: (?:cua|trong) (.{1,180}))?",
+        text,
+    )
+    return ("quality", 10, quality[1]) if quality else None
 
 
 def resolve_prepared_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
