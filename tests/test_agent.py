@@ -2979,6 +2979,8 @@ def test_composed_read_grammar_matches_layer_source_and_operation(goal, expected
         ("Có bao nhiêu khoản không có đối ứng trong lần đối soát này?", "QUERY_DATA", "UNMATCHED"),
         ("Cho biết số nhóm thiếu đối ứng trong lần chạy hiện tại.", "QUERY_DATA", "UNMATCHED"),
         ("Tải báo cáo CSV của kết quả đang xem", "EXPORT_RESULT", None),
+        ("Dòng bị loại trừ ảnh hưởng gì đến báo cáo?", "SUMMARIZE_RESULTS", None),
+        ("Dòng bị loại trừ ảnh hưởng gì đến báo cáo tháng 10?", None, None),
         ("Cho tôi xem tổng lệch tiền có dấu", "SUMMARIZE_RESULTS", None),
         ("Tom tat ket qua doi soat dang mo va tong do lech tuyet doi.", "SUMMARIZE_RESULTS", None),
         ("Tong quan ket qua nay va cac chi so chenh lech giup toi.", "SUMMARIZE_RESULTS", None),

@@ -10,6 +10,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from studio.access import Actor, require_editor
+from studio.agent_intents import requests_exclusion_impact
 from studio.agent_tools import (
     ExportAction,
     GroupLookupAction,
@@ -929,6 +930,32 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
             row.id,
         )
         assert isinstance(result, ToolResult)
+        exclusion_question = not explain and requests_exclusion_impact(row.goal)
+        if exclusion_question and result.run:
+            excluded = []
+            for side, source in zip(("trái", "phải"), result.run.source_refs, strict=False):
+                if not source.excluded_source_rows:
+                    continue
+                excluded.append(
+                    f"Nguồn bên {side} đã loại {source.excluded_source_rows} dòng khỏi "
+                    "bản chuẩn hóa dùng cho lượt này. Các dòng đó nằm ngoài số nhóm và "
+                    "chênh lệch tiền của báo cáo."
+                )
+                for amount in source.excluded_amounts:
+                    field = f" ({amount['field']})" if len(source.excluded_amounts) > 1 else ""
+                    excluded.append(
+                        f"Số tiền loại trừ đã xác định{field} là {amount['amount']} "
+                        f"{amount['currency']}."
+                    )
+                if source.excluded_amounts_unavailable:
+                    excluded.append("Chưa xác định được đầy đủ số tiền loại trừ.")
+            if not excluded:
+                excluded.append(
+                    "Hai bản chuẩn hóa dùng cho lượt này không ghi nhận dòng bị loại trừ."
+                    if len(result.run.source_refs) == 2
+                    else "Lượt này chưa lưu đủ thông tin nguồn để xác định số dòng bị loại trừ."
+                )
+            state.blocks.append(ProgressBlock(text="\n".join(excluded)))
         answer = deterministic_answer(
             "Vì sao lệch?" if explain else "Tóm tắt kết quả đối soát",
             build_fact_set(db, actor, context),
@@ -943,7 +970,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
             )
         )
         snapshot = result.snapshot or (result.run.metric_snapshot if result.run else None)
-        if snapshot and not explain:
+        if snapshot and not (explain or exclusion_question):
             state.blocks.append(
                 ChartBlock(
                     title="Kết luận so sánh theo nhóm",

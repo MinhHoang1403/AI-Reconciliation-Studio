@@ -1272,6 +1272,18 @@ def resolve_ranked_results(goal: str, catalogue: IntentCatalogue) -> AgentIntent
     )
 
 
+def requests_exclusion_impact(goal: str) -> bool:
+    """Recognize a question about quality exclusions in the current run's report."""
+    normalized = _without_current_run_prefix(" ".join(plain_question(goal).split()).rstrip("?.!"))
+    return bool(
+        re.fullmatch(
+            r"(?:cac |nhung )?dong (?:bi |da )?loai tru anh huong (?:gi|the nao) "
+            r"den (?:bao cao|ket qua(?: doi soat)?)(?: nay| hien tai| dang (?:mo|xem))?",
+            normalized,
+        )
+    )
+
+
 def resolve_run_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
     """Bind a whole-result read to the verified run selected in the conversation."""
     normalized = _without_current_run_prefix(" ".join(plain_question(goal).split()).rstrip("?.!"))
@@ -1319,7 +1331,8 @@ def resolve_run_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | Non
         normalized,
     )
     summary = (
-        re.fullmatch(
+        requests_exclusion_impact(normalized)
+        or re.fullmatch(
             r"(?:cho (?:toi )?(?:xem|biet) |tinh )?(?:tong )?(?:chenh lech|lech(?: tien)?) "
             r"(?:co dau(?: va| khac)? (?:lech |chenh lech )?tuyet doi(?: ra sao)?|co dau|tuyet doi)"
             r"(?: voi bo ket qua nay)?",

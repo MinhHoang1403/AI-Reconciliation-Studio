@@ -595,6 +595,20 @@ def test_followup_position_uses_persisted_displayed_page_and_never_another_conve
         next(b["result"]["run"] for b in summary["detail"]["blocks"] if b["type"] == "facts")
         is not None
     )
+    with monkeypatch.context() as patch:
+        patch.setattr(agents, "interpret_requests", lambda *args: pytest.fail("Use verified run"))
+        impact = ask_agent(
+            client,
+            context,
+            cid,
+            key="exclusion-impact",
+            text="Dòng bị loại trừ ảnh hưởng gì đến báo cáo?",
+        )
+        drain(factory, worker)
+    answer = workflow_for(client, factory, impact["job_id"])
+    assert answer["state"] == "COMPLETED" and answer["context"]["run_id"] == context["run_id"]
+    assert [block["type"] for block in answer["detail"]["blocks"]] == ["progress", "facts"]
+    assert "không ghi nhận dòng bị loại trừ" in answer["detail"]["blocks"][0]["text"]
     # Same project, different conversation must not inherit the page or its filters.
     other = conversation(client, context, key="other-conversation")
     another = ask_agent(

@@ -302,6 +302,7 @@ Mở **Xem kết quả** trên thẻ kết quả hoặc báo cáo của lần đ
 - **Khớp hoàn toàn:** cùng khóa được liên kết và số tiền bằng nhau theo quy tắc.
 - **Lệch tiền:** đã liên kết được hai phía nhưng số tiền khác nhau; không biến thành hai giao dịch thiếu đối ứng.
 - **Chỉ thấy ở một nguồn:** câu hỏi này có thể trả cả nhóm đã xác nhận thiếu đối ứng và nhóm đang chờ vì nguồn kia chưa đủ. Xem trạng thái liên kết của từng nhóm trước khi kết luận.
+- **Ảnh hưởng của dòng bị loại trừ:** trong kết quả đang xem, hỏi “Dòng bị loại trừ ảnh hưởng gì đến báo cáo?”. Assistant dùng các bản chuẩn hóa của đúng lượt đó để nêu số dòng ngoài phạm vi và số tiền đã xác định, nếu có.
 - **Thiếu đối ứng:** chỉ thấy một phía trong phạm vi đã xác nhận; nếu nguồn chưa đủ kỳ phải phân biệt đang chờ với thiếu thực sự.
 - **Mơ hồ:** có nhiều khả năng ghép, ví dụ mã trùng; hệ thống cần kiểm tra, không tự chọn dòng thuận tiện.
 - **Không đủ điều kiện so sánh:** ví dụ một phía thiếu tiền hoặc ý nghĩa tiền không tương thích; không được coi ô thiếu là 0.
