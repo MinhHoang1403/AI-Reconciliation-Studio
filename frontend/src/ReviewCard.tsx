@@ -47,7 +47,7 @@ function MappingReview({ draft, onChange, disabled }: {
         <label>Đơn vị<input value={f.unit || ""} disabled={disabled} placeholder="VND" onChange={e => field(i, { unit: e.target.value || null })}/></label>
         <label>Định dạng số<select value={f.locale || ""} disabled={disabled} onChange={e => field(i, { locale: (e.target.value || null) as DraftField["locale"] })}><option value="">Cần xác nhận</option><option value="en-US">1,234.56</option><option value="vi-VN">1.234,56</option></select></label>
       </>}
-      {f.data_type === "date" && <><label>Định dạng ngày<select value={f.date_format || ""} disabled={disabled} onChange={e => field(i, { date_format: e.target.value || null })}><option value="">Cần xác nhận</option>{Array.from(new Set(["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", ...(f.date_format ? [f.date_format] : [])])).map(v => <option value={v} key={v}>{({ "%Y-%m-%d": "2026-10-31", "%d/%m/%Y": "31/10/2026", "%m/%d/%Y": "10/31/2026" } as Record<string, string>)[v] || v}</option>)}</select></label>
+      {f.data_type === "date" && <><label>Định dạng ngày<select value={f.date_format || ""} disabled={disabled} onChange={e => field(i, { date_format: e.target.value || null })}><option value="">Cần xác nhận</option>{[...new Set([...Object.keys(dateExamples), ...(f.date_format ? [f.date_format] : [])])].map(fmt => <option value={fmt} key={fmt}>{dateExamples[fmt] || fmt}</option>)}</select></label>
         <label>Múi giờ<input value={f.timezone || ""} disabled={disabled} placeholder="Asia/Ho_Chi_Minh / UTC" onChange={e => field(i, { timezone: e.target.value || null })}/></label></>}
       {f.data_type === "string" && <label>Ý nghĩa trạng thái (nếu có)<select value={f.semantic_metric || ""} disabled={disabled} onChange={e => field(i, { semantic_metric: e.target.value || null })}><option value="">Văn bản / chưa xác nhận</option><option value="payment_status">Trạng thái thanh toán, có bằng chứng</option>{f.semantic_metric && f.semantic_metric !== "payment_status" && <option value={f.semantic_metric}>{f.semantic_metric}</option>}</select></label>}
       </div></details>)}
@@ -90,6 +90,17 @@ function SmartMapping({ draft, assessment, onChange, disabled }: {
     disabled: boolean;
 }) {
     const [editing, setEditing] = useState("");
+    const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => { if (blurTimer.current) clearTimeout(blurTimer.current); }, []);
+    const beginEdit = (field: string) => {
+        if (blurTimer.current) clearTimeout(blurTimer.current);
+        setEditing(field);
+    };
+    const finishEdit = (field: string) => {
+        if (blurTimer.current) clearTimeout(blurTimer.current);
+        // Keep the next control in place through the click that blurred this input.
+        blurTimer.current = setTimeout(() => setEditing(current => current === field ? "" : current), 180);
+    };
     const money = draft.fields.filter(f => f.data_type === "decimal");
     const dates = draft.fields.filter(f => f.data_type === "date");
     const checkByField = new Map(assessment?.checks.map(check => [check.field_id, check]));
@@ -130,7 +141,7 @@ function SmartMapping({ draft, assessment, onChange, disabled }: {
     return <div className="smart-mapping">
         {facts.map(({id, label, max}) => (unknownFact(draft[id]) || editing === id) &&
             <label key={id}>{label}<input value={unknownFact(draft[id]) ? "" : draft[id]} maxLength={max} disabled={disabled}
-                onFocus={() => setEditing(id)} onBlur={() => setEditing("")}
+                onFocus={() => beginEdit(id)} onBlur={() => finishEdit(id)}
                 onChange={e => onChange({ ...draft, [id]: e.target.value || "unknown" })}/></label>)}
         <div className="smart-mapping-facts">
             {facts.every(({id}) => !unknownFact(draft[id])) && editing !== "grain" && editing !== "entity_kind" &&
@@ -175,7 +186,7 @@ function SmartMapping({ draft, assessment, onChange, disabled }: {
             {pendingMoney.length > 0 && <h5>Chỉ tiêu tiền cần bổ sung</h5>}
             {pendingMoney.map(f => <fieldset key={f.source_field}><legend>{f.name}</legend>
                 {unknownFact(f.semantic_metric) || editing === f.source_field ? <label>Khoản tiền này là gì?<input value={f.semantic_metric || ""}
-                    maxLength={100} disabled={disabled} onFocus={() => setEditing(f.source_field)} onBlur={() => setEditing("")}
+                    maxLength={100} disabled={disabled} onFocus={() => beginEdit(f.source_field)} onBlur={() => finishEdit(f.source_field)}
                     onChange={e => changeField(f.source_field, {semantic_metric: e.target.value || null})}/></label> : null}
                 {unknownFact(f.amount_basis) && <label>Cơ sở tiền của {f.name}<select value="" disabled={disabled}
                     onChange={e => changeField(f.source_field, {amount_basis: e.target.value || null})}>

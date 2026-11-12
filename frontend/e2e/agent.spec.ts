@@ -55,6 +55,7 @@ test("Agent inline upload bootstraps once, profiles real files and reopens witho
   expect(project.business_scope).toBe(`UNCONFIRMED:${pid}`);expect(project.classification).toBe("UNKNOWN");
   const classified=await page.request.patch(`/api/projects/${pid}/classification`,{headers:{Origin:"http://127.0.0.1:18180"},data:{classification:"TEST",expected_classification:"UNKNOWN"}});
   expect(classified.status()).toBe(200);
+  await page.getByText("Dữ liệu gốc đã đọc (2 bảng)", {exact:true}).click();
   await page.locator(".agent-table").first().getByRole("button",{name:"Xem dòng gốc"}).first().click();
   await expect(page.getByRole("dialog",{name:"Dòng dữ liệu nguồn"})).toContainText("000701");
   await page.keyboard.press("Escape");
@@ -64,11 +65,12 @@ test("Agent inline upload bootstraps once, profiles real files and reopens witho
   const card=cards.filter({hasText:`Ledger-${marker}.csv`});
   await card.getByRole('textbox',{name:'Loại giao dịch',exact:true}).fill('ledger');
   await card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true}).fill('ledger_entry');
-  await card.getByRole('checkbox',{name:'voucher',exact:true}).check();
+  await card.getByText('Chọn khóa nhận diện',{exact:true}).click();
+  await card.getByRole('checkbox',{name:/^voucher/}).check();
   await card.getByRole('combobox',{name:'Cơ sở tiền của amount',exact:true}).selectOption('gross');
   await card.getByRole('textbox',{name:'Khoản tiền này là gì?',exact:true}).fill('recorded_amount');
-  await card.getByRole('textbox',{name:'Tiền tệ cho amount',exact:true}).fill('VND');
-  await card.getByRole('textbox',{name:'Tiền tệ cho amount',exact:true}).press('Tab');
+  await card.getByRole('textbox',{name:'Khoản tiền này là gì?',exact:true}).press('Tab');
+  await expect(card.getByText('Tiền tệ · VND',{exact:true})).toBeVisible();
   const decision=page.waitForResponse(r=>r.url().endsWith('/decisions')&&r.request().method()==='POST');
   await card.getByRole('button',{name:'Duyệt cách ghép cột và chuẩn hóa',exact:true}).click();
   expect((await decision).ok()).toBe(true);
@@ -212,36 +214,37 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[${comp
   await expect(cards).toHaveCount(names.length);
   receipts.upload_to_reviews_ms=Date.now()-start;
   if(sharedReview){
+    await page.getByText('Điền thông tin giống nhau cho các nguồn',{exact:true}).click();
     const common=page.getByRole('region',{name:'Thông tin chung cho các nguồn',exact:true});
     const apply=common.getByRole('button',{name:'Xác nhận và điền vào bản nháp',exact:true});
     await expect(apply).toBeDisabled();
     await common.getByLabel('Loại dữ liệu dùng chung',{exact:true}).fill(entity);
     await common.getByLabel('Mỗi dòng của các nguồn là gì?',{exact:true}).fill(grain);
-    await common.getByLabel('Múi giờ dùng chung',{exact:true}).selectOption('UTC');
     await common.getByLabel('Cơ sở tiền dùng chung',{exact:true}).selectOption(basis);
     await common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true}).fill(metric);
     await common.getByLabel('Cột khóa chung (tùy chọn)',{exact:true}).selectOption(keyHeader);
     await page.reload();
+    await page.getByText('Điền thông tin giống nhau cho các nguồn',{exact:true}).click();
     await expect(common.getByLabel('Khoản tiền dùng chung là gì?',{exact:true})).toHaveValue(metric);
     await apply.click();
-    manualFields+=6;
+    manualFields+=5;
     for(const name of names){
       const card=cards.filter({hasText:name});
-      await expect(card.getByRole('textbox',{name:'Loại giao dịch',exact:true})).toHaveValue(entity);
-      await expect(card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true})).toHaveValue(grain);
-      await expect(card.getByRole('checkbox',{name:keyHeader,exact:true})).toBeChecked();
+      await expect(card.locator('.smart-mapping-facts')).toContainText(`${entity} · ${grain}`);
+      await expect(card.locator('.smart-mapping-facts')).toContainText(`Khóa nhận diện dòng · ${keyHeader}`);
     }
   }else{
   for(const name of names){
     const card=cards.filter({hasText:name});
     await card.getByRole('textbox',{name:'Loại giao dịch',exact:true}).fill(entity);
     await card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true}).fill(grain);
-    await card.getByRole('checkbox',{name:keyHeader,exact:true}).check();
-    await card.getByRole('combobox',{name:'Múi giờ của nguồn',exact:true}).selectOption('UTC');
+    await card.getByText('Chọn khóa nhận diện',{exact:true}).click();
+    await card.getByRole('checkbox',{name:new RegExp(`^${keyHeader}`)}).check();
+    await expect(card.getByText('Ngày lịch · Giữ nguyên ngày nguồn',{exact:true})).toBeVisible();
     await card.getByRole('combobox',{name:`Cơ sở tiền của ${moneyHeader}`,exact:true}).selectOption('gross');
     const meaning=card.getByRole('textbox',{name:'Khoản tiền này là gì?',exact:true});
     await meaning.fill(metric);await meaning.press('Tab');
-    manualFields+=6;
+    manualFields+=5;
   }
   }
   await page.getByRole('button',{name:`Duyệt ${names.length} nguồn và chuẩn hóa`,exact:true}).click();
@@ -262,16 +265,27 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[${comp
   async function reconcilePair(left:string,right:string){
     if (!compositeJourney) await send(`Đối soát “${left}” với “${right}”`);
     else await expect(work.getByText(new RegExp(`Cặp [12]: ${left} ↔ ${right}`))).toBeVisible();
-    const scope=page.getByRole('group',{name:'Kỳ và phạm vi dữ liệu',exact:true});
-    if (!compositeJourney || left===names[0]) {
+    const scope=page.getByRole('group',{name:compositeJourney?'Kỳ và phạm vi dữ liệu':'Thông tin cần xác nhận',exact:true});
+    if (!compositeJourney) {
+      await scope.getByLabel('Ngày đầu kỳ',{exact:true}).fill('2026-11-01');
+      await scope.getByLabel('Ngày sau cuối kỳ',{exact:true}).fill('2026-12-01');
+      await scope.getByRole('combobox',{name:'Múi giờ đối soát',exact:true}).selectOption('UTC');
+      for(const source of [left,right]){
+        await scope.getByLabel(`Thời điểm nghiệp vụ chốt nguồn ${source} (UTC)`,{exact:true}).fill('2026-12-02T00:00');
+        await scope.getByLabel(`Mức độ đầy đủ của ${source}`,{exact:true}).selectOption('CONFIRMED');
+      }
+      manualFields+=7;
+    } else if (left===names[0]) {
       await scope.getByLabel('Tháng đối soát',{exact:true}).fill('2026-11');
       await scope.getByRole('combobox',{name:/^Múi giờ đối soát/}).selectOption('UTC');
       manualFields+=2;
     } else await expect(scope.getByRole('combobox',{name:/^Múi giờ đối soát/})).toHaveValue('UTC');
     await expect(scope.getByLabel('Ngày đầu kỳ',{exact:true})).toHaveValue('2026-11-01');
     await expect(scope.getByLabel('Ngày sau cuối kỳ',{exact:true})).toHaveValue('2026-12-01');
-    await scope.getByLabel('Thời điểm chốt dữ liệu (UTC)',{exact:true}).fill('2026-12-02T00:00');
-    await scope.getByRole('checkbox').check();manualFields+=2;
+    if (compositeJourney) {
+      await scope.getByLabel('Thời điểm chốt dữ liệu (UTC)',{exact:true}).fill('2026-12-02T00:00');
+      await scope.getByRole('checkbox').check();manualFields+=2;
+    }
     await scope.getByRole('button',{name:'Kiểm tra phạm vi và tìm khóa',exact:true}).click();
     await expect(cards.getByText('Phương án liên kết đã kiểm tra',{exact:true})).toBeVisible();
     const runRequest=page.waitForResponse(response=>response.url().endsWith('/decisions')&&response.request().method()==='POST');
