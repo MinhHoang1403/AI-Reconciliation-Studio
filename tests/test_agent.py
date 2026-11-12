@@ -3032,6 +3032,63 @@ def test_native_run_read_recognizes_explicit_verified_statuses(status, field):
     assert resolve_run_read(goal, cat).intent == "CLARIFY"
 
 
+@pytest.mark.parametrize(
+    "goal,present_side,zero_count_side,expected_status",
+    [
+        (
+            "Có giao dịch nào chỉ xuất hiện ở kế toán không, và đang ở trạng thái nào?",
+            "left",
+            "right",
+            ("in", ["UNMATCHED", "PENDING"]),
+        ),
+        (
+            "Liệt kê giao dịch chỉ xuất hiện ở hóa đơn và đã xác nhận thiếu đối ứng.",
+            "right",
+            "left",
+            ("eq", "UNMATCHED"),
+        ),
+        (
+            "Liệt kê giao dịch chỉ thấy trong hóa đơn.",
+            "right",
+            "right",
+            ("eq", "UNMATCHED"),
+        ),
+    ],
+)
+def test_one_sided_observation_keeps_pending_on_the_bound_run(
+    goal, present_side, zero_count_side, expected_status
+):
+    from studio.agent_intents import compile_routing, routing_sources
+
+    cat = routing_catalogue()
+    cat.verified_run_fields = ["linkage_state", "left_member_count", "right_member_count"]
+    source = next(s for s in routing_sources(cat) if s["source_kind"] == "VERIFIED_RUN")
+    membership = [
+        {"field_id": f"{present_side}_member_count", "op": "gt", "value": "0"},
+        {"field_id": f"{zero_count_side}_member_count", "op": "eq", "value": "0"},
+    ]
+    body = {
+        "intents": [
+            {
+                "intent": "QUERY_DATA",
+                "query": {
+                    "source_ref": source["ref"],
+                    "filters": [{"field_id": "linkage_state", "op": "eq", "value": "UNMATCHED"}]
+                    + membership,
+                    "aggregations": [],
+                    "group_by": [],
+                    "currency_field": None,
+                },
+            }
+        ]
+    }
+    intent = compile_routing(json.dumps(body), [goal], cat)[0]
+    assert intent.query.source_id == cat.context.run_id
+    status, *members = intent.query.filters
+    assert (status.op, status.value) == expected_status
+    assert [member.model_dump() for member in members] == membership
+
+
 def test_native_unequal_amount_read_respects_approved_tolerance_and_rounding():
     from decimal import Decimal
 

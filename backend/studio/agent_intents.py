@@ -2148,12 +2148,15 @@ def compile_routing(
                     and source["dataset_id"] != catalogue.context.dataset_id
                 ):
                     raise DomainError("INPUT_AMBIGUOUS", "Nguồn trùng tên khác tệp đang xem.")
-            payload["query"] = DataQuery(
+            query = DataQuery(
                 project_id=catalogue.context.project_id,
                 source_kind=source["source_kind"],
                 source_id=source["source_id"],
                 **item.query.model_dump(exclude={"source_ref"}),
             )
+            if item.intent == "QUERY_DATA" and query.source_id == catalogue.context.run_id:
+                query = preserve_observed_one_sided_rows(goal, query)
+            payload["query"] = query
         elif item.intent in {"QUERY_DATA", "CREATE_VISUALIZATION"}:
             raise DomainError("INPUT_AMBIGUOUS", "Cần chọn nguồn và điều kiện truy vấn rõ ràng.")
         selection = item.reconciliation
@@ -2246,6 +2249,39 @@ def compile_routing(
     ]
     return validate_intents(
         IntentBatch(intents=expanded).model_dump_json(), validation_goals, catalogue
+    )
+
+
+def preserve_observed_one_sided_rows(goal: str, query: DataQuery) -> DataQuery:
+    """Compile an observed one-sided listing using the bound run and member filters."""
+    language = plain_question(goal)
+    if (
+        query.source_kind != "VERIFIED_RUN"
+        or not re.search(r"\bchi (?:xuat hien|co mat|co|thay) (?:o|trong)\b", language)
+        or re.search(r"\b(?:unmatched|pending|thieu doi ung|xac nhan|dang cho)\b", language)
+    ):
+        return query
+
+    membership = [
+        f for f in query.filters if f.field_id in {"left_member_count", "right_member_count"}
+    ]
+    if (
+        len(membership) != 2
+        or len({f.field_id for f in membership}) != 2
+        or {(f.op, str(f.value)) for f in membership} != {("gt", "0"), ("eq", "0")}
+    ):
+        return query
+
+    statuses = [f for f in query.filters if f.field_id == "linkage_state"]
+    if statuses != [QueryFilter(field_id="linkage_state", op="eq", value="UNMATCHED")]:
+        return query
+    # A member observed on just one side can still be pending the other source.
+    # Keep the model-selected side and all other conditions on the approved run.
+    observed = QueryFilter(field_id="linkage_state", op="in", value=["UNMATCHED", "PENDING"])
+    return query.model_copy(
+        update={
+            "filters": [observed if f is statuses[0] else f for f in query.filters],
+        }
     )
 
 
