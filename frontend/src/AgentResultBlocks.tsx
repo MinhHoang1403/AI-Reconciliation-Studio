@@ -184,7 +184,7 @@ function DatasetResult({ block, openSource, onQualityPublished }: {
     const [detailsOpened, setDetailsOpened] = useState(false);
     const qualityVisible = keepQuality || !ready;
     const qualityPanel = <DataQualityPanel tableId={block.table_id} canonicalId={block.canonical_id} sourceName={block.name}
-      draft={block.quality_draft} followLatest onPublished={id=>{
+      draft={block.quality_draft} followLatest={qualityVisible} onPublished={id=>{
         if (!ready) setKeepQuality(true);
         onQualityPublished?.(id);
       }}/>;

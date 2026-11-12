@@ -8,7 +8,7 @@ for (const [width, decision] of [[390, "REPLACE"], [1440, "REPLACE"], [390, "EXC
     const createdAt = "2026-11-02T00:00:00Z";
     const conversation = { id: "quality-conversation", context, title: "Kiểm tra dữ liệu", created_at: createdAt };
     const issue = {
-      field: "gross_amount", target_label: "Doanh thu gộp", source_label: "Gross amount",
+      field: "gross_amount", target_label: "Doanh thu gộp", source_label: decision === "EXCLUDE" ? null : "Gross amount",
       raw_value: "invalid", code: "INVALID_DECIMAL", editable: true,
     };
     const draft = { source_row_id: "row-id-12", field: issue.field, code: issue.code,
@@ -68,6 +68,10 @@ for (const [width, decision] of [[390, "REPLACE"], [1440, "REPLACE"], [390, "EXC
     });
     await page.goto("/#page=assistant");
     await expect(page.getByRole("heading", { name: "Dòng nguồn 12 — Số tiền không hợp lệ" })).toBeVisible();
+    if (decision === "EXCLUDE") {
+      await expect(page.getByText("Nhiều cột nguồn", { exact: true })).toBeVisible();
+      await expect(page.getByText("Trường đích Doanh thu gộp", { exact: true })).toBeVisible();
+    }
     await expect(page.getByLabel("Giá trị đã kiểm tra")).toHaveValue("1250.25");
     expect(requests).toBe(0);
     await page.reload();

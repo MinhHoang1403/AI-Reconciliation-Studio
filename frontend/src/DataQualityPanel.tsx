@@ -181,8 +181,8 @@ export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublish
             const original = (issue.original_value === undefined ? issue.raw_value : issue.original_value) ?? "Ô trống";
             return <div className="quality-issue" key={`${issue.field}:${issue.code}`}>
               {!singleIssue && <p><strong>{qualityText[issue.code] || "Giá trị chưa đáp ứng quy tắc đã xác nhận"}.</strong></p>}
-              <p className="quality-value"><span>{issue.source_label || issue.target_label}</span><span>Giá trị gốc <code>{original}</code></span></p>
-              {issue.source_label && issue.source_label !== issue.target_label && <p className="muted">Trường đích {issue.target_label}</p>}
+              <p className="quality-value"><span>{issue.source_label ?? "Nhiều cột nguồn"}</span><span>Giá trị gốc <code>{original}</code></span></p>
+              {issue.source_label !== issue.target_label && <p className="muted">Trường đích {issue.target_label}</p>}
               <p>Bản ghi chưa dùng được trong đối soát.</p>
               {snapshot.current && <button type="button" className="button secondary quality-action" disabled={busy} hidden={open} aria-expanded={open}
                 aria-label={`Xử lý lỗi ${issue.target_label} · dòng ${row.source_row}`}
