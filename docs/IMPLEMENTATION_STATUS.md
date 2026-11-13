@@ -4,6 +4,10 @@
 
 Ba yêu cầu tiếng Việt đã báo lỗi đều lọt qua bộ nhận diện trạng thái ở bản `9e29c0f`. Lịch sử dự án TEST cho thấy câu hỏi ghép bị chặn ở `AI_INVALID_SOURCE` và hai câu riêng đi vào bước làm rõ. Tuyến mới nhận diện mục đích và phạm vi cho từng mệnh đề trước khi đọc metadata hiện hành. Bảng Chat hiển thị tổng khi số liệu đầy đủ và giữ ô trống khi chưa có bản chuẩn hóa tương ứng. Xem [hợp đồng dữ liệu](DATA_CONTRACTS.md).
 
+Chromium qua Nginx gửi lại nguyên văn cả ba câu trong dự án TEST, với tệp Kế toán đang ghim ở câu đầu. Cả ba câu trả trực tiếp 15.000 dòng gốc, 15.000 hợp lệ và 0 lỗi. Dự án TEST có ngoại lệ trả 15.000 dòng gốc, 14.967 hợp lệ, 33 lỗi và 0 dòng đã loại theo quyết định. Mỗi nguồn có 7 dòng lỗi số tiền hoặc ngày và 2 dòng USD. Chat mở 10 dòng lỗi đầu tiên của từng nguồn, giữ nguyên giá trị gốc `khong_ro` ở dòng 805 của Bán hàng và trả trống sau chuẩn hóa. Đổi dự án, tải lại trang và hỏi tiếp sau một lượt đối chiếu đều giữ đúng phạm vi. Các câu hỏi trong bài kiểm tra có 0 lượt gọi model.
+
+Hai lượt đối chiếu trên dữ liệu quan sát được đạt `PARTIAL_VERIFIED`. Bán hàng với Thu ngân có 4.936 nhóm khớp, 12 lệch tiền, 64 chờ đối ứng và 6 khóa trùng. Thu ngân với Kế toán có 4.908 nhóm khớp, 29 lệch tiền, 83 chờ đối ứng và 7 khóa trùng. Chênh lệch có dấu lần lượt là −60.000 và −144.000 VND, chênh lệch tuyệt đối là 60.000 và 264.000 VND. Các số này khớp đáp án tính độc lập từ sáu tệp nguồn. Xem [kiểm tra rollback](TESTING_GUIDE.md).
+
 ## Tự chuẩn bị dữ liệu và đối chiếu từ Chat — 13/11/2026
 
 Luồng upload mặc định có bước chuẩn bị theo chính sách xác định. Bản xem, canonical và các dòng cần kiểm tra dùng riêng hợp đồng và trạng thái. Chat đọc nguồn hiện hành và có thể xếp hàng đối chiếu bán hàng với thu ngân, rồi thu ngân với kế toán trên phần dữ liệu quan sát được. Cổng so sánh yêu cầu doanh thu thuần chưa VAT đã được chứng minh hoặc xác nhận trực tiếp. Xem [kiến trúc](ARCHITECTURE.md) và [hướng dẫn rollback](TESTING_GUIDE.md).

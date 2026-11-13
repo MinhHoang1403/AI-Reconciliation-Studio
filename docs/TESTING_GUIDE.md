@@ -2,6 +2,8 @@
 
 Giữ cặp image đang chạy với tag `pre-automatic-preparation` trước khi phát hành thay đổi chuẩn bị tự động. `./tools/rollback.ps1 -PreviousPreparation -VerifyOnly` kiểm cặp image và tương thích dữ liệu. Sau khi có lịch sử dùng chính sách, dùng cặp `rollback-automatic-preparation` qua `./tools/rollback.ps1 -CompatiblePreparation`. Script chặn image cũ khi lịch sử đó đã tồn tại. Dùng `./tools/start.ps1 -SkipBuild` để trở lại bản phát hành. Khôi phục dữ liệu từ backup trước phát hành là thao tác riêng.
 
+Khi lịch sử Chat đã có bảng thống kê nguồn hoặc danh sách dòng lỗi mở sẵn, dùng cặp image `rollback-source-status`. Chạy `./tools/rollback.ps1 -SourceStatus -VerifyOnly` để kiểm nguồn image và tính tương thích trước khi chuyển. Đối chiếu lại snapshot và checksum sau khi chuyển image và sau khi quay lại bản phát hành.
+
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
 ## Quy trình kiểm thử và khôi phục hiện hành

@@ -1038,6 +1038,41 @@ def test_processing_report_uses_current_project_even_with_a_pinned_source(pg, mo
         assert not db.scalar(select(func.count()).select_from(TraceRow))
 
 
+@pytest.mark.parametrize("count", [0, 1, 2, 5])
+def test_processing_report_counts_only_active_sources(pg, count):  # noqa: F811
+    client, factory, worker = pg
+    pid = project(client)
+    with factory.begin() as db:
+        for i in range(count + 2):
+            db.add(
+                DatasetRow(
+                    workspace_id="demo",
+                    project_id=pid,
+                    owner_id="test-owner",
+                    name=f"Test source {i}.csv",
+                    sha256=f"{i:064x}",
+                    parse_signature="test",
+                    archived_at=now() if i == count else None,
+                    deleted_at=now() if i > count else None,
+                )
+            )
+    ctx = {"project_id": pid}
+    cid = conversation(client, ctx)
+    accepted = ask_agent(client, ctx, cid, text="Mỗi nguồn có bao nhiêu dòng gốc, hợp lệ và lỗi?")
+    drain(factory, worker)
+    workflow = workflow_for(client, factory, accepted["job_id"])
+    assert workflow["state"] == "COMPLETED" and workflow["detail"]["model_calls"] == 0
+    (block,) = workflow["detail"]["blocks"]
+    if count:
+        assert block["source_count"] == count and block["ready_count"] == 0
+        assert {item["name"] for item in block["items"]} == {
+            f"Test source {i}.csv" for i in range(count)
+        }
+        assert all(item["valid_rows"] is None for item in block["items"])
+    else:
+        assert "chưa có tệp" in block["text"]
+
+
 @pytest.mark.parametrize(
     "goal",
     [

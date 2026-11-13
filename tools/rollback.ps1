@@ -2,11 +2,12 @@ param(
     [ValidatePattern('^([a-f0-9]{7,40})?$')][string]$ReleaseRevision = '',
     [switch]$PreviousPreparation,
     [switch]$CompatiblePreparation,
+    [switch]$SourceStatus,
     [switch]$VerifyOnly
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
-if (@($ReleaseRevision, $PreviousPreparation, $CompatiblePreparation).Where({ $_ }).Count -gt 1) {
+if (@($ReleaseRevision, $PreviousPreparation, $CompatiblePreparation, $SourceStatus).Where({ $_ }).Count -gt 1) {
     throw 'Choose one rollback image pair.'
 }
 $taskImages = @{}
@@ -18,6 +19,8 @@ foreach ($taskService in @('backend', 'frontend')) {
         "ai-reconciliation-studio-${taskService}:pre-automatic-preparation"
     } elseif ($CompatiblePreparation) {
         "ai-reconciliation-studio-${taskService}:rollback-automatic-preparation"
+    } elseif ($SourceStatus) {
+        "ai-reconciliation-studio-${taskService}:rollback-source-status"
     } else {
         "ai-reconciliation-studio-${taskService}:rollback"
     }
