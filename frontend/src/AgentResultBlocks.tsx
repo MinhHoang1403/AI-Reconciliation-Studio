@@ -149,7 +149,7 @@ function QueryTable({ initial, workflowId, selection, title, showResultHints }: 
     {data.verification_status === "PARTIAL_VERIFIED" && <p className="agent-answer-note">Kết quả được kiểm chứng một phần. Xem phạm vi trước khi kết luận.</p>}
     {scopeEvidence && <p className="agent-answer-note">Độ đầy đủ của kỳ chưa được xác nhận.</p>}
     {!countOnly && data.warnings.map(w => <p className="muted" key={w}>{w}</p>)}
-    {showEvidenceHint && <p className="agent-answer-note agent-result-hint" role="status">{evidenceNote}</p>}
+    {showEvidenceHint && <Notice transient>{evidenceNote}</Notice>}
     {error && <Notice tone="error">{error}</Notice>}
     {!singleAmount && (!countOnly || count == null) && <>
       <DataTable rows={previewRows} columns={columns} numericColumns={numericQueryFields}/>
@@ -208,12 +208,12 @@ function ResultChart({ data }: {
     }, [data, horizontal, narrow]);
     return <section className="agent-chart"><h4>{data.title}</h4><p>{data.unit} · {data.population_definition} ({data.population}) · {statusText[data.verification_status]||label(data.verification_status)}</p>
     {data.period_start && <p>{data.period_start} → {data.period_end} · {data.timezone}</p>}
-    {data.completeness !== "COMPLETE" && <Notice tone="warning">Biểu đồ chỉ hiển thị các nhóm đã tải.</Notice>}
+    {data.completeness !== "COMPLETE" && <Notice tone="warning" transient>Biểu đồ chỉ hiển thị các nhóm đã tải.</Notice>}
     {!data.points.length && <p>Chưa có nhóm dữ liệu để vẽ biểu đồ.</p>}
     <div className="agent-chart-scroll" tabIndex={horizontal ? 0 : undefined} role={horizontal ? "region" : undefined} aria-label={horizontal ? "Các nhóm trong biểu đồ; cuộn để xem toàn bộ" : undefined}>
       <div className="result-chart" style={{height}} ref={root} role="img" aria-label={data.title}/>
     </div>
-    <details><summary>Giá trị chính xác và nguồn</summary><ul>{data.points.map(p => <li key={p.label}>{label(p.label)}: {p.value} {data.unit}</li>)}</ul><small>{data.source_refs.join(" · ")}</small></details></section>;
+    <details><summary>Giá trị chính xác và nguồn</summary>{data.completeness !== "COMPLETE" && <p>Biểu đồ chỉ hiển thị các nhóm đã tải.</p>}<ul>{data.points.map(p => <li key={p.label}>{label(p.label)}: {p.value} {data.unit}</li>)}</ul><small>{data.source_refs.join(" · ")}</small></details></section>;
 }
 function ResultChartDetails({ data }: { data: Chart }) {
     const [opened, setOpened] = useState(false);

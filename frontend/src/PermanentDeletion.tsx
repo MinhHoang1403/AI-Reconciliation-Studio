@@ -121,7 +121,7 @@ export function PermanentDeletion({ kind, resourceId, onDeleted, onPending }: {
     }
   }
 
-  if (receipt?.status === "DELETED") return <Notice tone="success">
+  if (receipt?.status === "DELETED") return <Notice tone="success" transient={kind !== "workspace"}>
     Đã xóa vĩnh viễn {label}.
     {kind === "workspace" && <button className="text-button" onClick={() => window.location.reload()}>Mở lại Studio</button>}
   </Notice>;

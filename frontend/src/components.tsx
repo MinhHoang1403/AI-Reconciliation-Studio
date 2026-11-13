@@ -44,16 +44,19 @@ export function Badge({ status, label }: { status: string; label?: string }) {
 export function Notice({
   children,
   tone = "info",
+  transient = tone === "success",
 }: {
   children: ReactNode;
   tone?: "info" | "error" | "success" | "warning";
+  transient?: boolean;
 }) {
   return (
     <div
-      className={`notice ${tone}`}
+      key={typeof children === "string" ? children : undefined}
+      className={`notice ${tone}${transient ? " notice-transient" : ""}`}
       role={tone === "error" ? "alert" : "status"}
     >
-      {tone === "success" ? <CheckCircle2 size={18} /> : <Info size={18} />}
+      {tone === "success" ? <CheckCircle2 size={16} aria-hidden="true" /> : <Info size={16} aria-hidden="true" />}
       <div>{children}</div>
     </div>
   );

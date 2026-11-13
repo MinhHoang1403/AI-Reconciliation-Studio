@@ -43,12 +43,6 @@ export function WorkspaceManager({ current, onRename, returnToDashboard }: {
     return () => controller.abort();
   }, [open]);
 
-  useEffect(() => {
-    if (!status) return;
-    const timer = window.setTimeout(() => setStatus(""), 5000);
-    return () => window.clearTimeout(timer);
-  }, [status]);
-
   async function switchWorkspace(id: string) {
     await api("/workspaces/current", { method: "POST", body: JSON.stringify({ id }) });
     const lastProject = localStorage.getItem("studio.project");

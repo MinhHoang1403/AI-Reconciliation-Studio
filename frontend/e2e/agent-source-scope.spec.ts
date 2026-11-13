@@ -100,7 +100,7 @@ test("semantic source reporting executes canonical SQL and exports the visible t
   await (await downloading).saveAs(info.outputPath("daily.xlsx"));
   await page.reload();
   await expect(link).toBeVisible();
-  await expect(page.locator(".agent-result-hint")).toHaveCount(0);
+  await expect(work.locator(".notice-transient")).toHaveCount(0);
   await selectProject(page, issueProject);
   const issue = await ask("Tổng doanh thu thuần chưa VAT của từng nguồn trong dự án hiện tại.");
   expect(issue.map((b: {result: { rows: Record<string, string>[] } }) => b.result.rows[0].sum_decimal_net_revenue_excluding_vat_0))
@@ -130,16 +130,26 @@ test("financial snapshot agrees in Chat, Reports and downloaded files", async ({
     const sum = item.kind === "clean" ? "30.959.967.000" : "30.765.657.000";
     await selectProject(page, item.project);
     await openLegacyPage(page, "reports");
+    await page.setViewportSize(item.kind === "clean" ? { width: 1440, height: 900 } : { width: 390, height: 844 });
     await page.goto(`/#page=reports&project=${item.project}&run_id=${item.run}`);
     const report = page.getByRole("region", { name: "Tổng quan tài chính", exact: true });
     await expect(report.getByRole("row", { name: /Tổng tiền đủ điều kiện/ })).toContainText(sum);
     const quality = page.getByText("Chất lượng và phạm vi", { exact: true });
-    await quality.click();
+    const partialNotice = page.getByRole("status").filter({ hasText: "Kết quả đã xác minh một phần." });
+    await expect(partialNotice).toBeVisible();
+    await expect(partialNotice).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await partialNotice.getByRole("button", { name: "Xem phạm vi và nhóm bị loại" }).click();
+    await expect(quality).toBeFocused();
     const qualityDetails = quality.locator("..");
     await expect(qualityDetails).toContainText("Độ đầy đủ chưa được xác nhận");
+    const kpiBox = await page.getByRole("region", { name: "Chỉ số đối soát" }).boundingBox();
     const qualityBox = await qualityDetails.boundingBox();
     const reportBox = await report.boundingBox();
-    expect(reportBox!.y).toBeGreaterThanOrEqual(qualityBox!.y + qualityBox!.height);
+    expect(reportBox!.y).toBeGreaterThanOrEqual(kpiBox!.y + kpiBox!.height - 1);
+    expect(qualityBox!.y).toBeGreaterThanOrEqual(reportBox!.y + reportBox!.height - 1);
+    await expect(partialNotice).toBeHidden({ timeout: 6500 });
+    await expect(page.getByRole("region", { name: "Phạm vi lần đối soát" }).getByText("Đã xác minh một phần", { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
     await report.scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath(`${item.kind}-financial.png`) });
     const format = item.kind === "clean" ? "CSV" : "XLSX";

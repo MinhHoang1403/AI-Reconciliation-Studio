@@ -43,7 +43,10 @@ test("[LOCAL] create, switch and rename a workspace from the masthead", async ({
   await dialog.getByRole("button", { name: "Đổi tên không gian hiện tại" }).click();
   await dialog.getByLabel("Tên không gian làm việc").fill(`${name} đã đổi`);
   await dialog.getByRole("button", { name: "Lưu tên" }).click();
-  await expect(dialog.getByRole("status")).toContainText("Đã lưu tên mới.");
+  const savedNotice = dialog.getByRole("status").filter({ hasText: "Đã lưu tên mới." });
+  await expect(savedNotice).toBeVisible();
+  await expect(savedNotice).toBeHidden({ timeout: 6500 });
+  await expect(dialog.getByText(`${name} đã đổi`, { exact: true })).toBeVisible();
   await dialog.getByLabel("Không gian có quyền truy cập").selectOption(before.workspace_id);
   await dialog.getByRole("button", { name: "Chuyển không gian" }).click();
   await expect(dialog).not.toBeVisible();

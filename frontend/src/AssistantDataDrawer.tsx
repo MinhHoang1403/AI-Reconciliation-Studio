@@ -3,6 +3,7 @@ import { api } from "./api";
 import { Badge, ContextPanel, DataTable, formatValue, Notice, Spinner } from "./components";
 import type { AssistantContext } from "./assistantTypes";
 import type { Canonical, Dataset, Preview, Table } from "./types";
+import { warningText } from "./types";
 
 /** Chỉ đọc refs có quyền; đóng/đổi nguồn hủy request, không thay draft hội thoại. */
 export function AssistantDataDrawer({ context, revision, onClose, onManual, onAsk, canAsk, returnFocus, docked }: {
@@ -104,7 +105,7 @@ export function AssistantDataDrawer({ context, revision, onClose, onManual, onAs
       </div>
       {kind==="prepared" && <p className="muted">Bản xem để khám phá. Cần xác nhận ý nghĩa nghiệp vụ trước khi đối soát.</p>}
       {selected&&<p><Badge status={selected.quality_status}/> {selected.row_count} dòng · {selected.invalid_count} dòng lỗi{selected.stale?" · Phiên bản đã cũ, chỉ dùng để kiểm tra lịch sử":""}</p>}
-      {tables.find(t=>t.id===tableId)?.parsed.warnings.map(w=><Notice key={w} tone="warning">{w}</Notice>)}
+      {tables.find(t=>t.id===tableId)?.parsed.warnings.map(w=><Notice key={w} tone="warning">{warningText[w] || w}</Notice>)}
       <label>Tìm trong dữ liệu<input value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/></label>
       {loading?<Spinner/>:preview&&<><p>{preview.total} dòng khớp điều kiện; hiển thị {preview.items.length} dòng.</p>
         <DataTable rows={rows} columns={fields.filter(f=>!f.startsWith('_')&&f!=="source_provenance"&&f!=="source_row_id").map(field=>({accessorKey:field,header:tables.find(t=>t.id===tableId)?.parsed.columns.find(c=>c.id===field)?.name||field,cell:info=>formatValue(info.getValue())}))}/>

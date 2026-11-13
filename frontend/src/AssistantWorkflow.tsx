@@ -134,36 +134,30 @@ export function AssistantWorkflow({
           </select>
         </label>
         {rule && (
-          <div className="notice">
-            <div>
-              <p>
-                {rule.plan.name} · {rule.plan.timezone} ·{" "}
-                {rule.plan.cardinality}
+          <Notice>
+            <p>
+              {rule.plan.name} · {rule.plan.timezone} · {rule.plan.cardinality}
+            </p>
+            <p>
+              Khóa:{" "}
+              {rule.plan.join_keys.map((k) => `${k.left} ↔ ${k.right}`).join(", ")}
+            </p>
+            <p>
+              Phạm vi trái:{" "}
+              {Object.entries(rule.plan.left.filters)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(", ") || "Toàn nguồn theo rule"}
+              ; phải:{" "}
+              {Object.entries(rule.plan.right.filters)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(", ") || "Toàn nguồn theo rule"}
+            </p>
+            {rule.plan.comparison_metrics.map((m) => (
+              <p key={m.metric_id}>
+                {m.metric_id} · {m.amount_basis} · {m.currency} · tolerance {m.absolute_tolerance}
               </p>
-              <p>
-                Khóa:{" "}
-                {rule.plan.join_keys
-                  .map((k) => `${k.left} ↔ ${k.right}`)
-                  .join(", ")}
-              </p>
-              <p>
-                Phạm vi trái:{" "}
-                {Object.entries(rule.plan.left.filters)
-                  .map(([k, v]) => `${k}: ${v}`)
-                  .join(", ") || "Toàn nguồn theo rule"}
-                ; phải:{" "}
-                {Object.entries(rule.plan.right.filters)
-                  .map(([k, v]) => `${k}: ${v}`)
-                  .join(", ") || "Toàn nguồn theo rule"}
-              </p>
-              {rule.plan.comparison_metrics.map((m) => (
-                <p key={m.metric_id}>
-                  {m.metric_id} · {m.amount_basis} · {m.currency} · tolerance{" "}
-                  {m.absolute_tolerance}
-                </p>
-              ))}
-            </div>
-          </div>
+            ))}
+          </Notice>
         )}
       </section>
     );
@@ -318,7 +312,7 @@ export function AssistantWorkflow({
             </fieldset>
           )}
           {created.map((result) => (
-            <Notice tone="success" key={result.id}>
+            <Notice tone="success" transient={false} key={result.id}>
               Đã tạo đề xuất {result.proposal.plan?.name}; chưa approval/chạy.
               <button
                 className="text-button"

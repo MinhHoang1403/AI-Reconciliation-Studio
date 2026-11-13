@@ -213,13 +213,9 @@ export function App() {
   }, [tableDensity]);
   const [draftOwner, setDraftOwner] = useState("");
   const [error, setError] = useState("");
-  const [success, setSuccessNotice] = useState<{ message: string } | null>(null);
-  const setSuccess = useCallback((message: string) => setSuccessNotice(message ? { message } : null), []);
-  useEffect(() => {
-    if (!success) return;
-    const timer = setTimeout(() => setSuccessNotice(null), 5000);
-    return () => clearTimeout(timer);
-  }, [success]);
+  const successSequence = useRef(0);
+  const [success, setSuccessNotice] = useState<{ id: number; message: string } | null>(null);
+  const setSuccess = useCallback((message: string) => setSuccessNotice(message ? { id: ++successSequence.current, message } : null), []);
   const [busy, setBusy] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
@@ -1350,7 +1346,7 @@ export function App() {
               </div>
             </Notice>
           )}
-          {success && <Notice tone="success">{success.message}</Notice>}
+          {success && <Notice tone="success" key={success.id}>{success.message}</Notice>}
           {!ready && !bootstrapError && <Spinner />}
           {ready && !projectId && !["home","settings","assistant"].includes(page) && (
             <Notice>

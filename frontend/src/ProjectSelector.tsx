@@ -122,12 +122,6 @@ export function ProjectSelector({
     revealDropdownOption(optionsRef.current, document.getElementById(`${listId}-${active}`));
   }, [active, items, listId]);
 
-  useEffect(() => {
-    if (!classificationSuccess) return;
-    const timer = window.setTimeout(() => setClassificationSuccess(""), 5000);
-    return () => window.clearTimeout(timer);
-  }, [classificationSuccess]);
-
   function invalidate() {
     sequence.current += 1;
     setItems([]);

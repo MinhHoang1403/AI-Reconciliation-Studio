@@ -220,6 +220,7 @@ export function ReconciliationStudio({
   const [workView, setWorkView] = useState<"setup" | "results">(requestedRun ? "results" : "setup");
   const [analysisOpen, setAnalysisOpen] = useState(!!panel && mode === "reports");
   const analysisDisclosure = useRef<HTMLDetailsElement>(null);
+  const financialQuality = useRef<HTMLDetailsElement>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const showResults = mode !== "reconcile" || workView === "results";
   const openingPlan = requestedPlan !== null && loadedPlanRequest !== requestedPlan.request;
@@ -1501,10 +1502,10 @@ export function ReconciliationStudio({
               <p className="run-period">
                 <strong>Kỳ đối soát</strong> {snapshot.period_start} đến trước {snapshot.period_end} · {snapshot.timezone}
               </p>
-              {run?.status === "PARTIAL_VERIFIED" && <Notice tone="warning">
+              {run?.status === "PARTIAL_VERIFIED" && <Notice tone="warning" transient key={runId}>
                 Kết quả đã xác minh một phần.
                 {mode !== "exceptions" ? <button className="text-button" onClick={() => {
-                  const disclosure = analysisDisclosure.current;
+                  const disclosure = financialQuality.current ?? analysisDisclosure.current;
                   if (disclosure) {
                     disclosure.open = true;
                     disclosure.querySelector("summary")?.focus();
@@ -1545,8 +1546,7 @@ export function ReconciliationStudio({
             <>
               {mode !== "exceptions" && (
                 <>
-                  <FinancialSummary snapshot={snapshot} names={runSources} metricName={metricName} />
-                  <div className="result-kpis">
+                  <div className="result-kpis" role="region" aria-label="Chỉ số đối soát">
                     {[
                       [
                         "Tỷ lệ khớp",
@@ -1563,7 +1563,7 @@ export function ReconciliationStudio({
                       [
                         "Giá trị lệch tuyệt đối",
                         snapshot.monetary[0] ? formatDecimal(snapshot.monetary[0].absolute_variance) : "N/A",
-                        `${snapshot.monetary[0]?.currency || ""} · ${snapshot.monetary[0] ? metricName(snapshot.monetary[0].metric_id) : ""}`,
+                        snapshot.monetary[0] ? `${snapshot.monetary[0].currency} · ${label(metricName(snapshot.monetary[0].metric_id))}` : "",
                       ],
                       [
                         "Tự động phân loại",
@@ -1580,6 +1580,7 @@ export function ReconciliationStudio({
                       </article>
                     ))}
                   </div>
+                  <FinancialSummary snapshot={snapshot} names={runSources} metricName={metricName} qualityRef={financialQuality} />
                 </>
               )}
               <section className="result-data" aria-labelledby="result-ledger-title">
