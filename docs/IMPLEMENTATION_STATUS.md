@@ -10,7 +10,7 @@ Trên `d3e9d54`, cổng phạm vi của lượt đối soát xác minh lại k�
 
 Backend/PostgreSQL trên `d3e9d54` đạt **961/961** với một cảnh báo deprecation của Starlette. Ruff, mypy, TypeScript, ESLint và build production đạt. Vite cảnh báo hai gói JavaScript lớn hơn 500 kB.
 
-Hồi quy Chromium toàn bộ trên `021afb5` có **135 PASS, 29 FAIL, 7 bỏ qua, 8 chưa chạy**. Trên bản trước sửa `f8e4684` cùng schema TEST, 9/10 ca đại diện lỗi tại cùng bước, gồm bộ chọn, thẻ duyệt, nội dung xem trước và ngữ cảnh lần chạy. Ca Dashboard vẫn lỗi nhưng tại bước khác. Gemini LIVE có **1 lần gọi thực tế**, 503 ở batch đầu gồm 5 câu, 15 câu còn lại chưa gọi. Hồi quy giao diện toàn bộ và Gemini LIVE vẫn chưa đạt điều kiện nghiệm thu.
+Hồi quy Chromium toàn bộ trên image cuối `d3e9d54` lặp lại kết quả của `021afb5` với **135 PASS, 29 FAIL, 7 bỏ qua, 8 chưa chạy**. Trên bản trước sửa `f8e4684` cùng schema TEST, 9/10 ca đại diện lỗi tại cùng bước, gồm bộ chọn, thẻ duyệt, nội dung xem trước và ngữ cảnh lần chạy. Ca Dashboard vẫn lỗi nhưng tại bước khác. Gemini LIVE có **1 lần gọi thực tế**, 503 ở batch đầu gồm 5 câu, 15 câu còn lại chưa gọi. Hồi quy giao diện toàn bộ và Gemini LIVE vẫn chưa đạt điều kiện nghiệm thu.
 
 Hai lượt sạch khớp 5.000 nhóm mỗi cặp, 30.959.967.000 VND mỗi nguồn và chênh lệch 0. Bộ có lỗi giữ đủ 15.000 dòng, trong đó 14.967 hợp lệ và 33 cần kiểm tra. Ba tổng đủ điều kiện theo thứ tự Bán hàng, Thu ngân và Kế toán là 30.765.657.000, 30.768.000.000 và 30.758.520.000 VND. Chênh lệch có dấu/tuyệt đối của hai cặp lần lượt là −60.000/60.000 và −144.000/264.000 VND. Bốn lượt giữ trạng thái `PARTIAL_VERIFIED`.
 
