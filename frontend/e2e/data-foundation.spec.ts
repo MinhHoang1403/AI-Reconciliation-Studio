@@ -1,5 +1,5 @@
 import { test } from "./project-selection";
-import { chooseMappingTarget, openSourceMapping, selectProject } from "./project-selection";
+import { chooseDropdownOption, chooseMappingTarget, openSourceMapping, selectProject } from "./project-selection";
 import { expect, type Page } from "@playwright/test";
 import { mkdir, readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -49,7 +49,7 @@ test("[LOCAL] create, switch and rename a workspace from the masthead", async ({
   await expect(savedNotice).toHaveCount(0, { timeout: 6500 });
   expect((await dialog.boundingBox())!.height).toBeLessThan(dialogHeight);
   await expect(dialog.getByText(`${name} đã đổi`, { exact: true })).toBeVisible();
-  await dialog.getByLabel("Không gian có quyền truy cập").selectOption(before.workspace_id);
+  await chooseDropdownOption(dialog, "Không gian có quyền truy cập", before.workspace_id);
   await dialog.getByRole("button", { name: "Chuyển không gian" }).click();
   await expect(dialog).not.toBeVisible();
   await expect(manage).toBeVisible();
@@ -422,7 +422,7 @@ for (const size of [
     await openSourceMapping(page);
     await page.getByLabel("Chỉnh cột Gross amount", { exact: true }).click();
     await expect(
-      page.getByLabel("Trường đích Gross amount", { exact: true }),
+      page.getByRole("button", { name: "Trường đích Gross amount", exact: true }),
     ).toBeVisible();
     expect(
       await page.evaluate(
@@ -450,20 +450,11 @@ for (const size of [
 test("cached document evidence remains readable after parser allowance is closed", async ({
   page,
 }) => {
-  let state: { project_id: string } | undefined;
-  try {
-    state = JSON.parse(
-      await readFile("../runtime/document-acceptance/acceptance.json", "utf8"),
-    );
-  } catch {
-    test.skip(
-      true,
-      "Run the separately authorized two-document acceptance before this cached-only check",
-    );
-    return;
-  }
+  const receipt = process.env.STUDIO_DOCUMENT_RECEIPT;
+  test.skip(!receipt, "Requires the cached two-document fixture in the current schema");
+  const state = JSON.parse(await readFile(receipt!, "utf8")) as { project_id: string };
   await openApp(page);
-  await selectProject(page, state!.project_id);
+  await selectProject(page, state.project_id);
   for (const [extension, id, amount] of [
     ["pdf", "000123", "1234.50"],
     ["docx", "000701", "1.234,50"],

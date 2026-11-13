@@ -229,9 +229,15 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[${comp
   for(const name of names){
     const card=cards.filter({hasText:name});
     await card.getByRole('textbox',{name:'Loại giao dịch',exact:true}).fill(entity);
-    await card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true}).fill(grain);
-    await card.getByText('Chọn khóa nhận diện',{exact:true}).click();
-    await card.getByRole('checkbox',{name:new RegExp(`^${keyHeader}`)}).check();
+    const grainField=card.getByRole('textbox',{name:'Mỗi dòng đại diện cho điều gì?',exact:true});
+    await grainField.fill(grain);
+    await grainField.press('Tab');
+    const keyChoice=card.getByRole('checkbox',{name:new RegExp(`^${keyHeader}`)});
+    if (!await keyChoice.isVisible()) {
+      await card.getByText(/^(Chọn|Đổi) khóa nhận diện$/).click();
+    }
+    await keyChoice.check();
+    await expect(keyChoice).toBeChecked();
     await expect(card.getByText('Ngày lịch · Giữ nguyên ngày nguồn',{exact:true})).toBeVisible();
     await card.getByRole('combobox',{name:`Cơ sở tiền của ${moneyHeader}`,exact:true}).selectOption('gross');
     const meaning=card.getByRole('textbox',{name:'Khoản tiền này là gì?',exact:true});
@@ -349,7 +355,12 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[${comp
   await send('Tong quan ket qua nay va cac chi so chenh lech giup toi.');
   await expect(work).toContainText('Chênh lệch tuyệt đối');
   await send('Sắp hai giao dịch bị lệch tiền nhiều nhất theo mức lệch giảm dần.');
-  await expect(work.locator('.agent-table')).toContainText(expected.absolute);
+  const ranked = work.getByRole('row').filter({
+    has: page.getByRole('cell',{name:expected.mismatch_id,exact:true}),
+  });
+  const amounts = ranked.getByRole('cell');
+  await expect(amounts.nth(5)).toHaveText(expected.signed.replace(/\.00$/,'').replace('.',','));
+  await expect(amounts.nth(6)).toHaveText(expected.absolute.replace(/\.00$/,'').replace('.',','));
   const folder=`../runtime/automation-${paymentJourney?'payment':maintenance?'maintenance':'inventory'}/${suffix}`;
   await mkdir(folder,{recursive:true});
   await send('Lưu đúng các dòng vừa liệt kê thành tệp CSV.');
