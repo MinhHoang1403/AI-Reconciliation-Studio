@@ -25,7 +25,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-67"
+INTENT_REVISION = "agent-intent-68"
 
 
 def requests_reconciliation_sequence(goal: str) -> bool:
@@ -2991,10 +2991,19 @@ def interpret_requests(
                 "chỉ dùng []/null khi mục tiêu không yêu cầu điều kiện/phép tính đó. "
                 "CANONICAL/RAW_PREVIEW/EXCEPTIONS để metric_id null. Với CANONICAL, "
                 "source_measure_id chỉ dùng field_id có trong source_measures. "
-                "Không đoán kỳ, cột hoặc tiền tệ. "
+                "Ngày CANONICAL dùng ISO YYYY-MM-DD. between có cận đầu bao gồm và cận cuối "
+                "loại trừ: cả tháng kết thúc ở ngày 1 tháng sau, nửa đầu kết thúc ở ngày 16, "
+                "nửa sau bắt đầu ngày 16. Đến hết ngày D dùng ngày sau D làm cận cuối. "
+                "Trước ngày D dùng lt D; sau ngày D dùng gte ngày sau D. "
+                "Không đoán kỳ, cột hoặc tiền tệ. Nếu nguồn đã chọn thiếu trường cho một bộ lọc "
+                "hoặc có nhiều chỉ tiêu mà câu hỏi chưa chọn, trả CLARIFY với query=null. "
                 "Liệt kê dòng để group_by rỗng; "
                 "group_by phải có count/sum/min/max. Tổng/đếm áp dụng ALL_MATCHING trước paging. "
-                "sum_decimal cần currency_field và group_by currency để không trộn tiền tệ. "
+                "Với CANONICAL, đơn vị tiền lấy từ source_measures. currency_field là trường "
+                "currency kiểu văn bản/enum nếu có, nếu không dùng null. Không dùng trường số "
+                "tiền làm currency_field. Không tự thêm group_by currency. Nhóm theo ngày/tháng "
+                "chỉ khi được yêu cầu, dùng calendar_bucket day/month và limit=50. Với tổng "
+                "hoặc đếm CANONICAL không nhóm, dùng limit=25, offset=0. "
                 "Paid filter dùng approved paid_status_fields, eq PAID hoặc in PAID/TRANSFERRED. "
                 "Chưa thanh toán dùng chính xác approved payment_status eq UNPAID; "
                 "không dùng ne PAID vì còn các trạng thái khác như COMPLETED hoặc unknown. "

@@ -202,8 +202,9 @@ def test_sql_preserves_exclusive_dates_and_month_bucket():
         ("năm 2024", "between", ["2024-01-01", "2025-01-01"]),
     ],
 )
-def test_calendar_constraints_are_complete(clause, op, value):
-    intent = resolve_source_read(f"Tổng doanh thu Bán hàng {clause}", catalogue())
+@pytest.mark.parametrize("suffix", ["", " là bao nhiêu?", " giúp tôi."])
+def test_calendar_constraints_are_complete(clause, op, value, suffix):
+    intent = resolve_source_read(f"Tổng doanh thu của Bán hàng trong {clause}{suffix}", catalogue())
     assert intent and intent.query
     assert intent.query.filters == [QueryFilter(field_id="event_date", op=op, value=value)]
 
@@ -219,6 +220,7 @@ def test_calendar_constraints_are_complete(clause, op, value):
         "tại chi nhánh Hà Nội",
         "nửa đầu tháng 2/2024 và theo phương thức giao hàng",
         "tháng 2/2024 và xóa nguồn",
+        "tháng 2/2024 và theo phương thức giao hàng là bao nhiêu?",
         "ngoại trừ các đơn hủy",
     ],
 )

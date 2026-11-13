@@ -441,7 +441,7 @@ def resolve_source_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | 
         connectors = r"(?: (?:trong|cua|va))*" if filters or statuses or calendars else ""
         residual = re.fullmatch(
             rf"(?:{actions}{'|' + measure_term if grouped else ''})"
-            rf"(?: la bao nhieu| bao nhieu| giup toi)?{connectors}",
+            rf"{connectors}(?: la bao nhieu| bao nhieu| giup toi)?{connectors}",
             action,
         )
         if residual is None or (buckets and not grouped):
