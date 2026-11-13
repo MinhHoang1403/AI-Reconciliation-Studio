@@ -13,7 +13,7 @@ import {
   LoaderCircle,
   X,
 } from "lucide-react";
-import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { statusText, type Dataset } from "./types";
 
 /** Chỉ định dạng chuỗi Decimal để đọc; không qua float hoặc tính lại tiền. */
@@ -41,20 +41,30 @@ export function Badge({ status, label }: { status: string; label?: string }) {
     </span>
   );
 }
-export function Notice({
-  children,
-  tone = "info",
-  transient = tone === "success",
-}: {
+type NoticeProps = {
   children: ReactNode;
   tone?: "info" | "error" | "success" | "warning";
   transient?: boolean;
-}) {
+};
+
+export function Notice({ children, tone = "info", transient = tone === "success" }: NoticeProps) {
+  const key = `${transient}:${typeof children === "string" ? children : ""}`;
+  return <NoticeContent key={key} tone={tone} transient={transient}>{children}</NoticeContent>;
+}
+
+function NoticeContent({ children, tone, transient }: Required<NoticeProps>) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+
   return (
     <div
-      key={typeof children === "string" ? children : undefined}
       className={`notice ${tone}${transient ? " notice-transient" : ""}`}
       role={tone === "error" ? "alert" : "status"}
+      onAnimationEnd={transient ? event => {
+        if (event.target === event.currentTarget && event.animationName === "notice-fade") {
+          setDismissed(true);
+        }
+      } : undefined}
     >
       {tone === "success" ? <CheckCircle2 size={16} aria-hidden="true" /> : <Info size={16} aria-hidden="true" />}
       <div>{children}</div>

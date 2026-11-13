@@ -10,7 +10,7 @@ Tổng từ CSV/XLSX gốc được tính độc lập bằng `Decimal`. Ba ngu�
 
 Chat hiển thị số liệu trước, dùng tên nguồn ngắn và giữ tên tệp đầy đủ trong chi tiết. Định dạng tiền bỏ phần thập phân bằng 0, giữ nguyên chữ số của giá trị có phần lẻ. Nhắc giới hạn bằng chứng của kết quả vừa nhận mờ dần sau 5 giây, giữ vị trí đọc và có thể mở lại trong “Điều kiện và nguồn”. Trạng thái xác minh, giới hạn kỳ, lỗi chặn và yêu cầu xác nhận vẫn hiển thị. Ô nhập dùng font giao diện 16 px, độ đậm 400 và giãn dòng 1,5.
 
-Báo cáo hiển thị lần lượt chỉ số đối soát, tổng quan tài chính, rồi chất lượng và phạm vi. Thông báo dùng chung có nền trong suốt. Phản hồi thành công và lời nhắc ngắn tự mờ sau 5 giây. Lời nhắc xác minh một phần dẫn tới chi tiết phạm vi, đồng thời nhãn trạng thái của lượt đối soát vẫn hiển thị. Lỗi, trạng thái đang xử lý và hướng dẫn cần thao tác giữ thời gian hiển thị theo nghiệp vụ.
+Báo cáo hiển thị lần lượt chỉ số đối soát, tổng quan tài chính, rồi chất lượng và phạm vi. Thông báo dùng chung có nền trong suốt. Phản hồi thành công và lời nhắc ngắn tự mờ sau 5 giây rồi được gỡ khỏi bố cục. Lời nhắc có nút thao tác chờ khi nút đang được chọn bằng bàn phím. Lời nhắc xác minh một phần dẫn tới chi tiết phạm vi, đồng thời nhãn trạng thái của lượt đối soát vẫn hiển thị. Lỗi, trạng thái đang xử lý và hướng dẫn cần thao tác giữ thời gian hiển thị theo nghiệp vụ.
 
 ## Đối soát theo dữ liệu quan sát trong Chat — 13/11/2026
 

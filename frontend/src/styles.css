@@ -1693,10 +1693,8 @@ pre {
   .masthead-scope :is(.workspace-picker, .project-trigger) > svg:first-child { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
-  }
+  :not(.notice-transient) { animation: none !important; }
+  * { transition: none !important; }
 }
 
 .list-pagination {
