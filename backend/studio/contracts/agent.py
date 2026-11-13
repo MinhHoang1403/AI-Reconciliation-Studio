@@ -184,6 +184,7 @@ class TableContext(Contract):
     schema_definition: SchemaDefinition | None = None
     mapping_id: str | None = None
     paid_status_fields: list[str] = Field(default_factory=list)
+    approved_status_values: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class DatasetContext(Contract):
@@ -205,6 +206,8 @@ class IntentCatalogue(Contract):
     status_values: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
     previous_query: DataQuery | None = None
     previous_source_queries: list[DataQuery] = Field(default_factory=list, max_length=5)
+    earlier_source_total: DataQuery | None = None
+    previous_source_year: int | None = None
     previous_goal: str | None = None
     pending_question: str | None = None
     previous_groups: list[str] = Field(default_factory=list, max_length=50)

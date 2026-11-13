@@ -131,7 +131,7 @@ def agent_catalogue(
     project_sources: bool = False,
 ) -> "IntentCatalogue":
     """Catalogue bounded cho router; chỉ metadata/profile, không raw values/paths/secrets."""
-    from studio.contracts import SchemaDefinition
+    from studio.contracts import EnumTransform, MappingRevision, SchemaDefinition
     from studio.contracts.agent import (
         DatasetContext,
         SourceColumn,
@@ -144,6 +144,7 @@ def agent_catalogue(
         AgentWorkflowRow,
         ArtifactRow,
         CanonicalRow,
+        MappingRow,
         SchemaRow,
         TableRow,
         VersionRow,
@@ -212,9 +213,23 @@ def agent_catalogue(
                 else None
             )
             definition = None
+            approved_status_values: dict[str, list[str]] = {}
             if canonical:
                 schema = get_scoped(db, SchemaRow, canonical.contract["schema_id"], actor)
                 definition = SchemaDefinition.model_validate(schema.definition)
+                mapping = get_scoped(db, MappingRow, canonical.mapping_id, actor)
+                if mapping.decision:
+                    revision = MappingRevision.model_validate(mapping.decision)
+                    fields = {f.id for f in definition.fields if f.data_type == "enum"}
+                    enums = {r.id: sorted(set(r.enum_values.values())) for r in revision.rules}
+                    approved_status_values = {
+                        d.candidate_target: enums[d.transformation_candidate.mapping_id]
+                        for d in revision.decisions
+                        if d.candidate_target
+                        and d.candidate_target in fields
+                        and isinstance(d.transformation_candidate, EnumTransform)
+                        and d.transformation_candidate.mapping_id in enums
+                    }
             parsed = get_scoped(db, ArtifactRow, table.artifact_id, actor)
             prepared = parsed.metadata_json.get("prepared") or {}
             items.append(
@@ -239,6 +254,7 @@ def agent_catalogue(
                     canonical_status=canonical.contract["quality_status"] if canonical else None,
                     schema_definition=definition,
                     mapping_id=table.active_mapping_id,
+                    approved_status_values=approved_status_values,
                     paid_status_fields=[
                         f.id for f in definition.fields if f.semantic_metric == "payment_status"
                     ]
@@ -273,6 +289,8 @@ def agent_catalogue(
         confirmed = ReconciliationContract.model_validate(rule.definition).plan
     previous_query = None
     previous_source_queries = []
+    earlier_source_total = None
+    previous_source_year = None
     previous_goal = None
     previous_groups: list[str] = []
     if workflow_id:
@@ -308,22 +326,40 @@ def agent_catalogue(
             ):
                 # A newer, different scope must never resurrect an earlier query.
                 break
-            previous_query, previous_goal = q, old.goal
-            previous_source_queries = [
-                b.result.query
+            source_results = [
+                b.result
                 for b in state.blocks
                 if isinstance(b, TableBlock)
                 and b.result.query.source_kind == "CANONICAL"
                 and b.result.query.source_id in valid_sources
                 and b.result.source_evidence
             ]
+            if previous_query:
+                if (
+                    len(source_results) == 1
+                    and q.source_id != previous_query.source_id
+                    and any(a.op == "sum_decimal" for a in q.aggregations)
+                ):
+                    earlier_source_total = q
+                break
+            previous_query, previous_goal = q, old.goal
+            previous_source_queries = [result.query for result in source_results]
+            years = {
+                int(day[:4])
+                for result in source_results
+                if (evidence := result.source_evidence)
+                for day in (evidence.observed_first, evidence.observed_last)
+                if day
+            }
+            previous_source_year = next(iter(years)) if len(years) == 1 else None
             if q.source_kind == "VERIFIED_RUN":
                 previous_groups = (
                     state.query_selection.group_ids
                     if state.query_selection
                     else [str(r["group_id"]) for r in result_table.result.rows if r.get("group_id")]
                 )
-            break
+            if len(source_results) != 1 or not any(a.op == "sum_decimal" for a in q.aggregations):
+                break
     return IntentCatalogue(
         context=context,
         project_scope=get_scoped(db, ProjectRow, context.project_id, actor).business_scope,
@@ -332,6 +368,8 @@ def agent_catalogue(
         confirmed_plan=confirmed,
         previous_query=previous_query,
         previous_source_queries=previous_source_queries,
+        earlier_source_total=earlier_source_total,
+        previous_source_year=previous_source_year,
         previous_goal=previous_goal,
         previous_groups=previous_groups,
         verified_run_fields=(

@@ -957,9 +957,7 @@ def validate_intents(
             if q.source_kind == "CANONICAL" and any(a.op == "sum_decimal" for a in q.aggregations):
                 from studio.semantic_intents import validate_source_money_language
 
-                validate_source_money_language(
-                    goal, q, source.schema_definition if source else None
-                )
+                validate_source_money_language(goal, q, source)
             if q.source_kind == "VERIFIED_RUN":
                 try:
                     intent.query = q = resolve_verified_metric(

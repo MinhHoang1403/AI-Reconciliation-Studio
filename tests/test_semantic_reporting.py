@@ -7,9 +7,12 @@ from time import monotonic
 import polars as pl
 import pytest
 from studio.contracts import CanonicalDataset, SchemaDefinition
+from studio.contracts.agent import DatasetContext, IntentCatalogue, TableContext
+from studio.contracts.assistant import AssistantContext
 from studio.contracts.data_query import DataQuery, QueryAggregation, QueryFilter
 from studio.data_query import QuerySource
 from studio.errors import DomainError
+from studio.semantic_intents import resolve_source_read, validate_source_money_language
 from studio.semantic_query import execute_source_sql
 
 
@@ -72,6 +75,55 @@ def source():
 
 def query(**kwargs):
     return DataQuery(project_id="project", source_kind="CANONICAL", source_id="canonical", **kwargs)
+
+
+def catalogue():
+    schema = source().definition
+    assert schema
+    table = TableContext(
+        table_id="table",
+        sheet="Sheet",
+        row_count=5,
+        columns=[],
+        canonical_id="canonical",
+        schema_definition=schema,
+        approved_status_values={"payment_status": ["PAID"]},
+    )
+    return IntentCatalogue(
+        context=AssistantContext(project_id="project"),
+        datasets=[DatasetContext(id="file", name="Bán hàng.csv", status="READY", tables=[table])],
+    )
+
+
+def test_router_keeps_explicit_scope_and_distinguishes_orders_from_rows():
+    context = catalogue()
+    intent = resolve_source_read("Có bao nhiêu đơn hàng trong Bán hàng?", context)
+    assert intent and intent.query
+    assert intent.query.aggregations == [
+        QueryAggregation(op="count_distinct", field_id="order_reference")
+    ]
+    intent = resolve_source_read("Tổng doanh thu ngày 03/10/2026 có trạng thái PAID", context)
+    assert intent and intent.query
+    assert intent.query.filters == [
+        QueryFilter(field_id="event_date", op="between", value=["2026-10-03", "2026-10-04"]),
+        QueryFilter(field_id="payment_status", op="eq", value="PAID"),
+    ]
+    validate_source_money_language(
+        "Tổng doanh thu ngày 03/10/2026 có trạng thái PAID",
+        intent.query,
+        context.datasets[0].tables[0],
+    )
+    with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+        validate_source_money_language(
+            "Tổng doanh thu ngày 04/10/2026", intent.query, context.datasets[0].tables[0]
+        )
+    for goal in (
+        "Tổng doanh thu Bán hàng có mã ABC",
+        "Tổng doanh thu Bán hàng hôm qua",
+        "Tổng doanh thu có trạng thái VOID",
+    ):
+        intent = resolve_source_read(goal, context)
+        assert intent and intent.intent == "CLARIFY"
 
 
 def test_bound_sql_counts_exact_identifiers_and_decimal_with_null_and_refund():

@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
-import { assistantPanel, selectProject, test } from "./project-selection";
+import { assistantPanel, openLegacyPage, selectProject, test } from "./project-selection";
 
 test("semantic source reporting executes canonical SQL and exports the visible table", async ({ page }, info) => {
   const path = process.env.STUDIO_PROCESSING_REPORT_FIXTURE;
@@ -45,6 +45,14 @@ test("semantic source reporting executes canonical SQL and exports the visible t
   await work.getByText("Xem truy vấn", { exact: true }).click();
   await expect(work).toContainText('SUM("net_revenue_excluding_vat")');
   await page.screenshot({ path: info.outputPath("source-total.png") });
+  await ask("Còn Bán hàng?");
+  const pair = await ask("Hai nguồn chênh nhau bao nhiêu?");
+  expect(pair[0].text).toContain("Các tổng tiền bằng nhau");
+  const october = await ask("Chỉ lấy tháng 10.");
+  expect(october).toHaveLength(2);
+  expect(october[0].result.query.filters[0].value).toEqual(["2026-10-01", "2026-11-01"]);
+  const twoDaily = await ask("Hiển thị theo từng ngày.");
+  expect(twoDaily.map((b: { result: { total_count: number } }) => b.result.total_count)).toEqual([31, 31]);
   const sales = await ask("Tổng số tiền của bộ dữ liệu báo cáo bán hàng.");
   expect(sales[0].result.source_evidence.source_name).toBe("01_bao_cao_ban_hang_5000.csv");
   const totals = await ask("Tổng doanh thu thuần chưa VAT của từng nguồn trong dự án hiện tại.");
@@ -80,6 +88,66 @@ test("semantic source reporting executes canonical SQL and exports the visible t
   expect(issue.map((b: {result: { rows: Record<string, string>[] } }) => b.result.rows[0].sum_decimal_net_revenue_excluding_vat_0))
     .toEqual(["30765657000.00", "30768000000.00", "30758520000.00"]);
   expect((await (await page.request.get("/api/settings")).json()).gemini_requests_used).toBe(start);
+});
+
+test("financial snapshot agrees in Chat, Reports and downloaded files", async ({ page }, info) => {
+  const fixturePath = process.env.STUDIO_PROCESSING_REPORT_FIXTURE;
+  const runPath = process.env.STUDIO_FINANCIAL_RUN_FIXTURE;
+  test.skip(!fixturePath || !runPath, "Requires verified TEST runs and raw-file oracle");
+  test.setTimeout(120000);
+  const { workspace } = JSON.parse(await readFile(fixturePath!, "utf8"));
+  const runs = JSON.parse(await readFile(runPath!, "utf8")) as { kind: string; run: string; project: string }[];
+  await page.goto("/");
+  if ((await (await page.request.get("/api/session")).json()).workspace_id !== workspace) {
+    await page.getByRole("button", { name: "Quản lý không gian làm việc", exact: true }).click();
+    const picker = page.getByRole("dialog", { name: "Quản lý không gian làm việc", exact: true });
+    await picker.getByLabel("Không gian có quyền truy cập").selectOption(workspace);
+    await picker.getByRole("button", { name: "Chuyển không gian", exact: true }).click();
+    await expect(picker).not.toBeVisible();
+  }
+  const usage = async () => (await (await page.request.get("/api/settings")).json()).gemini_requests_used;
+  const before = await usage();
+  for (const item of [runs.find(r => r.kind === "clean")!, runs.find(r => r.kind === "issues")!]) {
+    const snapshot = await (await page.request.get(`/api/runs/${item.run}/metrics`)).json();
+    const sum = item.kind === "clean" ? "30.959.967.000" : "30.765.657.000";
+    await selectProject(page, item.project);
+    await openLegacyPage(page, "reports");
+    await page.goto(`/#page=reports&project=${item.project}&run_id=${item.run}`);
+    const report = page.getByRole("region", { name: "Tổng quan tài chính", exact: true });
+    await expect(report.getByRole("row", { name: /Tổng tiền đủ điều kiện/ })).toContainText(sum);
+    await report.getByText("Chất lượng và phạm vi", { exact: true }).click();
+    await expect(report).toContainText("Độ đầy đủ chưa được xác nhận");
+    await report.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: info.outputPath(`${item.kind}-financial.png`) });
+    const format = item.kind === "clean" ? "CSV" : "XLSX";
+    const queued = page.waitForResponse(r => r.url().includes("/exports?format=") && r.request().method() === "POST");
+    await page.getByRole("button", { name: `Xuất ${format}`, exact: true }).click();
+    const { job_id } = await (await queued).json();
+    await expect.poll(async () => (await (await page.request.get(`/api/jobs/${job_id}`)).json()).status, { timeout: 45000 }).toBe("SUCCEEDED");
+    const link = page.getByRole("link", { name: "Tải báo cáo", exact: true });
+    await expect(link).toBeVisible();
+    const download = page.waitForEvent("download");
+    await link.click();
+    await (await download).saveAs(info.outputPath(`financial-${item.kind}.${format.toLowerCase()}`));
+    await page.goto(`/#page=assistant&project=${item.project}&run_id=${item.run}&from=reports`);
+    const input = page.getByRole("textbox", { name: "Câu hỏi cho AI Assistant", exact: true });
+    for (const goal of ["Tổng giá trị đối soát của Bán hàng với Thu ngân là bao nhiêu?",
+      "Hai nguồn của lượt đối soát có tổng tiền là bao nhiêu?", "Tổng tiền của nhóm khớp và tổng chênh lệch là bao nhiêu?"]) {
+      await input.fill(goal);
+      const submitted = page.waitForResponse(r => r.url().endsWith("/api/assistant/messages") && r.request().method() === "POST");
+      await page.getByRole("button", { name: "Gửi câu hỏi", exact: true }).click();
+      const { job_id: assistantJob } = await (await submitted).json();
+      await expect.poll(async () => {
+        const job = await (await page.request.get(`/api/jobs/${assistantJob}`)).json();
+        if (!job.result?.workflow_id) return null;
+        const flow = await (await page.request.get(`/api/agent/workflows/${job.result.workflow_id}`)).json();
+        const facts = flow.detail.blocks.find((b: { type: string }) => b.type === "facts");
+        return { state: flow.state, calls: flow.detail.model_calls, snapshot: facts?.result.run?.metric_snapshot?.id };
+      }).toEqual({ state: "COMPLETED", calls: 0, snapshot: snapshot.id });
+      await expect(page.getByRole("region", { name: "Tổng quan tài chính", exact: true }).last()).toContainText(sum);
+    }
+  }
+  expect(await usage()).toBe(before);
 });
 
 test("observed reconciliation uses the requested pairs and retains evidence and exports", async ({ page }, info) => {
