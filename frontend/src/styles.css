@@ -2105,6 +2105,8 @@ pre {
 .source-workflow .button, .workspace-tabs button { min-height: 3rem; border: 0; border-radius: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-muted); padding: .55rem .2rem; }
 .source-workflow .button[aria-pressed="true"], .workspace-tabs button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-hover); font-weight: 670; }
 .source-workflow .source-workflow-next { color: var(--accent-hover); font-weight: 670; }
+.source-workflow-advanced > summary { min-height: 3rem; padding: .8rem .2rem; cursor: pointer; color: var(--text-muted); }
+.source-workflow-advanced > .button { margin-inline-end: .8rem; }
 .workspace-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
 .management-list { padding: 0; margin: 1rem 0; list-style: none; border-top: 1px solid var(--surface-border); }
 .management-list > li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .7rem 0; border-bottom: 1px solid var(--surface-border); overflow-wrap: anywhere; }

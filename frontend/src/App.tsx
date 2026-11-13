@@ -1712,13 +1712,28 @@ export function App() {
                             role="group"
                             aria-label="Công việc với nguồn"
                           >
-                            {(
-                              [
-                                ["explore", "Xem dữ liệu"],
-                                ["mapping", "Xác nhận cột"],
-                                ["normalize", "Tạo bản chuẩn hóa"],
-                              ] as const
-                            ).map(([key, label]) => (
+                            <button
+                              aria-pressed={tab === "explore"}
+                              className="button secondary"
+                              id="source-tab-explore"
+                              onClick={() => setTab("explore")}
+                            >
+                              Xem dữ liệu
+                            </button>
+                            {table?.prepared?.automatic ? (
+                              <details className="source-workflow-advanced" open={tab !== "explore" || undefined}>
+                                <summary>Chuẩn bị nâng cao</summary>
+                                <button aria-pressed={tab === "mapping"} className="button secondary" id="source-tab-mapping" onClick={() => setTab("mapping")}>
+                                  Xác nhận cột
+                                </button>
+                                <button aria-pressed={tab === "normalize"} className="button secondary" id="source-tab-normalize" onClick={() => setTab("normalize")}>
+                                  Tạo bản chuẩn hóa
+                                </button>
+                              </details>
+                            ) : ([
+                              ["mapping", "Xác nhận cột"],
+                              ["normalize", "Tạo bản chuẩn hóa"],
+                            ] as const).map(([key, label]) => (
                               <button
                                 aria-pressed={tab === key}
                                 className={`button ${tab === key ? "secondary selected" : "secondary"}${key === "mapping" && !table?.active_mapping_id && canEdit ? " source-workflow-next" : ""}`}
@@ -1763,7 +1778,11 @@ export function App() {
                                   }}>
                                   Chuẩn hóa dữ liệu <ArrowRight size={15} aria-hidden="true" />
                                 </button>}
-                              </> : <p>Kiểm tra đề xuất ánh xạ để hệ thống hiểu đúng các cột dữ liệu.</p>}
+                              </> : table?.prepared?.automatic ? <p role="status">
+                                {selectedDataset.status === "PREPARING"
+                                  ? "Studio đang chuẩn bị và kiểm tra dữ liệu."
+                                  : "Có thể xem bản đã chuẩn bị. Studio cần thêm căn cứ để đối soát tài chính."}
+                              </p> : <p>Kiểm tra đề xuất ánh xạ để hệ thống hiểu đúng các cột dữ liệu.</p>}
                             </div>
                           )}
                           <div className="tab-content">

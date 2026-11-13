@@ -64,6 +64,7 @@ export interface Table {
   parsed: { columns: SourceColumn[]; warnings: string[]; header_row: number };
   prepared?: {
     prepared_artifact_id: string;
+    automatic?: boolean;
     review_required: true;
     quality_summary: {
       column_id: string;

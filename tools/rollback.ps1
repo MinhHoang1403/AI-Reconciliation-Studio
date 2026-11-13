@@ -95,7 +95,10 @@ if ($VerifyOnly) {
 }
 # Giữ schema hiện hành đã qua compatibility gate; không chạy upgrade/downgrade.
 # Khởi tạo proof riêng rồi chạy API của image đã chọn trong cùng Compose hiện có.
-$taskStartup = "import os,secrets; from studio.config import settings; assert len(settings.session_secret.get_secret_value())>=32; settings.instance_path.parent.mkdir(parents=True,exist_ok=True); settings.instance_path.write_text(secrets.token_urlsafe(32)); settings.demo_proof_path.unlink(missing_ok=True); os.execvp('uvicorn',['uvicorn','studio.api:app','--host','0.0.0.0','--port','8000','--no-proxy-headers','--no-access-log'])"
+$taskAccessSource = git show "${taskBackendRevision}:backend/studio/access.py"
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify rollback local proof compatibility.' }
+$taskInstance = if (($taskAccessSource -join "`n") -match 'backend identity differs from host inspection') { 'socket.gethostname()' } else { 'secrets.token_urlsafe(32)' }
+$taskStartup = "import os,secrets,socket; from studio.config import settings; assert len(settings.session_secret.get_secret_value())>=32; settings.instance_path.parent.mkdir(parents=True,exist_ok=True); settings.instance_path.write_text($taskInstance); proof=getattr(settings,'local_proof_file',None) or settings.demo_proof_path; proof and proof.unlink(missing_ok=True); os.execvp('uvicorn',['uvicorn','studio.api:app','--host','0.0.0.0','--port','8000','--no-proxy-headers','--no-access-log'])"
 $taskOverride = @{services=@{
     backend=@{image=$taskImages.backend; command=@('python','-c',$taskStartup)}
     worker=@{image=$taskImages.backend}
