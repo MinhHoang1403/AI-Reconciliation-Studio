@@ -56,8 +56,9 @@ function CommonMappingFacts({reviews, storageKey, disabled, onApply}: {
         </section>
     </details>;
 }
-export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onContext, onReply }: {
+export function AgentWorkflowPanel({ id, showResultHints, canEdit, draftOwner, onNavigate, onContext, onReply }: {
     id: string;
+    showResultHints: boolean;
     canEdit: boolean;
     draftOwner: string;
     onNavigate: (target: Suggestion, context: AssistantContext) => void;
@@ -193,7 +194,7 @@ export function AgentWorkflowPanel({ id, canEdit, draftOwner, onNavigate, onCont
         <p>Áp dụng các lựa chọn trong thẻ của {openMappings.map(review => review.resource_label || "nguồn đã chọn").join(", ")}.</p>
         <button type="button" className="button primary" disabled={batchBusy} onClick={()=>void approveBatch()}>Duyệt {openMappings.length} nguồn và chuẩn hóa</button>
       </section>}
-      {resultBlocks.length > 0 && <AgentResultBlocks blocks={resultBlocks} compactPreviews={compactPreviews} mappingReview={openMappings.length > 0} context={workflow.context} onNavigate={onNavigate} workflowId={workflow.id} querySelection={workflow.detail.query_selection?.query} onQualityPublished={id => {
+      {resultBlocks.length > 0 && <AgentResultBlocks blocks={resultBlocks} showResultHints={showResultHints} compactPreviews={compactPreviews} mappingReview={openMappings.length > 0} context={workflow.context} onNavigate={onNavigate} workflowId={workflow.id} querySelection={workflow.detail.query_selection?.query} onQualityPublished={id => {
         qualityPublished.current = id;
         setResumeVersion(value => value + 1);
       }}/>}

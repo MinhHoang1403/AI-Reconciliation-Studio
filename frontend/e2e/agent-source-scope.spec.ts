@@ -41,7 +41,21 @@ test("semantic source reporting executes canonical SQL and exports the visible t
   };
   const ledger = await ask("Cho tôi biết tổng số tiền của bộ dữ liệu sổ kế toán.");
   expect(ledger[0].result.rows[0].sum_decimal_net_revenue_excluding_vat_0).toBe("30959967000.00");
-  await expect(work).toContainText("30.959.967.000");
+  await expect(work.getByText("30.959.967.000 VND", { exact: true })).toBeVisible();
+  await expect(work).toContainText("của Kế toán là");
+  await expect(work).toContainText("01–31/10/2026");
+  await expect(work.locator(".agent-table .notice.warning")).toHaveCount(0);
+  const hint = work.getByRole("status").filter({ hasText: "Bằng chứng hiển thị có giới hạn" });
+  await expect(hint).toBeVisible();
+  await expect(hint).toHaveCSS("animation-delay", "5s");
+  const bounds = await work.boundingBox();
+  await page.screenshot({ path: info.outputPath("source-result-hint.png") });
+  await expect(hint).toBeHidden({ timeout: 6500 });
+  expect((await work.boundingBox())?.height).toBe(bounds?.height);
+  await expect(work.getByText("Độ đầy đủ của kỳ chưa được xác nhận.", { exact: true })).toBeVisible();
+  await work.getByText("Điều kiện và nguồn", { exact: true }).click();
+  await expect(work.getByText("Bằng chứng hiển thị có giới hạn.", { exact: false }).last()).toBeVisible();
+  await work.getByText("Điều kiện và nguồn", { exact: true }).click();
   await work.getByText("Xem truy vấn", { exact: true }).click();
   await expect(work).toContainText('SUM("net_revenue_excluding_vat")');
   await page.screenshot({ path: info.outputPath("source-total.png") });
@@ -64,6 +78,9 @@ test("semantic source reporting executes canonical SQL and exports the visible t
   expect(distinct[0].result.rows[0].count_distinct_order_reference_0).toBe(5000);
   const daily = await ask("Cho tôi doanh thu theo từng ngày tháng 10/2026.");
   expect(daily[0].result.total_count).toBe(31);
+  const dailyValue = work.getByRole("cell", { name: "1.075.744.000", exact: true });
+  await expect(dailyValue).toBeVisible();
+  await expect(dailyValue).toHaveCSS("text-align", "end");
   const top = await ask("Hiển thị 10 đơn hàng doanh thu cao nhất.");
   expect(top[0].result.rows).toHaveLength(10);
   const found = await ask("Tìm mã ORD2610-000001.");
@@ -83,6 +100,7 @@ test("semantic source reporting executes canonical SQL and exports the visible t
   await (await downloading).saveAs(info.outputPath("daily.xlsx"));
   await page.reload();
   await expect(link).toBeVisible();
+  await expect(page.locator(".agent-result-hint")).toHaveCount(0);
   await selectProject(page, issueProject);
   const issue = await ask("Tổng doanh thu thuần chưa VAT của từng nguồn trong dự án hiện tại.");
   expect(issue.map((b: {result: { rows: Record<string, string>[] } }) => b.result.rows[0].sum_decimal_net_revenue_excluding_vat_0))

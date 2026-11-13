@@ -1842,7 +1842,7 @@ pre {
   box-shadow: var(--shadow-composer);
 }
 .assistant-composer > label { display: block; font-size: inherit; min-width: 0; grid-column: 2; grid-row: 1; }
-.assistant-composer textarea { display: block; width: 100%; min-width: 0; height: 40px; min-height: 40px; max-height: 180px; margin: 0; padding: 8px 4px; border: 0; border-radius: 6px; background: transparent; resize: none; font-size: inherit; line-height: 24px; color: #262626; }
+.assistant-composer textarea { display: block; width: 100%; min-width: 0; height: 40px; min-height: 40px; max-height: 180px; margin: 0; padding: 8px 4px; border: 0; border-radius: 6px; background: transparent; resize: none; font-family: inherit; font-size: 16px; font-weight: 400; line-height: 1.5; color: var(--ink); }
 .app-shell[data-focus-mode="keyboard"] .assistant-composer:has(textarea:focus-visible) {
   box-shadow: var(--shadow-composer), inset 0 -2px var(--focus-mark);
 }
@@ -1907,6 +1907,18 @@ pre {
 :is(.agent-workflow, .agent-review) > .notice button + button { margin-inline-start: var(--space-3); }
 .agent-results { display: grid; gap: var(--space-5); min-width: 0; }
 .agent-results > p, .agent-facts p, .agent-dataset > p, .agent-table > p { margin: 0; }
+.agent-answer-lead { font-size: 16px; }
+.agent-answer-lead strong { font-weight: 650; font-variant-numeric: tabular-nums; }
+.agent-answer-context, .agent-source-file, .agent-answer-note,
+.assistant-message p:is(.agent-answer-context, .agent-answer-note) { color: var(--text-muted); }
+.agent-answer-note, .agent-source-file { font-size: 14px; }
+.agent-result-hint { animation: agent-result-hint-fade 200ms ease-out 5s forwards; }
+@keyframes agent-result-hint-fade { to { opacity: 0; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-result-hint { animation-duration: 1ms; }
+}
+.agent-answer-details > p { margin-block: var(--space-2); }
+.agent-table > h4 { font-weight: 600; }
 .agent-conclusion { font-size: 16px; }
 .agent-review { display: grid; gap: var(--space-4); padding-block: var(--space-3); min-width: 0; }
 .agent-clarification {display:grid; gap:12px; padding-block:12px; min-width:0;}
@@ -2215,7 +2227,7 @@ pre {
 .result-delivery .rule-actions { margin: 0; }
 .result-data .result-filters { margin: .5rem 0; }
 .result-kpis strong { font-variant-numeric: tabular-nums; }
-.agent-facts h4, .agent-chart h4 { margin: 0; font-size: 17px; font-weight: 650; line-height: 1.4; }
+.agent-facts h4, .agent-chart h4 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.45; }
 .agent-facts header p { margin-block-start: var(--space-1); }
 .agent-facts details p { margin-block-start: var(--space-2); }
 .agent-download > p { margin: 0 0 8px; }

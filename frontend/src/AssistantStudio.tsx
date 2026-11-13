@@ -178,6 +178,7 @@ export function AssistantStudio({
   const selectedModel = modelChoice || "GEMINI";
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
+  const liveResultJobs = useRef(new Set<string>());
   const [history, setHistory] = useState<Conversation[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
@@ -428,6 +429,7 @@ export function AssistantStudio({
     }
   }
   async function openConversation(id: string, cached?: ConversationPage) {
+    liveResultJobs.current.clear();
     followTail.current=true;
     forceTail.current=true;
     setNewContent(false);
@@ -534,6 +536,7 @@ export function AssistantStudio({
     setContext(next);
     onContextChange(next);
     setConversation(null);
+    liveResultJobs.current.clear();
     setMessages([]);
     setActiveWorkflowContext(null);
     setMoreMessages(false);
@@ -576,6 +579,7 @@ export function AssistantStudio({
         sessionStorage.setItem(storage+".request",JSON.stringify({body,key}));
         const accepted=await api<{job_id:string}>(`/agent/workflows/${reviewReply.workflowId}/replies`,{method:"POST",body,headers:{"Idempotency-Key":key}});
         if(!alive.current||request!==sequence.current)return;
+        liveResultJobs.current.add(accepted.job_id);
         sessionStorage.removeItem(storage);sessionStorage.removeItem(storage+".request");
         sessionStorage.removeItem(draftKey.current);
         sessionStorage.removeItem(`${draftKey.current}.task`);
@@ -685,6 +689,7 @@ export function AssistantStudio({
       });
       if (!alive.current || request !== sequence.current) return;
       pendingRequest.current = null;
+      liveResultJobs.current.add(accepted.job_id);
       sessionStorage.removeItem(requestStorageKey);
       setText("");
       setCommand(null);
@@ -1053,7 +1058,7 @@ export function AssistantStudio({
                       </>
                     )
                   )}
-                  {message.role==="assistant"&&message.workflow_id&&<AgentWorkflowPanel id={message.workflow_id} canEdit={canEdit} draftOwner={draftOwner} onNavigate={(target,next)=>void agentNavigate(target,next)} onContext={next=>{if(message.workflow_id===latestWorkflowId&&next.project_id===context.project_id)setActiveWorkflowContext(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);}} onReply={(workflowId,review)=>{if(!conversation)return;
+                  {message.role==="assistant"&&message.workflow_id&&<AgentWorkflowPanel id={message.workflow_id} showResultHints={liveResultJobs.current.has(message.job_id)} canEdit={canEdit} draftOwner={draftOwner} onNavigate={(target,next)=>void agentNavigate(target,next)} onContext={next=>{if(message.workflow_id===latestWorkflowId&&next.project_id===context.project_id)setActiveWorkflowContext(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);}} onReply={(workflowId,review)=>{if(!conversation)return;
                     if(files.length){setError("Bỏ tệp đính kèm trước khi bổ sung xác nhận.");return;}
                     const binding={workflowId,id:review.id,nonce:review.nonce,fingerprint:review.fingerprint,question:review.question};
                     setReviewReply(binding);sessionStorage.setItem(replyKeyFor(context,conversation.id),JSON.stringify(binding));composerInput.current?.focus();}}/>}

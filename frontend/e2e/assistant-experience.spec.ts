@@ -117,6 +117,29 @@ test('[LOCAL] composer reflows an unchanged draft when the viewport narrows and 
   expect(errors).toEqual([]);
 });
 
+test('[LOCAL] multiline composer keeps readable typography and keyboard focus at all requested sizes', async ({ page }, info) => {
+  await page.goto('/#page=assistant');
+  const input = page.getByRole('textbox', { name: 'Câu hỏi cho AI Assistant', exact: true });
+  const draft = 'Kiểm tra tổng tiền theo nguồn và thời gian.\nGiữ cả mã đơn và bằng chứng để kiểm tra.';
+  await input.fill(draft);
+  for (const width of [390, 768, 1440, 1920]) {
+    await page.setViewportSize({ width, height: width >= 1440 ? 900 : 844 });
+    await input.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue(draft);
+    await expect(input).toHaveCSS('font-weight', '400');
+    await expect(input).toHaveCSS('font-size', '16px');
+    await expect(input).toHaveCSS('line-height', '24px');
+    await expect.poll(() => input.evaluate(el => el.clientHeight >= 48 && el.scrollHeight <= el.clientHeight)).toBe(true);
+    await expect(page.locator('.assistant-composer')).toHaveCSS('box-shadow', /inset/);
+    await expect(page.getByRole('button', { name: 'Gửi câu hỏi', exact: true })).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await page.screenshot({ path: info.outputPath(`composer-${width}.png`) });
+  }
+  await input.fill('');
+});
+
 for(const width of [390,768,1366,1440,1920]){
   test(`[MOCK CONTRACT] clarification is a conversation and keeps approval separate at ${width}px`,async({page})=>{
     const context={project_id:'clarification-project'};

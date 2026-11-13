@@ -20,7 +20,18 @@ import { statusText, type Dataset } from "./types";
 export function formatDecimal(value: string): string {
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
   if (!match) return value;
-  return `${match[1]}${match[2].replace(/\B(?=(\d{3})+(?!\d))/g, ".")}${match[3] ? `,${match[3]}` : ""}`;
+  const fraction = match[3] && /[1-9]/.test(match[3]) ? `,${match[3]}` : "";
+  return `${match[1]}${match[2].replace(/\B(?=(\d{3})+(?!\d))/g, ".")}${fraction}`;
+}
+
+/** Tên ngắn để đọc trong Chat. Tên tệp đầy đủ vẫn dùng cho bằng chứng. */
+export function sourceDisplayName(name: string): string {
+  const stem = name.replace(/\.(csv|xlsx|tsv)$/i, "");
+  const words = stem.replace(/[_-]+/g, " ").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  if (/^(?:\d+ )?(?:bao cao )?ban hang(?: \d+)?$/.test(words)) return "Bán hàng";
+  if (/^(?:\d+ )?(?:so )?thu ngan(?: \d+)?$/.test(words)) return "Thu ngân";
+  if (/^(?:\d+ )?(?:so )?ke toan(?: \d+)?$/.test(words)) return "Kế toán";
+  return stem;
 }
 
 export function Badge({ status, label }: { status: string; label?: string }) {

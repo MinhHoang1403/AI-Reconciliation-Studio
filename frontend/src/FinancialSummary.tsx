@@ -1,4 +1,4 @@
-import { formatDecimal } from "./components";
+import { formatDecimal, sourceDisplayName } from "./components";
 import { label, type Snapshot } from "./reconciliationTypes";
 
 const states: Record<string, string> = {
@@ -20,10 +20,10 @@ export function FinancialSummary({ snapshot, names, metricName = label }: {
     {snapshot.financial.map(measure => {
       const money = (value: string | null) => value === null ? "—" : `${formatDecimal(value)} ${measure.currency}`;
       return <section className="agent-facts" key={measure.metric_id}>
-        <p><strong>{metricName(measure.metric_id)}</strong> · {measure.currency} · {label(measure.amount_basis)}</p>
+        <p className="agent-answer-context">{metricName(measure.metric_id)} · {measure.currency} · {label(measure.amount_basis)}</p>
         <div className="table-scroll" tabIndex={0} aria-label="Giá trị theo trạng thái">
           <table>
-            <thead><tr><th scope="col">Trạng thái</th><th scope="col" className="numeric-cell">Nhóm</th><th scope="col" className="numeric-cell">{left}</th><th scope="col" className="numeric-cell">{right}</th></tr></thead>
+            <thead><tr><th scope="col">Trạng thái</th><th scope="col" className="numeric-cell">Nhóm</th><th scope="col" className="numeric-cell">{sourceDisplayName(left)}</th><th scope="col" className="numeric-cell">{sourceDisplayName(right)}</th></tr></thead>
             <tbody>{measure.populations.map(population => <tr key={population.state}>
               <th scope="row">{states[population.state]}</th><td className="numeric-cell">{number(population.groups)}</td>
               <td className="numeric-cell">{money(population.left_amount)}</td><td className="numeric-cell">{money(population.right_amount)}</td>
@@ -33,7 +33,7 @@ export function FinancialSummary({ snapshot, names, metricName = label }: {
               <td className="numeric-cell"><strong>{money(measure.right.amount)}</strong></td></tr></tfoot>
           </table>
         </div>
-        <p>Chênh lệch có dấu <strong>{money(measure.signed_variance)}</strong> · Tuyệt đối <strong>{money(measure.absolute_variance)}</strong></p>
+        <p>Chênh lệch tuyệt đối <strong>{money(measure.absolute_variance)}</strong> · Có dấu {money(measure.signed_variance)}</p>
         <details><summary>Chất lượng và phạm vi</summary>
           <p>Ngày {snapshot.period_start} đến trước {snapshot.period_end} · {snapshot.timezone}</p>
           {[measure.left, measure.right].map((side, index) => <p key={index}>

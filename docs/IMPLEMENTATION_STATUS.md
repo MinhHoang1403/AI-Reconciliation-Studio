@@ -8,6 +8,8 @@ Computer Use tái hiện hai lỗi trên ứng viên `48b3953`. Sau khi hỏi t�
 
 Tổng từ CSV/XLSX gốc được tính độc lập bằng `Decimal`. Ba nguồn sạch đều là 30.959.967.000 VND, 5.000 mã riêng mỗi nguồn. Bộ có lỗi có 4.989 dòng hợp lệ và 11 dòng lỗi mỗi nguồn. Tổng hợp lệ theo thứ tự Bán hàng, Thu ngân, Kế toán là 30.765.657.000, 30.768.000.000 và 30.758.520.000 VND. Bốn lượt đối soát TEST mới dùng hợp đồng đã duyệt, giữ nguyên các lượt lịch sử. Chat, Báo cáo và các tệp xuất đọc cùng snapshot. Cặp image `:rollback-financial-reporting` giữ khả năng đọc snapshot tài chính. Script `tools/rollback.ps1 -FinancialReporting` kiểm tương thích với dữ liệu hiện hành trước khi đổi image.
 
+Chat hiển thị số liệu trước, dùng tên nguồn ngắn và giữ tên tệp đầy đủ trong chi tiết. Định dạng tiền bỏ phần thập phân bằng 0, giữ nguyên chữ số của giá trị có phần lẻ. Nhắc giới hạn bằng chứng của kết quả vừa nhận mờ dần sau 5 giây, giữ vị trí đọc và có thể mở lại trong “Điều kiện và nguồn”. Trạng thái xác minh, giới hạn kỳ, lỗi chặn và yêu cầu xác nhận vẫn hiển thị. Ô nhập dùng font giao diện 16 px, độ đậm 400 và giãn dòng 1,5.
+
 ## Đối soát theo dữ liệu quan sát trong Chat — 13/11/2026
 
 Ở bản `1b4972e`, hai yêu cầu nguyên văn về cặp Bán hàng–Thu ngân và Thu ngân–Kế toán có đủ ba nguồn `READY` nhưng đều đi qua model. Bộ nhận diện cũ từ chối cả thứ tự “sau đó” lẫn các mệnh đề bổ sung về khóa, tiền và phạm vi, dẫn tới câu hỏi sai về kỳ. Tuyến quan sát phân tích riêng các phần này và kiểm từng cặp trên bản chuẩn hóa được ghim. Kỳ suy ra từ ngày nghiệp vụ của các dòng hợp lệ, với cận cuối loại trừ. Kỳ do người dùng nêu được giữ nguyên. Độ đầy đủ cả kỳ vẫn cần bằng chứng. Xem [hợp đồng dữ liệu](DATA_CONTRACTS.md).

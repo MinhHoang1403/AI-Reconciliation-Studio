@@ -4,7 +4,7 @@ import { BarChart } from "echarts/charts";
 import { AriaComponent, GridComponent, TooltipComponent } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 import { api } from "./api";
-import { Badge, DataTable, formatDecimal, Modal, Notice, Spinner } from "./components";
+import { Badge, DataTable, formatDecimal, Modal, Notice, sourceDisplayName, Spinner } from "./components";
 import { DataQualityPanel } from "./DataQualityPanel";
 import { FinancialSummary } from "./FinancialSummary";
 import { label } from "./reconciliationTypes";
@@ -16,12 +16,23 @@ echarts.use([BarChart, AriaComponent, GridComponent, TooltipComponent, SVGRender
 type SourceRef = {source_table_id:string;row:number;sheet:string};
 const transformLabels:Record<string,string>={cast_string_preserve:"Giữ nguyên văn bản và mã",parse_decimal:"Đọc số tiền theo định dạng đã duyệt",parse_date:"Đọc ngày hoặc thời điểm theo múi giờ đã duyệt",parse_calendar_date:"Giữ nguyên ngày lịch",parse_offset_timestamp:"Chuẩn hóa thời điểm có offset về UTC",trim_if_approved:"Bỏ khoảng trắng theo quy tắc đã duyệt",normalize_enum:"Chuẩn hóa trạng thái theo quy tắc đã duyệt",coalesce_with_rule:"Chọn giá trị theo quy tắc đã duyệt",add_fields:"Cộng trường theo quy tắc đã duyệt",subtract_fields:"Trừ trường theo quy tắc đã duyệt",aggregate_by:"Gom nhóm theo quy tắc đã duyệt"};
 const queryLabels:Record<string,string>={linkage_state:"Liên kết",comparison_state:"Kết quả so sánh",left_member_count:"Số dòng nguồn A",right_member_count:"Số dòng nguồn B",left_amount:"Số tiền nguồn A",right_amount:"Số tiền nguồn B",delta:"Chênh lệch có dấu",absolute_variance:"Chênh lệch tuyệt đối",tolerance:"Sai số cho phép",currency:"Tiền tệ",unit:"Đơn vị",type:"Loại ngoại lệ",state:"Xử lý ngoại lệ",notes:"Ghi chú"};
-const numericQueryFields = new Set(["left_member_count", "right_member_count", "left_amount", "right_amount", "delta", "absolute_variance", "tolerance"]);
-function QueryTable({ initial, workflowId, selection, title }: {
+const comparisonMoney = ["left_amount", "right_amount", "delta", "absolute_variance", "tolerance"];
+const countFields = ["left_member_count", "right_member_count"];
+const localDay = (value: string) => value.split("-").reverse().join("/");
+const localCount = (value: number) => value.toLocaleString("vi-VN");
+function observedDays(first: string, last: string): string {
+    if (first === last) return localDay(first);
+    if (first.slice(0, 7) === last.slice(0, 7)) return `${first.slice(8)}–${localDay(last)}`;
+    return `${localDay(first)} đến ${localDay(last)}`;
+}
+const coverageNote = "Dữ liệu đã được kiểm tra trong phạm vi quan sát. Độ đầy đủ của kỳ chưa được xác nhận.";
+const evidenceNote = "Bằng chứng hiển thị có giới hạn. Bạn có thể xem dòng nguồn trong chi tiết.";
+function QueryTable({ initial, workflowId, selection, title, showResultHints }: {
     initial: QueryResult;
     workflowId?: string;
     selection?: Query | null;
     title?: string;
+    showResultHints: boolean;
 }) {
     const [data, setData] = useState(initial);
     const [busy, setBusy] = useState(false);
@@ -96,34 +107,48 @@ function QueryTable({ initial, workflowId, selection, title }: {
     const countOnly = !data.query.group_by?.length && data.query.aggregations?.length === 1 && ["count", "count_distinct"].includes(aggregate.op);
     const singleAmount = scopeEvidence?.measure && !data.query.group_by.length && data.query.aggregations.length === 1 && ["sum_decimal", "min", "max"].includes(aggregate.op);
     const amount = singleAmount ? data.rows[0]?.[data.fields[0]] : undefined;
+    const measure = scopeEvidence?.measure;
+    const metric = measure && (label(measure.semantic_metric) === measure.semantic_metric ? measure.name : label(measure.semantic_metric));
+    const sourceName = scopeEvidence?.source_name || title;
+    const sourceTitle = sourceName && sourceDisplayName(sourceName);
+    const moneyFields = new Set([
+        ...Object.keys(data.measure_units ?? {}),
+        ...(measure ? [measure.field_id] : []),
+        ...(data.query.source_kind === "VERIFIED_RUN" ? comparisonMoney : []),
+    ]);
+    const numericQueryFields = new Set([...countFields, ...moneyFields]);
+    const showEvidenceHint = showResultHints && !initial.evidence_complete;
     const countUnit = aggregate?.op === "count_distinct" ? "mã đơn duy nhất" : data.query.source_kind === "VERIFIED_RUN" ? "nhóm giao dịch" : "dòng dữ liệu";
     const count = countOnly && data.rows[0] ? data.rows[0][data.fields[0]] : null;
     const columns: ColumnDef<Record<string, unknown>>[] = [{id:'position',header:'Vị trí trong trang',cell:info=>info.row.index+1},...(groupKey?[{id:'business_key',accessorKey:'business_key',header:'Khóa giao dịch'}]:[]),...visibleFields.map<ColumnDef<Record<string, unknown>>>(field => ({ id: field, accessorKey: field,
         header: () => <button className="text-button" disabled={busy} onClick={() => void page(0, [{ field_id: field, descending: !data.query.sort.find(s => s.field_id === field)?.descending }])}>{data.field_labels?.[field] || (countOnly ? `Số ${countUnit}` : queryLabels[field] || field)} ↕</button>,
         cell: info => info.getValue() == null ? "—" :
           ['VERIFIED_RUN','EXCEPTIONS'].includes(data.query.source_kind)&&['linkage_state','comparison_state','state','type'].includes(field)?label(String(info.getValue())):
-          (scopeEvidence?.measure && (field === scopeEvidence.measure.field_id || data.measure_units?.[field] === scopeEvidence.measure.unit)) ? formatDecimal(String(info.getValue())) : String(info.getValue()) })), {
+          moneyFields.has(field) ? formatDecimal(String(info.getValue())) : String(info.getValue()) })), {
         id: "evidence", header: () => <span>Nguồn</span>, cell: info => <button className="text-button" disabled={busy || !Array.isArray(info.row.original.source_provenance)} onClick={event => { evidenceTrigger.current = event.currentTarget; void evidence(info.row.original); }}>Xem dòng gốc</button>,
     }];
     const pagination = <div className="agent-pagination"><button className="button secondary" disabled={busy || !data.offset} onClick={() => void page(Math.max(0, data.offset - data.limit))}>Trước</button>
       <span>Trang {Math.floor(data.offset / data.limit) + 1} · {data.rows.length} dòng trong trang</span>
       <button className="button secondary" disabled={busy || !data.truncated} onClick={() => void page(data.offset + data.limit)}>Tiếp</button>{busy && <Spinner />}</div>;
     return <section className="agent-table" aria-label="Kết quả truy vấn">
-    {title && <h4>{title}</h4>}
-    {singleAmount && <p><strong>{aggregate.op === "sum_decimal" ? "Tổng" : aggregate.op === "min" ? "Thấp nhất" : "Cao nhất"} {label(scopeEvidence.measure!.semantic_metric)} · {scopeEvidence.source_name}</strong><br />
-      {amount == null ? "Chưa có số tiền phù hợp." : <strong>{formatDecimal(String(amount))} {scopeEvidence.measure!.currency}</strong>}</p>}
-    {scopeEvidence && <p className="muted">{scopeEvidence.counted_rows.toLocaleString("vi-VN")} dòng được tính · {scopeEvidence.invalid_rows.toLocaleString("vi-VN")} dòng lỗi · {scopeEvidence.excluded_rows.toLocaleString("vi-VN")} dòng đã loại theo quyết định.
-      {scopeEvidence.observed_first && scopeEvidence.observed_last && ` Ngày quan sát ${scopeEvidence.observed_first} đến ${scopeEvidence.observed_last}.`} Độ đầy đủ của kỳ chưa được xác nhận.</p>}
-    {countOnly && count != null && <p>Kết quả đếm: <strong>{typeof count === "number" ? count.toLocaleString("vi-VN") : String(count)} {countUnit}</strong> phù hợp với điều kiện bạn chọn.</p>}
+    {singleAmount && metric && measure && (amount == null
+      ? <p className="agent-answer-lead">Chưa có số tiền phù hợp cho chỉ tiêu {metric} của {sourceTitle}.</p>
+      : <p className="agent-answer-lead">{aggregate.op === "sum_decimal" ? "Tổng" : aggregate.op === "min" ? "Mức thấp nhất của" : "Mức cao nhất của"} {metric.charAt(0).toLocaleLowerCase("vi-VN") + metric.slice(1)} của {sourceTitle} là <strong>{formatDecimal(String(amount))} {measure.currency}</strong>.</p>)}
+    {!singleAmount && title && <h4>{scopeEvidence ? sourceTitle : title}</h4>}
+    {countOnly && count != null && <p className="agent-answer-lead">Có <strong>{typeof count === "number" ? localCount(count) : String(count)} {countUnit}</strong>{sourceTitle ? ` trong ${sourceTitle}` : ""} phù hợp với điều kiện đã chọn.</p>}
     {!countOnly && !singleAmount && <p><strong>{data.total_count.toLocaleString("vi-VN")} {grouped ? "nhóm kết quả" : "dòng dữ liệu"}</strong>{data.total_count === 0 ? ". Chưa tìm thấy dữ liệu phù hợp với điều kiện bạn chọn." : ". Bạn có thể xem dữ liệu và mở từng dòng gốc bên dưới."}</p>}
+    {scopeEvidence && <p className="agent-answer-context">{localCount(scopeEvidence.counted_rows)} dòng được tính{scopeEvidence.observed_first && scopeEvidence.observed_last ? ` trong phạm vi ${observedDays(scopeEvidence.observed_first, scopeEvidence.observed_last)}` : ""}. {scopeEvidence.invalid_rows === 0 && scopeEvidence.excluded_rows === 0
+      ? "Không có dòng lỗi hoặc dòng bị loại theo quyết định."
+      : `Nguồn có ${localCount(scopeEvidence.invalid_rows)} dòng lỗi và ${localCount(scopeEvidence.excluded_rows)} dòng bị loại theo quyết định.`}</p>}
     {!countOnly && !singleAmount && data.rows.length > 0 && <p className="muted">Đang xem {previewRows.length} dòng trong trang {Math.floor(data.offset / data.limit) + 1}{data.rows.length > 10 ? `; trang này có ${data.rows.length} dòng.` : "."}</p>}
     {data.query.source_kind === "RAW_PREVIEW" && <p>Đây là dữ liệu gốc đã đọc từ tệp. Ý nghĩa các cột chưa được xác nhận; dữ liệu chưa được chuẩn hóa.</p>}
     {data.query.source_kind === "PREPARED" && <p>Đây là bản tự chuẩn bị để xem và tìm kiếm. Cần xác nhận ý nghĩa nghiệp vụ trước khi dùng để đối soát.</p>}
     {data.query.source_kind === "PREPARED_FINDINGS" && <p>Chỉ gồm dòng có cảnh báo ngày trong bản tự chuẩn bị. Bảng giữ nguyên giá trị nguồn và vị trí dòng.</p>}
     {data.query.source_kind === "PREPARED_ISSUES" && <p>Các dòng có cảnh báo định dạng, kèm giá trị gốc.</p>}
-    {data.verification_status === "PARTIAL_VERIFIED" && <Notice tone="warning">Kết quả chỉ được kiểm chứng một phần. Hãy kiểm tra các dữ liệu chưa đủ điều kiện trước khi kết luận.</Notice>}
+    {data.verification_status === "PARTIAL_VERIFIED" && <p className="agent-answer-note">Kết quả được kiểm chứng một phần. Xem phạm vi trước khi kết luận.</p>}
+    {scopeEvidence && <p className="agent-answer-note">Độ đầy đủ của kỳ chưa được xác nhận.</p>}
     {!countOnly && data.warnings.map(w => <p className="muted" key={w}>{w}</p>)}
-    {!data.evidence_complete && <Notice tone="warning">Chỉ hiển thị một phần bằng chứng; thông tin nguồn đầy đủ vẫn được lưu.</Notice>}
+    {showEvidenceHint && <p className="agent-answer-note agent-result-hint" role="status">{evidenceNote}</p>}
     {error && <Notice tone="error">{error}</Notice>}
     {!singleAmount && (!countOnly || count == null) && <>
       <DataTable rows={previewRows} columns={columns} numericColumns={numericQueryFields}/>
@@ -135,7 +160,15 @@ function QueryTable({ initial, workflowId, selection, title }: {
       {error && <Notice tone="error">{error}</Notice>}
       <DataTable rows={data.rows} columns={columns} numericColumns={numericQueryFields}/>{pagination}
     </Modal>
-    <details><summary>Điều kiện và nguồn</summary><p>{data.query.filters.map(f => `${f.field_id} ${f.op} ${JSON.stringify(f.value)}`).join("; ") || "Toàn bộ nguồn"}</p><p>{data.input_count.toLocaleString("vi-VN")} dòng được dùng trước khi phân nhóm và phân trang. <Badge status={data.verification_status}/></p>{countOnly && data.warnings.map(w => <p key={w}>{w}</p>)}<small>{data.source_refs.join(" · ")}</small></details>
+    <details className="agent-answer-details"><summary>Điều kiện và nguồn</summary>
+      {scopeEvidence && <><p>Tệp nguồn <span className="agent-source-file">{scopeEvidence.source_name}</span></p>
+        <p>{localCount(scopeEvidence.source_rows)} dòng gốc. {scopeEvidence.grain}.</p></>}
+      <p>{data.query.filters.map(f => `${f.field_id} ${f.op} ${JSON.stringify(f.value)}`).join("; ") || "Toàn bộ nguồn"}</p>
+      <p>{localCount(data.input_count)} dòng được dùng trước khi phân nhóm và phân trang. <Badge status={data.verification_status}/></p>
+      {scopeEvidence && <p className="agent-answer-note">{coverageNote}</p>}
+      {!data.evidence_complete && <p className="agent-answer-note">{evidenceNote}</p>}
+      {countOnly && data.warnings.map(w => <p key={w}>{w}</p>)}<small>{data.source_refs.join(" · ")}</small>
+    </details>
     {scopeEvidence && <details><summary>Xem truy vấn</summary><p>SQL do Backend tạo. Các giá trị lọc được truyền riêng.</p><pre className="table-scroll">{scopeEvidence.sql}</pre></details>}
     <Modal title="Dòng dữ liệu nguồn" returnFocus={evidenceTrigger} open={source !== null} onOpenChange={open => {if(!open){scope.current++;setBusy(false);setSource(null);}}}>
       <p>{sourceRefs.length} dòng nguồn trong bằng chứng hiển thị. Chọn từng dòng để xem chính xác.</p>
@@ -206,9 +239,10 @@ function DatasetResult({ block, openSource, onQualityPublished, projectId }: {
     return <section className="agent-dataset">
       {qualityVisible
         ? qualityPanel
-        : <p><strong>{block.name}</strong> · Đã chuẩn hóa {block.rows.toLocaleString("vi-VN")} dòng.</p>}
+        : <p className="agent-answer-lead">Đã chuẩn hóa <strong>{localCount(block.rows)} dòng</strong> từ {sourceDisplayName(block.name)}.</p>}
       <details onToggle={event=>{ if (event.currentTarget.open) setDetailsOpened(true); }}>
         <summary>Chi tiết chuẩn hóa{ready && !qualityVisible ? " và quyết định về dữ liệu" : ""}</summary>
+        {ready && !qualityVisible && <p className="agent-source-file">{block.name}</p>}
         <p>{Array.from(new Set(block.transformations)).map(t=>transformLabels[t]||t).join(" · ")}</p>
         {!qualityVisible && detailsOpened && qualityPanel}
       </details>
@@ -236,8 +270,8 @@ function SourceStatus({block}: {block: Extract<AgentBlock, {type: "source_status
       <td className="numeric-cell" key={field}>{row[field]?.toLocaleString("vi-VN") ?? "—"}</td>
     ));
     return <section className="agent-source-status" aria-label="Thống kê chuẩn bị dữ liệu">
-      <p><strong>{complete ? `Cả ${block.source_count} nguồn đã chuẩn bị xong.` :
-        `${block.ready_count}/${block.source_count} nguồn đã chuẩn bị xong.`}</strong>
+      <p className="agent-answer-lead"><strong>{complete ? `Cả ${block.source_count} nguồn` :
+        `${block.ready_count}/${block.source_count} nguồn`}</strong> đã chuẩn bị xong.
         {noErrors && " Không phát hiện dòng lỗi."}</p>
       <div className="table-scroll" tabIndex={0} aria-label="Số dòng theo nguồn">
         <table>
@@ -262,7 +296,6 @@ function ObservedResult({block, open}: {block: Extract<AgentBlock, {type: "facts
     const scope = block.observation;
     if (!run || !snapshot || !scope) return null;
     const count = (value: number | undefined) => value?.toLocaleString("vi-VN") ?? "—";
-    const localDay = (value: string) => value.split("-").reverse().join("/");
     const money = snapshot.monetary[0];
     const stats = [
       ["Nhóm khớp", count(snapshot.comparison_counts.EQUAL ?? 0)],
@@ -273,7 +306,7 @@ function ObservedResult({block, open}: {block: Extract<AgentBlock, {type: "facts
       ["Chênh lệch tuyệt đối", money ? `${formatDecimal(money.absolute_variance)} ${money.currency}` : "—"],
     ];
     return <section className="agent-facts" aria-label={scope.pair}>
-      <header><h4>{scope.pair}</h4><p className="muted">Đã xác minh một phần</p></header>
+      <header><h4>{scope.pair}</h4><p className="agent-answer-note">Đã xác minh một phần trên dữ liệu quan sát được.</p></header>
       <div className="table-scroll" tabIndex={0} aria-label="Số liệu đối chiếu">
         <table><tbody>{stats.map(([title, value]) => <tr key={title}>
           <th scope="row">{title}</th><td className="numeric-cell">{value}</td>
@@ -294,7 +327,7 @@ function ObservedResult({block, open}: {block: Extract<AgentBlock, {type: "facts
     </section>;
 }
 
-export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, querySelection, onQualityPublished, compactPreviews, mappingReview }: {
+export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, querySelection, onQualityPublished, compactPreviews, mappingReview, showResultHints }: {
     blocks: AgentBlock[];
     context: AssistantContext;
     onNavigate: (target: Suggestion, context: AssistantContext) => void;
@@ -303,6 +336,7 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
     onQualityPublished?: (id: string) => void;
     compactPreviews?: boolean;
     mappingReview?: boolean;
+    showResultHints: boolean;
 }) {
     const sources = blocks.filter(block=>block.type === "dataset_summary");
     const hasFacts = blocks.some(block=>block.type === "facts");
@@ -312,11 +346,11 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
     const mappingProgress = mappingReview ? blocks.filter(block => block.type === "progress") : [];
     const showPreview = (block: AgentBlock) => compactPreviews && block.type === "table" && block.result.query.source_kind === "RAW_PREVIEW";
     const previews = blocks.flatMap((block, i) => showPreview(block) && block.type === "table"
-      ? [<QueryTable key={i} initial={block.result} title={block.title} workflowId={workflowId} selection={querySelection}/>] : []);
+      ? [<QueryTable key={i} initial={block.result} title={block.title} workflowId={workflowId} selection={querySelection} showResultHints={false}/>] : []);
     return <div className="agent-results">
-        {observedPairs > 0 && <p className="agent-conclusion"><strong>
-          Đã đối soát {observedPairs === 1 ? "một cặp" : "hai cặp"} trên dữ liệu quan sát được.
-        </strong></p>}
+        {observedPairs > 0 && <p className="agent-answer-lead">
+          Đã đối soát <strong>{observedPairs === 1 ? "một cặp" : "hai cặp"}</strong> trên dữ liệu quan sát được.
+        </p>}
         {sources.length > 1 && <p className="agent-conclusion">
           {readySources > 0 && <strong>{readySources} nguồn sẵn sàng lập quy tắc đối soát.</strong>}
           {remainingSources > 0 && <>{readySources > 0 && " "}{remainingSources} nguồn còn cần xem lại.</>}
@@ -326,7 +360,7 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
             if (block.type === "progress")
                 return mappingReview ? null : <p key={i}>{block.text}</p>;
             if (block.type === "table")
-                return <QueryTable key={i} initial={block.result} title={block.title} workflowId={workflowId} selection={querySelection}/>;
+                return <QueryTable key={i} initial={block.result} title={block.title} workflowId={workflowId} selection={querySelection} showResultHints={showResultHints}/>;
             if (block.type === "source_status")
                 return <SourceStatus key={i} block={block}/>;
             if (block.type === "source_comparison") {
@@ -378,10 +412,10 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
                   <h4>{observed ? "Đối chiếu dữ liệu quan sát được" : block.result.run?.status === "PARTIAL_VERIFIED" ? "Kết quả đã xác minh một phần" : "Kết quả đã xác minh"}</h4>
                   {pairNames?.length === 2 && pairNames.every(Boolean) && <p className="muted">{pairNames.join(" ↔ ")}</p>}
                 </header>
-                <p>{(snapshot.comparison_counts?.EQUAL ?? 0).toLocaleString("vi-VN")} nhóm khớp chính xác{", "}
+                <p className="agent-answer-lead"><strong>{localCount(snapshot.comparison_counts?.EQUAL ?? 0)} nhóm khớp chính xác</strong>{", "}
                   {(snapshot.comparison_counts?.AMOUNT_MISMATCH ?? 0).toLocaleString("vi-VN")} nhóm lệch tiền và {" "}
                   {(snapshot.linkage_counts?.[observed ? "PENDING" : "UNMATCHED"] ?? 0).toLocaleString("vi-VN")} nhóm {observed ? "chưa thấy đối ứng trong dữ liệu" : "thiếu đối ứng"}.</p>
-                {observed && <p>Đã kiểm chứng trên phần đủ điều kiện. Độ đầy đủ của kỳ còn chưa xác định.</p>}
+                {observed && <p className="agent-answer-note">Đã kiểm chứng trên phần đủ điều kiện. Độ đầy đủ của kỳ chưa được xác nhận.</p>}
                 {!!snapshot.comparison_counts?.WITHIN_TOLERANCE && <p>{snapshot.comparison_counts.WITHIN_TOLERANCE} nhóm trong sai số đã duyệt.</p>}
                 {otherGroups.length > 0 && <p>{otherGroups.join(" · ")}</p>}
                 {snapshot.monetary.map(m => <p key={m.metric_id}>
