@@ -2,6 +2,121 @@ import { expect } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import { test } from "./project-selection";
 
+test("processing report reads current sources through the real website", async ({ page }, info) => {
+  const fixture = process.env.STUDIO_PROCESSING_REPORT_FIXTURE;
+  test.skip(!fixture, "Requires the isolated clean and issue fixture projects");
+  test.setTimeout(120000);
+  const { project, issueProject, workspace, names, pinned } = JSON.parse(await readFile(fixture!, "utf8")) as {
+    project: string; issueProject: string; workspace: string; names: string[]; pinned: string;
+  };
+  const origin = new URL(info.project.use.baseURL!).origin;
+  await page.goto("/");
+  const session = await (await page.request.get("/api/session")).json();
+  if (session.workspace_id !== workspace) {
+    const switched = await page.request.post("/api/workspaces/current", {
+      data: { id: workspace }, headers: { Origin: origin },
+    });
+    expect(switched.ok()).toBe(true);
+  }
+  await page.goto(`/#page=assistant&project=${project}&dataset_id=${pinned}&from=data`);
+  const composer = page.getByRole("textbox", { name: "Câu hỏi cho AI Assistant", exact: true });
+  const send = page.getByRole("button", { name: "Gửi câu hỏi", exact: true });
+  const work = page.getByRole("region", { name: "Công việc của AI Assistant", exact: true });
+  const settings = async () => (await (await page.request.get("/api/settings")).json()).gemini_requests_used;
+  const before = await settings();
+  const ask = async (question: string) => {
+    await composer.fill(question);
+    const response = page.waitForResponse(r => r.url().endsWith("/api/assistant/messages") && r.request().method() === "POST");
+    await send.click();
+    const accepted = await response;
+    expect(accepted.ok()).toBe(true);
+    const { job_id } = await accepted.json();
+    let workflowId = "";
+    await expect.poll(async () => {
+      const job = await (await page.request.get(`/api/jobs/${job_id}`)).json();
+      workflowId = job.result?.workflow_id || "";
+      return job.status;
+    }).toBe("SUCCEEDED");
+    await expect.poll(async () =>
+      (await (await page.request.get(`/api/agent/workflows/${workflowId}`)).json()).state,
+    ).toBe("COMPLETED");
+    const workflow = await (await page.request.get(`/api/agent/workflows/${workflowId}`)).json();
+    expect(workflow.detail.model_calls).toBe(0);
+    expect(workflow.detail.reviews).toEqual([]);
+    return { workflow, latest: work.last() };
+  };
+  const combined = "Ba nguồn trong dự án này đã tự chuẩn bị xong chưa? Mỗi nguồn có bao nhiêu dòng gốc, hợp lệ và lỗi?";
+  for (const question of [
+    combined,
+    "Ba nguồn trong dự án này đã tự chuẩn bị xong chưa?",
+    "Mỗi nguồn có bao nhiêu dòng gốc, hợp lệ và lỗi?",
+  ]) {
+    const { workflow, latest } = await ask(question);
+    expect(workflow.detail.blocks[0].totals).toMatchObject({
+      original_rows: 15000, valid_rows: 15000, invalid_rows: 0,
+    });
+    const report = latest.getByRole("region", { name: "Thống kê chuẩn bị dữ liệu", exact: true });
+    await expect(report.getByRole("row", { name: /Tổng 15\.000 15\.000 0/ })).toBeVisible();
+    for (const name of names) await expect(report.getByRole("rowheader", { name, exact: true })).toBeVisible();
+  }
+  const inventory = await ask("Liệt kê tất cả nguồn dữ liệu trong dự án này.");
+  await expect(inventory.latest).toContainText("Dự án có 3 nguồn dữ liệu");
+  for (const [question, index, kind] of [
+    ["Cho mình xem 10 dòng dữ liệu gốc của Bán hàng.", 0, "RAW_PREVIEW"],
+    ["Cho mình xem 10 dòng dữ liệu sau chuẩn hóa của Thu ngân.", 1, "CANONICAL"],
+  ] as const) {
+    const { workflow, latest } = await ask(question);
+    const tables = workflow.detail.blocks.filter((b: {type: string}) => b.type === "table");
+    expect(tables).toHaveLength(1);
+    expect(tables[0].title).toContain(names[index]);
+    expect(tables[0].result.source_kind).toBe(kind);
+    expect(tables[0].result.rows).toHaveLength(10);
+    await expect(latest.getByRole("region", { name: "Kết quả truy vấn" })).toBeVisible();
+  }
+  const compare = await ask("Hãy kiểm tra dòng 805 của Bán hàng trước và sau chuẩn hóa khác nhau thế nào?");
+  expect(compare.workflow.detail.blocks[0]).toMatchObject({
+    type: "source_comparison", name: names[0], row: 805, scope: "CANONICAL",
+  });
+  const reports = page.getByRole("region", { name: "Thống kê chuẩn bị dữ liệu", exact: true });
+  await expect(reports).toHaveCount(3);
+  await reports.first().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("processing-report.png") });
+  await page.reload();
+  await expect(page.getByText(combined, { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Thống kê chuẩn bị dữ liệu", exact: true })).toHaveCount(3);
+  await expect(page.getByText("Cần bạn bổ sung", { exact: true })).toHaveCount(0);
+
+  await page.goto("/");
+  await page.goto(`/#page=assistant&project=${issueProject}`);
+  const bad = await ask(combined);
+  expect(bad.workflow.detail.blocks[0].totals).toMatchObject({
+    original_rows: 15000, valid_rows: 14967, invalid_rows: 33, excluded_rows: 0,
+  });
+  await ask("Mỗi nguồn có những lỗi gì?");
+  const errors = await ask("Cho xem 10 dòng lỗi của từng nguồn.");
+  expect(errors.workflow.detail.blocks).toHaveLength(3);
+  expect(errors.workflow.detail.blocks.every((b: {show_issue_rows?: boolean}) => b.show_issue_rows)).toBe(true);
+  const invalid = await ask("Dòng 805 của Bán hàng trước và sau chuẩn hóa khác nhau thế nào?");
+  expect(invalid.workflow.detail.blocks[0].fields).toEqual(expect.arrayContaining([
+    expect.objectContaining({ original: "khong_ro", processed: null }),
+  ]));
+  const count = await ask("Có bao nhiêu dòng bị lỗi số tiền và ngày?");
+  expect(count.workflow.detail.blocks.map((b: {text: string}) => b.text)).toEqual(
+    expect.arrayContaining(names.map(name =>
+      expect.stringMatching(new RegExp(`${name}.*7 dòng có lỗi số tiền hoặc ngày`)),
+    )),
+  );
+  const foreign = await ask("Những dòng USD đang được xử lý thế nào?");
+  expect(foreign.workflow.detail.blocks.every((b: {text: string}) => b.text.includes("2 dòng USD"))).toBe(true);
+  const match = await ask("Đối soát Bán hàng với Thu ngân rồi Thu ngân với Kế toán trên phần dữ liệu đủ điều kiện.");
+  const results = match.workflow.detail.blocks.filter((b: {type: string}) => b.type === "facts");
+  expect(results.map((b: {result: {run: {status: string}}}) => b.result.run.status))
+    .toEqual(["PARTIAL_VERIFIED", "PARTIAL_VERIFIED"]);
+  expect(results.map((b: {result: {snapshot: {monetary: {signed_variance: string}[]}}}) =>
+    b.result.snapshot.monetary[0].signed_variance)).toEqual(["-60000.00", "-144000.00"]);
+  expect(await settings()).toBe(before);
+});
+
 test("[LIVE] confirm only missing facts and prepare two pairs without executing", async ({ page }) => {
   const receipt = process.env.STUDIO_SOURCE_SCOPE_RECEIPT;
   test.skip(!receipt, "Requires a disposable TEST project with three approved canonical sources");

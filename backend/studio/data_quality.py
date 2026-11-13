@@ -330,6 +330,34 @@ def read_issues(
     }
 
 
+def count_processing_issues(
+    db: Session, actor: Actor, table_id: str, canonical_id: str, currency: str | None
+) -> tuple[int, list[int]]:
+    """Count distinct physical rows in the current error artifact, within one revision."""
+    table = get_scoped(db, TableRow, table_id, actor)
+    canonical, _, mapping, errors = _context(db, actor, table, canonical_id)
+    if not _current(table, canonical):
+        raise DomainError("STALE_CONTEXT", "Bản chuẩn hóa đã thay đổi.", 409)
+    if currency:
+        matches = errors.filter(
+            (pl.col("code") == "CURRENCY_MISMATCH") & (pl.col("raw_value") == currency)
+        )
+    else:
+        schema = get_scoped(db, SchemaRow, mapping.schema_id, actor)
+        fields = {f["id"] for f in schema.definition["fields"] if f["data_type"] == "decimal"}
+        matches = errors.filter(
+            pl.col("code").is_in(["INVALID_DATE", "DATE_OFFSET_MISMATCH"])
+            | (
+                pl.col("field").is_in(sorted(fields))
+                & pl.col("code").is_in(
+                    ["INVALID_DECIMAL", "DECIMAL_PRECISION_EXCEEDED", "REQUIRED_NULL"]
+                )
+            )
+        )
+    rows = matches.select("source_row").unique().sort("source_row").collect()["source_row"]
+    return len(rows), rows.head(10).to_list()
+
+
 def record_decision(
     db: Session,
     actor: Actor,

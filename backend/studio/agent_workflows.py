@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import re
 import secrets
 from datetime import date, timedelta
 from typing import Any, get_args
@@ -24,9 +23,14 @@ from studio.agent_tools import (
     RunAction,
     execute_tool,
 )
-from studio.assistant import deterministic_answer, plain_question
+from studio.assistant import deterministic_answer
 from studio.assistant_api import own_conversation
-from studio.assistant_tools import agent_catalogue, build_fact_set
+from studio.assistant_tools import (
+    agent_catalogue,
+    build_fact_set,
+    scoped_context,
+    select_project_datasets,
+)
 from studio.config import settings
 from studio.contracts.agent import (
     AgentIntent,
@@ -40,6 +44,8 @@ from studio.contracts.agent import (
     NormalizationDraft,
     ProgressBlock,
     ReviewRequest,
+    SourceStatusBlock,
+    SourceStatusLine,
     TableBlock,
     WorkflowState,
     WorkflowStep,
@@ -88,30 +94,44 @@ def publish_source_inspection(
     request: tuple[str, int, str | None],
 ) -> None:
     """Publish actual scoped rows and issue summaries without changing source data."""
+    from studio.data_quality import count_processing_issues
     from studio.data_query import compare_source_row
+    from studio.dataset_status import requests_project_sources
     from studio.profiling import field_name_tokens
 
     mode, count, requested = request
     lookup = requested if mode == "lookup" else None
-    if lookup:
-        requested = None
-    context = AssistantContext(
-        project_id=context.project_id, dataset_id=None if requested else context.dataset_id
+    currency = requested if mode == "quality_currency" else None
+    project_scope = (
+        bool(not requested and requests_project_sources(row.goal))
+        or requested
+        in {
+            "moi nguon",
+            "tung nguon",
+            "tat ca nguon",
+            "tat ca cac nguon",
+        }
+        or currency is not None
     )
-    catalogue = agent_catalogue(db, actor, context, state.dataset_ids if not requested else [])
-    sources = catalogue.datasets
+    if lookup or currency or project_scope:
+        requested = None
+    scoped_context(db, actor, context)
+    if state.dataset_ids and (requested or project_scope):
+        select_project_datasets(db, actor, row.project_id, state.dataset_ids)
+    context = AssistantContext(
+        project_id=context.project_id,
+        dataset_id=None if requested or project_scope else context.dataset_id,
+    )
+    selected = [] if project_scope else state.dataset_ids
     if requested:
-
-        def words(value: str) -> str:
-            return " ".join(re.findall(r"[a-z0-9]+", plain_question(value)))
-
-        name = words(requested)
-        sources = [item for item in sources if name and f" {name} " in f" {words(item.name)} "]
-        if len(sources) != 1:
+        matching = select_project_datasets(db, actor, row.project_id, [], dataset_label=requested)
+        if len(matching) != 1:
             state.blocks.append(
                 ProgressBlock(text="Chưa xác định được đúng nguồn. Hãy nêu tên tệp cần xem.")
             )
             return
+        selected = [matching[0].id]
+    sources = agent_catalogue(db, actor, context, selected).datasets
     targets = [(item, table) for item in sources for table in item.tables]
     if mode == "compare":
         if len(targets) != 1:
@@ -136,7 +156,29 @@ def publish_source_inspection(
             get_scoped(db, CanonicalRow, table.canonical_id, actor) if table.canonical_id else None
         )
         mapping = get_scoped(db, MappingRow, canonical.mapping_id, actor) if canonical else None
-        if mode == "quality" and canonical and mapping:
+        if mode in {"quality_currency", "quality_amount_date"}:
+            if not canonical:
+                message = "Chưa có bản chuẩn hóa hiện hành để xác định số dòng."
+            else:
+                total, rows = count_processing_issues(
+                    db, actor, table.table_id, canonical.id, currency
+                )
+                locations = ", ".join(map(str, rows))
+                if currency:
+                    message = (
+                        f"{total} dòng {currency} ngoài phạm vi tiền tệ của bản chuẩn hóa."
+                        if total
+                        else f"Không có dòng {currency} bị đánh dấu ngoài phạm vi tiền tệ."
+                    )
+                    if total:
+                        message += " Giữ nguyên đơn vị gốc. Các dòng này đang chờ kiểm tra."
+                else:
+                    message = f"{total} dòng có lỗi số tiền hoặc ngày. Mỗi dòng chỉ tính một lần."
+                if locations:
+                    message += f" Dòng nguồn {locations}" + ("…" if total > len(rows) else ".")
+            state.blocks.append(ProgressBlock(text=f"{title} · {message}"))
+            continue
+        if mode in {"quality", "quality_rows"} and canonical and mapping:
             c = canonical.contract
             state.blocks.append(
                 DatasetBlock(
@@ -148,6 +190,7 @@ def publish_source_inspection(
                     invalid_rows=c["invalid_count"],
                     excluded_rows=c.get("excluded_source_rows", 0),
                     status=c["quality_status"],
+                    show_issue_rows=mode == "quality_rows",
                     transformations=[
                         d["transformation_candidate"]["op"]
                         for d in (mapping.decision or {})["decisions"]
@@ -185,7 +228,7 @@ def publish_source_inspection(
                     continue
                 filters = [QueryFilter(field_id=keys[0], op="eq", value=lookup)]
         elif table.prepared_artifact_id:
-            kind = "PREPARED_ISSUES" if mode == "quality" else "PREPARED"
+            kind = "PREPARED_ISSUES" if mode in {"quality", "quality_rows"} else "PREPARED"
             source_id = table.table_id
             state.blocks.append(
                 ProgressBlock(
@@ -972,11 +1015,13 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
         from studio.agent_intents import explicit_source_filenames
         from studio.dataset_status import (
             asks_source_inventory,
+            processing_request,
             read_processing_status,
             status_description,
         )
 
         try:
+            request = processing_request(row.goal)
             statuses = read_processing_status(
                 db,
                 actor,
@@ -984,6 +1029,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                 state.dataset_ids or intent.dataset_ids,
                 row.goal,
                 dataset_names=tuple(explicit_source_filenames(row.goal)) or None,
+                dataset_label=request.source_label if request else None,
             )
         except DomainError as exc:
             if exc.code != "INPUT_AMBIGUOUS":
@@ -1003,6 +1049,48 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
             state.blocks.append(
                 ProgressBlock(
                     text="Dự án chưa có tệp dữ liệu. Hãy dùng dấu cộng để tải CSV hoặc XLSX."
+                )
+            )
+        elif request and request.show_counts:
+            from collections import Counter
+
+            tables_per_source = Counter(s.dataset_id for s in statuses)
+            items = [
+                SourceStatusLine(
+                    name=s.name,
+                    sheet=s.sheet if tables_per_source[s.dataset_id] > 1 else None,
+                    status=s.state,
+                    original_rows=s.row_count,
+                    canonical_rows=s.canonical_rows,
+                    valid_rows=s.valid_rows,
+                    invalid_rows=s.invalid_rows,
+                    excluded_rows=s.excluded_rows,
+                )
+                for s in statuses
+            ]
+
+            def total(values: list[int | None]) -> int | None:
+                return sum(n for n in values if n is not None) if None not in values else None
+
+            state.blocks.append(
+                SourceStatusBlock(
+                    source_count=len(tables_per_source),
+                    ready_count=sum(
+                        all(s.state == "READY" for s in statuses if s.dataset_id == did)
+                        for did in tables_per_source
+                    ),
+                    items=items,
+                    totals=SourceStatusLine(
+                        name="Tổng",
+                        status="",
+                        original_rows=total([s.original_rows for s in items]),
+                        canonical_rows=total([s.canonical_rows for s in items]),
+                        valid_rows=total([s.valid_rows for s in items]),
+                        invalid_rows=total([s.invalid_rows for s in items]),
+                        excluded_rows=total([s.excluded_rows for s in items]),
+                    )
+                    if len(items) > 1
+                    else None,
                 )
             )
         else:

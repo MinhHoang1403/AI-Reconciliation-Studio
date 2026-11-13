@@ -8,7 +8,7 @@ import { Badge, DataTable, formatDecimal, Modal, Notice, Spinner } from "./compo
 import { DataQualityPanel } from "./DataQualityPanel";
 import { label } from "./reconciliationTypes";
 import {statusText} from "./types";
-import type { AgentBlock, Chart, Query, QueryResult } from "./agentTypes";
+import type { AgentBlock, Chart, Query, QueryResult, SourceStatusLine } from "./agentTypes";
 import type { AssistantContext, Suggestion } from "./assistantTypes";
 import type { ColumnDef } from "@tanstack/react-table";
 echarts.use([BarChart, AriaComponent, GridComponent, TooltipComponent, SVGRenderer]);
@@ -188,7 +188,7 @@ function DatasetResult({ block, openSource, onQualityPublished, projectId }: {
     const [detailsOpened, setDetailsOpened] = useState(false);
     const qualityVisible = keepQuality || !ready;
     const qualityPanel = <DataQualityPanel tableId={block.table_id} canonicalId={block.canonical_id} sourceName={block.name}
-      draft={block.quality_draft} followLatest={qualityVisible} chatProjectId={projectId} onPublished={id=>{
+      draft={block.quality_draft} followLatest={qualityVisible} chatProjectId={projectId} showIssueRows={block.show_issue_rows} onPublished={id=>{
         if (!ready) setKeepQuality(true);
         onQualityPublished?.(id);
       }}/>;
@@ -202,6 +202,46 @@ function DatasetResult({ block, openSource, onQualityPublished, projectId }: {
         {!qualityVisible && detailsOpened && qualityPanel}
       </details>
       <button type="button" className="text-button" onClick={openSource}>Kiểm tra dữ liệu trước/sau</button>
+    </section>;
+}
+
+function SourceStatus({block}: {block: Extract<AgentBlock, {type: "source_status"}>}) {
+    const fields = [
+      ["original_rows", "Dòng gốc"], ["valid_rows", "Hợp lệ"], ["invalid_rows", "Dòng lỗi"],
+      ["canonical_rows", "Đã chuẩn hóa"], ["excluded_rows", "Đã loại"],
+    ] as const;
+    const states: Record<string, string> = {
+      READY: "Đã chuẩn hóa", PARTIAL: "Có ngoại lệ", STALE: "Bản cũ hết hiệu lực",
+      EXPLORATION_ONLY: "Chỉ để xem", MAPPED: "Chờ chuẩn hóa", MAPPING_REVIEW: "Chờ xác nhận cột",
+      PARSE_FAILED: "Đọc tệp thất bại", FAILED: "Chuẩn hóa thất bại", PARSED: "Đã đọc tệp",
+    };
+    const showDetails = block.items.some(row =>
+      (row.excluded_rows ?? 0) > 0 || (row.canonical_rows !== null && row.canonical_rows !== row.original_rows)
+    );
+    const columns = fields.slice(0, showDetails ? fields.length : 3);
+    const complete = block.ready_count === block.source_count;
+    const noErrors = complete && (block.totals?.invalid_rows ?? block.items[0]?.invalid_rows) === 0;
+    const counts = (row: SourceStatusLine) => columns.map(([field]) => (
+      <td className="numeric-cell" key={field}>{row[field]?.toLocaleString("vi-VN") ?? "—"}</td>
+    ));
+    return <section className="agent-source-status" aria-label="Thống kê chuẩn bị dữ liệu">
+      <p><strong>{complete ? `Cả ${block.source_count} nguồn đã chuẩn bị xong.` :
+        `${block.ready_count}/${block.source_count} nguồn đã chuẩn bị xong.`}</strong>
+        {noErrors && " Không phát hiện dòng lỗi."}</p>
+      <div className="table-scroll" tabIndex={0} aria-label="Số dòng theo nguồn">
+        <table>
+          <thead><tr><th scope="col">Nguồn</th>{columns.map(([field, title]) =>
+            <th scope="col" className="numeric-cell" key={field}>{title}</th>
+          )}<th scope="col">Trạng thái</th></tr></thead>
+          <tbody>{block.items.map((row, index) => <tr key={index}>
+            <th scope="row">{row.name}{row.sheet && <small>{row.sheet}</small>}</th>
+            {counts(row)}
+            <td>{states[row.status] || statusText[row.status] || "Đang kiểm tra"}</td>
+          </tr>)}</tbody>
+          {block.totals && <tfoot><tr><th scope="row">Tổng</th>{counts(block.totals)}<td /></tr></tfoot>}
+        </table>
+      </div>
+      {block.items.some(row=>row.valid_rows === null) && <p className="muted">Dấu — là số liệu chưa xác định từ bản hiện hành.</p>}
     </section>;
 }
 
@@ -234,6 +274,8 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
                 return mappingReview ? null : <p key={i}>{block.text}</p>;
             if (block.type === "table")
                 return <QueryTable key={i} initial={block.result} title={block.title} workflowId={workflowId} selection={querySelection}/>;
+            if (block.type === "source_status")
+                return <SourceStatus key={i} block={block}/>;
             if (block.type === "source_comparison") {
                 const columns: ColumnDef<Record<string, unknown>>[] = [
                     {accessorKey:"field", header:"Trường"},

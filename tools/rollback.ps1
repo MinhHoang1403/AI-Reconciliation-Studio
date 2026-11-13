@@ -46,6 +46,9 @@ $taskSupportsQuality = $taskQualitySource -eq $taskQualityMigration
 $taskPreparationSource = git ls-tree --name-only $taskBackendRevision backend/studio/observed_reconciliation.py
 if ($LASTEXITCODE -ne 0) { throw 'Cannot verify automatic preparation compatibility from repository history.' }
 $taskSupportsPreparation = $taskPreparationSource -eq 'backend/studio/observed_reconciliation.py'
+$taskAgentContract = git show "${taskBackendRevision}:backend/studio/contracts/agent.py"
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify source status history compatibility.' }
+$taskSupportsSourceStatus = ($taskAgentContract -join "`n") -match 'class SourceStatusBlock\('
 # Chỉ các migrations additive đã review; không downgrade DB hoặc suy compatibility tổng quát.
 $taskGuard = @'
 import sys
@@ -77,6 +80,15 @@ with SessionFactory() as db:
     assert db.scalar(text("SELECT count(*) FROM jobs WHERE status IN ('QUEUED','RUNNING','RETRYABLE_FAILURE')")) == 0, 'Wait for active jobs'
     if revision in workflow_revisions:
         assert db.scalar(text("SELECT count(*) FROM agent_workflows WHERE state IN ('CREATED','RUNNING')")) == 0, 'Wait for workflows to settle'
+        if sys.argv[6] != 'True':
+            assert not db.scalar(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM agent_workflows
+                    WHERE jsonb_path_exists(
+                        detail, '$.blocks[*] ? (@.type == "source_status" || @.show_issue_rows == true)'
+                    )
+                )
+            """)), 'Source statistics history requires a compatible image'
         # Reviews remain untouched; resumption requires a compatible accepted source.
         print('Agent reviews are retained; resumption depends on the selected accepted source')
     if revision == 'add_data_quality_decisions' and sys.argv[5] != 'True':
@@ -92,7 +104,7 @@ with SessionFactory() as db:
     assert db.scalar(text("SELECT count(*) FROM workspaces WHERE id='demo'")) == 1
     print('PASS compatible additive schema and no active jobs', revision)
 '@
-$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle" "$taskSupportsRetainedReservations" "$taskSupportsQuality" "$taskSupportsPreparation"
+$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle" "$taskSupportsRetainedReservations" "$taskSupportsQuality" "$taskSupportsPreparation" "$taskSupportsSourceStatus"
 if ($LASTEXITCODE -ne 0) { throw 'Rollback compatibility gate failed.' }
 if ($VerifyOnly) {
     Write-Output "Verified rollback images for $taskBackendRevision against the current deployment."

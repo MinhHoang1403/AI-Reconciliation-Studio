@@ -26,10 +26,11 @@ const confirmAction: Record<Action, string> = {
 const pageSize = 10;
 const pending = new Set(["QUEUED", "RUNNING", "RETRYABLE_FAILURE"]);
 
-export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublished, draft, sourceName, chatProjectId }: {
+export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublished, draft, sourceName, chatProjectId, showIssueRows }: {
   tableId: string; canonicalId: string; followLatest?: boolean; onPublished?: (id: string) => void;
   sourceName?: string;
   chatProjectId?: string;
+  showIssueRows?: boolean;
   draft?: { source_row_id: string; field: string; code: string; value: string; reason: string; row_index: number } | null;
 }) {
   const [snapshotId, setSnapshotId] = useState(canonicalId);
@@ -43,7 +44,7 @@ export function DataQualityPanel({ tableId, canonicalId, followLatest, onPublish
   const [action, setAction] = useState<Action | "">("");
   const [reason, setReason] = useState("");
   const [value, setValue] = useState("");
-  const [showRows, setShowRows] = useState(!!draft || !chatProjectId);
+  const [showRows, setShowRows] = useState(!!draft || !chatProjectId || !!showIssueRows);
   const [raw, setRaw] = useState<{ row: number; values?: Record<string, unknown>; error?: string }>();
   const rawTrigger = useRef<HTMLButtonElement>(null);
   const nextRow = useRef(false);

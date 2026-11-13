@@ -978,6 +978,69 @@ def test_status_questions_are_read_only_variants(goal):
 @pytest.mark.parametrize(
     "goal",
     [
+        "Ba nguồn trong dự án này đã tự chuẩn bị xong chưa? "
+        "Mỗi nguồn có bao nhiêu dòng gốc, hợp lệ và lỗi?",
+        "Ba nguồn trong dự án này đã tự chuẩn bị xong chưa?",
+        "Mỗi nguồn có bao nhiêu dòng gốc, hợp lệ và lỗi?",
+        "Đếm số lượng dòng gốc và dòng không hợp lệ của từng nguồn.",
+    ],
+)
+def test_processing_report_understands_scope_and_populations(goal):
+    from studio.dataset_status import processing_request
+
+    result = processing_request(goal)
+    assert result and result.project_scope and result.show_counts
+
+
+def test_processing_report_uses_current_project_even_with_a_pinned_source(pg, monkeypatch):  # noqa: F811
+    from studio.agent_jobs import model_call
+    from studio.database import TraceRow
+
+    def forbidden(*args, **kwargs):
+        pytest.fail(f"Unexpected model call through {model_call.__name__}")
+
+    monkeypatch.setattr("studio.agent_jobs.model_call", forbidden)
+    client, factory, worker = pg
+    pid, _ = prepare_pair(pg)
+    with factory.begin() as db:
+        source = db.scalar(select(DatasetRow).where(DatasetRow.project_id == pid))
+        ctx = {"project_id": pid, "dataset_id": source.id}
+        missing = DatasetRow(
+            workspace_id="demo",
+            project_id=pid,
+            owner_id="test-owner",
+            name="Still uploading.csv",
+            sha256="0" * 64,
+            parse_signature="test",
+        )
+        db.add(missing)
+    cid = conversation(client, ctx)
+    goal = (
+        "Ba nguồn trong dự án này đã tự chuẩn bị xong chưa? "
+        "Mỗi nguồn có bao nhiêu dòng gốc, hợp lệ và lỗi?"
+    )
+    accepted = ask_agent(client, ctx, cid, key="processing-report", text=goal)
+    drain(factory, worker)
+    replay = ask_agent(client, ctx, cid, key="processing-report", text=goal)
+    assert replay["job_id"] == accepted["job_id"]
+    workflow = workflow_for(client, factory, accepted["job_id"])
+    assert workflow["state"] == "COMPLETED" and not workflow["detail"]["reviews"]
+    (block,) = workflow["detail"]["blocks"]
+    assert block["type"] == "source_status"
+    assert (block["source_count"], block["ready_count"]) == (3, 2)
+    assert {r["name"] for r in block["items"]} == {
+        "shipments.csv",
+        "delivery-confirmations.csv",
+        "Still uploading.csv",
+    }
+    assert all(block["totals"][f] is None for f in ("original_rows", "valid_rows", "invalid_rows"))
+    with factory() as db:
+        assert not db.scalar(select(func.count()).select_from(TraceRow))
+
+
+@pytest.mark.parametrize(
+    "goal",
+    [
         "Hãy chuẩn hóa hai file đã tải",
         "Chuẩn hóa dữ liệu giúp tôi",
         "Chạy đối soát hai nguồn đã chuẩn hóa",
@@ -986,6 +1049,8 @@ def test_status_questions_are_read_only_variants(goal):
         "Tổng số tiền đã thanh toán là bao nhiêu?",
         "Trong dữ liệu đã chuẩn hóa, xem mã đơn và ngày giao dịch.",
         "Liệt kê các dòng có mã đơn trống trong nguồn chưa chuẩn hóa.",
+        "Nguồn đã tự chuẩn bị xong chưa? Hãy xuất báo cáo.",
+        "Mỗi nguồn có bao nhiêu dòng hợp lệ có số tiền trên 1.000?",
     ],
 )
 def test_status_shortcut_never_hijacks_actions_or_analytics(goal):

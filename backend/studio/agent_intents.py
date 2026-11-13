@@ -1742,6 +1742,14 @@ def source_inspection_request(goal: str) -> tuple[str, int, str | None] | None:
     )
     if first_rows:
         return "raw", min(50, max(1, int(first_rows[1]))), first_rows[2]
+    compare = re.fullmatch(
+        r"(?:hay )?(?:kiem tra )?dong (\d{1,6})(?: (?:cua|trong) (.{1,180}?))? "
+        r"(?:(?:truoc va sau (?:chuan hoa|xu ly) khac(?: nhau)? (?:gi|the nao))|"
+        r"(?:khac (?:gi|the nao) truoc khi (?:chuan hoa|xu ly)))",
+        text,
+    )
+    if compare:
+        return "compare", max(1, int(compare[1])), compare[2]
     physical = re.fullmatch(
         r"(?:hay |cho (?:minh|toi) )?(?:kiem tra|xem) dong (\d{1,6})"
         r"(?: (?:cua|trong) (.{1,180}))?",
@@ -1749,22 +1757,34 @@ def source_inspection_request(goal: str) -> tuple[str, int, str | None] | None:
     )
     if physical:
         return "row", max(1, int(physical[1])), physical[2]
-    compare = re.fullmatch(
-        r"(?:hay |kiem tra )?dong (\d{1,6})(?: (?:cua|trong) (.{1,180}?))? "
-        r"(?:(?:truoc va sau (?:chuan hoa|xu ly) khac(?: nhau)? (?:gi|the nao))|"
-        r"(?:khac (?:gi|the nao) truoc khi (?:chuan hoa|xu ly)))",
+    issues = re.fullmatch(
+        r"(?:(?:cho(?: (?:minh|toi))?|hay) )?(?:xem|liet ke) (\d{1,2}) (?:dong|hang) (?:bi )?loi"
+        r"(?: (?:cua|trong) (.{1,180}))?",
         text,
     )
-    if compare:
-        return "compare", max(1, int(compare[1])), compare[2]
+    if issues:
+        return "quality_rows", min(50, max(1, int(issues[1]))), issues[2]
     quality = re.fullmatch(
-        r"(?:(?:ba|hai|cac|3|2) (?:nguon|tep|file)(?: cua (?:minh|toi))? )?"
-        r"(?:co (?:bao nhieu dong (?:bi loi|loi|khong hop le)|loi gi|van de gi)|"
+        r"(?:(?:moi|tung|ba|hai|cac|3|2) (?:nguon|tep|file)(?: cua (?:minh|toi))? )?"
+        r"(?:co (?:bao nhieu dong (?:bi loi|loi|khong hop le)|(?:nhung )?loi gi|van de gi)|"
         r"(?:xem|liet ke) (?:cac |nhung )?(?:dong loi|loi du lieu|ngoai le du lieu))"
         r"(?: (?:cua|trong) (.{1,180}))?",
         text,
     )
-    return ("quality", 10, quality[1]) if quality else None
+    if quality:
+        return "quality", 10, quality[1]
+    dimensions = re.fullmatch(
+        r"(?:co )?bao nhieu dong (?:bi )?loi (so tien va ngay|ngay va so tien)"
+        r"(?: (?:cua|trong) (.{1,180}))?",
+        text,
+    )
+    if dimensions:
+        return "quality_amount_date", 10, dimensions[2]
+    currency = re.fullmatch(
+        r"(?:(?:nhung|cac) )?dong ([a-z]{3}) (?:dang )?(?:duoc )?xu ly (?:the nao|ra sao)",
+        text,
+    )
+    return ("quality_currency", 10, currency[1].upper()) if currency else None
 
 
 def resolve_prepared_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:

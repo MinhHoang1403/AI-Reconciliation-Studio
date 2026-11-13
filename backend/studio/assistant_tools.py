@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import unicodedata
 from threading import Timer
 from typing import Any
@@ -70,6 +71,7 @@ def select_project_datasets(
     dataset_names: tuple[str, ...] | None = None,
     *,
     dataset_stem: str | None = None,
+    dataset_label: str | None = None,
 ) -> list[DatasetRow]:
     """Đọc nguồn hiện hành theo phạm vi đã xác thực, kể cả tệp chưa đọc."""
     query = select(DatasetRow).where(
@@ -79,21 +81,30 @@ def select_project_datasets(
     )
     if dataset_ids:
         query = query.where(DatasetRow.id.in_(dataset_ids))
-    elif dataset_names or dataset_stem:
+    elif dataset_names or dataset_stem or dataset_label:
         from studio.assistant import plain_question
 
         names = {unicodedata.normalize("NFC", name).casefold() for name in dataset_names or ()}
-        identities = []
+        identities: list[str] = []
+        exact: list[str] = []
+        label = " ".join(re.findall(r"[a-z0-9]+", plain_question(dataset_label or "")))
         lookup = query.with_only_columns(DatasetRow.id, DatasetRow.name)
         with db.execute(lookup.execution_options(yield_per=128)) as result:
             for dataset_id, name in result:
+                if label:
+                    words = " ".join(re.findall(r"[a-z0-9]+", plain_question(name)))
+                    if words == label and len(exact) < 6:
+                        exact.append(dataset_id)
+                    if len(identities) < 6 and f" {label} " in f" {words} ":
+                        identities.append(dataset_id)
+                    continue
                 if unicodedata.normalize("NFC", name).casefold() in names or (
                     dataset_stem and plain_question(name.rsplit(".", 1)[0]) == dataset_stem
                 ):
                     identities.append(dataset_id)
                     if len(identities) == 6:
                         break
-        query = query.where(DatasetRow.id.in_(identities))
+        query = query.where(DatasetRow.id.in_(exact or identities))
     datasets = list(db.scalars(query.order_by(DatasetRow.created_at, DatasetRow.id).limit(6)))
     if len(datasets) > 5:
         raise DomainError("INPUT_AMBIGUOUS", "Phạm vi có hơn năm nguồn. Hãy chọn tối đa năm tệp.")

@@ -4,6 +4,7 @@
 
 ## Chuẩn bị và đối chiếu theo chính sách
 
+- Yêu cầu trạng thái và số dòng trong cùng câu dùng dữ liệu metadata của dự án đã xác thực. Phạm vi toàn dự án được ưu tiên khi người dùng nêu rõ; tên tệp hoặc nhãn duy nhất chọn riêng nguồn. Bảng trong Chat ghi số dòng gốc, số bản ghi chuẩn hóa, hợp lệ, lỗi và đã loại theo quyết định. Các số chưa xác định của bản hiện hành để trống, kể cả tổng. Thống kê lỗi số tiền, ngày hoặc tiền tệ đọc artifact lỗi hiện hành theo số dòng nguồn duy nhất.
 - Tải CSV/XLSX từ Dữ liệu hoặc Chat mặc định xếp hàng chuẩn bị từng bảng. `PREPARING` cho biết Worker đang xử lý, `EXPLORATION_ONLY` cho biết có bản xem an toàn, `READY` và `PARTIAL` mô tả canonical hiện hành, còn `FAILED` biểu thị lỗi xử lý. `PREPARED_ISSUES` trả cờ lỗi cùng giá trị và vị trí nguồn gốc.
 - Mapping theo chính sách lưu `policy_application` với revision, ID và SHA256 của bảng đã đọc, số dòng, số lỗi dự kiến, căn cứ tiền tệ và thời gian áp dụng. Actor hệ thống ghi audit. Các trường duyệt của người dùng để trống. Canonical lưu lineage, revision và checksum cùng các artifact ngoại lệ. Dòng ngoài phạm vi VND tiếp tục được giữ để kiểm tra.
 - Hợp đồng đối chiếu lưu `observation` với revision và xác nhận có danh tính khi cần. Dùng cùng engine, bộ kiểm chứng, bộ chỉ tiêu và bộ xuất báo cáo với lượt đã duyệt. `PARTIAL_VERIFIED` xác nhận các phép đối chiếu trong phạm vi quan sát. Số dòng gốc, được dùng và chưa so sánh được lưu theo từng phía. Một dòng thuộc nhóm một phía có thể chờ xác định vì phạm vi nguồn chưa được xác nhận.

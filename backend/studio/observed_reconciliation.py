@@ -28,8 +28,9 @@ def observed_request(goal: str) -> bool | None:
     sentences = [part.strip() for part in re.split(r"[.!?]+", plain_question(goal)) if part.strip()]
     if not sentences or not re.fullmatch(
         r"(?:hay )?(?:doi soat|doi chieu) (?:doanh thu )?"
-        r"(?:ba nguon|3 nguon|(?:bao cao )?ban hang voi (?:so )?thu ngan va (?:so )?ke toan)"
-        r"(?: giup (?:minh|toi))?",
+        r"(?:ba nguon|3 nguon|(?:bao cao )?ban hang voi (?:so )?thu ngan "
+        r"(?:va|roi (?:so )?thu ngan voi) (?:so )?ke toan)"
+        r"(?: tren phan du lieu du dieu kien)?(?: giup (?:minh|toi))?",
         sentences[0],
     ):
         return None

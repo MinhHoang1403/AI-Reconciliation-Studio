@@ -158,6 +158,16 @@ export type Chart = {
     period_end: string | null;
     timezone: string | null;
 };
+export type SourceStatusLine = {
+    name: string;
+    sheet: string | null;
+    status: string;
+    original_rows: number | null;
+    canonical_rows: number | null;
+    valid_rows: number | null;
+    invalid_rows: number | null;
+    excluded_rows: number | null;
+};
 export type AgentBlock = {
     type: "progress";
     text: string;
@@ -172,11 +182,18 @@ export type AgentBlock = {
     excluded_rows?: number;
     status: string;
     transformations: string[];
+    show_issue_rows?: boolean;
     quality_draft?: { source_row_id: string; field: string; code: string; value: string; reason: string; row_index: number } | null;
 } | {
     type: "table";
     result: QueryResult;
     title?: string;
+} | {
+    type: "source_status";
+    source_count: number;
+    ready_count: number;
+    items: SourceStatusLine[];
+    totals: SourceStatusLine | null;
 } | {
     type: "source_comparison";
     name: string;

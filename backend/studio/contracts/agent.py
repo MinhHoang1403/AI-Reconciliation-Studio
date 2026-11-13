@@ -296,6 +296,7 @@ class DatasetBlock(Contract):
     excluded_rows: int = 0
     status: str
     transformations: list[str]
+    show_issue_rows: bool = Field(default=False, exclude_if=lambda value: not value)
     quality_draft: QualityDraft | None = None
 
 
@@ -303,6 +304,25 @@ class TableBlock(Contract):
     type: Literal["table"] = "table"
     result: QueryResult
     title: str | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
+class SourceStatusLine(Contract):
+    name: str
+    sheet: str | None = None
+    status: str
+    original_rows: int | None
+    canonical_rows: int | None
+    valid_rows: int | None
+    invalid_rows: int | None
+    excluded_rows: int | None
+
+
+class SourceStatusBlock(Contract):
+    type: Literal["source_status"] = "source_status"
+    source_count: int
+    ready_count: int
+    items: list[SourceStatusLine]
+    totals: SourceStatusLine | None = None
 
 
 class SourceValueChange(Contract):
@@ -359,6 +379,7 @@ ResultBlock = Annotated[
     ProgressBlock
     | DatasetBlock
     | TableBlock
+    | SourceStatusBlock
     | SourceComparisonBlock
     | FactsBlock
     | ChartBlock

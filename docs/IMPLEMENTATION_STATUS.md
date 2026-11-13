@@ -1,5 +1,9 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Thống kê nguồn trong AI Assistant — 13/11/2026
+
+Ba yêu cầu tiếng Việt đã báo lỗi đều lọt qua bộ nhận diện trạng thái ở bản `9e29c0f`. Lịch sử dự án TEST cho thấy câu hỏi ghép bị chặn ở `AI_INVALID_SOURCE` và hai câu riêng đi vào bước làm rõ. Tuyến mới nhận diện mục đích và phạm vi cho từng mệnh đề trước khi đọc metadata hiện hành. Bảng Chat hiển thị tổng khi số liệu đầy đủ và giữ ô trống khi chưa có bản chuẩn hóa tương ứng. Xem [hợp đồng dữ liệu](DATA_CONTRACTS.md).
+
 ## Tự chuẩn bị dữ liệu và đối chiếu từ Chat — 13/11/2026
 
 Luồng upload mặc định có bước chuẩn bị theo chính sách xác định. Bản xem, canonical và các dòng cần kiểm tra dùng riêng hợp đồng và trạng thái. Chat đọc nguồn hiện hành và có thể xếp hàng đối chiếu bán hàng với thu ngân, rồi thu ngân với kế toán trên phần dữ liệu quan sát được. Cổng so sánh yêu cầu doanh thu thuần chưa VAT đã được chứng minh hoặc xác nhận trực tiếp. Xem [kiến trúc](ARCHITECTURE.md) và [hướng dẫn rollback](TESTING_GUIDE.md).

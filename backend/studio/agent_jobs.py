@@ -88,8 +88,7 @@ from studio.database import (
     now,
 )
 from studio.dataset_status import (
-    asks_processing_status,
-    asks_source_inventory,
+    processing_request,
     read_processing_status,
     requests_project_sources,
     status_description,
@@ -334,10 +333,8 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
                     is not None
                 )
             if (
-                asks_processing_status(message.text)
-                or asks_source_inventory(message.text)
-                or requests_source_preparation(message.text)
-            ):
+                not job.payload.get("command") and processing_request(message.text)
+            ) or requests_source_preparation(message.text):
                 return True
             if not job.payload.get("command") and (
                 requests_reconciliation_sequence(message.text)
@@ -612,11 +609,12 @@ def interpret(
         parent = get_scoped(db, JobRow, row.parent_job_id, actor)
         command = parent.payload.get("command")
         goal = row.goal
+        status_request = processing_request(goal) if command is None else None
         if not command and QUALITY_CORRECTION.match(goal):
             quality_reply(db, actor, row, state, context)
             db.commit()
             return
-        inspection = source_inspection_request(goal) if not command else None
+        inspection = source_inspection_request(goal) if not (command or status_request) else None
         if inspection:
             publish_source_inspection(db, row, state, actor, context, inspection)
             state.intent = AgentIntent(intent="CHECK_DATASET_STATUS")
@@ -674,7 +672,6 @@ def interpret(
                 save(row, state)
                 db.commit()
                 return
-        status_request = asks_processing_status(goal) or asks_source_inventory(goal)
         propose_pairs = command is None and requests_three_source_reconciliation(goal)
         native_preparation = (
             command is None and not propose_pairs and requests_source_preparation(goal)
@@ -692,14 +689,22 @@ def interpret(
             or prepare
             or (command is None and requests_source_preparation(goal, require_selector=False))
         ):
-            if requests_project_sources(goal) and not state.steps:
+            if (
+                status_request.project_scope if status_request else requests_project_sources(goal)
+            ) and not state.steps:
                 if state.dataset_ids:
                     select_project_datasets(db, actor, context.project_id, state.dataset_ids)
                 state.dataset_ids = []
                 context = AssistantContext(project_id=context.project_id)
             else:
                 context = AssistantContext(
-                    project_id=context.project_id, dataset_id=context.dataset_id
+                    project_id=context.project_id,
+                    dataset_id=(
+                        None
+                        if status_request
+                        and (status_request.source_label or explicit_source_filenames(goal))
+                        else context.dataset_id
+                    ),
                 )
             row.context = context.model_dump(mode="json")
         if status_request:

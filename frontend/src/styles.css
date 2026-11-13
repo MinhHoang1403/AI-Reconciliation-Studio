@@ -2503,3 +2503,10 @@ pre {
   .dataset-item time { grid-column: 2; white-space: nowrap; }
   .dataset-arrow { grid-column: 4; grid-row: 1 / 3; }
 }
+.agent-source-status th[scope="row"] {
+  min-width: 12ch;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+.agent-source-status th[scope="row"] small { display: block; color: var(--text-muted); }
+.agent-source-status tfoot { font-weight: 650; }

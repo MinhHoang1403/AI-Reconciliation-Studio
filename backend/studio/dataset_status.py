@@ -2,6 +2,7 @@
 
 import re
 import unicodedata
+from dataclasses import dataclass
 from typing import Literal
 
 from sqlalchemy import select
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 from studio.access import Actor
 from studio.assistant import plain_question
 from studio.assistant_tools import scoped_context, select_project_datasets
-from studio.contracts import Contract
+from studio.contracts import CanonicalDataset, Contract
 from studio.contracts.assistant import AssistantContext
 from studio.database import (
     AgentWorkflowRow,
@@ -32,12 +33,13 @@ class ProcessingStatus(Contract):
     table_id: str | None = None
     sheet: str | None = None
     row_count: int | None = None
+    canonical_rows: int | None = None
     version_id: str | None = None
     mapping_id: str | None = None
     canonical_id: str | None = None
     valid_rows: int | None = None
     invalid_rows: int | None = None
-    excluded_rows: int = 0
+    excluded_rows: int | None = None
     automatic: bool = False
     state: Literal[
         "UPLOADED",
@@ -83,7 +85,8 @@ def requests_project_sources(goal: str) -> bool:
             r"\b(?:trong|cua|o) du an\b|\bdu an (?:nay |hien tai )?(?:dang |hien )?co\b", text
         )
         or re.search(
-            r"\b(?:toan bo|tat ca|ca ba|ba|3) (?:cac )?(?:bo du lieu|du lieu|nguon|file|tep)\b",
+            r"\b(?:toan bo|tat ca|moi|tung|ca ba|ba|3) (?:cac )?"
+            r"(?:bo du lieu|du lieu|nguon|file|tep)\b",
             text,
         )
     )
@@ -98,16 +101,69 @@ def requested_source_stem(goal: str) -> str | None:
     return (match[1].strip(' "“”') or None) if match else None
 
 
-def asks_processing_status(goal: str) -> bool:
-    """Conservative read shortcut: status questions, never instructions to perform work."""
+@dataclass(frozen=True)
+class ProcessingRequest:
+    project_scope: bool
+    show_counts: bool
+    source_label: str | None = None
+
+
+def processing_request(goal: str) -> ProcessingRequest | None:
+    """Bind a status report only when every clause asks for processing metadata."""
+    if asks_source_inventory(goal):
+        return ProcessingRequest(requests_project_sources(goal), False)
     if requested_source_stem(goal):
-        return True
-    text = plain_question(goal)
+        return ProcessingRequest(False, False)
+    text = " ".join(plain_question(goal).split())
+    # Tên tệp có dấu chấm không tạo một mệnh đề mới.
+    clauses = [c.strip() for c in re.split(r"[?!;]+|(?<!\.)\.(?=\s|$)", text) if c.strip()]
+    if not clauses:
+        return None
+    counts = [_row_counts_clause(c) for c in clauses]
+    if len(clauses) == 1 and (
+        named := re.fullmatch(
+            r"(ban hang|thu ngan|ke toan) (?:da )?(?:tu )?chuan bi xong chua", clauses[0]
+        )
+    ):
+        return ProcessingRequest(False, True, named[1])
+    if all(count or _status_clause(clause) for count, clause in zip(counts, clauses, strict=True)):
+        return ProcessingRequest(
+            requests_project_sources(goal), any(counts) or "chuan bi xong" in text
+        )
+    return None
+
+
+def _row_counts_clause(text: str) -> bool:
+    """Accept processing populations, leaving filtered data counts to the query router."""
+    population = (
+        r"(?:goc|nguon|da chuan hoa|hop le|khong hop le|loi|bi loi|da loai tru|duoc loai tru)"
+    )
+    return bool(
+        re.fullmatch(
+            r"(?:(?:hay|vui long|cho (?:minh|toi)) )?"
+            r"(?:(?:(?:moi|tung|cac|ba|3|hai|2|tat ca) )?"
+            r"(?:nguon|tep|file|bang)(?: du lieu)?(?: (?:trong|cua) du an(?: nay| hien tai)?)? )?"
+            r"(?:(?:co )?bao nhieu|(?:dem |cho biet )?so(?: luong)?|dem) "
+            r"(?:dong|ban ghi) (?:du lieu )?"
+            rf"{population}"
+            r"(?:(?:,\s*| va |,?\s+va )(?:so )?(?:(?:dong|ban ghi) )?"
+            rf"{population})*"
+            r"(?: (?:cua|trong) (?:moi|tung|tat ca cac) (?:nguon|tep|file|bang)(?: du lieu)?)?",
+            text,
+        )
+    )
+
+
+def asks_processing_status(goal: str) -> bool:
+    return processing_request(goal) is not None and not asks_source_inventory(goal)
+
+
+def _status_clause(text: str) -> bool:
     subject = re.search(r"\b(?:du lieu|nguon|file|tep|cot)\b", text)
     status = re.search(
         (
             "\\b(?:chuan hoa|da doc|doc xong|xu ly xong|san sang|dung duoc|trang thai xu ly|xac "
-            "nhan cot|co the doi soat)\\b"
+            "nhan cot|co the doi soat|chuan bi xong)\\b"
         ),
         text,
     )
@@ -117,13 +173,14 @@ def asks_processing_status(goal: str) -> bool:
         r"|\bchua\s*[?.!]*$",
         text,
     )
+    actions = re.sub(r"\b(?:da |tu |tu dong )*chuan bi xong\b", "", text)
     writes = re.search(
         r"\b(?:de xuat|chuan bi|thiet lap|thuc hien|tao|cap nhat|chinh sua|dieu chinh|"
         r"tiep tuc|lam sach|chuyen doi|hay chuan hoa|chuan hoa .*giup|"
         r"tien hanh|chay doi soat|xuat bao cao|"
         r"duyet|bo qua|tu dong|sau do|roi .*doi soat|va .*doi soat|"
         r"bao nhieu|tong tien|tong so|bieu do|loc|sap xep|giai thich|liet ke|tim|dem)\b",
-        text,
+        actions,
     )
     return bool(subject and status and question and not writes)
 
@@ -136,6 +193,7 @@ def read_processing_status(
     goal: str = "",
     *,
     dataset_names: tuple[str, ...] | None = None,
+    dataset_label: str | None = None,
 ) -> list[ProcessingStatus]:
     """Read current versions/mappings only; stale/partial can never become READY.
 
@@ -144,11 +202,21 @@ def read_processing_status(
     """
     scoped_context(db, actor, context)
     stem = requested_source_stem(goal) if not dataset_names else None
-    selected = dataset_ids or (
-        [context.dataset_id] if context.dataset_id and not (dataset_names or stem) else []
+    if dataset_ids and (dataset_names or stem or dataset_label):
+        select_project_datasets(db, actor, context.project_id, dataset_ids)
+    selected = (
+        []
+        if dataset_names or stem or dataset_label
+        else dataset_ids or ([context.dataset_id] if context.dataset_id else [])
     )
     datasets = select_project_datasets(
-        db, actor, context.project_id, selected, dataset_names, dataset_stem=stem
+        db,
+        actor,
+        context.project_id,
+        selected,
+        dataset_names,
+        dataset_stem=stem,
+        dataset_label=dataset_label,
     )
     actual = [unicodedata.normalize("NFC", d.name).casefold() for d in datasets]
     if (
@@ -156,6 +224,8 @@ def read_processing_status(
         and (len(actual) != len(set(actual)) or set(actual) != set(dataset_names))
         or stem
         and (len(datasets) != 1 or plain_question(datasets[0].name.rsplit(".", 1)[0]) != stem)
+        or dataset_label
+        and len(datasets) != 1
     ):
         raise DomainError(
             "INPUT_AMBIGUOUS", "Chưa xác định được đúng tệp theo tên trong dự án này."
@@ -178,6 +248,7 @@ def read_processing_status(
         datasets = list({d.id: d for d in matched}.values())
     if (
         datasets
+        and not requests_project_sources(goal)
         and re.search(r"\b(?:hai|2)\s+(?:bo du lieu|nguon|file|tep)\b", plain_question(goal))
         and len(datasets) != 2
     ):
@@ -328,6 +399,11 @@ def read_processing_status(
                 if proposed
                 else "PARSED"
             )
+            current = (
+                CanonicalDataset.model_validate(canonical.contract)
+                if canonical and not canonical.stale and mapping and mapping.status == "APPROVED"
+                else None
+            )
             result.append(
                 ProcessingStatus(
                     **base,
@@ -335,12 +411,11 @@ def read_processing_status(
                     sheet=table.sheet,
                     row_count=table.row_count,
                     mapping_id=mapping.id if mapping else None,
-                    canonical_id=canonical.id if canonical else None,
-                    valid_rows=canonical.contract["valid_count"] if canonical else None,
-                    invalid_rows=canonical.contract["invalid_count"] if canonical else None,
-                    excluded_rows=canonical.contract.get("excluded_source_rows", 0)
-                    if canonical
-                    else 0,
+                    canonical_id=current.id if current else None,
+                    canonical_rows=current.row_count if current else None,
+                    valid_rows=current.valid_count if current else None,
+                    invalid_rows=current.invalid_count if current else None,
+                    excluded_rows=current.excluded_source_rows if current else None,
                     automatic=automatic,
                     state=state,
                 )
