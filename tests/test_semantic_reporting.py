@@ -209,6 +209,40 @@ def test_calendar_constraints_are_complete(clause, op, value, suffix):
     assert intent.query.filters == [QueryFilter(field_id="event_date", op=op, value=value)]
 
 
+@pytest.mark.parametrize("has_currency", [True, False])
+def test_canonical_routing_schema_cannot_use_amount_as_currency(has_currency):
+    from studio.agent_intents import interpret_requests
+    from studio.contracts import WorkspacePolicy
+
+    context = catalogue()
+    definition = context.datasets[0].tables[0].schema_definition
+    assert definition
+    if not has_currency:
+        definition.fields = [field for field in definition.fields if field.id != "currency"]
+    captured = {}
+
+    class Capture:
+        local = False
+        usage = {}
+
+        def request_typed(self, *args, **kwargs):
+            captured.update(kwargs["response_schema"])
+            return []
+
+    interpret_requests(
+        Capture(), ['Tổng doanh thu của "Bán hàng.csv"'], context, WorkspacePolicy(), lambda: True
+    )
+    variants = captured["$defs"]["RoutingQuery"]["anyOf"]
+    canonical = next(
+        entry for entry in variants if "canonical-1" in entry["properties"]["source_ref"]["enum"]
+    )
+    assert canonical["properties"]["currency_field"] == (
+        {"anyOf": [{"type": "string", "enum": ["currency"]}, {"type": "null"}]}
+        if has_currency
+        else {"type": "null"}
+    )
+
+
 @pytest.mark.parametrize(
     "clause",
     [

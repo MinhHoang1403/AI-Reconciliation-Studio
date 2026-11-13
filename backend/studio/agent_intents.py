@@ -25,7 +25,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-68"
+INTENT_REVISION = "agent-intent-69"
 
 
 def requests_reconciliation_sequence(goal: str) -> bool:
@@ -2565,6 +2565,18 @@ def interpret_requests(
     # present. For mixed contexts use one query shape with bounded IDs. The
     # compiler still binds each field, metric and operation to its chosen ref.
     scoped_query_grammar = bool(query_sources) and (provider.local or len(query_contexts) == 1)
+
+    def currency_fields(source: dict[str, Any]) -> list[str]:
+        kind = source["source_kind"]
+        if kind in {"PREPARED", "PREPARED_FINDINGS"}:
+            return []
+        return sorted(
+            field["id"]
+            for field in source["fields"]
+            if kind != "CANONICAL"
+            or (field["id"] == "currency" and field["data_type"] in {"string", "enum"})
+        )
+
     if not catalogue.previous_groups:
         # Without a prior displayed result, an ordinal is not an admissible slot.
         # Keep the public DTO compatible while constraining this provider request.
@@ -2583,10 +2595,17 @@ def interpret_requests(
         definitions = schema["$defs"]
         for name in ("QueryFilter", "QuerySort"):
             definitions[name]["properties"]["field_id"]["enum"] = field_ids
-        for name, key in (("QueryAggregation", "field_id"), ("RoutingQuery", "currency_field")):
-            for variant in definitions[name]["properties"][key]["anyOf"]:
-                if variant.get("type") == "string":
-                    variant["enum"] = field_ids
+        for variant in definitions["QueryAggregation"]["properties"]["field_id"]["anyOf"]:
+            if variant.get("type") == "string":
+                variant["enum"] = field_ids
+        currency_ids = sorted(
+            {field for source in query_sources for field in currency_fields(source)}
+        )
+        definitions["RoutingQuery"]["properties"]["currency_field"] = (
+            dict(anyOf=[dict(type="string", enum=currency_ids), dict(type="null")])
+            if currency_ids
+            else dict(type="null")
+        )
         for key in ("select_fields", "group_by"):
             definitions["RoutingQuery"]["properties"][key]["items"]["enum"] = field_ids
     if scoped_query_grammar:
@@ -2744,7 +2763,12 @@ def interpret_requests(
             )
             aggregate["properties"]["field_id"] = nullable
             properties["aggregations"] = dict(type="array", items=aggregate)
-            properties["currency_field"] = deepcopy(nullable)
+            allowed_currency = currency_fields(source)
+            properties["currency_field"] = (
+                dict(anyOf=[dict(type="string", enum=allowed_currency), dict(type="null")])
+                if allowed_currency
+                else dict(type="null")
+            )
             source_query["properties"]["group_by"]["description"] = (
                 "Thống kê theo nhóm có aggregate: các trường nhóm (tối đa 3). "
                 "Liệt kê/xem dòng hoặc nhóm giao dịch: [] vì mỗi dòng VERIFIED_RUN đã là một nhóm. "

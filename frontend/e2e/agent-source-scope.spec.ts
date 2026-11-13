@@ -284,7 +284,7 @@ test("new schemas keep both calendar and branch restrictions through Chat and ex
   const source = 'của "Luân chuyển kho.csv"';
   const measure = "doanh thu thuần chưa VAT";
   const period = "tháng 2/2024";
-  const first = await ask('Tổng ' + measure + ' ' + source + ' tại chi nhánh "Hà Nội" trong nửa đầu ' + period);
+  const first = await ask('Tổng ' + measure + ' ' + source + ' tại chi nhánh "Hà Nội" trong nửa đầu ' + period + ' là bao nhiêu?');
   expect(first.rows[0].sum_decimal_recognized_0).toBe(fixture.oracle.hanoi_first);
   const second = await ask('Tổng ' + measure + ' ' + source + ' tại chi nhánh "Hà Nội" trong nửa sau ' + period);
   expect(second.rows[0].sum_decimal_recognized_0).toBe(fixture.oracle.hanoi_second);
