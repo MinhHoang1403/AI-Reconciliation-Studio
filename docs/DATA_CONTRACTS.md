@@ -1,5 +1,11 @@
 # Hợp đồng dữ liệu và API
 
+## Truy vấn ngữ nghĩa và tổng tài chính
+
+`source_measure_id` chỉ tham chiếu trường Decimal trong schema canonical hiện hành có ngữ nghĩa, cơ sở tiền, đơn vị, tiền tệ và ý nghĩa từng dòng đã xác nhận. `metric_id` tiếp tục dành riêng cho lượt đối soát. Truy vấn nguồn có thể dùng `count_distinct` trên mã dạng chuỗi và nhóm theo ngày hoặc tháng. Các bản ghi lỗi và dòng có quyết định loại được báo riêng. DuckDB 2.0.0 chỉ nhận quan hệ nội bộ từ dữ liệu đã kiểm quyền và checksum. Compiler dùng danh sách phép toán cố định và truyền giá trị lọc bằng tham số. Phép tổng hợp được kiểm lại bằng tập bản ghi do Polars lọc và phép tính Decimal độc lập.
+
+Snapshot của lượt chạy mới lưu `financial` theo từng chỉ tiêu và từng phía. Các nhóm trong phạm vi chia riêng thành khớp, lệch tiền, một phía có giao dịch, mã trùng và chưa đủ điều kiện so sánh. Tiền thiếu giữ null. Hai tổng phía được tính từ bản ghi nguồn có số tiền đủ điều kiện. Chat, Báo cáo và hai định dạng xuất đọc cùng snapshot. Snapshot cũ giữ nguyên và tiếp tục mở được.
+
 Định nghĩa thực thi nằm trong `backend/studio/contracts/`. OpenAPI tại `/openapi.json` và `/docs` mô tả request/response; endpoint này không cấp quyền đọc dữ liệu. Error envelope: `code`, `message_vi`, `details` đã redacted, `retryable`, `correlation_id`.
 
 ## Chuẩn bị và đối chiếu theo chính sách

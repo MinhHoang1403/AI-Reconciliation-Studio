@@ -15,7 +15,7 @@ from studio.access import Actor
 from studio.config import settings
 from studio.contracts import CanonicalDataset, SchemaDefinition
 from studio.contracts.agent import SourceComparisonBlock, SourceValueChange, TableContext
-from studio.contracts.data_query import DataQuery, QueryResult
+from studio.contracts.data_query import DataQuery, QueryResult, SourceMeasure
 from studio.contracts.reconciliation import (
     ComparisonMetric,
     ComparisonState,
@@ -30,12 +30,15 @@ from studio.data_quality import artifact_scan
 from studio.database import (
     ArtifactRow,
     CanonicalRow,
+    DatasetRow,
     ExceptionRow,
+    MappingRow,
     MembershipRow,
     ReconciliationContractRow,
     RunRow,
     SchemaRow,
     TableRow,
+    VersionRow,
 )
 from studio.errors import DomainError
 from studio.reconciliation_repository import result_path
@@ -52,6 +55,35 @@ class QuerySource:
     money: dict[str, tuple[str, str]]
     quality_status: str | None = None
     labels: dict[str, str] = field(default_factory=dict)
+    canonical: CanonicalDataset | None = None
+    definition: SchemaDefinition | None = None
+    source_name: str = ""
+
+
+def source_measures(definition: SchemaDefinition) -> list[SourceMeasure]:
+    from studio.reconciliation_contracts import known
+
+    return [
+        SourceMeasure(
+            field_id=f.id,
+            name=f.name,
+            semantic_metric=f.semantic_metric,
+            amount_basis=f.amount_basis,
+            currency=f.currency,
+            unit=f.unit,
+            grain=definition.grain,
+        )
+        for f in definition.fields
+        if f.data_type == "decimal"
+        and f.semantic_metric
+        and f.amount_basis
+        and f.currency
+        and f.unit
+        and all(
+            known(value)
+            for value in (f.semantic_metric, f.amount_basis, f.currency, f.unit, definition.grain)
+        )
+    ]
 
 
 VERIFIED_FIELDS = [
@@ -316,6 +348,8 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
         raise DomainError("RESOURCE_NOT_FOUND", "Quyền truy cập không còn hợp lệ.", 404)
     if query.metric_id and query.source_kind != "VERIFIED_RUN":
         raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ chọn metric cho kết quả đã xác minh.")
+    if (query.source_measure_id or query.calendar_bucket) and query.source_kind != "CANONICAL":
+        raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ tiêu nguồn cần bản chuẩn hóa hiện hành.")
     if query.source_kind in {
         "RAW_PREVIEW",
         "PREPARED",
@@ -323,16 +357,31 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
         "PREPARED_ISSUES",
         "CANONICAL",
     }:
-        canonical = None
+        canonical = definition = None
+        source_name = ""
         if query.source_kind == "CANONICAL":
             row = get_scoped(db, CanonicalRow, query.source_id, actor)
             canonical = CanonicalDataset.model_validate(row.contract)
             if row.stale:
                 raise DomainError("STALE_CONTEXT", "Dữ liệu chuẩn hóa đã cũ.", 409)
             table = get_scoped(db, TableRow, row.source_table_id, actor)
+            version = db.get(VersionRow, table.dataset_version_id)
+            if version is None or version.id != canonical.dataset_version_id:
+                raise DomainError("STALE_CONTEXT", "Phiên bản nguồn không còn hợp lệ.", 409)
+            dataset = get_scoped(db, DatasetRow, version.dataset_id, actor)
+            mapping = get_scoped(db, MappingRow, row.mapping_id, actor)
+            source_name = dataset.name
             if (
                 table.active_mapping_id != row.mapping_id
                 or table.quality_revision != row.quality_revision
+                or mapping.status != "APPROVED"
+                or version.revision
+                != db.scalar(
+                    select(VersionRow.revision)
+                    .where(VersionRow.dataset_id == dataset.id)
+                    .order_by(VersionRow.revision.desc())
+                    .limit(1)
+                )
             ):
                 raise DomainError("STALE_CONTEXT", "Dữ liệu chuẩn hóa đã cũ.", 409)
             artifact = get_scoped(db, ArtifactRow, canonical.artifact.id, actor)
@@ -424,6 +473,9 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
             money,
             canonical.quality_status if canonical else None,
             labels,
+            canonical,
+            definition,
+            source_name,
         )
     run = get_scoped(db, RunRow, query.source_id, actor)
     if run.project_id != query.project_id:
@@ -545,6 +597,18 @@ def _execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
     deadline = time.monotonic() + settings.agent_query_timeout_seconds
     source = _source(db, actor, query, deadline)
     validate_status_predicates(query)
+    if query.source_kind == "CANONICAL" and (
+        query.source_measure_id
+        or query.calendar_bucket
+        or query.aggregations
+    ):
+        from studio.semantic_query import execute_source_sql
+
+        return execute_source_sql(query, source, deadline)
+    if any(a.op == "count_distinct" for a in query.aggregations):
+        raise DomainError(
+            "QUERY_SEMANTICS_REQUIRED", "Đếm mã duy nhất cần bản chuẩn hóa hiện hành."
+        )
 
     def collect(frame: pl.LazyFrame) -> pl.DataFrame:
         return _collect_bounded(frame, deadline)

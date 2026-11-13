@@ -4,11 +4,12 @@ param(
     [switch]$CompatiblePreparation,
     [switch]$SourceStatus,
     [switch]$ObservedResults,
+    [switch]$FinancialReporting,
     [switch]$VerifyOnly
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
-if (@($ReleaseRevision, $PreviousPreparation, $CompatiblePreparation, $SourceStatus, $ObservedResults).Where({ $_ }).Count -gt 1) {
+if (@($ReleaseRevision, $PreviousPreparation, $CompatiblePreparation, $SourceStatus, $ObservedResults, $FinancialReporting).Where({ $_ }).Count -gt 1) {
     throw 'Choose one rollback image pair.'
 }
 $taskImages = @{}
@@ -24,6 +25,8 @@ foreach ($taskService in @('backend', 'frontend')) {
         "ai-reconciliation-studio-${taskService}:rollback-source-status"
     } elseif ($ObservedResults) {
         "ai-reconciliation-studio-${taskService}:rollback-observed-results"
+    } elseif ($FinancialReporting) {
+        "ai-reconciliation-studio-${taskService}:rollback-financial-reporting"
     } else {
         "ai-reconciliation-studio-${taskService}:rollback"
     }
@@ -56,6 +59,9 @@ $taskAgentContract = git show "${taskBackendRevision}:backend/studio/contracts/a
 if ($LASTEXITCODE -ne 0) { throw 'Cannot verify source status history compatibility.' }
 $taskSupportsSourceStatus = ($taskAgentContract -join "`n") -match 'class SourceStatusBlock\('
 $taskSupportsObservedResults = ($taskAgentContract -join "`n") -match 'class ObservedPairSummary\('
+$taskFinancialContract = git show "${taskBackendRevision}:backend/studio/contracts/reconciliation.py"
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify financial snapshot compatibility.' }
+$taskSupportsFinancialReporting = ($taskFinancialContract -join "`n") -match 'class FinancialMeasure\('
 # Chỉ các migrations additive đã review; không downgrade DB hoặc suy compatibility tổng quát.
 $taskGuard = @'
 import sys
@@ -104,6 +110,15 @@ with SessionFactory() as db:
                        OR jsonb_path_exists(detail, '$.blocks[*].observation')
                 )
             """)), 'Observed reconciliation history requires a compatible image'
+        if sys.argv[8] != 'True':
+            assert not db.scalar(text("""
+                SELECT EXISTS (SELECT 1 FROM reconciliation_runs WHERE metric_snapshot ? 'financial')
+                    OR EXISTS (SELECT 1 FROM agent_workflows WHERE
+                        jsonb_path_exists(detail, '$.blocks[*].result.source_evidence')
+                        OR jsonb_path_exists(detail, '$.blocks[*].source_table')
+                        OR jsonb_path_exists(detail, '$.intent.source_queries')
+                        OR jsonb_path_exists(detail, '$.intent.query.source_measure_id'))
+            """)), 'Semantic queries and financial snapshots require a compatible image'
         # Reviews remain untouched; resumption requires a compatible accepted source.
         print('Agent reviews are retained; resumption depends on the selected accepted source')
     if revision == 'add_data_quality_decisions' and sys.argv[5] != 'True':
@@ -119,7 +134,7 @@ with SessionFactory() as db:
     assert db.scalar(text("SELECT count(*) FROM workspaces WHERE id='demo'")) == 1
     print('PASS compatible additive schema and no active jobs', revision)
 '@
-$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle" "$taskSupportsRetainedReservations" "$taskSupportsQuality" "$taskSupportsPreparation" "$taskSupportsSourceStatus" "$taskSupportsObservedResults"
+$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle" "$taskSupportsRetainedReservations" "$taskSupportsQuality" "$taskSupportsPreparation" "$taskSupportsSourceStatus" "$taskSupportsObservedResults" "$taskSupportsFinancialReporting"
 if ($LASTEXITCODE -ne 0) { throw 'Rollback compatibility gate failed.' }
 if ($VerifyOnly) {
     Write-Output "Verified rollback images for $taskBackendRevision against the current deployment."

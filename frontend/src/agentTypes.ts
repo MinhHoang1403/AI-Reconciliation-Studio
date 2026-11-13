@@ -64,6 +64,8 @@ export type Query = {
     result_scope: "ALL_MATCHING";
     currency_field: string | null;
     metric_id?: string | null;
+    source_measure_id?: string;
+    calendar_bucket?: "day" | "month";
 };
 export type QueryResult = {
     query: Query;
@@ -81,6 +83,23 @@ export type QueryResult = {
     quality_status: string | null;
     source_refs: string[];
     warnings: string[];
+    measure_units?: Record<string, string>;
+    source_evidence?: {
+        source_name: string;
+        canonical_id: string;
+        mapping_id: string;
+        schema_revision: number;
+        grain: string;
+        measure: { field_id: string; name: string; semantic_metric: string; currency: string; unit: string } | null;
+        source_rows: number;
+        invalid_rows: number;
+        excluded_rows: number;
+        matching_rows: number;
+        counted_rows: number;
+        observed_first: string | null;
+        observed_last: string | null;
+        sql: string;
+    };
 };
 export type AgentIntent = {
     intent: string;
@@ -217,6 +236,7 @@ export type AgentBlock = {
     answer: AssistantAnswer | null;
 } | Chart | {
     type: "download";
+    source_table?: boolean;
     displayed_query?: boolean;
     discrepancies_only?: boolean;
     export_id: string;

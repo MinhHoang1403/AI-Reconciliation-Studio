@@ -15,7 +15,7 @@ class QueryFilter(Contract):
 
 
 class QueryAggregation(Contract):
-    op: Literal["count", "sum_decimal", "min", "max"]
+    op: Literal["count", "count_distinct", "sum_decimal", "min", "max"]
     field_id: Identifier | None = None
 
 
@@ -55,6 +55,39 @@ class DataQuery(QueryOperations):
     project_id: Identifier
     source_kind: QuerySourceKind
     source_id: Identifier
+    source_measure_id: Identifier | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    calendar_bucket: Literal["day", "month"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
+class SourceMeasure(Contract):
+    field_id: Identifier
+    name: str
+    semantic_metric: str
+    amount_basis: str
+    currency: str
+    unit: str
+    grain: str
+
+
+class SourceQueryEvidence(Contract):
+    source_name: str
+    canonical_id: Identifier
+    mapping_id: Identifier
+    schema_revision: int
+    grain: str
+    measure: SourceMeasure | None = None
+    source_rows: int
+    invalid_rows: int
+    excluded_rows: int
+    matching_rows: int
+    counted_rows: int
+    observed_first: str | None = None
+    observed_last: str | None = None
+    sql: str
 
 
 class QueryResult(Contract):
@@ -77,6 +110,9 @@ class QueryResult(Contract):
     quality_status: str | None = None
     evidence_complete: bool = True
     warnings: list[str] = Field(default_factory=list)
+    source_evidence: SourceQueryEvidence | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class SourceRowRequest(Contract):

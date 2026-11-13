@@ -128,6 +128,7 @@ def agent_catalogue(
     *,
     workflow_id: str | None = None,
     dataset_names: tuple[str, ...] | None = None,
+    project_sources: bool = False,
 ) -> "IntentCatalogue":
     """Catalogue bounded cho router; chỉ metadata/profile, không raw values/paths/secrets."""
     from studio.contracts import SchemaDefinition
@@ -150,9 +151,9 @@ def agent_catalogue(
 
     scoped_context(db, actor, context)
     selected_names = dataset_names if not dataset_ids else None
-    if not dataset_ids and not selected_names and context.dataset_id:
+    if not project_sources and not dataset_ids and not selected_names and context.dataset_id:
         dataset_ids = [context.dataset_id]
-    if not dataset_ids and not selected_names and context.run_id:
+    if not project_sources and not dataset_ids and not selected_names and context.run_id:
         run = get_scoped(db, RunRow, context.run_id, actor)
         rule = get_scoped(db, ReconciliationContractRow, run.contract_id, actor)
         plan = ReconciliationContract.model_validate(rule.definition).plan
@@ -249,12 +250,29 @@ def agent_catalogue(
             DatasetContext(id=dataset.id, name=dataset.name, status=dataset.status, tables=items)
         )
     runs = [context.run_id] if context.run_id else []
+    verified_pairs: dict[str, tuple[str, str]] = {}
+    names = {t.canonical_id: d.name for d in sources for t in d.tables if t.canonical_id}
+    if names:
+        for saved_run in db.scalars(
+            select(RunRow)
+            .where(
+                RunRow.project_id == context.project_id,
+                RunRow.workspace_id == actor.workspace_id,
+                RunRow.status.in_(("VERIFIED", "PARTIAL_VERIFIED")),
+            )
+            .order_by(RunRow.created_at.desc(), RunRow.id.desc())
+            .limit(20)
+        ):
+            refs = [str(source.get("id", "")) for source in saved_run.source_refs]
+            if len(refs) == 2 and all(ref in names for ref in refs):
+                verified_pairs[saved_run.id] = (names[refs[0]], names[refs[1]])
     confirmed = None
     if context.run_id:
         run = get_scoped(db, RunRow, context.run_id, actor)
         rule = get_scoped(db, ReconciliationContractRow, run.contract_id, actor)
         confirmed = ReconciliationContract.model_validate(rule.definition).plan
     previous_query = None
+    previous_source_queries = []
     previous_goal = None
     previous_groups: list[str] = []
     if workflow_id:
@@ -291,6 +309,14 @@ def agent_catalogue(
                 # A newer, different scope must never resurrect an earlier query.
                 break
             previous_query, previous_goal = q, old.goal
+            previous_source_queries = [
+                b.result.query
+                for b in state.blocks
+                if isinstance(b, TableBlock)
+                and b.result.query.source_kind == "CANONICAL"
+                and b.result.query.source_id in valid_sources
+                and b.result.source_evidence
+            ]
             if q.source_kind == "VERIFIED_RUN":
                 previous_groups = (
                     state.query_selection.group_ids
@@ -305,6 +331,7 @@ def agent_catalogue(
         run_ids=runs,
         confirmed_plan=confirmed,
         previous_query=previous_query,
+        previous_source_queries=previous_source_queries,
         previous_goal=previous_goal,
         previous_groups=previous_groups,
         verified_run_fields=(
@@ -329,6 +356,7 @@ def agent_catalogue(
         verified_metric_ids=[m.metric_id for m in confirmed.comparison_metrics]
         if confirmed
         else [],
+        verified_pairs=verified_pairs,
         status_values=STATUS_VALUES if confirmed else {},
     )
 

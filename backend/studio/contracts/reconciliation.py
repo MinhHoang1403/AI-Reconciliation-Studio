@@ -337,6 +337,39 @@ class MonetarySummary(Contract):
     absolute_variance: Money
 
 
+class FinancialPopulation(Contract):
+    state: Literal["MATCHED", "AMOUNT_MISMATCH", "ONE_SIDED", "DUPLICATE", "NOT_COMPARABLE"]
+    groups: int = Field(ge=0)
+    left_records: int = Field(ge=0)
+    right_records: int = Field(ge=0)
+    left_amount: Money | None
+    right_amount: Money | None
+
+
+class FinancialSide(Contract):
+    source_rows: int
+    in_scope_records: int
+    invalid_records: int
+    out_of_scope_records: int
+    excluded_rows: int
+    counted_records: int
+    groups: int
+    amount: Money | None
+    completeness: str
+
+
+class FinancialMeasure(Contract):
+    metric_id: str
+    amount_basis: str
+    currency: str
+    unit: str
+    left: FinancialSide
+    right: FinancialSide
+    populations: list[FinancialPopulation]
+    signed_variance: Money
+    absolute_variance: Money
+
+
 class MetricSnapshot(Contract):
     id: str
     run_id: str
@@ -360,6 +393,9 @@ class MetricSnapshot(Contract):
     comparison_counts: dict[str, int]
     excluded_counts: dict[str, int]
     unresolved_cases_at_run: int
+    financial: list[FinancialMeasure] = Field(
+        default_factory=list, exclude_if=lambda value: not value
+    )
 
 
 class VerificationCheck(Contract):

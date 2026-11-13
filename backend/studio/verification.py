@@ -8,13 +8,18 @@ import json
 from collections import Counter, defaultdict
 from datetime import date, datetime
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
+from typing import Literal
 from uuid import NAMESPACE_URL, uuid5
 from zoneinfo import ZoneInfo
 
 from rapidfuzz.distance import Indel
 
+from studio.contracts import CanonicalDataset
 from studio.contracts.reconciliation import (
     CanonicalRecord,
+    FinancialMeasure,
+    FinancialPopulation,
+    FinancialSide,
     MatchResult,
     MetricSnapshot,
     MonetarySummary,
@@ -390,6 +395,159 @@ def verify_result(
     ]
 
 
+def financial_measures(
+    plan: ReconciliationPlan,
+    left: list[CanonicalRecord],
+    right: list[CanonicalRecord],
+    result: MatchResult,
+    monetary: list[MonetarySummary],
+    canonical_sources: list[CanonicalDataset] | None,
+) -> list[FinancialMeasure]:
+    """Reconstruct Decimal totals from independently verified membership and source partitions."""
+    states: tuple[
+        Literal["MATCHED", "AMOUNT_MISMATCH", "ONE_SIDED", "DUPLICATE", "NOT_COMPARABLE"], ...
+    ] = (
+        "MATCHED",
+        "AMOUNT_MISMATCH",
+        "ONE_SIDED",
+        "DUPLICATE",
+        "NOT_COMPARABLE",
+    )
+    sources = {"left": left, "right": right}
+    canonical = dict(zip(sources, canonical_sources or [], strict=False))
+    zone = ZoneInfo(plan.timezone)
+
+    def eligible(record: CanonicalRecord, side: str) -> bool:
+        slot = getattr(plan, side)
+        stamp = record.payload.get(slot.date_field)
+        if isinstance(stamp, datetime):
+            stamp = stamp.astimezone(zone).date() if stamp.utcoffset() is not None else None
+        return (
+            not record.invalid
+            and isinstance(stamp, date)
+            and plan.period_start <= stamp < plan.period_end
+            and all(
+                isinstance(key := record.payload.get(getattr(pair, side)), str) and key
+                for pair in plan.join_keys
+            )
+            and all(record.payload.get(field) == value for field, value in slot.filters.items())
+        )
+
+    indexes = {side: {record.id: record for record in records} for side, records in sources.items()}
+    result_measures = []
+    with localcontext() as context:
+        context.prec = 100
+        for metric, summary in zip(plan.comparison_metrics, monetary, strict=True):
+            amounts = {
+                side: {
+                    r.id: value
+                    for r in records
+                    if eligible(r, side)
+                    and isinstance(value := r.payload.get(getattr(metric, side)), Decimal)
+                    and value.is_finite()
+                    and (
+                        getattr(plan, side).currency_field is None
+                        or r.payload.get(getattr(plan, side).currency_field) == metric.currency
+                    )
+                }
+                for side, records in sources.items()
+            }
+            grouped: dict[str, dict[str, list[str]]] = {
+                state: {"left": [], "right": []} for state in states
+            }
+            counts: Counter[str] = Counter()
+            group_counts: Counter[str] = Counter()
+            for group in result.groups:
+                if group.linkage_state in {"INVALID", "OUT_OF_SCOPE"}:
+                    continue
+                comparison = next(
+                    (c for c in group.comparisons if c.metric_id == metric.metric_id), None
+                )
+                if "DUPLICATE_KEY" in group.exception_types:
+                    state = "DUPLICATE"
+                elif group.linkage_state in {"PENDING", "UNMATCHED"}:
+                    state = "ONE_SIDED"
+                elif (
+                    group.linkage_state != "LINKED"
+                    or comparison is None
+                    or comparison.delta is None
+                ):
+                    state = "NOT_COMPARABLE"
+                elif comparison.state == "AMOUNT_MISMATCH":
+                    state = "AMOUNT_MISMATCH"
+                elif group.comparison_state in {"ATTRIBUTE_MISMATCH", "NOT_COMPARABLE"}:
+                    state = "NOT_COMPARABLE"
+                else:
+                    state = "MATCHED"
+                counts[state] += 1
+                for side in sources:
+                    members = [m.record_id for m in group.members if m.side == side]
+                    if members:
+                        group_counts[side] += 1
+                        grouped[state][side].extend(members)
+            totals = {}
+            populations = []
+            for state in states:
+                by_side: dict[str, tuple[int, Decimal | None]] = {}
+                for side in sources:
+                    members = grouped[state][side]
+                    values = [amounts[side][key] for key in members if key in amounts[side]]
+                    by_side[side] = (
+                        len(values),
+                        sum(values, Decimal(0)) if values and len(values) == len(members) else None,
+                    )
+                populations.append(
+                    FinancialPopulation(
+                        state=state,
+                        groups=counts[state],
+                        left_records=by_side["left"][0],
+                        right_records=by_side["right"][0],
+                        left_amount=by_side["left"][1],
+                        right_amount=by_side["right"][1],
+                    )
+                )
+            for side, records in sources.items():
+                member_ids = [
+                    key for states_by_side in grouped.values() for key in states_by_side[side]
+                ]
+                actual = [key for key in member_ids if key in amounts[side]]
+                if (
+                    len(actual) != len(set(actual))
+                    or set(actual) != amounts[side].keys()
+                    or any(key not in indexes[side] for key in member_ids)
+                ):
+                    raise DomainError("VERIFICATION_FAILED", "Phân hoạch số tiền không khớp nguồn.")
+                partitions = result.partition_counts[side]
+                source = canonical.get(side)
+                totals[side] = FinancialSide(
+                    source_rows=source.source_row_count
+                    if source and source.source_row_count is not None
+                    else len(records),
+                    in_scope_records=partitions.get("IN_SCOPE", 0),
+                    invalid_records=partitions.get("INVALID", 0),
+                    out_of_scope_records=partitions.get("OUT_OF_SCOPE", 0),
+                    excluded_rows=source.excluded_source_rows if source else 0,
+                    counted_records=len(actual),
+                    groups=group_counts[side],
+                    amount=sum(amounts[side].values(), Decimal(0)) if actual else None,
+                    completeness=getattr(plan, side).completeness,
+                )
+            result_measures.append(
+                FinancialMeasure(
+                    metric_id=metric.metric_id,
+                    amount_basis=metric.amount_basis,
+                    currency=metric.currency,
+                    unit=metric.unit,
+                    left=totals["left"],
+                    right=totals["right"],
+                    populations=populations,
+                    signed_variance=summary.signed_variance,
+                    absolute_variance=summary.absolute_variance,
+                )
+            )
+    return result_measures
+
+
 def calculate_metric_snapshot(
     run_id: str,
     rule_id: str,
@@ -398,6 +556,7 @@ def calculate_metric_snapshot(
     left: list[CanonicalRecord],
     right: list[CanonicalRecord],
     result: MatchResult,
+    canonical_sources: list[CanonicalDataset] | None = None,
 ) -> MetricSnapshot:
     """Publishable metrics only after rerunning the independent oracle, never on blind flags.
 
@@ -520,4 +679,5 @@ def calculate_metric_snapshot(
         comparison_counts=dict(Counter(g.comparison_state for g in result.groups)),
         excluded_counts=dict(excluded),
         unresolved_cases_at_run=sum(len(g.exception_types) for g in result.groups),
+        financial=financial_measures(plan, left, right, result, monetary, canonical_sources),
     )

@@ -3,10 +3,14 @@
 import secrets
 from collections.abc import Callable
 from datetime import timedelta
+from decimal import Decimal
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Annotated, Any
 from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import APIRouter, Depends, File, Form, Header, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -556,6 +560,74 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         save(row, state)
         db.commit()
         return result
+
+    @router.get("/workflows/{workflow_id}/source-export")
+    def source_export(workflow_id: str, db: DB, actor: User) -> Response:
+        from studio.data_query import execute_query
+        from studio.reconciliation_exports import write_csv, write_xlsx
+
+        row = own_workflow(db, actor, workflow_id)
+        require_editor(actor, db, row.id)
+        state = WorkflowState.model_validate(row.detail)
+        query = state.export_query
+        intent = state.intent
+        if (
+            row.state != "COMPLETED"
+            or not query
+            or query.source_kind != "CANONICAL"
+            or not intent
+            or intent.intent != "EXPORT_RESULT"
+            or query.project_id != row.project_id
+        ):
+            raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy bảng đã chọn để xuất.", 404)
+        result = execute_query(db, actor, query)
+        evidence = result.source_evidence
+        money_fields = set(result.measure_units) - {
+            field for field, unit in result.measure_units.items() if unit == "bản ghi"
+        }
+        if evidence and evidence.measure:
+            money_fields.add(evidence.measure.field_id)
+        sections: dict[str, list[list[Any]]] = {
+            "Phạm vi": [
+                ["Trường", "Giá trị"],
+                ["Bản chuẩn hóa", result.source_id],
+                ["Nguồn", evidence.source_name if evidence else result.source_id],
+                ["Dòng bắt đầu", query.offset + 1],
+                ["Dòng trong tệp", len(result.rows)],
+                ["Dòng khớp điều kiện", result.input_count],
+            ],
+            "Dữ liệu": [
+                [result.field_labels.get(field, field) for field in result.fields],
+                *[
+                    [
+                        Decimal(value)
+                        if field in money_fields and isinstance(value, str)
+                        else value
+                        for field in result.fields
+                        for value in [record.get(field)]
+                    ]
+                    for record in result.rows
+                ],
+            ],
+        }
+        format = intent.export_format
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / f"studio-query.{format}"
+            (write_xlsx if format == "xlsx" else write_csv)(path, sections)
+            data = path.read_bytes()
+        media = (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            if format == "xlsx"
+            else "text/csv"
+        )
+        return Response(
+            data,
+            media_type=media,
+            headers={
+                "Content-Disposition": f'attachment; filename="studio-query.{format}"',
+                "Cache-Control": "no-store",
+            },
+        )
 
     @router.post("/workflows/{workflow_id}/decisions", response_model=WorkflowView)
     def decision(

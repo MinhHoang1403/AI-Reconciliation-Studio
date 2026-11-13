@@ -12,6 +12,7 @@ import { GridComponent, TooltipComponent } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 import { api, apiPages, ApiError } from "./api";
 import { ReconciliationEvidence } from "./ReconciliationEvidence";
+import { FinancialSummary } from "./FinancialSummary";
 import { DropdownSelect } from "./Dropdown";
 import { Badge, ContextPanel, formatDecimal, Notice, Spinner } from "./components";
 import {
@@ -1544,6 +1545,7 @@ export function ReconciliationStudio({
             <>
               {mode !== "exceptions" && (
                 <>
+                  <FinancialSummary snapshot={snapshot} names={runSources} metricName={metricName} />
                   <div className="result-kpis">
                     {[
                       [

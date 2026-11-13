@@ -2,6 +2,86 @@ import { expect } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import { assistantPanel, selectProject, test } from "./project-selection";
 
+test("semantic source reporting executes canonical SQL and exports the visible table", async ({ page }, info) => {
+  const path = process.env.STUDIO_PROCESSING_REPORT_FIXTURE;
+  test.skip(!path, "Requires the two isolated source fixture projects");
+  test.setTimeout(120000);
+  const { project, issueProject, workspace } = JSON.parse(await readFile(path!, "utf8"));
+  await page.goto("/");
+  if ((await (await page.request.get("/api/session")).json()).workspace_id !== workspace) {
+    await page.getByRole("button", { name: "Quản lý không gian làm việc", exact: true }).click();
+    const picker = page.getByRole("dialog", { name: "Quản lý không gian làm việc", exact: true });
+    await picker.getByLabel("Không gian có quyền truy cập").selectOption(workspace);
+    await picker.getByRole("button", { name: "Chuyển không gian", exact: true }).click();
+    await expect(picker).not.toBeVisible();
+  }
+  await selectProject(page, project);
+  await page.getByRole("button", { name: "AI Assistant", exact: true }).click();
+  await page.getByRole("button", { name: "Hội thoại mới", exact: true }).click();
+  const start = (await (await page.request.get("/api/settings")).json()).gemini_requests_used;
+  const input = page.getByRole("textbox", { name: "Câu hỏi cho AI Assistant", exact: true });
+  const work = page.getByRole("region", { name: "Công việc của AI Assistant", exact: true }).last();
+  const ask = async (question: string) => {
+    await input.fill(question);
+    const pending = page.waitForResponse(r => r.url().endsWith("/api/assistant/messages") && r.request().method() === "POST");
+    await page.getByRole("button", { name: "Gửi câu hỏi", exact: true }).click();
+    const response = await pending;
+    expect(response.ok()).toBe(true);
+    const { job_id } = await response.json();
+    let flow;
+    await expect.poll(async () => {
+      const job = await (await page.request.get(`/api/jobs/${job_id}`)).json();
+      if (job.result?.workflow_id) flow = await (await page.request.get(`/api/agent/workflows/${job.result.workflow_id}`)).json();
+      return flow?.state;
+    }).toBe("COMPLETED");
+    const detail = flow!.detail;
+    expect(detail.model_calls).toBe(0);
+    expect(detail.reviews).toEqual([]);
+    return detail.blocks;
+  };
+  const ledger = await ask("Cho tôi biết tổng số tiền của bộ dữ liệu sổ kế toán.");
+  expect(ledger[0].result.rows[0].sum_decimal_net_revenue_excluding_vat_0).toBe("30959967000.00");
+  await expect(work).toContainText("30.959.967.000");
+  await work.getByText("Xem truy vấn", { exact: true }).click();
+  await expect(work).toContainText('SUM("net_revenue_excluding_vat")');
+  await page.screenshot({ path: info.outputPath("source-total.png") });
+  const sales = await ask("Tổng số tiền của bộ dữ liệu báo cáo bán hàng.");
+  expect(sales[0].result.source_evidence.source_name).toBe("01_bao_cao_ban_hang_5000.csv");
+  const totals = await ask("Tổng doanh thu thuần chưa VAT của từng nguồn trong dự án hiện tại.");
+  expect(totals).toHaveLength(3);
+  expect(totals.every((b: { result: { rows: Record<string, string>[] } }) => b.result.rows[0].sum_decimal_net_revenue_excluding_vat_0 === "30959967000.00")).toBe(true);
+  const compared = await ask("Ba nguồn có tổng tiền bằng nhau không?");
+  expect(compared[0].text).toContain("Các tổng tiền bằng nhau");
+  const distinct = await ask("Có bao nhiêu mã đơn duy nhất trong Bán hàng?");
+  expect(distinct[0].result.rows[0].count_distinct_order_reference_0).toBe(5000);
+  const daily = await ask("Cho tôi doanh thu theo từng ngày tháng 10/2026.");
+  expect(daily[0].result.total_count).toBe(31);
+  const top = await ask("Hiển thị 10 đơn hàng doanh thu cao nhất.");
+  expect(top[0].result.rows).toHaveLength(10);
+  const found = await ask("Tìm mã ORD2610-000001.");
+  expect(found[0].result.rows[0].order_reference).toBe("ORD2610-000001");
+  await expect(work.getByRole("button", { name: "Xem dòng gốc", exact: true }).first()).toBeVisible();
+  const negative = await ask("Có những giao dịch doanh thu âm nào?");
+  expect(negative[0].result.total_count).toBe(0);
+  const narrowed = await ask("Chỉ lấy giao dịch từ 05/10/2026 đến hết 10/10/2026.");
+  expect(narrowed[0].result.query.filters).toEqual([{ field_id: "event_date", op: "between", value: ["2026-10-05", "2026-10-11"] }]);
+  const regroup = await ask("Tiếp tục nhóm kết quả này theo ngày.");
+  expect(regroup[0].result.total_count).toBe(6);
+  await ask("Xuất Excel cho bảng đang xem.");
+  const link = work.getByRole("link", { name: "Tải bảng đang xem XLSX", exact: true });
+  await expect(link).toBeVisible();
+  const downloading = page.waitForEvent("download");
+  await link.click();
+  await (await downloading).saveAs(info.outputPath("daily.xlsx"));
+  await page.reload();
+  await expect(link).toBeVisible();
+  await selectProject(page, issueProject);
+  const issue = await ask("Tổng doanh thu thuần chưa VAT của từng nguồn trong dự án hiện tại.");
+  expect(issue.map((b: {result: { rows: Record<string, string>[] } }) => b.result.rows[0].sum_decimal_net_revenue_excluding_vat_0))
+    .toEqual(["30765657000.00", "30768000000.00", "30758520000.00"]);
+  expect((await (await page.request.get("/api/settings")).json()).gemini_requests_used).toBe(start);
+});
+
 test("observed reconciliation uses the requested pairs and retains evidence and exports", async ({ page }, info) => {
   const path = process.env.STUDIO_PROCESSING_REPORT_FIXTURE;
   test.skip(!path, "Requires the two isolated 5,000-row fixture projects");

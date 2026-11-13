@@ -111,6 +111,29 @@ export type Snapshot = {
   comparison_counts: Record<string, number>;
   excluded_counts: Record<string, number>;
   unresolved_cases_at_run: number;
+  financial?: FinancialMeasure[];
+};
+export type FinancialSide = {
+  source_rows: number;
+  in_scope_records: number;
+  invalid_records: number;
+  out_of_scope_records: number;
+  excluded_rows: number;
+  counted_records: number;
+  groups: number;
+  amount: string | null;
+  completeness: string;
+};
+export type FinancialMeasure = {
+  metric_id: string;
+  amount_basis: string;
+  currency: string;
+  unit: string;
+  left: FinancialSide;
+  right: FinancialSide;
+  signed_variance: string;
+  absolute_variance: string;
+  populations: { state: string; groups: number; left_records: number; right_records: number; left_amount: string | null; right_amount: string | null }[];
 };
 export type Run = {
   id: string;
@@ -244,4 +267,8 @@ export const reconciliationLabels: Record<string, string> = {
   RULE_UNVERIFIED: "Chưa đủ điều kiện so sánh",
   SCHEMA_DRIFT: "Cấu trúc nguồn đã đổi",
 };
-export const label = (value: string) => reconciliationLabels[value] || value;
+export const label = (value: string) => ({
+  net_revenue_excluding_vat: "Doanh thu thuần chưa VAT",
+  net_revenue_excluding_tax: "Doanh thu thuần chưa VAT",
+  net_excluding_tax: "Thuần trước thuế",
+}[value] || reconciliationLabels[value] || value);

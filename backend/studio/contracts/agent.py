@@ -74,6 +74,10 @@ class AgentIntent(Contract):
     key_value: str | None = Field(default=None, min_length=1, max_length=200)
     result_position: int | None = Field(default=None, ge=1, le=50)
     query: DataQuery | None = None
+    source_queries: list[DataQuery] = Field(
+        default_factory=list, max_length=5, exclude_if=lambda value: not value
+    )
+    compare_source_totals: bool = Field(default=False, exclude_if=lambda value: not value)
     planning_request: PlanningRequest | None = None
     questions: list[str] = Field(default_factory=list, max_length=5)
     export_format: Literal["csv", "xlsx"] = "xlsx"
@@ -197,8 +201,10 @@ class IntentCatalogue(Contract):
     confirmed_plan: ReconciliationPlan | None = None
     verified_run_fields: list[str] = Field(default_factory=list)
     verified_metric_ids: list[str] = Field(default_factory=list)
+    verified_pairs: dict[str, tuple[str, str]] = Field(default_factory=dict)
     status_values: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
     previous_query: DataQuery | None = None
+    previous_source_queries: list[DataQuery] = Field(default_factory=list, max_length=5)
     previous_goal: str | None = None
     pending_question: str | None = None
     previous_groups: list[str] = Field(default_factory=list, max_length=50)
@@ -216,6 +222,12 @@ class RoutingQuery(QueryOperations):
     aggregations: list[QueryAggregation] = Field(max_length=5)
     group_by: list[Identifier] = Field(max_length=3)
     currency_field: Identifier | None
+    source_measure_id: Identifier | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    calendar_bucket: Literal["day", "month"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class ReconciliationSelection(Contract):
@@ -384,6 +396,7 @@ class DownloadBlock(Contract):
     format: Literal["csv", "xlsx"]
     displayed_query: bool = False
     discrepancies_only: bool = False
+    source_table: bool = Field(default=False, exclude_if=lambda value: not value)
 
 
 ResultBlock = Annotated[

@@ -104,7 +104,14 @@ def execute_reconciliation(
     verified = all(c.passed for c in checks)
     snapshot = (
         calculate_metric_snapshot(
-            run_id, contract.id, contract.revision, contract.plan, left, right, result
+            run_id,
+            contract.id,
+            contract.revision,
+            contract.plan,
+            left,
+            right,
+            result,
+            [cat.canonical for cat in cats],
         )
         if verified
         else None

@@ -717,6 +717,8 @@ def validate_intents(
     tables = {t.table_id: t for d in catalogue.datasets for t in d.tables}
     canonical = {t.canonical_id: t for t in tables.values() if t.canonical_id}
     for index, (goal, intent) in enumerate(zip(goals, batch.intents, strict=True)):
+        if intent.source_queries or intent.compare_source_totals:
+            raise DomainError("AI_INVALID_INTENT", "Chỉ Backend được chọn truy vấn nhiều nguồn.")
         if intent.intent == "CLARIFY":
             listing = resolve_plain_listing(goal, catalogue)
             if listing is not None:
@@ -939,6 +941,25 @@ def validate_intents(
                 q.source_kind != "VERIFIED_RUN" or q.metric_id not in catalogue.verified_metric_ids
             ):
                 raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ tiêu truy vấn chưa được duyệt.")
+            if q.source_measure_id:
+                from studio.data_query import source_measures
+
+                if (
+                    q.source_kind != "CANONICAL"
+                    or not source
+                    or not source.schema_definition
+                    or q.source_measure_id
+                    not in {m.field_id for m in source_measures(source.schema_definition)}
+                ):
+                    raise DomainError(
+                        "QUERY_SEMANTICS_REQUIRED", "Chọn chỉ tiêu đã xác nhận của nguồn."
+                    )
+            if q.source_kind == "CANONICAL" and any(a.op == "sum_decimal" for a in q.aggregations):
+                from studio.semantic_intents import validate_source_money_language
+
+                validate_source_money_language(
+                    goal, q, source.schema_definition if source else None
+                )
             if q.source_kind == "VERIFIED_RUN":
                 try:
                     intent.query = q = resolve_verified_metric(
@@ -1149,6 +1170,8 @@ def routing_sources(catalogue: IntentCatalogue) -> list[dict[str, Any]]:
                         )
                     )
             if table.canonical_id and table.schema_definition:
+                from studio.data_query import source_measures
+
                 schema = table.schema_definition
                 result.append(
                     dict(
@@ -1160,6 +1183,9 @@ def routing_sources(catalogue: IntentCatalogue) -> list[dict[str, Any]]:
                         readiness=table.canonical_status,
                         grain=schema.grain,
                         business_keys=schema.business_key_fields,
+                        source_measures=[
+                            m.model_dump(mode="json") for m in source_measures(schema)
+                        ],
                         paid_status_fields=table.paid_status_fields,
                     )
                 )
@@ -1471,6 +1497,10 @@ def export_query_for_intent(intent: AgentIntent, catalogue: IntentCatalogue) -> 
     if intent.run_id and intent.run_id not in catalogue.run_ids:
         raise DomainError("AI_INVALID_SOURCE", "Run không có trong context được phép.")
     query = catalogue.previous_query
+    if query and query.source_kind == "CANONICAL" and intent.run_id is None:
+        if query.project_id == catalogue.context.project_id and intent.query == query:
+            return query.model_copy(deep=True)
+        raise DomainError("QUERY_SEMANTICS_REQUIRED", "Bạn muốn xuất bảng nguồn nào?")
     if (
         query is None
         or query.source_kind != "VERIFIED_RUN"
@@ -1525,6 +1555,13 @@ def resolve_displayed_export(goal: str, catalogue: IntentCatalogue) -> AgentInte
             )
         return None
     query = catalogue.previous_query
+    if query and query.source_kind == "CANONICAL" and len(catalogue.previous_source_queries) <= 1:
+        return AgentIntent(
+            intent="EXPORT_RESULT",
+            export_format="csv" if request[1] == "csv" else "xlsx",
+            export_scope="DISPLAYED_QUERY",
+            query=query.model_copy(deep=True),
+        )
     if (
         query is None
         or query.source_kind != "VERIFIED_RUN"
@@ -1894,6 +1931,38 @@ def resolve_native_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | 
     denied = _denied_request(goal)
     if denied:
         return denied
+    financial = " ".join(plain_question(goal).split()).rstrip(".?!")
+    pair = re.fullmatch(r"tong gia tri doi soat cua (.+) voi (.+) la bao nhieu", financial)
+    if pair:
+
+        def words(name: str) -> str:
+            return " " + " ".join(re.findall(r"[a-z0-9]+", plain_question(name))) + " "
+
+        matches = [
+            run
+            for run, sides in catalogue.verified_pairs.items()
+            if all(
+                words(name) in words(side) for name, side in zip(pair.groups(), sides, strict=True)
+            )
+        ]
+        run_id = catalogue.context.run_id
+        if run_id in matches:
+            return AgentIntent(intent="SUMMARIZE_RESULTS", run_id=run_id)
+        if len(matches) == 1:
+            return AgentIntent(intent="SUMMARIZE_RESULTS", run_id=matches[0])
+        return AgentIntent(
+            intent="CLARIFY", questions=["Bạn muốn xem lượt đối soát nào của hai nguồn này?"]
+        )
+    if re.fullmatch(
+        r"(?:hai nguon cua luot doi soat co tong tien la bao nhieu|"
+        r"tong tien cua nhom khop va tong chenh lech la bao nhieu)",
+        financial,
+    ):
+        if catalogue.context.run_id in catalogue.run_ids:
+            return AgentIntent(intent="SUMMARIZE_RESULTS", run_id=catalogue.context.run_id)
+        return AgentIntent(intent="CLARIFY", questions=["Bạn muốn xem lượt đối soát nào?"])
+    from studio.semantic_intents import resolve_source_read
+
     filenames = explicit_source_filenames(goal)
     if (
         len(filenames) == 1
@@ -1918,6 +1987,7 @@ def resolve_native_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | 
         or resolve_run_filter_clarification(run_goal, catalogue)
         or resolve_ranked_results(run_goal, catalogue)
         or resolve_run_read(run_goal, catalogue)
+        or resolve_source_read(goal, catalogue)
         or resolve_plain_listing(goal, catalogue)
     )
 
@@ -2472,6 +2542,17 @@ def interpret_requests(
                         )
                         if s.get("metric_ids")
                         else dict(type="null"),
+                        source_measure_id=dict(
+                            anyOf=[
+                                dict(
+                                    type="string",
+                                    enum=[m["field_id"] for m in s["source_measures"]],
+                                ),
+                                dict(type="null"),
+                            ]
+                        )
+                        if s.get("source_measures")
+                        else dict(type="null"),
                     ),
                 )
                 for s in query_sources
@@ -2845,7 +2926,10 @@ def interpret_requests(
                 "Giới hạn cứng: select_fields tối đa 20; filters 8; aggregations 5; "
                 "group_by 3; sort 3; limit 1–50. Không đặt toàn bộ fields vào group_by. "
                 "chỉ dùng []/null khi mục tiêu không yêu cầu điều kiện/phép tính đó. "
-                "CANONICAL/RAW_PREVIEW/EXCEPTIONS để null. Liệt kê dòng để group_by rỗng; "
+                "CANONICAL/RAW_PREVIEW/EXCEPTIONS để metric_id null. Với CANONICAL, "
+                "source_measure_id chỉ dùng field_id có trong source_measures. "
+                "Không đoán kỳ, cột hoặc tiền tệ. "
+                "Liệt kê dòng để group_by rỗng; "
                 "group_by phải có count/sum/min/max. Tổng/đếm áp dụng ALL_MATCHING trước paging. "
                 "sum_decimal cần currency_field và group_by currency để không trộn tiền tệ. "
                 "Paid filter dùng approved paid_status_fields, eq PAID hoặc in PAID/TRANSFERRED. "

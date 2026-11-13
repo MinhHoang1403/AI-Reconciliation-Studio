@@ -102,6 +102,7 @@ from studio.repository import (
     reserve_gemini_request,
     retrying_gemini_response,
 )
+from studio.semantic_intents import source_scope_explicit
 
 Fence = Callable[[Session, str, str], JobRow]
 Finish = Callable[[Session, JobRow, dict[str, Any]], None]
@@ -357,6 +358,7 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
                     or tuple(explicit_source_filenames(message.text))
                     or None
                 ),
+                project_sources=source_scope_explicit(message.text),
             )
             return bool(
                 resolve_native_read(message.text, catalogue)
@@ -786,7 +788,13 @@ def interpret(
             db.commit()
             return
         catalogue = agent_catalogue(
-            db, actor, context, state.dataset_ids, workflow_id=row.id, dataset_names=files
+            db,
+            actor,
+            context,
+            state.dataset_ids,
+            workflow_id=row.id,
+            dataset_names=files,
+            project_sources=command is None and source_scope_explicit(goal),
         )
         expected_selection = selection_fingerprint(catalogue)
         ids = [d.id for d in catalogue.datasets]
@@ -841,6 +849,18 @@ def interpret(
                 row.context = context.model_dump(mode="json")
             if plain_listing.intent == "SUMMARIZE_RESULTS":
                 context.group_id = context.case_id = None
+                if plain_listing.run_id:
+                    context.run_id = plain_listing.run_id
+                    context.dataset_id = None
+                row.context = context.model_dump(mode="json")
+            if plain_listing.source_queries or (
+                plain_listing.query
+                and plain_listing.query.source_kind == "CANONICAL"
+                and plain_listing.intent == "QUERY_DATA"
+            ):
+                context = AssistantContext(
+                    project_id=context.project_id, dataset_id=context.dataset_id
+                )
                 row.context = context.model_dump(mode="json")
             if plain_listing.result_position is not None:
                 # Pin the displayed group before committing the intent. The user
@@ -921,6 +941,7 @@ def interpret(
                 state.dataset_ids,
                 workflow_id=row.id,
                 dataset_names=files,
+                project_sources=command is None and source_scope_explicit(goal),
             )
             if selection_fingerprint(current_catalogue) != expected_selection:
                 raise DomainError(

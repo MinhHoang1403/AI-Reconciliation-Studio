@@ -1832,6 +1832,70 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
             intent.planning_request = p
             wait_for(db, row, state, "prepare_reconciliation_plan", p.left.canonical_id, ref)
     elif intent.intent in {"QUERY_DATA", "CREATE_VISUALIZATION"}:
+        if intent.source_queries:
+            from decimal import Decimal, localcontext
+
+            results = []
+            for query in intent.source_queries:
+                result = execute_tool(
+                    db, actor, QueryAction(name="query_dataset", query=query), row.id
+                )
+                assert isinstance(result, QueryResult)
+                results.append(result)
+            if intent.compare_source_totals:
+                evidence = [result.source_evidence for result in results]
+                basis = {
+                    (
+                        e.measure.semantic_metric,
+                        e.measure.amount_basis,
+                        e.measure.currency,
+                        e.measure.unit,
+                        e.observed_first,
+                        e.observed_last,
+                    )
+                    for e in evidence
+                    if e and e.measure
+                }
+                values = [result.rows[0].get(result.fields[0]) for result in results]
+                grains = {e.grain for e in evidence if e}
+                observed_roles = {"Một dòng hàng trên đơn bán", "Một phiếu thu", "Một bút toán"}
+                if (
+                    len(basis) == 1
+                    and (len(grains) == 1 or grains <= observed_roles)
+                    and all(isinstance(v, str) for v in values)
+                ):
+                    with localcontext() as decimal_context:
+                        decimal_context.prec = 100
+                        amounts = [Decimal(str(value)) for value in values]
+                        difference = max(amounts) - min(amounts)
+                    state.blocks.append(
+                        ProgressBlock(
+                            text=(
+                                "Các tổng tiền bằng nhau trong phạm vi đã tính."
+                                if difference == 0
+                                else "Tổng cao nhất trừ tổng thấp nhất là "
+                                f"{difference} {next(iter(basis))[2]}."
+                            )
+                            + " Đối soát từng mã đơn cần kết quả kiểm chứng riêng."
+                        )
+                    )
+                else:
+                    state.blocks.append(
+                        ProgressBlock(
+                            text="Chưa đủ căn cứ để so sánh các tổng. "
+                            "Kiểm tra định nghĩa tiền, kỳ và ý nghĩa từng dòng."
+                        )
+                    )
+            state.blocks.extend(
+                TableBlock(
+                    result=result,
+                    title=result.source_evidence.source_name if result.source_evidence else None,
+                )
+                for result in results
+            )
+            row.state = "COMPLETED"
+            save(row, state)
+            return
         if intent.query is None:
             raise DomainError("INPUT_AMBIGUOUS", "Cần chọn nguồn và điều kiện truy vấn rõ ràng.")
         from studio.data_query import resolve_verified_metric
@@ -1972,6 +2036,20 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
         facts(intent.intent == "EXPLAIN_RESULT")
         row.state = "COMPLETED"
     elif intent.intent == "EXPORT_RESULT":
+        if state.export_query and state.export_query.source_kind == "CANONICAL":
+            require_editor(actor, db, row.id)
+            state.blocks.append(
+                DownloadBlock(
+                    export_id=row.id,
+                    run_id="",
+                    format=intent.export_format,
+                    displayed_query=True,
+                    source_table=True,
+                )
+            )
+            row.state = "COMPLETED"
+            save(row, state)
+            return
         context.run_id = intent.run_id or context.run_id
         discrepancies_only = (
             sequence is not None

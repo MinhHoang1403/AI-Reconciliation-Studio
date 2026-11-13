@@ -952,6 +952,7 @@ def enqueue_approved_run(contract_id: str, db: Session, actor: Actor) -> dict[st
                 contract=contract.model_dump(mode="json"),
                 sources=[c.canonical.model_dump(mode="json") for c in cats],
                 engine=ENGINE_REVISION,
+                financial_scope="verified-financial-scope-1",
             ),
             sort_keys=True,
         ).encode()

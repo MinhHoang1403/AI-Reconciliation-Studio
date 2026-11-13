@@ -1,5 +1,9 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Truy vấn ngữ nghĩa và báo cáo tài chính — 13/11/2026
+
+Hai câu hỏi tổng tiền của Sổ kế toán và Báo cáo bán hàng trên `94ec4b2` đều có workflow `WAITING_REVIEW` và trace Gemini `QUERY_SEMANTICS_REQUIRED`. Cổng hợp đồng chỉ chấp nhận `metric_id` của lượt đối soát. Tuyến truy vấn nguồn chọn chỉ tiêu canonical đã xác nhận, biên dịch SQL có tham số và kiểm lại kết quả với dữ liệu đủ điều kiện. Cổng chỉ tiêu của lượt đối soát vẫn áp dụng. Xem [hợp đồng truy vấn và snapshot](DATA_CONTRACTS.md).
+
 ## Đối soát theo dữ liệu quan sát trong Chat — 13/11/2026
 
 Ở bản `1b4972e`, hai yêu cầu nguyên văn về cặp Bán hàng–Thu ngân và Thu ngân–Kế toán có đủ ba nguồn `READY` nhưng đều đi qua model. Bộ nhận diện cũ từ chối cả thứ tự “sau đó” lẫn các mệnh đề bổ sung về khóa, tiền và phạm vi, dẫn tới câu hỏi sai về kỳ. Tuyến quan sát phân tích riêng các phần này và kiểm từng cặp trên bản chuẩn hóa được ghim. Kỳ suy ra từ ngày nghiệp vụ của các dòng hợp lệ, với cận cuối loại trừ. Kỳ do người dùng nêu được giữ nguyên. Độ đầy đủ cả kỳ vẫn cần bằng chứng. Xem [hợp đồng dữ liệu](DATA_CONTRACTS.md).

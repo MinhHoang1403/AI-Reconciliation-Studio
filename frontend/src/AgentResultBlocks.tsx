@@ -6,6 +6,7 @@ import { SVGRenderer } from "echarts/renderers";
 import { api } from "./api";
 import { Badge, DataTable, formatDecimal, Modal, Notice, Spinner } from "./components";
 import { DataQualityPanel } from "./DataQualityPanel";
+import { FinancialSummary } from "./FinancialSummary";
 import { label } from "./reconciliationTypes";
 import {statusText} from "./types";
 import type { AgentBlock, Chart, Query, QueryResult, SourceStatusLine } from "./agentTypes";
@@ -90,13 +91,18 @@ function QueryTable({ initial, workflowId, selection, title }: {
     const groupKey=data.query.source_kind==='VERIFIED_RUN'&&data.rows.some(row=>row.business_key!=null);
     const grouped = (data.query.group_by?.length || 0) > 0 || (data.query.aggregations?.length || 0) > 0;
     const previewRows = data.rows.slice(0, 10);
-    const countOnly = !data.query.group_by?.length && data.query.aggregations?.length === 1 && data.query.aggregations[0].op === "count";
-    const countUnit = data.query.source_kind === "VERIFIED_RUN" ? "nhóm giao dịch" : "dòng dữ liệu";
+    const aggregate = data.query.aggregations[0];
+    const scopeEvidence = data.source_evidence;
+    const countOnly = !data.query.group_by?.length && data.query.aggregations?.length === 1 && ["count", "count_distinct"].includes(aggregate.op);
+    const singleAmount = scopeEvidence?.measure && !data.query.group_by.length && data.query.aggregations.length === 1 && ["sum_decimal", "min", "max"].includes(aggregate.op);
+    const amount = singleAmount ? data.rows[0]?.[data.fields[0]] : undefined;
+    const countUnit = aggregate?.op === "count_distinct" ? "mã đơn duy nhất" : data.query.source_kind === "VERIFIED_RUN" ? "nhóm giao dịch" : "dòng dữ liệu";
     const count = countOnly && data.rows[0] ? data.rows[0][data.fields[0]] : null;
     const columns: ColumnDef<Record<string, unknown>>[] = [{id:'position',header:'Vị trí trong trang',cell:info=>info.row.index+1},...(groupKey?[{id:'business_key',accessorKey:'business_key',header:'Khóa giao dịch'}]:[]),...visibleFields.map<ColumnDef<Record<string, unknown>>>(field => ({ id: field, accessorKey: field,
         header: () => <button className="text-button" disabled={busy} onClick={() => void page(0, [{ field_id: field, descending: !data.query.sort.find(s => s.field_id === field)?.descending }])}>{data.field_labels?.[field] || (countOnly ? `Số ${countUnit}` : queryLabels[field] || field)} ↕</button>,
         cell: info => info.getValue() == null ? "—" :
-          ['VERIFIED_RUN','EXCEPTIONS'].includes(data.query.source_kind)&&['linkage_state','comparison_state','state','type'].includes(field)?label(String(info.getValue())):String(info.getValue()) })), {
+          ['VERIFIED_RUN','EXCEPTIONS'].includes(data.query.source_kind)&&['linkage_state','comparison_state','state','type'].includes(field)?label(String(info.getValue())):
+          (scopeEvidence?.measure && (field === scopeEvidence.measure.field_id || data.measure_units?.[field] === scopeEvidence.measure.unit)) ? formatDecimal(String(info.getValue())) : String(info.getValue()) })), {
         id: "evidence", header: () => <span>Nguồn</span>, cell: info => <button className="text-button" disabled={busy || !Array.isArray(info.row.original.source_provenance)} onClick={event => { evidenceTrigger.current = event.currentTarget; void evidence(info.row.original); }}>Xem dòng gốc</button>,
     }];
     const pagination = <div className="agent-pagination"><button className="button secondary" disabled={busy || !data.offset} onClick={() => void page(Math.max(0, data.offset - data.limit))}>Trước</button>
@@ -104,9 +110,13 @@ function QueryTable({ initial, workflowId, selection, title }: {
       <button className="button secondary" disabled={busy || !data.truncated} onClick={() => void page(data.offset + data.limit)}>Tiếp</button>{busy && <Spinner />}</div>;
     return <section className="agent-table" aria-label="Kết quả truy vấn">
     {title && <h4>{title}</h4>}
+    {singleAmount && <p><strong>{aggregate.op === "sum_decimal" ? "Tổng" : aggregate.op === "min" ? "Thấp nhất" : "Cao nhất"} {label(scopeEvidence.measure!.semantic_metric)} · {scopeEvidence.source_name}</strong><br />
+      {amount == null ? "Chưa có số tiền phù hợp." : <strong>{formatDecimal(String(amount))} {scopeEvidence.measure!.currency}</strong>}</p>}
+    {scopeEvidence && <p className="muted">{scopeEvidence.counted_rows.toLocaleString("vi-VN")} dòng được tính · {scopeEvidence.invalid_rows.toLocaleString("vi-VN")} dòng lỗi · {scopeEvidence.excluded_rows.toLocaleString("vi-VN")} dòng đã loại theo quyết định.
+      {scopeEvidence.observed_first && scopeEvidence.observed_last && ` Ngày quan sát ${scopeEvidence.observed_first} đến ${scopeEvidence.observed_last}.`} Độ đầy đủ của kỳ chưa được xác nhận.</p>}
     {countOnly && count != null && <p>Kết quả đếm: <strong>{typeof count === "number" ? count.toLocaleString("vi-VN") : String(count)} {countUnit}</strong> phù hợp với điều kiện bạn chọn.</p>}
-    {!countOnly && <p><strong>{data.total_count.toLocaleString("vi-VN")} {grouped ? "nhóm kết quả" : "dòng dữ liệu"}</strong>{data.total_count === 0 ? ". Chưa tìm thấy dữ liệu phù hợp với điều kiện bạn chọn." : ". Bạn có thể xem dữ liệu và mở từng dòng gốc bên dưới."}</p>}
-    {!countOnly && data.rows.length > 0 && <p className="muted">Đang xem {previewRows.length} dòng trong trang {Math.floor(data.offset / data.limit) + 1}{data.rows.length > 10 ? `; trang này có ${data.rows.length} dòng.` : "."}</p>}
+    {!countOnly && !singleAmount && <p><strong>{data.total_count.toLocaleString("vi-VN")} {grouped ? "nhóm kết quả" : "dòng dữ liệu"}</strong>{data.total_count === 0 ? ". Chưa tìm thấy dữ liệu phù hợp với điều kiện bạn chọn." : ". Bạn có thể xem dữ liệu và mở từng dòng gốc bên dưới."}</p>}
+    {!countOnly && !singleAmount && data.rows.length > 0 && <p className="muted">Đang xem {previewRows.length} dòng trong trang {Math.floor(data.offset / data.limit) + 1}{data.rows.length > 10 ? `; trang này có ${data.rows.length} dòng.` : "."}</p>}
     {data.query.source_kind === "RAW_PREVIEW" && <p>Đây là dữ liệu gốc đã đọc từ tệp. Ý nghĩa các cột chưa được xác nhận; dữ liệu chưa được chuẩn hóa.</p>}
     {data.query.source_kind === "PREPARED" && <p>Đây là bản tự chuẩn bị để xem và tìm kiếm. Cần xác nhận ý nghĩa nghiệp vụ trước khi dùng để đối soát.</p>}
     {data.query.source_kind === "PREPARED_FINDINGS" && <p>Chỉ gồm dòng có cảnh báo ngày trong bản tự chuẩn bị. Bảng giữ nguyên giá trị nguồn và vị trí dòng.</p>}
@@ -115,7 +125,7 @@ function QueryTable({ initial, workflowId, selection, title }: {
     {!countOnly && data.warnings.map(w => <p className="muted" key={w}>{w}</p>)}
     {!data.evidence_complete && <Notice tone="warning">Chỉ hiển thị một phần bằng chứng; thông tin nguồn đầy đủ vẫn được lưu.</Notice>}
     {error && <Notice tone="error">{error}</Notice>}
-    {(!countOnly || count == null) && <>
+    {!singleAmount && (!countOnly || count == null) && <>
       <DataTable rows={previewRows} columns={columns} numericColumns={numericQueryFields}/>
       {pagination}
       {data.rows.length > 0 && <button ref={expandTrigger} className="text-button" onClick={()=>setExpanded(true)}>Xem đầy đủ dữ liệu</button>}
@@ -126,6 +136,7 @@ function QueryTable({ initial, workflowId, selection, title }: {
       <DataTable rows={data.rows} columns={columns} numericColumns={numericQueryFields}/>{pagination}
     </Modal>
     <details><summary>Điều kiện và nguồn</summary><p>{data.query.filters.map(f => `${f.field_id} ${f.op} ${JSON.stringify(f.value)}`).join("; ") || "Toàn bộ nguồn"}</p><p>{data.input_count.toLocaleString("vi-VN")} dòng được dùng trước khi phân nhóm và phân trang. <Badge status={data.verification_status}/></p>{countOnly && data.warnings.map(w => <p key={w}>{w}</p>)}<small>{data.source_refs.join(" · ")}</small></details>
+    {scopeEvidence && <details><summary>Xem truy vấn</summary><p>SQL do Backend tạo. Các giá trị lọc được truyền riêng.</p><pre className="table-scroll">{scopeEvidence.sql}</pre></details>}
     <Modal title="Dòng dữ liệu nguồn" returnFocus={evidenceTrigger} open={source !== null} onOpenChange={open => {if(!open){scope.current++;setBusy(false);setSource(null);}}}>
       <p>{sourceRefs.length} dòng nguồn trong bằng chứng hiển thị. Chọn từng dòng để xem chính xác.</p>
       <div className="agent-pagination">{sourceRefs.map((ref,i)=><button className="button secondary" key={`${ref.source_table_id}:${ref.row}:${i}`} disabled={busy||i===sourceIndex} onClick={()=>void evidence({source_provenance:sourceRefs},i)}>{ref.sheet} · dòng {ref.row}</button>)}</div>
@@ -279,6 +290,7 @@ function ObservedResult({block, open}: {block: Extract<AgentBlock, {type: "facts
         })}
       </details>
       <button className="text-button" onClick={() => open(run.id)}>Xem giao dịch, bằng chứng và xuất báo cáo</button>
+      {snapshot.financial?.length ? <FinancialSummary snapshot={snapshot} names={scope.source_names} /> : null}
     </section>;
 }
 
@@ -343,7 +355,7 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
                     : block.displayed_query
                     ? "Tệp chứa đúng trang kết quả đã được chọn khi yêu cầu xuất."
                     : "Tệp chứa toàn bộ lần đối soát được yêu cầu."}</p>}
-                  <a className="button secondary" href={`/api/exports/${block.export_id}/download`}>Tải {block.discrepancies_only ? "giao dịch chênh lệch " : block.displayed_query ? "bảng đang xem " : ""}{block.format.toUpperCase()}</a>
+                  <a className="button secondary" href={block.source_table ? `/api/agent/workflows/${block.export_id}/source-export` : `/api/exports/${block.export_id}/download`}>Tải {block.discrepancies_only ? "giao dịch chênh lệch " : block.displayed_query ? "bảng đang xem " : ""}{block.format.toUpperCase()}</a>
                 </div>;
             if (block.type === "dataset_summary")
                 return <DatasetResult key={block.table_id} block={block} onQualityPublished={onQualityPublished} projectId={context.project_id}
@@ -377,6 +389,7 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
                   {snapshot.monetary.length > 1 && <><strong>{label(m.metric_id)}</strong> · </>}
                   Chênh lệch tuyệt đối <strong>{formatDecimal(m.absolute_variance)} {m.currency}</strong> · Có dấu {formatDecimal(m.signed_variance)} {m.currency}
                 </p>)}
+                <FinancialSummary snapshot={snapshot} names={pairNames?.filter((name): name is string => !!name)} />
                 <details><summary>Phạm vi và cách tính tỷ lệ</summary>
                   <p>Tỷ lệ khớp {snapshot.full_match_rate.percent ?? "N/A"}{snapshot.full_match_rate.percent !== null ? "%" : ""} ({snapshot.full_match_rate.numerator}/{snapshot.full_match_rate.denominator})</p>
                   <p>Kỳ {snapshot.period_start} → {snapshot.period_end} · {snapshot.timezone}</p>

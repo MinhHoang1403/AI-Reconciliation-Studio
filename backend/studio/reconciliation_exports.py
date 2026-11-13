@@ -161,6 +161,68 @@ def report_sections(
         ],
     }
     sections["Summary"].extend(quality_scope_rows(run))
+    if snapshot.financial:
+        sections["Financial scope"] = [
+            [
+                "Metric",
+                "Amount basis",
+                "Currency",
+                "Side",
+                "Source rows",
+                "In scope",
+                "Invalid",
+                "Out of scope",
+                "Excluded",
+                "Counted records",
+                "Groups",
+                "Amount",
+                "Completeness",
+            ]
+        ]
+        sections["Financial populations"] = [
+            [
+                "Metric",
+                "Currency",
+                "State",
+                "Groups",
+                "Left records",
+                "Right records",
+                "Left amount",
+                "Right amount",
+            ]
+        ]
+        for measure in snapshot.financial:
+            for side, scope in (("left", measure.left), ("right", measure.right)):
+                sections["Financial scope"].append(
+                    [
+                        measure.metric_id,
+                        measure.amount_basis,
+                        measure.currency,
+                        side,
+                        scope.source_rows,
+                        scope.in_scope_records,
+                        scope.invalid_records,
+                        scope.out_of_scope_records,
+                        scope.excluded_rows,
+                        scope.counted_records,
+                        scope.groups,
+                        scope.amount,
+                        scope.completeness,
+                    ]
+                )
+            for population in measure.populations:
+                sections["Financial populations"].append(
+                    [
+                        measure.metric_id,
+                        measure.currency,
+                        population.state,
+                        population.groups,
+                        population.left_records,
+                        population.right_records,
+                        population.left_amount,
+                        population.right_amount,
+                    ]
+                )
     for name in (
         "full_match_rate",
         "linkage_rate",
