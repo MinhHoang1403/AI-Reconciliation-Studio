@@ -133,8 +133,13 @@ test("financial snapshot agrees in Chat, Reports and downloaded files", async ({
     await page.goto(`/#page=reports&project=${item.project}&run_id=${item.run}`);
     const report = page.getByRole("region", { name: "Tổng quan tài chính", exact: true });
     await expect(report.getByRole("row", { name: /Tổng tiền đủ điều kiện/ })).toContainText(sum);
-    await report.getByText("Chất lượng và phạm vi", { exact: true }).click();
-    await expect(report).toContainText("Độ đầy đủ chưa được xác nhận");
+    const quality = page.getByText("Chất lượng và phạm vi", { exact: true });
+    await quality.click();
+    const qualityDetails = quality.locator("..");
+    await expect(qualityDetails).toContainText("Độ đầy đủ chưa được xác nhận");
+    const qualityBox = await qualityDetails.boundingBox();
+    const reportBox = await report.boundingBox();
+    expect(reportBox!.y).toBeGreaterThanOrEqual(qualityBox!.y + qualityBox!.height);
     await report.scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath(`${item.kind}-financial.png`) });
     const format = item.kind === "clean" ? "CSV" : "XLSX";
