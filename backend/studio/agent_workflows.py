@@ -46,7 +46,7 @@ from studio.contracts.agent import (
     WorkflowView,
 )
 from studio.contracts.assistant import AssistantCommand, AssistantContext, ToolRequest, ToolResult
-from studio.contracts.data_query import DataQuery, QueryResult
+from studio.contracts.data_query import DataQuery, QueryFilter, QueryResult
 from studio.contracts.reconciliation import (
     PlanningCandidate,
     PlanningRequest,
@@ -89,8 +89,12 @@ def publish_source_inspection(
 ) -> None:
     """Publish actual scoped rows and issue summaries without changing source data."""
     from studio.data_query import compare_source_row
+    from studio.profiling import field_name_tokens
 
     mode, count, requested = request
+    lookup = requested if mode == "lookup" else None
+    if lookup:
+        requested = None
     context = AssistantContext(
         project_id=context.project_id, dataset_id=None if requested else context.dataset_id
     )
@@ -127,6 +131,7 @@ def publish_source_inspection(
             state.blocks.append(ProgressBlock(text=f"{item.name} · {text}"))
     for dataset, table in targets[: settings.agent_max_tool_calls]:
         title = f"{dataset.name} · {table.sheet}"
+        filters = []
         canonical = (
             get_scoped(db, CanonicalRow, table.canonical_id, actor) if table.canonical_id else None
         )
@@ -165,8 +170,20 @@ def publish_source_inspection(
                 )
             )
             kind, source_id = "CANONICAL", canonical.id
-        elif mode == "raw":
+        elif mode in {"raw", "row", "lookup"}:
             kind, source_id = "RAW_PREVIEW", table.table_id
+            if mode == "row":
+                filters = [QueryFilter(field_id="_source_row", op="eq", value=str(count))]
+            elif lookup:
+                keys = [
+                    c.id
+                    for c in table.columns
+                    if "order" in field_name_tokens(c.name)
+                    and set(field_name_tokens(c.name)) & {"id", "reference"}
+                ]
+                if len(keys) != 1:
+                    continue
+                filters = [QueryFilter(field_id=keys[0], op="eq", value=lookup)]
         elif table.prepared_artifact_id:
             kind = "PREPARED_ISSUES" if mode == "quality" else "PREPARED"
             source_id = table.table_id
@@ -184,13 +201,19 @@ def publish_source_inspection(
             QueryAction(
                 name="query_dataset",
                 query=DataQuery(
-                    project_id=row.project_id, source_kind=kind, source_id=source_id, limit=count
+                    project_id=row.project_id,
+                    source_kind=kind,
+                    source_id=source_id,
+                    limit=1 if mode == "row" else count,
+                    filters=filters,
                 ),
             ),
             row.id,
         )
         assert isinstance(result, QueryResult)
         state.blocks.append(TableBlock(result=result, title=title))
+    if lookup and not state.blocks:
+        state.blocks.append(ProgressBlock(text="Chưa xác định được cột mã đơn hàng trong nguồn."))
     if len(targets) > settings.agent_max_tool_calls:
         state.blocks.append(ProgressBlock(text="Hãy nêu tên nguồn để xem các bảng còn lại."))
 

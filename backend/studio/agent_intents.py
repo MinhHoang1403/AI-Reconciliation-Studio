@@ -1712,6 +1712,14 @@ def resolve_layer_listing(goal: str, catalogue: IntentCatalogue) -> AgentIntent 
 
 def source_inspection_request(goal: str) -> tuple[str, int, str | None] | None:
     """A closed Vietnamese grammar for common project-source reads."""
+    literal_lookup = re.fullmatch(
+        r"(?:(?:cho (?:minh|toi|em)|hay) )?(?:xem|tim|tra cuu) (?:giao dich|don hang) "
+        r"(?:co )?ma ([a-z0-9][a-z0-9_-]{0,79})[.?!]?",
+        " ".join(plain_question(goal).split()),
+    )
+    if literal_lookup:
+        # Match the command case-insensitively and keep the identifier bytes unchanged.
+        return "lookup", 10, goal.strip().rstrip(".!?").rsplit(maxsplit=1)[-1]
     text = " ".join(plain_question(goal).replace("_", " ").split()).rstrip("?.!")
     listing = re.fullmatch(
         r"(?:(?:cho (?:minh|toi|em)|hay|vui long) )?(?:xem|mo|liet ke) "
@@ -1734,6 +1742,13 @@ def source_inspection_request(goal: str) -> tuple[str, int, str | None] | None:
     )
     if first_rows:
         return "raw", min(50, max(1, int(first_rows[1]))), first_rows[2]
+    physical = re.fullmatch(
+        r"(?:hay |cho (?:minh|toi) )?(?:kiem tra|xem) dong (\d{1,6})"
+        r"(?: (?:cua|trong) (.{1,180}))?",
+        text,
+    )
+    if physical:
+        return "row", max(1, int(physical[1])), physical[2]
     compare = re.fullmatch(
         r"(?:hay |kiem tra )?dong (\d{1,6})(?: (?:cua|trong) (.{1,180}?))? "
         r"(?:(?:truoc va sau (?:chuan hoa|xu ly) khac(?: nhau)? (?:gi|the nao))|"

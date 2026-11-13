@@ -86,6 +86,20 @@ def test_automatic_upload_and_observed_comparison_need_no_mapping_review(pg, mon
     again = ask_agent(client, context, cid, key="again", text="Đối soát ba nguồn giúp mình")
     drain(factory, worker)
     assert workflow_for(client, factory, again["job_id"])["state"] == "COMPLETED"
+    for key, question, expected in [
+        ("lookup", "Cho mình xem giao dịch có mã A1.", 3),
+        ("row", "Hãy kiểm tra dòng 2 của cash.csv.", 1),
+    ]:
+        read = ask_agent(client, context, cid, key=key, text=question)
+        drain(factory, worker)
+        flow = workflow_for(client, factory, read["job_id"])
+        assert flow["state"] == "COMPLETED" and flow["detail"]["model_calls"] == 0
+        tables = [b["result"] for b in flow["detail"]["blocks"] if b["type"] == "table"]
+        assert len(tables) == expected
+        for table in tables:
+            assert table["total_count"] == 1
+            row = table["rows"][0]
+            assert (row["c1"], row["c2"], row["source_provenance"][0]["row"]) == ("0001", "A1", 2)
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(RunRow)) == 2
         assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 3

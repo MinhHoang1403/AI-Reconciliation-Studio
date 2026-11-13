@@ -8,6 +8,8 @@ Trên website local, tải bộ ba tệp 3.000 dòng vào một dự án TEST. S
 
 Gemini thật trên tệp tổng hợp riêng trả HTTP 503 rồi HTTP 200 sau một lần phục hồi. Gateway kiểm được đề xuất, nguồn tiếp tục ở mức xem vì cột tiền mơ hồ. Dự án TEST ba tệp có 0 lượt gọi AI. Backup được khôi phục thử trong schema riêng, và dữ liệu cũ qua diễn tập rollback khớp metadata lẫn checksum.
 
+Đã chạy cặp rollback tương thích trên dữ liệu chuẩn bị tự động, đọc lại cả bốn báo cáo và xác minh checksum trước khi quay về bản phát hành. Dọn bốn image build cũ của Studio có 0 container tham chiếu, tương ứng khoảng 3,30 MB dung lượng riêng theo Docker. Giữ cặp image đã diễn tập và cả hai volume.
+
 ## Ứng viên phát hành và hoàn thiện giao diện — 10/11/2026
 
 Ứng viên trên `codex/studio-product-quality`. Các ca dùng một Docker Compose, qua Nginx tại cổng 18180, với schema và kho tệp TEST riêng trước khi đưa ứng viên vào `studio.public`.

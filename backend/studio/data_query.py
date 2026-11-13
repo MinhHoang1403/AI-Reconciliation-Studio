@@ -572,7 +572,14 @@ def _execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
         + [s.field_id for s in query.sort if s.field_id not in aggregate_names]
         + [a.field_id for a in query.aggregations if a.field_id]
     )
-    if not set(mentioned) <= set(source.fields):
+    allowed_filters = {"_source_row"} if query.source_kind == "RAW_PREVIEW" else set()
+    visible_fields = [f for f in mentioned if f not in allowed_filters]
+    if not set(visible_fields) <= set(source.fields) or allowed_filters.intersection(
+        query.select_fields
+        + query.group_by
+        + [s.field_id for s in query.sort]
+        + [a.field_id for a in query.aggregations if a.field_id]
+    ):
         raise DomainError("QUERY_FIELD_INVALID", "Trường truy vấn không nằm trong nguồn đã chọn.")
     for rule in query.filters:
         col = pl.col(rule.field_id)
