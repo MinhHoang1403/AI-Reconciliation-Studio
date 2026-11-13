@@ -178,7 +178,17 @@ def resolve_source_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | 
         )
     )
     total = bool(re.search(rf"\b(?:tong|tong cong) {MONEY}\b", text))
-    grouped = bool(re.search(rf"\b{MONEY} (?:theo )?tung (?:ngay|thang)\b", text))
+    # A source phrase may sit between the measure and the grouping clause.
+    group_goal = text
+    for dataset in catalogue.datasets:
+        group_goal = re.sub(
+            rf"(?<![\w.-])(?:(?:cua|trong) )?{re.escape(plain_question(dataset.name))}(?![\w.-])",
+            " ",
+            group_goal,
+        )
+    group_goal = re.sub(rf"\b(?:(?:cua|trong) )?{ROLE}\b", " ", group_goal)
+    group_goal = " ".join(group_goal.split())
+    grouped = bool(re.search(rf"\b{MONEY} (?:theo )?tung (?:ngay|thang)\b", group_goal))
     distinct = bool(
         re.search(r"\b(?:bao nhieu|dem) ma don(?: hang)? (?:duy nhat|khac nhau)\b", text)
         or re.fullmatch(r"(?:co )?bao nhieu don hang(?: (?:trong|cua) .+)?", text)

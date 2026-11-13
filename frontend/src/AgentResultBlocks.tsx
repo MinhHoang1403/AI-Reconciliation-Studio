@@ -102,21 +102,22 @@ function QueryTable({ initial, workflowId, selection, title, showResultHints }: 
     const groupKey=data.query.source_kind==='VERIFIED_RUN'&&data.rows.some(row=>row.business_key!=null);
     const grouped = (data.query.group_by?.length || 0) > 0 || (data.query.aggregations?.length || 0) > 0;
     const previewRows = data.rows.slice(0, 10);
-    const aggregate = data.query.aggregations[0];
+    const aggregate = data.query.aggregations?.[0];
     const scopeEvidence = data.source_evidence;
-    const countOnly = !data.query.group_by?.length && data.query.aggregations?.length === 1 && ["count", "count_distinct"].includes(aggregate.op);
-    const singleAmount = scopeEvidence?.measure && !data.query.group_by.length && data.query.aggregations.length === 1 && ["sum_decimal", "min", "max"].includes(aggregate.op);
+    const countOnly = !!aggregate && !data.query.group_by?.length && data.query.aggregations?.length === 1 && ["count", "count_distinct"].includes(aggregate.op);
+    const singleAmount = !!aggregate && scopeEvidence?.measure && !data.query.group_by?.length && data.query.aggregations?.length === 1 && ["sum_decimal", "min", "max"].includes(aggregate.op);
     const amount = singleAmount ? data.rows[0]?.[data.fields[0]] : undefined;
     const measure = scopeEvidence?.measure;
     const metric = measure && (label(measure.semantic_metric) === measure.semantic_metric ? measure.name : label(measure.semantic_metric));
     const sourceName = scopeEvidence?.source_name || title;
     const sourceTitle = sourceName && sourceDisplayName(sourceName);
+    const fieldsWithUnits = Object.entries(data.measure_units ?? {});
     const moneyFields = new Set([
-        ...Object.keys(data.measure_units ?? {}),
+        ...fieldsWithUnits.filter(([, unit]) => unit !== "bản ghi").map(([field]) => field),
         ...(measure ? [measure.field_id] : []),
         ...(data.query.source_kind === "VERIFIED_RUN" ? comparisonMoney : []),
     ]);
-    const numericQueryFields = new Set([...countFields, ...moneyFields]);
+    const numericQueryFields = new Set([...countFields, ...moneyFields, ...fieldsWithUnits.map(([field]) => field)]);
     const showEvidenceHint = showResultHints && !initial.evidence_complete;
     const countUnit = aggregate?.op === "count_distinct" ? "mã đơn duy nhất" : data.query.source_kind === "VERIFIED_RUN" ? "nhóm giao dịch" : "dòng dữ liệu";
     const count = countOnly && data.rows[0] ? data.rows[0][data.fields[0]] : null;
@@ -131,7 +132,7 @@ function QueryTable({ initial, workflowId, selection, title, showResultHints }: 
       <span>Trang {Math.floor(data.offset / data.limit) + 1} · {data.rows.length} dòng trong trang</span>
       <button className="button secondary" disabled={busy || !data.truncated} onClick={() => void page(data.offset + data.limit)}>Tiếp</button>{busy && <Spinner />}</div>;
     return <section className="agent-table" aria-label="Kết quả truy vấn">
-    {singleAmount && metric && measure && (amount == null
+    {singleAmount && aggregate && metric && measure && (amount == null
       ? <p className="agent-answer-lead">Chưa có số tiền phù hợp cho chỉ tiêu {metric} của {sourceTitle}.</p>
       : <p className="agent-answer-lead">{aggregate.op === "sum_decimal" ? "Tổng" : aggregate.op === "min" ? "Mức thấp nhất của" : "Mức cao nhất của"} {metric.charAt(0).toLocaleLowerCase("vi-VN") + metric.slice(1)} của {sourceTitle} là <strong>{formatDecimal(String(amount))} {measure.currency}</strong>.</p>)}
     {!singleAmount && title && <h4>{scopeEvidence ? sourceTitle : title}</h4>}

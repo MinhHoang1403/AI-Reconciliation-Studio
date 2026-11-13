@@ -341,7 +341,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     await mkdir(`../runtime/product-polish/candidate/${width}`,{recursive:true});
     await page.screenshot({path:`../runtime/product-polish/candidate/${width}/reading.png`,fullPage:true});
     countMode=true;await page.reload();
-    await expect(result).toContainText('Kết quả đếm: 75 dòng dữ liệu');
+    await expect(result).toContainText('Có 75 dòng dữ liệu phù hợp với điều kiện đã chọn.');
     await expect(result).not.toContainText('1 nhóm kết quả');
     await expect(result.getByRole('table')).toHaveCount(0);
     aggregate.result.rows[0].count_rows_0=0;await page.reload();

@@ -126,6 +126,18 @@ def test_router_keeps_explicit_scope_and_distinguishes_orders_from_rows():
         assert intent and intent.intent == "CLARIFY"
 
 
+@pytest.mark.parametrize("source_name", ["Bán hàng", "Bán hàng.csv", "của báo cáo bán hàng"])
+def test_named_source_may_precede_calendar_grouping(source_name):
+    intent = resolve_source_read(
+        f"Doanh thu {source_name} theo từng ngày tháng 10/2026.", catalogue()
+    )
+    assert intent and intent.query
+    assert intent.query.source_id == "canonical"
+    assert intent.query.calendar_bucket == "day"
+    assert intent.query.group_by == ["event_date"]
+    assert intent.query.filters[0].value == ["2026-10-01", "2026-11-01"]
+
+
 def test_bound_sql_counts_exact_identifiers_and_decimal_with_null_and_refund():
     result = execute_source_sql(
         query(

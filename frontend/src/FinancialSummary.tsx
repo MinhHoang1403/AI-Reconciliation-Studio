@@ -20,7 +20,7 @@ export function FinancialSummary({ snapshot, names, metricName = label }: {
     {snapshot.financial.map(measure => {
       const money = (value: string | null) => value === null ? "—" : `${formatDecimal(value)} ${measure.currency}`;
       return <section className="agent-facts" key={measure.metric_id}>
-        <p className="agent-answer-context">{metricName(measure.metric_id)} · {measure.currency} · {label(measure.amount_basis)}</p>
+        <p className="agent-answer-context">{label(metricName(measure.metric_id))} · {measure.currency} · {label(measure.amount_basis)}</p>
         <div className="table-scroll" tabIndex={0} aria-label="Giá trị theo trạng thái">
           <table>
             <thead><tr><th scope="col">Trạng thái</th><th scope="col" className="numeric-cell">Nhóm</th><th scope="col" className="numeric-cell">{sourceDisplayName(left)}</th><th scope="col" className="numeric-cell">{sourceDisplayName(right)}</th></tr></thead>

@@ -76,7 +76,7 @@ test("semantic source reporting executes canonical SQL and exports the visible t
   expect(compared[0].text).toContain("Các tổng tiền bằng nhau");
   const distinct = await ask("Có bao nhiêu mã đơn duy nhất trong Bán hàng?");
   expect(distinct[0].result.rows[0].count_distinct_order_reference_0).toBe(5000);
-  const daily = await ask("Cho tôi doanh thu theo từng ngày tháng 10/2026.");
+  const daily = await ask("Doanh thu Bán hàng theo từng ngày tháng 10/2026.");
   expect(daily[0].result.total_count).toBe(31);
   const dailyValue = work.getByRole("cell", { name: "1.075.744.000", exact: true });
   await expect(dailyValue).toBeVisible();
