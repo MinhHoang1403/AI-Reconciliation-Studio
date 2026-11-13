@@ -1,4 +1,4 @@
-import { assistantPanel, chooseMappingTarget, test } from "./project-selection";
+import { assistantPanel, chooseMappingTarget, openSourceMapping, test } from "./project-selection";
 import { openLegacyPage } from "./project-selection";
 import { expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
@@ -53,7 +53,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     await writeFile("../runtime/guided-workflow/live-project.json", JSON.stringify({ projectId, testProjectName, marker }));
   }
   const dashboard = page.getByRole("navigation", { name: "Điều hướng chính" }).getByRole("button", { name: "Dashboard", exact: true });
-  await expect(page.getByRole("region", { name: "Quy trình làm việc" }).getByRole("listitem")).toHaveCount(5);
+  await expect(page.getByRole("region", { name: "Quy trình làm việc" }).getByRole("listitem")).toHaveText(["Tải dữ liệu", "Chuẩn bị và kiểm tra", "Đối soát", "Xem báo cáo"]);
   await expect(page.getByRole("region", { name: "Tổng quan công việc" }).getByRole("button", { name: "Tải dữ liệu", exact: true })).toBeEnabled();
   for (const screen of ["reconcile", "reports"] as const) {
     await openLegacyPage(page, screen);
@@ -85,7 +85,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
       buffer: await readFile(i ? xlsxPath : "../tests/fixtures/shipments.csv"),
     });
     await upload.getByText("Tùy chọn đọc nâng cao", { exact: true }).click();
-    await upload.getByLabel("Dùng AI đề xuất cách đọc cột").setChecked(liveMapping && i === 0);
+    await upload.getByLabel("Dùng AI gợi ý thêm khi dữ liệu chưa đủ căn cứ").setChecked(liveMapping && i === 0);
     await upload
       .getByRole("button", { name: "Tải 1 tệp", exact: true })
       .click();
@@ -112,7 +112,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
         }, { timeout: 90000 }).toEqual(["SUCCEEDED", "GEMINI", null]);
       }
       await dashboard.click();
-      await expect(page.getByRole("button", { name: "Kiểm tra ánh xạ", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Kiểm tra trong AI Assistant", exact: true })).toBeEnabled();
       await openLegacyPage(page, "reconcile");
       await expect(page.getByRole("button", { name: "Kiểm tra nguồn cần chuẩn hóa", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Kiểm tra nguồn cần chuẩn hóa", exact: true }).click();
@@ -127,9 +127,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     await expect(page.getByRole("cell", { name: "000702", exact: true })).toBeVisible();
     await page.getByText("Thống kê dữ liệu nguồn", { exact: true }).click();
     await expect(page.locator(".profile-grid")).toContainText("tracking_id");
-    await page
-      .getByRole("button", { name: "Xác nhận cột", exact: true })
-      .click();
+    await openSourceMapping(page);
     if (liveMapping && i === 0) await expect(page.getByText(/Gemini đã đề xuất ánh xạ/)).toBeVisible();
     await page.getByLabel("Loại dữ liệu", { exact: true }).fill("delivery");
     await page
@@ -222,7 +220,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
       await expect(page.getByText(/Bạn đang có 1 nguồn sẵn sàng/)).toBeVisible();
       await openLegacyPage(page, "data");
       await page.getByRole("button", { name: names[i], exact: true }).click();
-      await page.getByRole("button", { name: "Xác nhận cột", exact: true }).click();
+      await openSourceMapping(page);
       await page.getByText("Tự áp dụng cho lần tải tương thích", { exact: true }).click();
       await page.getByRole("button", { name: "Cho phép tự áp dụng mẫu", exact: true }).click();
       await expect(page.getByRole("button", { name: "Tắt tự áp dụng mẫu", exact: true })).toBeVisible();
@@ -324,7 +322,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     .getByRole("button", { name: "Xem ngoại lệ", exact: true })
     .click();
   await expect(page.getByRole("dialog").locator(".evidence-comparison tbody tr").getByRole("cell"))
-    .toHaveText(["12,75", "10,00", "2,75", "VND"]);
+    .toHaveText(["12,75", "10", "2,75", "VND"]);
   await page.keyboard.press("Escape");
   await mismatch
     .getByRole("button", { name: "Hỏi vì sao lệch", exact: true })
@@ -420,7 +418,7 @@ test("new project CSV/XLSX through verified exceptions, Assistant page, exports 
     buffer: Buffer.from(revised),
   });
   await repeatUpload.getByText("Tùy chọn đọc nâng cao", { exact: true }).click();
-  await repeatUpload.getByLabel("Dùng AI đề xuất cách đọc cột").uncheck();
+  await repeatUpload.getByLabel("Dùng AI gợi ý thêm khi dữ liệu chưa đủ căn cứ").uncheck();
   await repeatUpload.getByRole("button", { name: "Tải 1 tệp", exact: true }).click();
   await expect(repeatUpload).not.toBeVisible();
   await expect(page.getByRole("cell", { name: "Parcel A repeat", exact: true })).toBeVisible();

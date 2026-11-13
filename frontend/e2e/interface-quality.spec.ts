@@ -1701,6 +1701,22 @@ test("dashboard uses server totals, distinguishes PARTIAL and opens the exact of
       return route.fulfill({ json: { items: [{ id: "approved", status: "APPROVED", schema: { fields: [] } }] } });
     if (path.endsWith("/profile"))
       return route.fulfill({ json: { columns: [], row_count: 4 } });
+    if (path.endsWith("/table-errors/quality-issues")) {
+      expect(new URL(route.request().url()).searchParams.get("canonical_id")).toBe(canonical.id);
+      return route.fulfill({ json: {
+        dataset: source.name, sheet: "Errors sheet", current: true, total: 2,
+        valid_records: 2, invalid_records: 2, excluded_source_rows: 0,
+        excluded_amounts: [], excluded_amounts_unavailable: false,
+        latest_id: canonical.id, job: null, decision_history: [],
+        items: ["invalid", null].map((value, index) => ({
+          source_row_id: `row-${index + 2}`, source_row: index + 2, pending_reason: null,
+          issues: [{
+            field: "amount", target_label: "Số tiền", source_label: "Gross amount",
+            raw_value: value, code: "INVALID_DECIMAL", editable: true,
+          }],
+        })),
+      } });
+    }
     if (path.endsWith("/preview"))
       return route.fulfill({
         json: {
@@ -1734,12 +1750,11 @@ test("dashboard uses server totals, distinguishes PARTIAL and opens the exact of
   await expect(
     page.getByRole("combobox", { name: "Lớp dữ liệu", exact: true }),
   ).toHaveValue("errors");
-  await expect(
-    page.getByRole("cell", { name: "invalid", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Dòng nguồn 2/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Dòng cần xử lý" }).getByText("invalid", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("status").filter({ hasText: "Dữ liệu cần kiểm tra" }),
-  ).toContainText("4 dòng · 2 hợp lệ · 2 cần kiểm tra");
+  ).toContainText("2 hợp lệ · 2 cần kiểm tra");
   expect(errors).toEqual([]);
 });
 

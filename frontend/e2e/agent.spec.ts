@@ -195,6 +195,14 @@ for (const sharedReview of paymentJourney ? [true] : [false,true]) test(`[${comp
   await expect(page.locator('.agent-table')).toHaveCount(names.length);
   receipts.upload_to_raw_visible_ms=Date.now()-start;
   const cards=page.getByRole('region',{name:'Quyết định cần xác nhận',exact:true});
+  if (!compositeJourney) {
+    const work=page.getByRole('region',{name:'Công việc của AI Assistant',exact:true}).last();
+    await expect(work).toContainText('Đã chuẩn bị để xem. Còn thiếu căn cứ đối soát tài chính.');
+    await expect(cards).toHaveCount(0);
+    const input=page.getByRole('textbox',{name:'Câu hỏi cho AI Assistant',exact:true});
+    await input.fill('Chuẩn hóa ba nguồn trong dự án hiện tại.');
+    await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();
+  }
   await expect(cards).toHaveCount(names.length);
   receipts.upload_to_reviews_ms=Date.now()-start;
   if(sharedReview){

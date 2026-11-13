@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type Locator, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 
@@ -23,6 +23,35 @@ export const test = base.extend({
 export function assistantPanel(page: Page, name: string) {
   const label = { name, exact: true };
   return page.getByRole("dialog", label).or(page.getByRole("complementary", label));
+}
+
+export async function chooseDropdownOption(
+  scope: Page | Locator, label: string, value: string,
+) {
+  const native = scope.getByRole("combobox", { name: label, exact: true });
+  const trigger = scope.getByRole("button", { name: label, exact: true });
+  await expect(native.or(trigger)).toBeVisible();
+  if (await native.isVisible()) {
+    await native.selectOption(value);
+    await expect(native).toHaveValue(value);
+    return;
+  }
+  await trigger.click();
+  const panel = scope.getByRole("group", { name: label, exact: true });
+  const option = panel.getByRole("option").and(panel.locator(`[data-option-value="${value}"]`));
+  const labelText = (await option.locator("strong").innerText()).trim();
+  await option.click();
+  await expect(trigger).toContainText(labelText);
+}
+
+export async function openSourceMapping(page: Page) {
+  const workflow = page.getByRole("group", { name: "Công việc với nguồn", exact: true });
+  const mapping = workflow.getByRole("button", { name: "Xác nhận cột", exact: true });
+  const advanced = workflow.getByText("Chuẩn bị nâng cao", { exact: true });
+  await expect(advanced.or(mapping).filter({ visible: true }).first()).toBeVisible();
+  if (!(await mapping.isVisible())) await advanced.click();
+  await mapping.click();
+  await expect(mapping).toHaveAttribute("aria-pressed", "true");
 }
 
 /** Pick an existing field or explicitly extend the schema for business-specific fixtures. */

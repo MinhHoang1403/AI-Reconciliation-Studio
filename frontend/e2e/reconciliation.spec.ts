@@ -1,4 +1,4 @@
-import { test } from "./project-selection";
+import { chooseDropdownOption, test } from "./project-selection";
 import { selectProject, openLegacyPage } from "./project-selection";
 import { expect, type Page } from "@playwright/test";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
@@ -123,12 +123,8 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
   await expect(page.getByRole("status", { name: "Trạng thái kết nối" })).toHaveText("Đã kết nối");
   await selectProject(page, s.project_id);
   await openLegacyPage(page, "reconcile");
-  await page
-    .getByLabel("Nguồn tham chiếu", { exact: true })
-    .selectOption(s.sources["shipments.csv"].canonical_id);
-  await page
-    .getByLabel("Nguồn đối ứng", { exact: true })
-    .selectOption(s.sources["delivery-confirmations.csv"].canonical_id);
+  await chooseDropdownOption(page, "Nguồn tham chiếu", s.sources["shipments.csv"].canonical_id);
+  await chooseDropdownOption(page, "Nguồn đối ứng", s.sources["delivery-confirmations.csv"].canonical_id);
   await expect(page.getByLabel("Từ ngày", { exact: true })).toHaveValue("");
   await expect(page.getByLabel("Múi giờ", { exact: true })).toHaveValue("");
   expect(
@@ -249,7 +245,7 @@ test("T35: manual rule builder, approval, verified dashboard, exception review, 
   await row.getByRole("button", { name: "Xem ngoại lệ", exact: true }).click();
   const dialog = page.getByRole("dialog");
   const amountRow = dialog.locator(".evidence-comparison tbody tr").filter({ hasText: "delivery_charge" });
-  await expect(amountRow.getByRole("cell")).toHaveText(["12.75", "10.00", "2.75", "VND"]);
+  await expect(amountRow.getByRole("cell")).toHaveText(["12,75", "10", "2,75", "VND"]);
   const sourceRequest = page.waitForRequest(
     (r) =>
       decodeURIComponent(r.url()).includes(":c4?row=") && r.method() === "GET",
@@ -451,8 +447,8 @@ test("Planner UI accepts sources with no common key and presents review-only sug
   await page.goto("/#page=home");
   await selectProject(page, s.project_id);
   await openLegacyPage(page, "reconcile");
-  await page.getByLabel("Nguồn tham chiếu", { exact: true }).selectOption(left);
-  await page.getByLabel("Nguồn đối ứng", { exact: true }).selectOption(right);
+  await chooseDropdownOption(page, "Nguồn tham chiếu", left);
+  await chooseDropdownOption(page, "Nguồn đối ứng", right);
   await page
     .getByRole("button", {
       name: "Đề xuất cách đối soát",
@@ -548,12 +544,8 @@ for (const size of [
         .getByRole("button", { name: "Mở điều hướng", exact: true })
         .click();
     await openLegacyPage(page, "reconcile");
-    await page
-      .getByLabel("Nguồn tham chiếu", { exact: true })
-      .selectOption(s.sources["shipments.csv"].canonical_id);
-    await page
-      .getByLabel("Nguồn đối ứng", { exact: true })
-      .selectOption(s.sources["delivery-confirmations.csv"].canonical_id);
+    await chooseDropdownOption(page, "Nguồn tham chiếu", s.sources["shipments.csv"].canonical_id);
+    await chooseDropdownOption(page, "Nguồn đối ứng", s.sources["delivery-confirmations.csv"].canonical_id);
     await expect(page.getByLabel("Từ ngày", { exact: true })).toHaveValue("");
     await expect(
       page.getByRole("button", {

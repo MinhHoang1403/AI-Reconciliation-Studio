@@ -1,4 +1,4 @@
-import { assistantPanel, chooseMappingTarget, openLegacyPage, test } from "./project-selection";
+import { assistantPanel, chooseMappingTarget, openSourceMapping, chooseDropdownOption, openLegacyPage, test } from "./project-selection";
 import {expect} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
@@ -31,7 +31,7 @@ for(const scenario of manifest.datasets){
     await page.locator('.assistant-composer input[type=file]').setInputFiles(scenario.files.map(f=>`${data}/${f.name}`));
     const received=page.waitForResponse(r=>r.url().endsWith('/agent/attachments')&&r.request().method()==='POST');
     await page.getByRole('button',{name:'Gửi câu hỏi',exact:true}).click();const attachments=await(await received).json();
-    await expect(page.getByRole('region',{name:'Công việc của AI Assistant',exact:true}).last()).toContainText('Đã đọc dữ liệu; chưa chuẩn hóa');
+    await expect(page.getByRole('region',{name:'Công việc của AI Assistant',exact:true}).last()).toContainText('Đã chuẩn bị để xem. Còn thiếu căn cứ đối soát tài chính.');
     const uploadMs=Date.now()-start;
     for(let i=0;i<2;i++){
       const f=scenario.files[i],dataset=attachments.items[i];
@@ -44,10 +44,11 @@ for(const scenario of manifest.datasets){
       const tables=await(await page.request.get(`/api/datasets/${dataset.id}/tables`)).json();
       const table=tables.items.find((t:{sheet:string})=>t.sheet==='Giao dịch')||tables.items[0];
       await page.getByRole('combobox',{name:'Bảng dữ liệu',exact:true}).selectOption(table.id);
-      await page.getByRole('button',{name:'Xác nhận cột',exact:true}).click();
+      await openSourceMapping(page);
       const manualSummary=page.getByText('Tạo cách ghép cột thủ công riêng',{exact:true});
-      await manualSummary.click();
-      const manual=page.locator('details').filter({has:manualSummary}).locator('.mapping-studio');
+      await expect(manualSummary.or(page.getByLabel('Loại dữ liệu',{exact:true})).filter({visible:true}).first()).toBeVisible();
+      if(await manualSummary.isVisible()) await manualSummary.click();
+      const manual=page.locator('.mapping-studio').filter({has:page.getByLabel('Loại dữ liệu',{exact:true})}).filter({visible:true});
       await manual.getByLabel('Loại dữ liệu',{exact:true}).fill(scenario.entity);
       await page.getByRole('combobox',{name:'Bảng dữ liệu',exact:true}).selectOption(table.id);
       await expect(manual.getByLabel('Loại dữ liệu',{exact:true})).toHaveValue(scenario.entity);
@@ -85,8 +86,8 @@ for(const scenario of manifest.datasets){
     const normalizeMs=Date.now()-start-uploadMs;
     const catalogue=await(await page.request.get(`/api/projects/${projectId}/canonical-catalogue`)).json();
     await page.locator('.assistant-policy summary').click();await page.getByRole('button',{name:'Thiết lập đối soát thủ công',exact:true}).click();
-    await page.getByLabel('Nguồn tham chiếu',{exact:true}).selectOption(catalogue.items.find((c:{name:string})=>c.name===scenario.files[0].name).canonical.id);
-    await page.getByLabel('Nguồn đối ứng',{exact:true}).selectOption(catalogue.items.find((c:{name:string})=>c.name===scenario.files[1].name).canonical.id);
+    await chooseDropdownOption(page, "Nguồn tham chiếu", catalogue.items.find((c:{name:string})=>c.name===scenario.files[0].name).canonical.id);
+    await chooseDropdownOption(page, "Nguồn đối ứng", catalogue.items.find((c:{name:string})=>c.name===scenario.files[1].name).canonical.id);
     await page.getByRole('combobox',{name:'Quan hệ',exact:true}).selectOption(scenario.cardinality);
     await page.getByLabel('Đơn vị đối soát (mỗi nhóm đại diện cho)',{exact:true}).fill('transaction');
     await page.getByLabel('Từ ngày',{exact:true}).fill('2026-10-01');await page.getByLabel('Đến ngày (không gồm)',{exact:true}).fill('2026-11-01');await page.getByLabel('Múi giờ',{exact:true}).fill('UTC');

@@ -1,5 +1,5 @@
 import { test } from "./project-selection";
-import { chooseMappingTarget, selectProject } from "./project-selection";
+import { chooseMappingTarget, openSourceMapping, selectProject } from "./project-selection";
 import { expect, type Page } from "@playwright/test";
 import { mkdir, readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -127,11 +127,10 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
     await dialog
       .locator("summary", { hasText: "Tùy chọn đọc nâng cao" })
       .click();
-    await dialog.getByLabel("Dùng AI đề xuất cách đọc cột").uncheck();
+    await dialog.getByLabel("Dùng AI gợi ý thêm khi dữ liệu chưa đủ căn cứ").uncheck();
   }
   await dialog.getByRole("button", { name: "Tải 1 tệp" }).click();
   await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole("button", { name: "Xác nhận cột" })).toBeVisible();
   await expect(
     page.getByRole("cell", { name: "000123", exact: true }),
   ).toBeVisible();
@@ -182,7 +181,7 @@ test("A/C/D: create or reuse scoped project, upload fresh data, review mapping w
       }),
     ).toBeEnabled();
   }
-  await page.getByRole("button", { name: "Xác nhận cột" }).click();
+  await openSourceMapping(page);
   await expect(
     page.getByRole("heading", { name: "Hiểu dữ liệu, xác nhận ý nghĩa" }),
   ).toBeVisible();
@@ -340,7 +339,7 @@ test("B: returning user retains project, approved mapping and canonical refs", a
       name: new RegExp(datasetName.replaceAll(".", "\\.")),
     })
     .click();
-  await page.getByRole("button", { name: "Xác nhận cột" }).click();
+  await openSourceMapping(page);
   await expect(
     page.getByLabel("Locale Gross amount", { exact: true }),
   ).toHaveValue("en-US");
@@ -420,7 +419,7 @@ for (const size of [
         name: new RegExp(datasetName.replaceAll(".", "\\.")),
       })
       .click();
-    await page.getByRole("button", { name: "Xác nhận cột" }).click();
+    await openSourceMapping(page);
     await page.getByLabel("Chỉnh cột Gross amount", { exact: true }).click();
     await expect(
       page.getByLabel("Trường đích Gross amount", { exact: true }),

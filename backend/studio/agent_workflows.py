@@ -1565,7 +1565,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                         )
                         save(row, state)
                         return
-                    if table.automatic_preparation:
+                    if table.automatic_preparation and state.prepare_upload and not sequence:
                         from studio.dataset_status import read_processing_status, status_description
 
                         for item in read_processing_status(db, actor, context, [dataset.id]):
@@ -1652,7 +1652,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                     save(row, state)
                     return
                 elif not any(r.resource_id == table.table_id for r in state.reviews):
-                    waiting_tables.append(table.table_id)
+                    waiting_tables.append(table)
         if waiting_tables:
             if any(s.tool == "propose_mapping" and s.status == "BLOCKED" for s in state.steps):
                 # Một đề xuất lỗi không hủy thẻ đã tạo. Không tự gửi thêm request AI.
@@ -1679,17 +1679,18 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                     state.blocks.append(ProgressBlock(text=notice))
                 save(row, state)
                 return
+            table = waiting_tables[0]
             reference = execute_tool(
                 db,
                 actor,
                 MappingAction(
                     name="prepare_mapping_proposal",
                     context=context,
-                    table_id=waiting_tables[0],
+                    table_id=table.table_id,
                     workflow_id=row.id,
-                    profile_only=state.prepare_upload,
+                    profile_only=state.prepare_upload or table.automatic_preparation,
                 ),
-                f"{row.id}:{waiting_tables[0]}",
+                f"{row.id}:{table.table_id}",
             )
             assert isinstance(reference, JobReference)
             wait_for(
@@ -1697,7 +1698,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                 row,
                 state,
                 "propose_mapping",
-                waiting_tables[0],
+                table.table_id,
                 reference,
             )
         elif any(r.state == "OPEN" for r in state.reviews):

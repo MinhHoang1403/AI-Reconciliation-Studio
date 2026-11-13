@@ -1,4 +1,4 @@
-import { assistantPanel, openLegacyPage, selectProject, test } from "./project-selection";
+import { assistantPanel, chooseDropdownOption, openLegacyPage, selectProject, test } from "./project-selection";
 import { expect, type Page } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import type { Catalogue } from "../src/reconciliationTypes";
@@ -300,11 +300,10 @@ for (const name of ["shopee", "tiktok", "delivery"]) {
     });
     expect(created.status()).toBe(201);
     const cid = (await created.json()).id;
-    await page.evaluate(({ key, id }) => localStorage.setItem(key, id), {
-      key: `studio.conversation.${s.project_id}`,
-      id: cid,
-    });
-    const dialog = await openAssistant(page, s.project_id);
+    const params = new URLSearchParams({ page: "assistant", project: s.project_id,
+      run_id: runId, group_id: group.id, conversation: cid });
+    await page.goto(`/#${params}`);
+    const dialog = page.getByRole("region", { name: "AI Assistant", exact: true });
     await expect(
       dialog.getByRole("button", { name: "Đổi ngữ cảnh phân tích" }),
     ).toHaveAttribute("data-run-id",runId);
@@ -317,9 +316,9 @@ for (const name of ["shopee", "tiktok", "delivery"]) {
       await expect(answer).toContainText(
         "chưa chứng minh nguyên nhân hoặc khoản phí",
       );
-    else await expect(answer).toContainText("LINKED + EQUAL");
-    await answer.getByText("Có bằng chứng", { exact: true }).click();
-    await expect(answer).toContainText("Backend xác định");
+    else await expect(answer).toContainText("Đã liên kết + Bằng nhau");
+    await answer.getByText("Chi tiết quy tắc và phiên bản", { exact: true }).click();
+    await expect(answer.getByText(/Rule .*revision .*snapshot/)).toBeVisible();
     await answer
       .getByRole("button", { name: "Xem bằng chứng", exact: true })
       .click();
@@ -333,11 +332,12 @@ for (const name of ["shopee", "tiktok", "delivery"]) {
       dialog.getByRole("region", { name: "Quy tắc áp dụng" }),
     ).toContainText(runId.slice(0, 8));
     await page.reload();
-    const reopened = await openAssistant(page, s.project_id);
+    await expect(dialog.getByRole("button", { name: "Đổi ngữ cảnh phân tích" }))
+      .toHaveAttribute("data-run-id", runId);
     await expect(
-      reopened.locator(".assistant-message.assistant"),
+      dialog.locator(".assistant-message.assistant"),
     ).toContainText(
-      name === "tiktok" ? "LINKED + EQUAL" : "chưa chứng minh nguyên nhân",
+      name === "tiktok" ? "Đã liên kết + Bằng nhau" : "chưa chứng minh nguyên nhân",
     );
     const after = await (await page.request.get("/api/settings")).json();
     expect(after.gemini_requests_used).toBe(quota.gemini_requests_used);
@@ -441,6 +441,7 @@ test("language workflow requires source/period/template confirmation before exis
       };
     }),
   );
+  await page.getByRole("button", { name: "Quản lý dữ liệu", exact: true }).click();
   await page.getByRole("button", { name: "Tải dữ liệu", exact: true }).click();
   const upload = page.getByRole("dialog", {
     name: "Tải nguồn dữ liệu",
@@ -448,7 +449,7 @@ test("language workflow requires source/period/template confirmation before exis
   });
   await page.getByLabel("Chọn tệp dữ liệu").setInputFiles(files);
   await upload.locator("summary", { hasText: "Tùy chọn đọc nâng cao" }).click();
-  await upload.getByLabel("Dùng AI đề xuất cách đọc cột").uncheck();
+  await upload.getByLabel("Dùng AI gợi ý thêm khi dữ liệu chưa đủ căn cứ").uncheck();
   const uploaded = page.waitForResponse(
     (r) =>
       r.url().endsWith("/datasets/uploads") && r.request().method() === "POST",
@@ -560,15 +561,9 @@ test("language workflow requires source/period/template confirmation before exis
     name: "Xác nhận bước tiếp theo",
   });
   await expect(workflow).toContainText("không JOIN ba nguồn trực tiếp");
-  await workflow
-    .getByLabel("Nguồn nội bộ", { exact: true })
-    .selectOption(canonical["internal-sales.csv"]);
-  await workflow
-    .getByLabel("Nguồn đối chiếu thứ nhất", { exact: true })
-    .selectOption(canonical["shopee-orders.csv"]);
-  await workflow
-    .getByLabel("Nguồn đối chiếu thứ hai", { exact: true })
-    .selectOption(canonical["tiktok-order-lines.csv"]);
+  await chooseDropdownOption(workflow, "Nguồn nội bộ", canonical["internal-sales.csv"]);
+  await chooseDropdownOption(workflow, "Nguồn đối chiếu thứ nhất", canonical["shopee-orders.csv"]);
+  await chooseDropdownOption(workflow, "Nguồn đối chiếu thứ hai", canonical["tiktok-order-lines.csv"]);
   const rules:AssistantRule[]=[];
   let ruleCursor:string|null=null;
   do{
@@ -674,7 +669,7 @@ test("language workflow requires source/period/template confirmation before exis
     .getByRole("table", { name: "Chi tiết đối soát", exact: true })
     .getByRole("row")
     .filter({ has: page.getByRole("cell", { name: "Shopee / SHOP-A / 0002", exact: true }) })
-    .filter({ has: page.getByRole("cell", { name: "10,00 VND", exact: true }) });
+    .filter({ has: page.getByRole("cell", { name: "10 VND", exact: true }) });
   await mismatch
     .getByRole("button", { name: "Hỏi vì sao lệch", exact: true })
     .click();

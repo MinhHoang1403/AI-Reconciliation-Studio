@@ -568,6 +568,52 @@ def test_chat_upload_prepares_reviews_from_profiles_without_provider_or_approval
         )
 
 
+def test_explicit_chat_normalization_can_review_automatically_prepared_source(pg, monkeypatch):  # noqa: F811
+    import studio.agent_jobs as agents
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Profile-based review must not call a provider")
+
+    monkeypatch.setattr(agents, "model_call", forbidden)
+    client, factory, worker = pg
+    context = {"project_id": project(client)}
+    upload = client.post(
+        "/api/agent/attachments",
+        data=context,
+        files={"files": ("inventory.csv", b"Stock ID,Amount\n0001,12.50\n", "text/csv")},
+        headers={"Idempotency-Key": "review-prepared-upload"},
+    )
+    assert upload.status_code == 202, upload.text
+    cid = conversation(client, context)
+    preview = client.post(
+        "/api/assistant/messages",
+        json=dict(
+            conversation_id=cid,
+            context=context,
+            mode="AGENT",
+            command="PREPARE_UPLOAD",
+            text="Chuẩn bị dữ liệu vừa tải",
+            dataset_ids=[upload.json()["items"][0]["id"]],
+        ),
+        headers={"Idempotency-Key": "preview"},
+    )
+    assert preview.status_code == 202, preview.text
+    drain(factory, worker)
+    initial = workflow_for(client, factory, preview.json()["job_id"])
+    assert not initial["detail"]["reviews"]
+    assert any(
+        "Đã chuẩn bị để xem" in block.get("text", "") for block in initial["detail"]["blocks"]
+    )
+    explicit = ask_agent(client, context, cid, text='Chuẩn hóa tệp "inventory.csv"', key="review")
+    drain(factory, worker)
+    result = workflow_for(client, factory, explicit["job_id"])
+    assert result["state"] == "WAITING_REVIEW"
+    assert result["detail"]["model_calls"] == 0
+    assert [review["kind"] for review in result["detail"]["reviews"]] == ["MAPPING"]
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 0
+
+
 @pytest.mark.parametrize("automatic", [False, True])
 def test_prepared_chat_preview_and_count_need_no_provider_or_mapping(pg, monkeypatch, automatic):  # noqa: F811
     import studio.agent_jobs as agents
