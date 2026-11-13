@@ -111,6 +111,8 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
         raise DomainError("QUERY_ROW_LIMIT", "Nguồn chưa sẵn sàng hoặc vượt giới hạn truy vấn.")
     measures = {measure.field_id: measure for measure in source_measures(schema)}
     types = source.frame.collect_schema()
+    if not set(source.fields) <= types.keys():
+        raise DomainError("CANONICAL_SCHEMA_MISMATCH", "Bản chuẩn hóa thiếu cột đã xác nhận.")
     if (
         not query.source_measure_id
         and not query.currency_field
@@ -331,6 +333,10 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
                 timer.join()
     except duckdb.InterruptException as exc:
         raise DomainError("QUERY_TIMEOUT", "Truy vấn vượt thời gian kiểm chứng.", 409) from exc
+    except duckdb.OutOfMemoryException as exc:
+        raise DomainError(
+            "QUERY_MEMORY_LIMIT", "Truy vấn vượt giới hạn bộ nhớ. Hãy thu hẹp phạm vi.", 409
+        ) from exc
     except duckdb.Error as exc:
         raise DomainError(
             "QUERY_EXECUTION_FAILED", "Không thể tính đầy đủ trong giới hạn truy vấn."
@@ -419,7 +425,8 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
             source.frame.filter(pl.col("invalid")),
             set(measures),
             set(date_fields),
-            set(schema.business_key_fields),
+            set(schema.business_key_fields)
+            | {f.id for f in schema.fields if f.required and f.data_type == "string"},
             deadline,
         )
     )

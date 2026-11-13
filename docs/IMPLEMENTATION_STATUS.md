@@ -1,5 +1,11 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Phạm vi truy vấn và giải trình tài chính — 13/11/2026
+
+Trạng thái hiện tại là **NOT_READY_FOR_OWNER_UAT**. Trên bản trước sửa, hai câu hỏi về nửa đầu tháng và chi nhánh trả cùng tổng toàn nguồn. Trên bản triển khai, Computer Use xác nhận nửa đầu tháng 10/2026 trả 15.103.547.000 VND từ 2.420 dòng, với cận cuối loại trừ 16/10. Khi thiếu cột chi nhánh đã xác nhận, Chat hỏi lại và không trả số tiền. Kế hoạch provider phải giữ các điều kiện đã liên kết trong câu hỏi. Xem [hợp đồng](DATA_CONTRACTS.md#truy-vấn-ngữ-nghĩa-và-tổng-tài-chính).
+
+CSV/XLSX TEST mới dùng ngày nhuận và tên cột khác. Oracle tính từ CSV gốc cho Hà Nội ở hai nửa tháng lần lượt là 98,10 và 200,50 VND. Đà Nẵng ở nửa sau tháng là 177,35 VND. Chromium kiểm cả ba tổng, chuỗi có ký tự SQL chỉ khớp đúng một dòng, hai tình huống cần hỏi lại, và Top 5 tải Excel. Đã đọc lại cả năm mã, ngày và số tiền từ tệp xuất. Thử Gemini LIVE có một lượt gọi được ghi nhận, trả HTTP 503. Các ca cần Gemini chờ provider hoạt động.
+
 ## Truy vấn ngữ nghĩa và báo cáo tài chính — 13/11/2026
 
 Hai câu hỏi tổng tiền của Sổ kế toán và Báo cáo bán hàng trên `94ec4b2` đều có workflow `WAITING_REVIEW` và trace Gemini `QUERY_SEMANTICS_REQUIRED`. Cổng hợp đồng chỉ chấp nhận `metric_id` của lượt đối soát. Tuyến truy vấn nguồn chọn chỉ tiêu canonical đã xác nhận, biên dịch SQL có tham số và kiểm lại kết quả với dữ liệu đủ điều kiện. Cổng chỉ tiêu của lượt đối soát vẫn áp dụng. Xem [hợp đồng truy vấn và snapshot](DATA_CONTRACTS.md).

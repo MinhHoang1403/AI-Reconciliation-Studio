@@ -131,7 +131,7 @@ test("semantic source reporting executes canonical SQL and exports the visible t
     .toEqual(["30765657000.00", "30768000000.00", "30758520000.00"]);
   expect(issue.map((b: { result: { source_evidence: { quality_counts: Record<string, number> } } }) =>
     b.result.source_evidence.quality_counts)).toEqual(Array(3).fill({
-      invalid_amount: 5, missing_amount: 0, invalid_date: 2,
+      invalid_amount: 3, missing_amount: 2, invalid_date: 2,
       missing_key: 2, currency_mismatch: 2, other: 0,
     }));
   expect((await (await page.request.get("/api/settings")).json()).gemini_requests_used).toBe(start);

@@ -173,8 +173,9 @@ function QueryTable({ initial, workflowId, selection, title, showResultHints }: 
       {scopeEvidence && <><p>Tệp nguồn <span className="agent-source-file">{scopeEvidence.source_name}</span></p>
         <p>{localCount(scopeEvidence.source_rows)} dòng gốc. {scopeEvidence.grain}.</p>
         {scopeEvidence.valid_rows !== undefined && scopeEvidence.out_of_scope_rows !== undefined && <p>
-          {localCount(scopeEvidence.valid_rows)} bản ghi hợp lệ, {localCount(scopeEvidence.out_of_scope_rows)} ngoài bộ lọc,
-          {scopeEvidence.measure && <>, {localCount(scopeEvidence.matching_rows - scopeEvidence.counted_rows)} thiếu số tiền trong phạm vi</>}.
+          {localCount(scopeEvidence.valid_rows)} bản ghi hợp lệ, {localCount(scopeEvidence.out_of_scope_rows)} ngoài bộ lọc.
+          {scopeEvidence.measure && scopeEvidence.matching_rows > scopeEvidence.counted_rows &&
+            <> Có {localCount(scopeEvidence.matching_rows - scopeEvidence.counted_rows)} bản ghi thiếu số tiền trong phạm vi.</>}
         </p>}
         {scopeEvidence.invalid_rows > 0 && (scopeEvidence.quality_counts ? <>
           <ul>{Object.entries(scopeEvidence.quality_counts).filter(([, count]) => count > 0)

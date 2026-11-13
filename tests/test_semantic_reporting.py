@@ -338,3 +338,26 @@ def test_quality_reasons_count_source_rows_not_error_entries():
         "invalid_date": 1,
         "missing_key": 1,
     }
+
+
+def test_duckdb_memory_limit_fails_without_publishing_a_partial_total():
+    from studio.contracts import SchemaField
+
+    fixture = source()
+    assert fixture.definition and fixture.canonical
+    fixture.definition.fields = [SchemaField(id="note", name="Note", data_type="string")]
+    fixture.fields = ["note"]
+    rows = 30_000
+    fixture.canonical.row_count = fixture.canonical.valid_count = rows
+    fixture.canonical.invalid_count = 0
+    fixture.frame = pl.DataFrame(
+        {
+            "canonical_record_id": [f"r{i}" for i in range(rows)],
+            "source_provenance": [[{"row": i + 2}] for i in range(rows)],
+            "invalid": [False] * rows,
+            "note": [f"{i:06}" + "x" * 850 for i in range(rows)],
+        }
+    ).lazy()
+    # Under the transfer cap, but the real in-memory SQL import can exceed 64 MB.
+    with pytest.raises(DomainError, match="QUERY_MEMORY_LIMIT"):
+        execute_source_sql(query(select_fields=["note"]), fixture, monotonic() + 5)

@@ -202,8 +202,7 @@ def _field_filter(match: re.Match[str], original: str, table: TableContext) -> Q
     fields = [
         f
         for f in schema.fields
-        if _field_names(f.id, f.name) & names
-        and f.data_type in {"string", "enum", "decimal"}
+        if _field_names(f.id, f.name) & names and f.data_type in {"string", "enum", "decimal"}
     ]
     if len(fields) != 1:
         raise DomainError(
@@ -536,6 +535,8 @@ def resolve_source_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | 
         )
     if comparison and len(selected) < 2:
         return _clarify("Cần ít nhất hai nguồn để so sánh các tổng.")
+    if len(selected) > 5:
+        return _clarify("Hãy chọn tối đa năm nguồn để xem trong một lượt.")
     if re.search(r"\b(?:ba|3) nguon\b", text) and len(selected) != 3:
         return _clarify("Hãy chọn đúng ba nguồn cần tính trong dự án.")
     try:
