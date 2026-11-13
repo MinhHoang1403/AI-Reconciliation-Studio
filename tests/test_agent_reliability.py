@@ -511,7 +511,8 @@ def test_chat_upload_prepares_reviews_from_profiles_without_provider_or_approval
         )
 
 
-def test_prepared_chat_preview_and_count_need_no_provider_or_mapping(pg, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("automatic", [False, True])
+def test_prepared_chat_preview_and_count_need_no_provider_or_mapping(pg, monkeypatch, automatic):  # noqa: F811
     import studio.agent_jobs as agents
     from studio.database import TraceRow
 
@@ -523,7 +524,11 @@ def test_prepared_chat_preview_and_count_need_no_provider_or_mapping(pg, monkeyp
     pid = project(client)
     response = client.post(
         "/api/datasets/uploads",
-        data={"project_id": pid, "request_ai_mapping": "false"},
+        data={
+            "project_id": pid,
+            "request_ai_mapping": "false",
+            "automatic_preparation": str(automatic).lower(),
+        },
         files={
             "files": (
                 "prepared.csv",

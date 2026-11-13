@@ -4,7 +4,9 @@
 
 Luồng upload mặc định có bước chuẩn bị theo chính sách xác định. Bản xem, canonical và các dòng cần kiểm tra dùng riêng hợp đồng và trạng thái. Chat đọc nguồn hiện hành và có thể xếp hàng đối chiếu bán hàng với thu ngân, rồi thu ngân với kế toán trên phần dữ liệu quan sát được. Cổng so sánh yêu cầu doanh thu thuần chưa VAT đã được chứng minh hoặc xác nhận trực tiếp. Xem [kiến trúc](ARCHITECTURE.md) và [hướng dẫn rollback](TESTING_GUIDE.md).
 
-Chạy bộ ba tệp 3.000 dòng trong schema PostgreSQL TEST cho kết quả 2.998, 2.997 và 2.997 dòng sử dụng được. Hai lượt `PARTIAL_VERIFIED` có 2.978 và 2.960 nhóm so sánh được. Tổng chênh lệch có dấu lần lượt 105.000 và −205.000 VND, tổng tuyệt đối 645.000 và 1.265.000 VND, khớp đáp án của bộ TEST. Dòng USD được giữ ngoài phạm vi so sánh VND.
+Trên website local, tải bộ ba tệp 3.000 dòng vào một dự án TEST. Studio tự chuẩn bị 2.998, 2.997 và 2.997 dòng sử dụng được. Chat đọc dữ liệu gốc, bản chuẩn hóa, dòng nguồn 805, ngoại lệ, khoản lệch lớn nhất của lượt đang xét và trả liên kết tải XLSX. Sau xác nhận ngữ nghĩa của chỉ tiêu trước VAT, hai lượt `PARTIAL_VERIFIED` có 2.978 và 2.960 nhóm so sánh được. Tổng chênh lệch có dấu lần lượt 105.000 và −205.000 VND, tổng tuyệt đối 645.000 và 1.265.000 VND. Bốn tệp CSV/XLSX khớp đáp án độc lập theo từng mã đơn, dòng nguồn, trạng thái, Decimal và checksum. Dòng USD được giữ ngoài phạm vi so sánh VND.
+
+Gemini thật trên tệp tổng hợp riêng trả HTTP 503 rồi HTTP 200 sau một lần phục hồi. Gateway kiểm được đề xuất, nguồn tiếp tục ở mức xem vì cột tiền mơ hồ. Dự án TEST ba tệp có 0 lượt gọi AI. Backup được khôi phục thử trong schema riêng, và dữ liệu cũ qua diễn tập rollback khớp metadata lẫn checksum.
 
 ## Ứng viên phát hành và hoàn thiện giao diện — 10/11/2026
 

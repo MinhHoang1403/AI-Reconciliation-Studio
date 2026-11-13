@@ -26,6 +26,7 @@ from studio.contracts.reconciliation import (
 from studio.contracts.reconciliation import (
     WorkflowState as CaseState,
 )
+from studio.data_quality import artifact_scan
 from studio.database import (
     ArtifactRow,
     CanonicalRow,
@@ -369,16 +370,18 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
                     pl.element().str.starts_with("INVALID_DATE:")
                 )
                 names = {f"INVALID_DATE:{field}": label for field, label in labels.items()}
-                frame = frame.filter(flags.list.len() > 0).with_columns(
+                findings = frame.filter(flags.list.len() > 0).select(
+                    "_source_row_id",
                     flags.list.eval(pl.element().replace_strict(names, default=pl.element()))
                     .list.join(", ")
-                    .alias("date_findings")
+                    .alias("date_findings"),
+                )
+                frame = artifact_scan(parsed_artifact).join(
+                    findings, on="_source_row_id", validate="1:1"
                 )
                 fields.insert(0, "date_findings")
                 labels["date_findings"] = "Cột có ngày không hợp lệ"
             elif query.source_kind == "PREPARED_ISSUES":
-                from studio.data_quality import artifact_scan
-
                 flags = pl.col("_preparation_flags")
                 descriptions = {
                     "INVALID_DATE": "Ngày không hợp lệ",

@@ -52,7 +52,6 @@ test("Agent inline upload bootstraps once, profiles real files and reopens witho
   expect(project.business_scope).toBe(`UNCONFIRMED:${pid}`);expect(project.classification).toBe("UNKNOWN");
   const classified=await page.request.patch(`/api/projects/${pid}/classification`,{headers:{Origin:"http://127.0.0.1:18180"},data:{classification:"TEST",expected_classification:"UNKNOWN"}});
   expect(classified.status()).toBe(200);
-  await page.getByText("Dữ liệu gốc đã đọc (2 bảng)", {exact:true}).click();
   await expect(page.locator(".agent-table").first()).toContainText("000701");
   await expect(page.locator(".agent-table").first()).toContainText("000702");
   await page.locator(".agent-table").first().getByRole("button",{name:"Xem dòng gốc"}).first().click();
