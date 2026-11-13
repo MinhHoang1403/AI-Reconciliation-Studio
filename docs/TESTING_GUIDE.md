@@ -4,6 +4,8 @@ Giữ cặp image đang chạy với tag `pre-automatic-preparation` trước kh
 
 Khi lịch sử Chat đã có bảng thống kê nguồn hoặc danh sách dòng lỗi mở sẵn, dùng cặp image `rollback-source-status`. Chạy `./tools/rollback.ps1 -SourceStatus -VerifyOnly` để kiểm nguồn image và tính tương thích trước khi chuyển. Đối chiếu lại snapshot và checksum sau khi chuyển image và sau khi quay lại bản phát hành.
 
+Lịch sử đối chiếu quan sát có kết quả theo cặp và bản chuẩn hóa ghim cần cặp image `rollback-observed-results`. Kiểm bằng `./tools/rollback.ps1 -ObservedResults -VerifyOnly`, sau đó đối chiếu lịch sử Chat, snapshot và checksum nếu diễn tập chuyển image.
+
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
 ## Quy trình kiểm thử và khôi phục hiện hành

@@ -344,6 +344,17 @@ class FactsBlock(Contract):
     type: Literal["facts"] = "facts"
     result: ToolResult
     answer: AssistantAnswer | None = None
+    observation: "ObservedPairSummary | None" = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
+class ObservedPairSummary(Contract):
+    pair: str
+    source_names: tuple[str, str]
+    observed_start: date
+    observed_end: date
+    duplicate_keys: int = Field(ge=0)
 
 
 class ChartPoint(Contract):
@@ -435,6 +446,9 @@ class QuerySelection(Contract):
 class WorkflowState(Contract):
     observed_comparison: Literal["REQUESTED", "DECLARED"] | None = Field(
         default=None, exclude_if=lambda value: value is None
+    )
+    observed_canonicals: dict[str, Identifier] = Field(
+        default_factory=dict, max_length=3, exclude_if=lambda value: not value
     )
     intent: AgentIntent | None = None
     prepare_upload: bool = False

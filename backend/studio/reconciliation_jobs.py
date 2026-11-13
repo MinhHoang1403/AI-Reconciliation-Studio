@@ -138,7 +138,20 @@ def execute_reconciliation(
             warnings=result.warnings,
             matching_ms=match_ms,
             verification_ms=verify_ms,
-            **({"observed_scope": True} if contract.observation else {}),
+            **(
+                {
+                    "observed_scope": True,
+                    "duplicate_keys": len(
+                        {
+                            tuple(group.key)
+                            for group in result.groups
+                            if "DUPLICATE_KEY" in group.exception_types
+                        }
+                    ),
+                }
+                if contract.observation
+                else {}
+            ),
         )
         run.checks = [c.model_dump(mode="json") for c in checks]
         run.metric_snapshot = snapshot.model_dump(mode="json") if snapshot else None

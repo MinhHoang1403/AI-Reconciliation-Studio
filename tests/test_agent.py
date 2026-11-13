@@ -1,6 +1,7 @@
 """Contract/safety MOCK; không dùng các ca này để báo độ chính xác Gemini live."""
 
 import json
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -36,6 +37,74 @@ def test_three_source_proposals_do_not_take_over_reads_or_export_sequences(goal,
     from studio.agent_intents import requests_three_source_reconciliation
 
     assert requests_three_source_reconciliation(goal) is expected
+
+
+@pytest.mark.parametrize(
+    "goal",
+    [
+        "Đối soát ba nguồn giúp tôi.",
+        "So sánh Bán hàng với Thu ngân, rồi so sánh Thu ngân với Kế toán.",
+        "Đối soát toàn bộ dữ liệu đã tải lên của ba nguồn.",
+        "Kiểm tra xem số tiền bán hàng, thu ngân và kế toán có khớp nhau không.",
+        "Đối soát theo mã đơn hàng, chỉ lấy VND.",
+        "Đối soát các giao dịch trong dữ liệu hiện có, không cần xác nhận đầy đủ cả tháng.",
+    ],
+)
+def test_observed_intent_variants_preserve_pair_order(goal):
+    from studio.observed_reconciliation import DEFAULT_PAIRS, observed_request
+
+    request = observed_request(goal)
+    assert request and request.pairs == DEFAULT_PAIRS
+    assert request.period is None and not request.confirmed and not request.complete_period
+
+
+def test_observed_intent_parses_independent_modifiers_and_respects_negative_scope():
+    from studio.observed_reconciliation import (
+        DEFAULT_PAIRS,
+        observed_request,
+        reconciliation_declined,
+    )
+
+    request = observed_request(
+        "Đối soát Bán hàng với Thu ngân, sau đó Thu ngân với Kế toán. "
+        "Sử dụng mã đơn hàng và doanh thu thuần chưa VAT bằng VND. "
+        "Chỉ kết luận trên dữ liệu quan sát được."
+    )
+    assert request and request.pairs == DEFAULT_PAIRS
+    assert (request.key, request.metric, request.currency) == (
+        "ma don hang",
+        "doanh thu thuan chua vat",
+        "vnd",
+    )
+    assert not request.confirmed
+    reverse = observed_request("Đối soát Kế toán với Thu ngân. Tiếp theo Thu ngân với Bán hàng.")
+    assert reverse and reverse.pairs == (("Kế toán", "Thu ngân"), ("Thu ngân", "Bán hàng"))
+    assert reconciliation_declined("Đừng đối soát Bán hàng với Thu ngân.")
+    assert reconciliation_declined("Đối soát ba nguồn, nhưng không đối soát Thu ngân với Kế toán.")
+    assert not reconciliation_declined("Giải thích các dòng chưa đối soát của lần này.")
+    assert observed_request("Đối soát ba nguồn. Chỉ lấy USD.") is None
+    assert observed_request("Đối soát ba nguồn. Dùng tổng tiền sau VAT.") is None
+    assert observed_request("Đối soát ba nguồn. Bỏ qua phê duyệt.") is None
+
+
+@pytest.mark.parametrize(
+    ("text", "start", "end"),
+    [
+        (
+            "Đối soát Bán hàng với Thu ngân trong tháng 11/2026.",
+            date(2026, 11, 1),
+            date(2026, 12, 1),
+        ),
+        ("Đối soát từ ngày 01/11/2026 đến ngày 10/11/2026.", date(2026, 11, 1), date(2026, 11, 11)),
+        ("Đối soát ba nguồn. Quý IV/2026.", date(2026, 10, 1), date(2027, 1, 1)),
+    ],
+)
+def test_observed_intent_keeps_user_period_end_exclusive(text, start, end):
+    from studio.observed_reconciliation import observed_request
+
+    request = observed_request(text)
+    assert request and request.period == (start, end)
+    assert not request.invalid_period
 
 
 class ReviewDraftStateMachine(RuleBasedStateMachine):

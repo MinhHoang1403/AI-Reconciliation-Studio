@@ -94,7 +94,7 @@ from studio.dataset_status import (
     status_description,
 )
 from studio.errors import DomainError, request_failure_message
-from studio.observed_reconciliation import observed_request
+from studio.observed_reconciliation import observed_request, reconciliation_declined
 from studio.repository import (
     get_scoped,
     mapping_archived,
@@ -275,9 +275,11 @@ def effective_request_context(
     return AssistantContext.model_validate(previous.context) if previous else context
 
 
-def automatic_observation_sources(db: Session, actor: Actor, project_id: str) -> list[str]:
-    datasets = select_project_datasets(db, actor, project_id, [])
-    if len(datasets) != 3:
+def automatic_observation_sources(
+    db: Session, actor: Actor, project_id: str, dataset_ids: list[str]
+) -> list[str]:
+    datasets = select_project_datasets(db, actor, project_id, dataset_ids)
+    if len(datasets) < 2:
         return []
     ids = [dataset.id for dataset in datasets]
     prepared = set(
@@ -291,7 +293,7 @@ def automatic_observation_sources(db: Session, actor: Actor, project_id: str) ->
             )
         )
     )
-    return ids if prepared == set(ids) else []
+    return [ident for ident in ids if ident in prepared] if len(prepared) >= 2 else []
 
 
 def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
@@ -321,10 +323,14 @@ def native_dispatch_eligible(db: Session, job: JobRow) -> bool:
                 return True
             if not job.payload.get("command") and source_inspection_request(message.text):
                 return True
-            if (
-                not job.payload.get("command")
-                and observed_request(message.text) is not None
-                and automatic_observation_sources(db, actor, context.project_id)
+            if not job.payload.get("command") and reconciliation_declined(message.text):
+                return True
+            observe = observed_request(message.text) if not job.payload.get("command") else None
+            if observe and automatic_observation_sources(
+                db,
+                actor,
+                context.project_id,
+                job.payload.get("dataset_ids", []),
             ):
                 return True
             if not job.payload.get("command") and asks_for_current_source_evidence(message.text):
@@ -622,13 +628,25 @@ def interpret(
             save(row, state)
             db.commit()
             return
+        if not command and reconciliation_declined(goal):
+            state.intent = AgentIntent(
+                intent="UNSUPPORTED", questions=["Đã ghi nhận yêu cầu dừng đối soát."]
+            )
+            save(row, state)
+            db.commit()
+            return
         observe = observed_request(goal) if not command else None
         if observe is not None:
-            ids = automatic_observation_sources(db, actor, context.project_id)
+            ids = automatic_observation_sources(
+                db,
+                actor,
+                context.project_id,
+                state.dataset_ids,
+            )
             if ids:
                 require_editor(actor, db, row.id)
                 state.dataset_ids = ids
-                state.observed_comparison = "DECLARED" if observe else "REQUESTED"
+                state.observed_comparison = "DECLARED" if observe.confirmed else "REQUESTED"
                 state.intent = AgentIntent(intent="RECONCILE_DATASETS", dataset_ids=ids)
                 row.context = AssistantContext(project_id=context.project_id).model_dump(
                     mode="json"

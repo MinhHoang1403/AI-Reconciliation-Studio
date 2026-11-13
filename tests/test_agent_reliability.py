@@ -55,14 +55,31 @@ def test_automatic_upload_and_observed_comparison_need_no_mapping_review(pg, mon
     assert uploaded.status_code == 202, uploaded.text
     context = {"project_id": pid}
     cid = conversation(client, context)
-    request = ask_agent(
-        client, context, cid, text=f"Đối soát ba nguồn. {EQUIVALENCE_CONFIRMATION}."
+    goal = (
+        "Đối soát Bán hàng với Thu ngân, sau đó Thu ngân với Kế toán. "
+        "Sử dụng mã đơn hàng và doanh thu thuần chưa VAT bằng VND. "
+        "Chỉ kết luận trên dữ liệu quan sát được."
     )
+    unresolved = ask_agent(client, context, cid, key="requested-metric", text=goal)
+    drain(factory, worker, limit=30)
+    blocked = workflow_for(client, factory, unresolved["job_id"])
+    assert blocked["state"] == "PARTIAL" and blocked["detail"]["model_calls"] == 0
+    assert not any(block["type"] == "facts" for block in blocked["detail"]["blocks"])
+    assert any("Cần xác nhận" in block["text"] for block in blocked["detail"]["blocks"])
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(RunRow)) == 0
+
+    request = ask_agent(client, context, cid, text=f"{goal} {EQUIVALENCE_CONFIRMATION}.")
     drain(factory, worker, limit=30)
     workflow = workflow_for(client, factory, request["job_id"])
     assert workflow["state"] == "COMPLETED", workflow
     assert workflow["detail"]["reviews"] == []
     assert workflow["detail"]["model_calls"] == 0
+    assert [
+        block["observation"]["pair"]
+        for block in workflow["detail"]["blocks"]
+        if block["type"] == "facts"
+    ] == ["Bán hàng ↔ Thu ngân", "Thu ngân ↔ Kế toán"]
     with factory() as db:
         mappings = list(db.scalars(select(MappingRow).where(MappingRow.status == "APPROVED")))
         assert len(mappings) == 3
@@ -86,6 +103,16 @@ def test_automatic_upload_and_observed_comparison_need_no_mapping_review(pg, mon
     again = ask_agent(client, context, cid, key="again", text="Đối soát ba nguồn giúp mình")
     drain(factory, worker)
     assert workflow_for(client, factory, again["job_id"])["state"] == "COMPLETED"
+    for key, goal in [
+        ("coverage", "Đối soát Bán hàng với Thu ngân trong tháng 07/2026. Cần đầy đủ cả tháng."),
+        ("declined", "Đừng đối soát Bán hàng với Thu ngân."),
+        ("empty", "Đối soát Bán hàng với Thu ngân trong tháng 11/2026."),
+    ]:
+        response = ask_agent(client, context, cid, key=key, text=goal)
+        drain(factory, worker)
+        guarded = workflow_for(client, factory, response["job_id"])
+        assert guarded["detail"]["model_calls"] == 0
+        assert not any(block["type"] == "facts" for block in guarded["detail"]["blocks"])
     for key, question, expected in [
         ("lookup", "Cho mình xem giao dịch có mã A1.", 3),
         ("row", "Hãy kiểm tra dòng 2 của cash.csv.", 1),
@@ -103,6 +130,22 @@ def test_automatic_upload_and_observed_comparison_need_no_mapping_review(pg, mon
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(RunRow)) == 2
         assert db.scalar(select(func.count()).select_from(CanonicalRow)) == 3
+    bounded = ask_agent(
+        client,
+        context,
+        cid,
+        key="bounded",
+        text="Đối soát Bán hàng với Thu ngân từ ngày 01/07/2026 đến ngày 02/07/2026.",
+    )
+    drain(factory, worker)
+    bounded_workflow = workflow_for(client, factory, bounded["job_id"])
+    assert (
+        bounded_workflow["state"] == "COMPLETED" and bounded_workflow["detail"]["model_calls"] == 0
+    )
+    (facts,) = [b for b in bounded_workflow["detail"]["blocks"] if b["type"] == "facts"]
+    assert facts["result"]["run"]["metric_snapshot"]["period_end"] == "2026-07-03"
+    assert facts["result"]["run"]["partition_counts"]["left"]["OUT_OF_SCOPE"] == 1
+    assert facts["observation"]["observed_end"] == "2026-07-02"
 
 
 @pytest.mark.parametrize("encoding", ["legacy", "transient"])

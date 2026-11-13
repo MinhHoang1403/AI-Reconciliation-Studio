@@ -245,6 +245,43 @@ function SourceStatus({block}: {block: Extract<AgentBlock, {type: "source_status
     </section>;
 }
 
+function ObservedResult({block, open}: {block: Extract<AgentBlock, {type: "facts"}>; open: (id: string) => void}) {
+    const run = block.result.run;
+    const snapshot = run?.metric_snapshot;
+    const scope = block.observation;
+    if (!run || !snapshot || !scope) return null;
+    const count = (value: number | undefined) => value?.toLocaleString("vi-VN") ?? "—";
+    const localDay = (value: string) => value.split("-").reverse().join("/");
+    const money = snapshot.monetary[0];
+    const stats = [
+      ["Nhóm khớp", count(snapshot.comparison_counts.EQUAL ?? 0)],
+      ["Nhóm lệch tiền", count(snapshot.comparison_counts.AMOUNT_MISMATCH ?? 0)],
+      ["Nhóm chưa thấy đối ứng", count(snapshot.linkage_counts.PENDING ?? 0)],
+      ["Mã đơn trùng", count(scope.duplicate_keys)],
+      ["Chênh lệch có dấu", money ? `${formatDecimal(money.signed_variance)} ${money.currency}` : "—"],
+      ["Chênh lệch tuyệt đối", money ? `${formatDecimal(money.absolute_variance)} ${money.currency}` : "—"],
+    ];
+    return <section className="agent-facts" aria-label={scope.pair}>
+      <header><h4>{scope.pair}</h4><p className="muted">Đã xác minh một phần</p></header>
+      <div className="table-scroll" tabIndex={0} aria-label="Số liệu đối chiếu">
+        <table><tbody>{stats.map(([title, value]) => <tr key={title}>
+          <th scope="row">{title}</th><td className="numeric-cell">{value}</td>
+        </tr>)}</tbody></table>
+      </div>
+      <details><summary>Phạm vi kiểm tra</summary>
+        <p>Từ {localDay(scope.observed_start)} đến {localDay(scope.observed_end)}. Độ đầy đủ của kỳ kế toán chưa được xác nhận.</p>
+        {scope.source_names.map((name, index) => {
+          const partition = run.partition_counts?.[index === 0 ? "left" : "right"];
+          const excluded = run.source_refs?.[index]?.excluded_source_rows ?? 0;
+          return <p key={index}>{name}{partition && <> · {count(partition.IN_SCOPE ?? 0)} dòng dùng được trong phạm vi
+            {" · "}{count(partition.INVALID ?? 0)} dòng lỗi · {count(partition.OUT_OF_SCOPE ?? 0)} dòng ngoài khoảng kiểm tra</>}
+            {excluded > 0 && ` · ${count(excluded)} dòng có quyết định loại`}</p>;
+        })}
+      </details>
+      <button className="text-button" onClick={() => open(run.id)}>Xem giao dịch, bằng chứng và xuất báo cáo</button>
+    </section>;
+}
+
 export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, querySelection, onQualityPublished, compactPreviews, mappingReview }: {
     blocks: AgentBlock[];
     context: AssistantContext;
@@ -257,6 +294,7 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
 }) {
     const sources = blocks.filter(block=>block.type === "dataset_summary");
     const hasFacts = blocks.some(block=>block.type === "facts");
+    const observedPairs = blocks.filter(block => block.type === "facts" && block.observation).length;
     const readySources = sources.filter(block=>block.status === "READY").length;
     const remainingSources = sources.length - readySources;
     const mappingProgress = mappingReview ? blocks.filter(block => block.type === "progress") : [];
@@ -264,6 +302,9 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
     const previews = blocks.flatMap((block, i) => showPreview(block) && block.type === "table"
       ? [<QueryTable key={i} initial={block.result} title={block.title} workflowId={workflowId} selection={querySelection}/>] : []);
     return <div className="agent-results">
+        {observedPairs > 0 && <p className="agent-conclusion"><strong>
+          Đã đối soát {observedPairs === 1 ? "một cặp" : "hai cặp"} trên dữ liệu quan sát được.
+        </strong></p>}
         {sources.length > 1 && <p className="agent-conclusion">
           {readySources > 0 && <strong>{readySources} nguồn sẵn sàng lập quy tắc đối soát.</strong>}
           {remainingSources > 0 && <>{readySources > 0 && " "}{remainingSources} nguồn còn cần xem lại.</>}
@@ -307,6 +348,8 @@ export function AgentResultBlocks({ blocks, context, onNavigate, workflowId, que
             if (block.type === "dataset_summary")
                 return <DatasetResult key={block.table_id} block={block} onQualityPublished={onQualityPublished} projectId={context.project_id}
                   openSource={()=>onNavigate("OPEN_DATA", { project_id: context.project_id, dataset_id: block.dataset_id })}/>;
+            if (block.observation)
+                return <ObservedResult key={i} block={block} open={run_id => onNavigate("OPEN_REPORT", {project_id: context.project_id, run_id})}/>;
             const snapshot = block.result.snapshot || block.result.run?.metric_snapshot;
             const reportRunId = snapshot?.run_id || block.result.run?.id;
             const observed = block.result.run?.observed_scope;

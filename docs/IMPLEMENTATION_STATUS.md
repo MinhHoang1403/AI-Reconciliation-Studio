@@ -1,5 +1,9 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Đối soát theo dữ liệu quan sát trong Chat — 13/11/2026
+
+Ở bản `1b4972e`, hai yêu cầu nguyên văn về cặp Bán hàng–Thu ngân và Thu ngân–Kế toán có đủ ba nguồn `READY` nhưng đều đi qua model. Bộ nhận diện cũ từ chối cả thứ tự “sau đó” lẫn các mệnh đề bổ sung về khóa, tiền và phạm vi, dẫn tới câu hỏi sai về kỳ. Tuyến quan sát phân tích riêng các phần này và kiểm từng cặp trên bản chuẩn hóa được ghim. Kỳ suy ra từ ngày nghiệp vụ của các dòng hợp lệ, với cận cuối loại trừ. Kỳ do người dùng nêu được giữ nguyên. Độ đầy đủ cả kỳ vẫn cần bằng chứng. Xem [hợp đồng dữ liệu](DATA_CONTRACTS.md).
+
 ## Thống kê nguồn trong AI Assistant — 13/11/2026
 
 Ba yêu cầu tiếng Việt đã báo lỗi đều lọt qua bộ nhận diện trạng thái ở bản `9e29c0f`. Lịch sử dự án TEST cho thấy câu hỏi ghép bị chặn ở `AI_INVALID_SOURCE` và hai câu riêng đi vào bước làm rõ. Tuyến mới nhận diện mục đích và phạm vi cho từng mệnh đề trước khi đọc metadata hiện hành. Bảng Chat hiển thị tổng khi số liệu đầy đủ và giữ ô trống khi chưa có bản chuẩn hóa tương ứng. Xem [hợp đồng dữ liệu](DATA_CONTRACTS.md).

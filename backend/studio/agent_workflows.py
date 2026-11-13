@@ -10,7 +10,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from studio.access import Actor, require_editor
-from studio.agent_intents import requests_exclusion_impact
+from studio.agent_intents import business_clarification, requests_exclusion_impact
 from studio.agent_tools import (
     ExportAction,
     GroupLookupAction,
@@ -42,6 +42,7 @@ from studio.contracts.agent import (
     FactsBlock,
     IntentCatalogue,
     NormalizationDraft,
+    ObservedPairSummary,
     ProgressBlock,
     ReviewRequest,
     SourceStatusBlock,
@@ -473,7 +474,7 @@ def make_review(
         fingerprint=review_fingerprint(db, actor, kind, resource_id, source_ids),
         nonce=secrets.token_hex(16),
         expires_at=now() + timedelta(minutes=30),
-        question=question,
+        question=business_clarification(question),
         reason=reason,
         normalization_draft=draft,
         extraction_review_required=bool(table.parsed_contract["warnings"])
@@ -1151,7 +1152,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                 shown += 1
         return shown
 
-    def facts(explain: bool = False) -> None:
+    def facts(explain: bool = False, observation: ObservedPairSummary | None = None) -> None:
         if len(state.steps) >= step_limit(state):
             raise DomainError("AGENT_STEP_LIMIT", "Đã đạt giới hạn bước.")
         result = execute_tool(
@@ -1196,7 +1197,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
             "Vì sao lệch?" if explain else "Tóm tắt kết quả đối soát",
             build_fact_set(db, actor, context),
         )
-        state.blocks.append(FactsBlock(result=result, answer=answer))
+        state.blocks.append(FactsBlock(result=result, answer=answer, observation=observation))
         state.steps.append(
             WorkflowStep(
                 tool="read_verified_facts",
@@ -1206,7 +1207,7 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
             )
         )
         snapshot = result.snapshot or (result.run.metric_snapshot if result.run else None)
-        if snapshot and not (explain or exclusion_question):
+        if snapshot and not (explain or exclusion_question or observation):
             state.blocks.append(
                 ChartBlock(
                     title="Kết luận so sánh theo nhóm",
@@ -1227,13 +1228,33 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
 
     if state.observed_comparison:
         from studio.observed_reconciliation import (
+            DEFAULT_PAIRS,
             EQUIVALENCE_CONFIRMATION,
             ROLE_ORDER,
             observed_order_plan,
+            observed_request,
         )
-        from studio.reconciliation_api import enqueue_approved_run, enqueue_observed_run
+        from studio.reconciliation_api import enqueue_observed_run
 
         require_editor(actor, db, row.id)
+        observation_request = observed_request(row.goal)
+        if observation_request and (
+            observation_request.complete_period or observation_request.invalid_period
+        ):
+            state.blocks.append(
+                ProgressBlock(
+                    text=(
+                        "Khoảng ngày chưa hợp lệ. Hãy kiểm tra ngày bắt đầu và ngày kết thúc."
+                        if observation_request.invalid_period
+                        else "Studio chưa có xác nhận rằng các nguồn đầy đủ cho cả kỳ. "
+                        "Hãy xác nhận độ đầy đủ trong phần Đối soát, "
+                        "hoặc yêu cầu kiểm tra phần đã quan sát."
+                    )
+                )
+            )
+            row.state = "PARTIAL"
+            save(row, state)
+            return
         active = db.scalar(
             select(JobRow)
             .where(
@@ -1272,9 +1293,61 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
         if waiting_step and waiting_step.tool == "compare_observed" and waiting_step.result_id:
             run = get_scoped(db, RunRow, waiting_step.result_id, actor)
             if run.status == "PARTIAL_VERIFIED":
-                facts()
+                from studio.reconciliation_repository import all_match_groups
+
+                rule = get_scoped(db, ReconciliationContractRow, run.contract_id, actor)
+                plan = ReconciliationContract.model_validate(rule.definition).plan
+                names = [
+                    db.scalar(
+                        select(DatasetRow.name)
+                        .join(VersionRow, VersionRow.dataset_id == DatasetRow.id)
+                        .join(TableRow, TableRow.dataset_version_id == VersionRow.id)
+                        .join(CanonicalRow, CanonicalRow.source_table_id == TableRow.id)
+                        .where(
+                            CanonicalRow.id == slot.canonical_id,
+                            DatasetRow.workspace_id == actor.workspace_id,
+                        )
+                    )
+                    or slot.role
+                    for slot in (plan.left, plan.right)
+                ]
+                duplicate_keys = (run.result_metadata or {}).get("duplicate_keys")
+                if duplicate_keys is None:
+                    duplicate_keys = len(
+                        {
+                            tuple(group.key)
+                            for group in all_match_groups(run)
+                            if "DUPLICATE_KEY" in group.exception_types
+                        }
+                    )
+                facts(
+                    observation=ObservedPairSummary(
+                        pair=waiting_step.resource_id,
+                        source_names=(names[0], names[1]),
+                        observed_start=max(
+                            plan.period_start,
+                            min(plan.left.coverage_start, plan.right.coverage_start),
+                        ),
+                        observed_end=min(
+                            plan.period_end, max(plan.left.coverage_end, plan.right.coverage_end)
+                        )
+                        - timedelta(days=1),
+                        duplicate_keys=duplicate_keys,
+                    )
+                )
             else:
-                state.blocks.append(ProgressBlock(text="Kết quả một cặp chưa vượt qua kiểm chứng."))
+                state.blocks.append(
+                    ProgressBlock(
+                        text=f"{waiting_step.resource_id}: kết quả chưa vượt qua kiểm chứng."
+                    )
+                )
+        elif waiting_step and waiting_step.tool == "compare_observed":
+            state.blocks.append(
+                ProgressBlock(
+                    text=f"{waiting_step.resource_id}: lượt đối soát chưa hoàn tất. "
+                    "Kiểm tra phiên bản dữ liệu hiện hành."
+                )
+            )
         roles = {
             role: [
                 d.tables[0].canonical_id
@@ -1286,8 +1359,15 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
             ]
             for role in ROLE_ORDER
         }
+        pairs = observation_request.pairs if observation_request else DEFAULT_PAIRS
+        if not state.observed_canonicals and not any(
+            s.tool == "compare_observed" for s in state.steps
+        ):
+            state.observed_canonicals = {
+                role: ids[0] for role, ids in roles.items() if len(ids) == 1
+            }
         needs_declaration = False
-        for left, right in zip(ROLE_ORDER, ROLE_ORDER[1:], strict=False):
+        for left, right in pairs:
             pair = f"{left} ↔ {right}"
             if any(s.tool == "compare_observed" and s.resource_id == pair for s in state.steps):
                 continue
@@ -1297,28 +1377,70 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                     state.blocks.append(ProgressBlock(text=notice))
                 continue
             ids = [roles[left][0], roles[right][0]]
-            existing_contract = db.scalar(
+            if state.observed_canonicals and ids != [
+                state.observed_canonicals.get(role) for role in (left, right)
+            ]:
+                notice = f"{pair}: phiên bản nguồn đã thay đổi. Hãy gửi lại yêu cầu."
+                if not any(isinstance(b, ProgressBlock) and b.text == notice for b in state.blocks):
+                    state.blocks.append(ProgressBlock(text=notice))
+                continue
+            prior_declaration = db.scalar(
                 select(ReconciliationContractRow)
                 .where(
                     ReconciliationContractRow.workspace_id == actor.workspace_id,
                     ReconciliationContractRow.project_id == row.project_id,
                     ReconciliationContractRow.definition["observation"]["revision"].astext
                     == "observed-order-revenue-1",
-                    ReconciliationContractRow.definition["plan"]["left"]["canonical_id"].astext
-                    == ids[0],
-                    ReconciliationContractRow.definition["plan"]["right"]["canonical_id"].astext
-                    == ids[1],
+                    ReconciliationContractRow.definition["observation"][
+                        "confirmed_by"
+                    ].astext.is_not(None),
+                    (
+                        (
+                            ReconciliationContractRow.definition["plan"]["left"][
+                                "canonical_id"
+                            ].astext
+                            == ids[0]
+                        )
+                        & (
+                            ReconciliationContractRow.definition["plan"]["right"][
+                                "canonical_id"
+                            ].astext
+                            == ids[1]
+                        )
+                    )
+                    | (
+                        (
+                            ReconciliationContractRow.definition["plan"]["left"][
+                                "canonical_id"
+                            ].astext
+                            == ids[1]
+                        )
+                        & (
+                            ReconciliationContractRow.definition["plan"]["right"][
+                                "canonical_id"
+                            ].astext
+                            == ids[0]
+                        )
+                    ),
                 )
+                .order_by(ReconciliationContractRow.id)
                 .limit(1)
             )
             try:
-                if existing_contract:
-                    accepted = enqueue_approved_run(existing_contract.id, db, actor)
-                else:
-                    plan, receipt = observed_order_plan(
-                        db, actor, row.project_id, ids, state.observed_comparison == "DECLARED"
-                    )
-                    accepted = enqueue_observed_run(db, actor, row.project_id, plan, receipt)
+                prior = (
+                    ReconciliationContract.model_validate(prior_declaration.definition).observation
+                    if prior_declaration
+                    else None
+                )
+                plan, receipt = observed_order_plan(
+                    db,
+                    actor,
+                    row.project_id,
+                    ids,
+                    state.observed_comparison == "DECLARED" or prior is not None,
+                    observation_request.period if observation_request else None,
+                )
+                accepted = enqueue_observed_run(db, actor, row.project_id, plan, prior or receipt)
             except DomainError as exc:
                 if exc.code not in {
                     "OBSERVATION_SCOPE_INVALID",
@@ -1328,11 +1450,11 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
                     raise
                 needs_declaration |= exc.code == "OBSERVATION_METRIC_REQUIRED"
                 if not any(
-                    isinstance(b, ProgressBlock) and b.text == exc.message_vi for b in state.blocks
+                    isinstance(b, ProgressBlock) and b.text == f"{pair}: {exc.message_vi}"
+                    for b in state.blocks
                 ):
-                    state.blocks.append(ProgressBlock(text=exc.message_vi))
+                    state.blocks.append(ProgressBlock(text=f"{pair}: {exc.message_vi}"))
                 continue
-            state.blocks.append(ProgressBlock(text=pair))
             wait_for(
                 db,
                 row,
@@ -1347,14 +1469,16 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
             state.blocks.append(
                 ProgressBlock(
                     text=(
-                        "Nếu đúng với nghiệp vụ, hãy nhắn "
-                        f"“Đối soát ba nguồn. {EQUIVALENCE_CONFIRMATION}.”"
+                        "Nếu các cột đã nêu có cùng định nghĩa, hãy gửi lại yêu cầu và thêm "
+                        f"“{EQUIVALENCE_CONFIRMATION}.”"
                     )
                 )
             )
         row.context = context.model_dump(mode="json")
         row.state = (
-            "COMPLETED" if sum(isinstance(b, FactsBlock) for b in state.blocks) == 2 else "PARTIAL"
+            "COMPLETED"
+            if sum(isinstance(b, FactsBlock) for b in state.blocks) == len(pairs)
+            else "PARTIAL"
         )
         save(row, state)
         return

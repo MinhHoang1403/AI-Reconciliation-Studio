@@ -354,6 +354,25 @@ def _denied_request(goal: str) -> AgentIntent | None:
     return AgentIntent(intent="UNSUPPORTED", questions=[message])
 
 
+def business_clarification(question: str) -> str:
+    """Render planner questions in user vocabulary, including older provider formats."""
+    labels = {
+        "period_start": "ngày bắt đầu",
+        "period_end": "ngày kết thúc",
+        "coverage_start": "ngày đầu nguồn có dữ liệu",
+        "coverage_end": "ngày cuối nguồn có dữ liệu",
+        "grain": "ý nghĩa mỗi dòng",
+        "canonical_id": "bản dữ liệu đã chuẩn hóa",
+        "time_basis": "ý nghĩa cột ngày",
+    }
+    return re.sub(
+        r"\b(?:" + "|".join(labels) + r")\b",
+        lambda match: labels[match[0].lower()],
+        question,
+        flags=re.IGNORECASE,
+    )
+
+
 def _without_current_run_prefix(text: str) -> str:
     """Discard a scope preface that already points to the displayed run."""
     return re.sub(

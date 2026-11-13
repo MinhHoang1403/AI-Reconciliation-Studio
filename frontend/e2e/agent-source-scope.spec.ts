@@ -2,6 +2,108 @@ import { expect } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import { assistantPanel, selectProject, test } from "./project-selection";
 
+test("observed reconciliation uses the requested pairs and retains evidence and exports", async ({ page }, info) => {
+  const path = process.env.STUDIO_PROCESSING_REPORT_FIXTURE;
+  test.skip(!path, "Requires the two isolated 5,000-row fixture projects");
+  test.setTimeout(120000);
+  const fixture = JSON.parse(await readFile(path!, "utf8")) as {
+    project: string; issueProject: string; workspace: string;
+  };
+  const question = "Đối soát Bán hàng với Thu ngân, sau đó Thu ngân với Kế toán. "
+    + "Sử dụng mã đơn hàng và doanh thu thuần chưa VAT bằng VND. "
+    + "Chỉ kết luận trên dữ liệu quan sát được.";
+  await page.goto("/");
+  if ((await (await page.request.get("/api/session")).json()).workspace_id !== fixture.workspace) {
+    await page.getByRole("button", { name: "Quản lý không gian làm việc", exact: true }).click();
+    const picker = page.getByRole("dialog", { name: "Quản lý không gian làm việc", exact: true });
+    await picker.getByLabel("Không gian có quyền truy cập").selectOption(fixture.workspace);
+    await picker.getByRole("button", { name: "Chuyển không gian", exact: true }).click();
+    await expect(picker).not.toBeVisible();
+  }
+  const usage = async () => (await (await page.request.get("/api/settings")).json()).gemini_requests_used;
+  const before = await usage();
+  const receipts = [];
+  for (const [kind, project] of [["clean", fixture.project], ["issues", fixture.issueProject]]) {
+    await selectProject(page, project);
+    await page.getByRole("button", { name: "AI Assistant", exact: true }).click();
+    await page.getByRole("button", { name: "Hội thoại mới", exact: true }).click();
+    const input = page.getByRole("textbox", { name: "Câu hỏi cho AI Assistant", exact: true });
+    await input.fill(question);
+    const accepted = page.waitForResponse(response => response.url().endsWith("/api/assistant/messages")
+      && response.request().method() === "POST");
+    await page.getByRole("button", { name: "Gửi câu hỏi", exact: true }).click();
+    const { job_id } = await (await accepted).json();
+    const work = page.getByRole("region", { name: "Công việc của AI Assistant", exact: true }).last();
+    await expect(work.getByText("Đã đối soát hai cặp trên dữ liệu quan sát được.", { exact: true })).toBeVisible();
+    const { result } = await (await page.request.get(`/api/jobs/${job_id}`)).json();
+    const workflow = await (await page.request.get(`/api/agent/workflows/${result.workflow_id}`)).json();
+    expect(workflow.state).toBe("COMPLETED");
+    expect(workflow.detail.model_calls).toBe(0);
+    expect(workflow.detail.reviews).toEqual([]);
+    const pairs = ["Bán hàng ↔ Thu ngân", "Thu ngân ↔ Kế toán"];
+    const facts = workflow.detail.blocks.filter((block: { type: string }) => block.type === "facts");
+    expect(facts.map((block: { observation: { pair: string } }) => block.observation.pair)).toEqual(pairs);
+    const expectations = kind === "clean"
+      ? [[5000, 0, 0, 0, "0.00", "0.00"], [5000, 0, 0, 0, "0.00", "0.00"]]
+      : [[4936, 12, 64, 6, "-60000.00", "60000.00"], [4908, 29, 83, 7, "-144000.00", "264000.00"]];
+    for (const [index, pair] of pairs.entries()) {
+      const [equal, mismatch, pending, duplicate, signed, absolute] = expectations[index];
+      const block = facts[index];
+      const run = block.result.run;
+      expect(run.status).toBe("PARTIAL_VERIFIED");
+      expect(run.checks.every((check: { passed: boolean }) => check.passed)).toBe(true);
+      expect(run.metric_snapshot.comparison_counts.EQUAL).toBe(equal);
+      expect(run.metric_snapshot.comparison_counts.AMOUNT_MISMATCH ?? 0).toBe(mismatch);
+      expect(run.metric_snapshot.linkage_counts.PENDING ?? 0).toBe(pending);
+      expect(block.observation.duplicate_keys).toBe(duplicate);
+      expect(run.metric_snapshot.monetary[0]).toMatchObject({ signed_variance: signed, absolute_variance: absolute });
+      const section = work.getByRole("region", { name: pair, exact: true });
+      await expect(section.getByRole("row", { name: `Nhóm khớp ${Number(equal).toLocaleString("vi-VN")}` })).toBeVisible();
+      await section.getByText("Phạm vi kiểm tra", { exact: true }).click();
+      await expect(section).toContainText("Độ đầy đủ của kỳ kế toán chưa được xác nhận.");
+      const scope = block.observation;
+      const localDate = (value: string) => value.split("-").reverse().join("/");
+      await expect(section).toContainText(`Từ ${localDate(scope.observed_start)} đến ${localDate(scope.observed_end)}.`);
+      await expect(section).toContainText(`${kind === "clean" ? "5.000" : "4.989"} dòng dùng được trong phạm vi`);
+    }
+    await page.screenshot({ path: info.outputPath(`${kind}-observed.png`) });
+    await work.getByRole("region", { name: pairs[0], exact: true })
+      .getByRole("button", { name: "Xem giao dịch, bằng chứng và xuất báo cáo", exact: true }).click();
+    const report = assistantPanel(page, "Chi tiết kết quả đã xác minh");
+    await expect(report.getByLabel("Lần đối soát", { exact: true })).toHaveValue(facts[0].result.run.id);
+    let mismatchKey: string | undefined;
+    if (kind === "issues") {
+      const result = await page.request.get(`/api/runs/${facts[0].result.run.id}/matches`, {
+        params: { comparison: "AMOUNT_MISMATCH", limit: 25 },
+      });
+      expect(result.ok()).toBe(true);
+      const mismatches = await result.json();
+      expect(mismatches.total).toBe(12);
+      mismatchKey = mismatches.items[0].key.join(" / ");
+      await report.getByLabel("Tìm kiếm", { exact: true }).fill(mismatchKey!);
+    }
+    const groups = report.getByRole("table", { name: "Chi tiết đối soát", exact: true });
+    const matchedRows = mismatchKey ? groups.getByRole("row").filter({ hasText: mismatchKey }) : groups;
+    await matchedRows.getByRole("button", { name: "Xem bằng chứng", exact: true }).first().click();
+    const evidence = assistantPanel(page, "Bằng chứng đối soát");
+    await evidence.getByRole("button", { name: "Xem nguồn net_revenue_excluding_vat", exact: true }).first().click();
+    await expect(evidence.getByRole("region", { name: "Chi tiết giá trị nguồn", exact: true })).toBeVisible();
+    await evidence.getByRole("button", { name: "Đóng", exact: true }).click();
+    const format = kind === "clean" ? "CSV" : "XLSX";
+    await report.getByRole("button", { name: `Xuất ${format}`, exact: true }).click();
+    const downloaded = page.waitForEvent("download");
+    await report.getByRole("link", { name: "Tải báo cáo", exact: true }).click();
+    await (await downloaded).saveAs(info.outputPath(`${kind}.${format.toLowerCase()}`));
+    await report.getByRole("button", { name: "Đóng", exact: true }).click();
+    await page.reload();
+    await expect(page.getByText(question, { exact: true })).toBeVisible();
+    for (const pair of pairs) await expect(work.getByRole("region", { name: pair, exact: true })).toBeVisible();
+    receipts.push({ kind, workflow: workflow.id, runs: facts.map((block: {result: {run: {id: string}}}) => block.result.run.id) });
+  }
+  expect(await usage()).toBe(before);
+  await writeFile(info.outputPath("observed-receipts.json"), JSON.stringify(receipts, null, 2));
+});
+
 test("processing report reads current sources through the real website", async ({ page }, info) => {
   const fixture = process.env.STUDIO_PROCESSING_REPORT_FIXTURE;
   test.skip(!fixture, "Requires the isolated clean and issue fixture projects");

@@ -202,6 +202,13 @@ export type AgentBlock = {
     fields: {field:string; original:string|null; processed:string|null; outcome:string}[];
 } | {
     type: "facts";
+    observation?: {
+        pair: string;
+        source_names: [string, string];
+        observed_start: string;
+        observed_end: string;
+        duplicate_keys: number;
+    };
     result: {
         run: Run | null;
         snapshot: Snapshot | null;

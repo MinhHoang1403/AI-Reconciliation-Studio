@@ -3,11 +3,12 @@ param(
     [switch]$PreviousPreparation,
     [switch]$CompatiblePreparation,
     [switch]$SourceStatus,
+    [switch]$ObservedResults,
     [switch]$VerifyOnly
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
-if (@($ReleaseRevision, $PreviousPreparation, $CompatiblePreparation, $SourceStatus).Where({ $_ }).Count -gt 1) {
+if (@($ReleaseRevision, $PreviousPreparation, $CompatiblePreparation, $SourceStatus, $ObservedResults).Where({ $_ }).Count -gt 1) {
     throw 'Choose one rollback image pair.'
 }
 $taskImages = @{}
@@ -21,6 +22,8 @@ foreach ($taskService in @('backend', 'frontend')) {
         "ai-reconciliation-studio-${taskService}:rollback-automatic-preparation"
     } elseif ($SourceStatus) {
         "ai-reconciliation-studio-${taskService}:rollback-source-status"
+    } elseif ($ObservedResults) {
+        "ai-reconciliation-studio-${taskService}:rollback-observed-results"
     } else {
         "ai-reconciliation-studio-${taskService}:rollback"
     }
@@ -52,6 +55,7 @@ $taskSupportsPreparation = $taskPreparationSource -eq 'backend/studio/observed_r
 $taskAgentContract = git show "${taskBackendRevision}:backend/studio/contracts/agent.py"
 if ($LASTEXITCODE -ne 0) { throw 'Cannot verify source status history compatibility.' }
 $taskSupportsSourceStatus = ($taskAgentContract -join "`n") -match 'class SourceStatusBlock\('
+$taskSupportsObservedResults = ($taskAgentContract -join "`n") -match 'class ObservedPairSummary\('
 # Chỉ các migrations additive đã review; không downgrade DB hoặc suy compatibility tổng quát.
 $taskGuard = @'
 import sys
@@ -92,6 +96,14 @@ with SessionFactory() as db:
                     )
                 )
             """)), 'Source statistics history requires a compatible image'
+        if sys.argv[7] != 'True':
+            assert not db.scalar(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM agent_workflows
+                    WHERE detail ? 'observed_canonicals'
+                       OR jsonb_path_exists(detail, '$.blocks[*].observation')
+                )
+            """)), 'Observed reconciliation history requires a compatible image'
         # Reviews remain untouched; resumption requires a compatible accepted source.
         print('Agent reviews are retained; resumption depends on the selected accepted source')
     if revision == 'add_data_quality_decisions' and sys.argv[5] != 'True':
@@ -107,7 +119,7 @@ with SessionFactory() as db:
     assert db.scalar(text("SELECT count(*) FROM workspaces WHERE id='demo'")) == 1
     print('PASS compatible additive schema and no active jobs', revision)
 '@
-$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle" "$taskSupportsRetainedReservations" "$taskSupportsQuality" "$taskSupportsPreparation" "$taskSupportsSourceStatus"
+$taskGuard | docker compose exec -T backend python - "$taskSupportsNullable" "$taskSupportsLifecycle" "$taskSupportsRetainedReservations" "$taskSupportsQuality" "$taskSupportsPreparation" "$taskSupportsSourceStatus" "$taskSupportsObservedResults"
 if ($LASTEXITCODE -ne 0) { throw 'Rollback compatibility gate failed.' }
 if ($VerifyOnly) {
     Write-Output "Verified rollback images for $taskBackendRevision against the current deployment."
