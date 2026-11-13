@@ -6,6 +6,16 @@ Trạng thái hiện tại là **NOT_READY_FOR_OWNER_UAT**. Trên bản trước
 
 CSV/XLSX TEST mới dùng ngày nhuận và tên cột khác. Oracle tính từ CSV gốc cho Hà Nội ở hai nửa tháng lần lượt là 98,10 và 200,50 VND. Đà Nẵng ở nửa sau tháng là 177,35 VND. Chromium kiểm cả ba tổng, chuỗi có ký tự SQL chỉ khớp đúng một dòng, hai tình huống cần hỏi lại, và Top 5 tải Excel. Đã đọc lại cả năm mã, ngày và số tiền từ tệp xuất. Thử Gemini LIVE có một lượt gọi được ghi nhận, trả HTTP 503. Các ca cần Gemini chờ provider hoạt động.
 
+Trên `d3e9d54`, cổng phạm vi của lượt đối soát xác minh lại kỳ và chặn yêu cầu lọc chi nhánh khi báo cáo không hỗ trợ. Computer Use mở lượt đối soát sạch từ Báo cáo rồi gửi ba câu trong Chat về tổng chênh lệch nửa tháng, tóm tắt theo chi nhánh và xuất Excel tháng trước. Cả ba hỏi lại. Chromium trên Docker kiểm trạng thái chờ làm rõ, 0 lượt model và không có kết quả hoặc tệp được công bố cho ba câu này. Bốn hành trình trọng điểm, gồm Top 5, phạm vi đối soát và đối chiếu Chat với Báo cáo/CSV/XLSX, đều qua trên bản này.
+
+Backend/PostgreSQL trên `d3e9d54` đạt **961/961** với một cảnh báo deprecation của Starlette. Ruff, mypy, TypeScript, ESLint và build production đạt. Vite cảnh báo hai gói JavaScript lớn hơn 500 kB.
+
+Hồi quy Chromium toàn bộ trên `021afb5` có **135 PASS, 29 FAIL, 7 bỏ qua, 8 chưa chạy**. Trên bản trước sửa `f8e4684` cùng schema TEST, 9/10 ca đại diện lỗi tại cùng bước, gồm bộ chọn, thẻ duyệt, nội dung xem trước và ngữ cảnh lần chạy. Ca Dashboard vẫn lỗi nhưng tại bước khác. Gemini LIVE có **1 lần gọi thực tế**, 503 ở batch đầu gồm 5 câu, 15 câu còn lại chưa gọi. Hồi quy giao diện toàn bộ và Gemini LIVE vẫn chưa đạt điều kiện nghiệm thu.
+
+Hai lượt sạch khớp 5.000 nhóm mỗi cặp, 30.959.967.000 VND mỗi nguồn và chênh lệch 0. Bộ có lỗi giữ đủ 15.000 dòng, trong đó 14.967 hợp lệ và 33 cần kiểm tra. Ba tổng đủ điều kiện theo thứ tự Bán hàng, Thu ngân và Kế toán là 30.765.657.000, 30.768.000.000 và 30.758.520.000 VND. Chênh lệch có dấu/tuyệt đối của hai cặp lần lượt là −60.000/60.000 và −144.000/264.000 VND. Bốn lượt giữ trạng thái `PARTIAL_VERIFIED`.
+
+Docker trên schema `public` có 4/4 dịch vụ healthy. Bản sao lưu `backup_9bee4963f73147218ba402f7f4df516b` khôi phục thử thành công trong schema riêng. Đã diễn tập đổi sang cặp image tương thích và đổi lại. Kiểm tra sau lần triển khai cuối đối chiếu toàn bộ bản ghi có trong snapshot kiểm tra, 603 artifact nguồn, 31 artifact đối soát và 46 tệp báo cáo. Chỉ có các bản ghi hội thoại, workflow và job TEST được thêm. Receipt local lưu dưới `runtime/query-reliability/`.
+
 ## Truy vấn ngữ nghĩa và báo cáo tài chính — 13/11/2026
 
 Hai câu hỏi tổng tiền của Sổ kế toán và Báo cáo bán hàng trên `94ec4b2` đều có workflow `WAITING_REVIEW` và trace Gemini `QUERY_SEMANTICS_REQUIRED`. Cổng hợp đồng chỉ chấp nhận `metric_id` của lượt đối soát. Tuyến truy vấn nguồn chọn chỉ tiêu canonical đã xác nhận, biên dịch SQL có tham số và kiểm lại kết quả với dữ liệu đủ điều kiện. Cổng chỉ tiêu của lượt đối soát vẫn áp dụng. Xem [hợp đồng truy vấn và snapshot](DATA_CONTRACTS.md).
