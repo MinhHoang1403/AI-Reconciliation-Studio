@@ -185,11 +185,11 @@ export function AgentWorkflowPanel({ id, showResultHints, canEdit, draftOwner, o
           </button>
         )}
       </Notice>}
-      {workflow.detail.prepare_upload && openMappings.length>=2 && openMappings.every(review=>review.normalization_draft?.fields.filter(field=>field.data_type==="decimal").length===1) && <CommonMappingFacts
+      {openMappings.length>=2 && openMappings.every(review=>review.normalization_draft?.fields.filter(field=>field.data_type==="decimal").length===1) && <CommonMappingFacts
         key={openMappings.map(review=>`${review.id}:${review.nonce}`).join("|")}
         reviews={openMappings} storageKey={`studio.common-mapping.${draftOwner}.${id}.${openMappings.map(review=>`${review.id}:${review.nonce}:${review.fingerprint}`).join("|")}`}
         disabled={!canEdit||batchBusy||!["WAITING_REVIEW","RUNNING"].includes(workflow.state)} onApply={facts=>{setBatchDrafts({});setSharedFacts(previous=>({...facts,revision:(previous?.revision||0)+1}));}}/>}
-      {openReviews.map(r => <ReviewCard key={`${r.id}:${r.nonce}`} review={r} workflow={workflow} draftOwner={draftOwner} canEdit={canEdit && !batchBusy && ["WAITING_REVIEW", "RUNNING"].includes(workflow.state)} refresh={refresh} onReply={onReply} onBatchDraft={workflow.detail.prepare_upload ? batchDraft : undefined} sharedFacts={sharedFacts}/>)}
+      {openReviews.map(r => <ReviewCard key={`${r.id}:${r.nonce}`} review={r} workflow={workflow} draftOwner={draftOwner} canEdit={canEdit && !batchBusy && ["WAITING_REVIEW", "RUNNING"].includes(workflow.state)} refresh={refresh} onReply={onReply} onBatchDraft={r.kind === "MAPPING" ? batchDraft : undefined} sharedFacts={sharedFacts}/>)}
       {(canBatch || batchBusy) && <section aria-label="Duyệt các nguồn đang hiển thị">
         <p>Áp dụng các lựa chọn trong thẻ của {openMappings.map(review => review.resource_label || "nguồn đã chọn").join(", ")}.</p>
         <button type="button" className="button primary" disabled={batchBusy} onClick={()=>void approveBatch()}>Duyệt {openMappings.length} nguồn và chuẩn hóa</button>
