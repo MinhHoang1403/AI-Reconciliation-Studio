@@ -1,6 +1,6 @@
 # Hướng dẫn kiểm thử
 
-Giữ cặp image đang chạy với tag `pre-automatic-preparation` trước khi phát hành thay đổi chuẩn bị tự động. `./tools/rollback.ps1 -PreviousPreparation -VerifyOnly` kiểm cặp image và tương thích dữ liệu. Bỏ `-VerifyOnly` để chạy thử trước khi phát sinh dữ liệu của chính sách mới, rồi dùng `./tools/start.ps1 -SkipBuild` để trở lại bản phát hành. Sau khi có lịch sử dùng chính sách, cần image hỗ trợ các hợp đồng mới hoặc khôi phục có chủ đích từ backup trước phát hành. Script chặn image cũ khi lịch sử đó đã tồn tại.
+Giữ cặp image đang chạy với tag `pre-automatic-preparation` trước khi phát hành thay đổi chuẩn bị tự động. `./tools/rollback.ps1 -PreviousPreparation -VerifyOnly` kiểm cặp image và tương thích dữ liệu. Sau khi có lịch sử dùng chính sách, dùng cặp `rollback-automatic-preparation` qua `./tools/rollback.ps1 -CompatiblePreparation`. Script chặn image cũ khi lịch sử đó đã tồn tại. Dùng `./tools/start.ps1 -SkipBuild` để trở lại bản phát hành. Khôi phục dữ liệu từ backup trước phát hành là thao tác riêng.
 
 Chạy từ repository root. Các lệnh bên dưới không tạo Compose project hoặc database server thứ hai. Chỉ dùng fixtures tổng hợp; không sửa hoặc xóa dữ liệu dự án khác.
 
