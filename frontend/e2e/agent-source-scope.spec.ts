@@ -62,6 +62,8 @@ test("observed reconciliation uses the requested pairs and retains evidence and 
       await section.getByText("Phạm vi kiểm tra", { exact: true }).click();
       await expect(section).toContainText("Độ đầy đủ của kỳ kế toán chưa được xác nhận.");
       const scope = block.observation;
+      expect([scope.observed_start, scope.observed_end]).toEqual(kind === "clean"
+        ? ["2026-10-01", "2026-10-31"] : ["2026-11-01", "2026-11-12"]);
       const localDate = (value: string) => value.split("-").reverse().join("/");
       await expect(section).toContainText(`Từ ${localDate(scope.observed_start)} đến ${localDate(scope.observed_end)}.`);
       await expect(section).toContainText(`${kind === "clean" ? "5.000" : "4.989"} dòng dùng được trong phạm vi`);
@@ -90,9 +92,19 @@ test("observed reconciliation uses the requested pairs and retains evidence and 
     await expect(evidence.getByRole("region", { name: "Chi tiết giá trị nguồn", exact: true })).toBeVisible();
     await evidence.getByRole("button", { name: "Đóng", exact: true }).click();
     const format = kind === "clean" ? "CSV" : "XLSX";
+    const exporting = page.waitForResponse(response => response.url().includes("/exports?format=")
+      && response.request().method() === "POST");
     await report.getByRole("button", { name: `Xuất ${format}`, exact: true }).click();
+    const exportResponse = await exporting;
+    expect(exportResponse.ok()).toBe(true);
+    const exportJob = (await exportResponse.json()).job_id;
+    await expect.poll(async () => (await (await page.request.get(`/api/jobs/${exportJob}`)).json()).status, {
+      timeout: 45000,
+    }).toBe("SUCCEEDED");
+    const link = report.getByRole("link", { name: "Tải báo cáo", exact: true });
+    await expect(link).toBeVisible();
     const downloaded = page.waitForEvent("download");
-    await report.getByRole("link", { name: "Tải báo cáo", exact: true }).click();
+    await link.click();
     await (await downloaded).saveAs(info.outputPath(`${kind}.${format.toLowerCase()}`));
     await report.getByRole("button", { name: "Đóng", exact: true }).click();
     await page.reload();

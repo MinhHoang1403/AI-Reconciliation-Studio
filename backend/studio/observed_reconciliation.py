@@ -280,24 +280,24 @@ def observed_order_plan(
                 "OBSERVATION_SCOPE_INVALID",
                 f"{cat.name} chưa có dòng dùng được với ngày giao dịch, mã đơn và số tiền VND.",
             )
+        if period:
+            dated = [
+                (day_value, value)
+                for day_value, value in dated
+                if period[0] <= day_value < period[1]
+            ]
+            if not dated:
+                raise DomainError(
+                    "OBSERVATION_SCOPE_INVALID",
+                    f"{cat.name} thiếu giao dịch dùng được trong khoảng ngày đã yêu cầu.",
+                )
         first, last = min(value for value, _ in dated), max(value for value, _ in dated)
         if last == date.max:
             raise DomainError(
                 "OBSERVATION_SCOPE_INVALID", f"Ngày cuối của {cat.name} vượt phạm vi hỗ trợ."
             )
         ranges.append((first, last + timedelta(days=1)))
-        eligible_keys.append(
-            {
-                value
-                for day_value, value in dated
-                if value and (not period or period[0] <= day_value < period[1])
-            }
-        )
-    if period and any(not keys for keys in eligible_keys):
-        raise DomainError(
-            "OBSERVATION_SCOPE_INVALID",
-            "Có nguồn thiếu giao dịch dùng được trong khoảng ngày đã yêu cầu.",
-        )
+        eligible_keys.append({value for _, value in dated})
     if not eligible_keys[0].intersection(eligible_keys[1]):
         raise DomainError(
             "OBSERVATION_KEY_REQUIRED",
