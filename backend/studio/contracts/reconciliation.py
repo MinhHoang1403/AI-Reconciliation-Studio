@@ -16,6 +16,7 @@ from studio.contracts import (
     DatasetProfile,
     MappingRevision,
     SchemaDefinition,
+    SourceQualityCounts,
 )
 
 
@@ -356,6 +357,9 @@ class FinancialSide(Contract):
     groups: int
     amount: Money | None
     completeness: str
+    quality_counts: SourceQualityCounts | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class FinancialMeasure(Contract):
@@ -368,6 +372,9 @@ class FinancialMeasure(Contract):
     populations: list[FinancialPopulation]
     signed_variance: Money
     absolute_variance: Money
+    distinct_duplicate_keys: int | None = Field(
+        default=None, ge=0, exclude_if=lambda value: value is None
+    )
 
 
 class MetricSnapshot(Contract):

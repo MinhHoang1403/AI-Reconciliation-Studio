@@ -22,6 +22,7 @@ from sqlalchemy import select
 
 from studio.access import Actor
 from studio.config import settings
+from studio.contracts import SOURCE_QUALITY_LABELS
 from studio.contracts.data_query import DataQuery
 from studio.contracts.reconciliation import MetricSnapshot, ReconciliationContract
 from studio.database import (
@@ -191,8 +192,17 @@ def report_sections(
                 "Right amount",
             ]
         ]
+        sections["Chất lượng nguồn"] = [["Chỉ tiêu", "Phía", "Lý do", "Dòng nguồn"]]
+        sections["Phân biệt mã và nhóm trùng"] = [
+            ["Chỉ tiêu", "Nhóm có mã trùng", "Mã đơn trùng phân biệt"]
+        ]
         for measure in snapshot.financial:
             for side, scope in (("left", measure.left), ("right", measure.right)):
+                if scope.quality_counts is not None:
+                    sections["Chất lượng nguồn"].extend(
+                        [measure.metric_id, side, SOURCE_QUALITY_LABELS[reason], count]
+                        for reason, count in scope.quality_counts.model_dump().items()
+                    )
                 sections["Financial scope"].append(
                     [
                         measure.metric_id,
@@ -210,6 +220,16 @@ def report_sections(
                         scope.completeness,
                     ]
                 )
+            sections["Phân biệt mã và nhóm trùng"].append(
+                [
+                    measure.metric_id,
+                    next(
+                        (item.groups for item in measure.populations if item.state == "DUPLICATE"),
+                        None,
+                    ),
+                    measure.distinct_duplicate_keys,
+                ]
+            )
             for population in measure.populations:
                 sections["Financial populations"].append(
                     [

@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from sqlalchemy import String, and_, cast, func, literal, or_, select
+from sqlalchemy import String, cast, func, literal, or_, select
 from sqlalchemy.dialects.postgresql import JSONPATH
 from sqlalchemy.orm import Session
 
@@ -75,7 +75,8 @@ def mapping_impact(db: Session, mapping: MappingRow, table: TableRow) -> Mapping
             | JobRow.kind.in_(("agent", "agent_prepare", "agent_resume", "agent_review"))
         ),
         # Existing template discovery can look across projects in this workspace.
-        and_(mapping.status == "APPROVED", JobRow.kind.in_(("parse", "mapping", "mapping_reuse"))),
+        literal(mapping.status == "APPROVED")
+        & JobRow.kind.in_(("parse", "mapping", "mapping_reuse")),
     )
     busy = bool(db.scalar(select(jobs.where(JobRow.status.in_(PENDING), related_work).exists())))
     if not busy:
@@ -156,9 +157,10 @@ def change_mapping(db: Session, actor: Actor, mapping_id: str, action: MappingAc
     table = get_scoped(db, TableRow, mapping.source_table_id, actor)
     active_project(db, project_for_table(db, table).id, actor.workspace_id)
     db.refresh(table, with_for_update=True)
-    mapping = db.get(MappingRow, mapping_id, populate_existing=True, with_for_update=True)
-    if mapping is None:
+    locked_mapping = db.get(MappingRow, mapping_id, populate_existing=True, with_for_update=True)
+    if locked_mapping is None:
         raise missing()
+    mapping = locked_mapping
     impact = mapping_impact(db, mapping, table)
     if action == "archive" and impact.archived:
         return

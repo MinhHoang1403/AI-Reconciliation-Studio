@@ -317,8 +317,20 @@ def agent_catalogue(
                 (b for b in reversed(state.blocks) if isinstance(b, TableBlock)), None
             )
             if not result_table:
+                if state.intent and state.intent.intent in {"CLARIFY", "UNSUPPORTED"}:
+                    break
                 continue
             q = state.query_selection.query if state.query_selection else result_table.result.query
+            if (
+                q.source_kind == "CANONICAL"
+                and (q.source_measure_id or any(a.op == "sum_decimal" for a in q.aggregations))
+                and (
+                    not result_table.result.source_evidence
+                    or result_table.result.source_evidence.valid_rows is None
+                )
+            ):
+                # Historical monetary queries may have dropped a user constraint.
+                break
             if q.project_id != context.project_id or (
                 q.source_id != context.run_id
                 if q.source_kind in {"VERIFIED_RUN", "EXCEPTIONS"}

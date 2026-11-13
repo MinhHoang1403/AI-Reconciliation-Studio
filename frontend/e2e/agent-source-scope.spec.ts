@@ -21,7 +21,7 @@ test("semantic source reporting executes canonical SQL and exports the visible t
   const start = (await (await page.request.get("/api/settings")).json()).gemini_requests_used;
   const input = page.getByRole("textbox", { name: "Câu hỏi cho AI Assistant", exact: true });
   const work = page.getByRole("region", { name: "Công việc của AI Assistant", exact: true }).last();
-  const ask = async (question: string) => {
+  const ask = async (question: string, expectedState = "COMPLETED") => {
     await input.fill(question);
     const pending = page.waitForResponse(r => r.url().endsWith("/api/assistant/messages") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Gửi câu hỏi", exact: true }).click();
@@ -33,10 +33,10 @@ test("semantic source reporting executes canonical SQL and exports the visible t
       const job = await (await page.request.get(`/api/jobs/${job_id}`)).json();
       if (job.result?.workflow_id) flow = await (await page.request.get(`/api/agent/workflows/${job.result.workflow_id}`)).json();
       return flow?.state;
-    }).toBe("COMPLETED");
+    }).toBe(expectedState);
     const detail = flow!.detail;
     expect(detail.model_calls).toBe(0);
-    expect(detail.reviews).toEqual([]);
+    if (expectedState === "COMPLETED") expect(detail.reviews).toEqual([]);
     return detail.blocks;
   };
   const ledger = await ask("Cho tôi biết tổng số tiền của bộ dữ liệu sổ kế toán.");
@@ -87,6 +87,26 @@ test("semantic source reporting executes canonical SQL and exports the visible t
   await expect(dailyValue).toHaveCSS("text-align", "end");
   const top = await ask("Hiển thị 10 đơn hàng doanh thu cao nhất.");
   expect(top[0].result.rows).toHaveLength(10);
+  expect(top[0].result.total_count).toBe(10);
+  const oraclePath = process.env.STUDIO_SOURCE_ORACLE;
+  if (oraclePath) {
+    const oracle = JSON.parse(await readFile(oraclePath, "utf8"));
+    const original = oracle.clean["01_bao_cao_ban_hang_5000.csv"];
+    expect(top[0].result.rows.map((row: { order_reference: string }) => row.order_reference))
+      .toEqual(original.top.map((row: string[]) => row[0]));
+    for (const [half, start, end] of [["đầu", 1, 16], ["sau", 16, 32]] as const) {
+      const totals = await ask("Tổng doanh thu Bán hàng trong nửa " + half + " tháng 10/2026.");
+      const expected = Object.entries(original.days as Record<string, string>)
+        .filter(([day]) => Number(day.slice(-2)) >= start && Number(day.slice(-2)) < end)
+        .reduce((sum, [, value]) => sum + BigInt(value.split(".")[0]), 0n);
+      expect(totals[0].result.rows[0].sum_decimal_net_revenue_excluding_vat_0)
+        .toBe(String(expected) + ".00");
+    }
+    await ask("Tổng doanh thu Bán hàng tại chi nhánh Hà Nội.", "WAITING_REVIEW");
+    await expect(work).toContainText("cột phù hợp để lọc theo chi nhánh");
+    await expect(work.getByRole("region", { name: "Kết quả truy vấn" })).toHaveCount(0);
+    await ask("Tổng doanh thu Bán hàng tháng 10/2026.");
+  }
   const found = await ask("Tìm mã ORD2610-000001.");
   expect(found[0].result.rows[0].order_reference).toBe("ORD2610-000001");
   await expect(work.getByRole("button", { name: "Xem dòng gốc", exact: true }).first()).toBeVisible();
@@ -109,6 +129,11 @@ test("semantic source reporting executes canonical SQL and exports the visible t
   const issue = await ask("Tổng doanh thu thuần chưa VAT của từng nguồn trong dự án hiện tại.");
   expect(issue.map((b: {result: { rows: Record<string, string>[] } }) => b.result.rows[0].sum_decimal_net_revenue_excluding_vat_0))
     .toEqual(["30765657000.00", "30768000000.00", "30758520000.00"]);
+  expect(issue.map((b: { result: { source_evidence: { quality_counts: Record<string, number> } } }) =>
+    b.result.source_evidence.quality_counts)).toEqual(Array(3).fill({
+      invalid_amount: 5, missing_amount: 0, invalid_date: 2,
+      missing_key: 2, currency_mismatch: 2, other: 0,
+    }));
   expect((await (await page.request.get("/api/settings")).json()).gemini_requests_used).toBe(start);
 });
 
@@ -198,6 +223,80 @@ test("financial snapshot agrees in Chat, Reports and downloaded files", async ({
     }
   }
   expect(await usage()).toBe(before);
+});
+
+test("new schemas keep both calendar and branch restrictions through Chat and export", async ({ page }, info) => {
+  const path = process.env.STUDIO_QUERY_RELIABILITY_FIXTURE;
+  test.skip(!path, "Requires the isolated CSV/XLSX fixture and independent Decimal oracle");
+  test.setTimeout(100000);
+  const fixture = JSON.parse(await readFile(path!, "utf8"));
+  await page.goto("/");
+  await selectProject(page, fixture.project);
+  await page.getByRole("button", { name: "AI Assistant", exact: true }).click();
+  await page.getByRole("button", { name: "Hội thoại mới", exact: true }).click();
+  const input = page.getByRole("textbox", { name: "Câu hỏi cho AI Assistant" });
+  const result = page.getByRole("region", { name: "Công việc của AI Assistant" }).last();
+  const receipts = [];
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  async function ask(goal: string, expected = "COMPLETED") {
+    await input.fill(goal);
+    const submitted = page.waitForResponse(r => r.url().endsWith("/api/assistant/messages") && r.request().method() === "POST");
+    await page.getByRole("button", { name: "Gửi câu hỏi", exact: true }).click();
+    const response = await submitted;
+    const { job_id } = await response.json();
+    let workflow;
+    await expect.poll(async () => {
+      const job = await (await page.request.get("/api/jobs/" + job_id)).json();
+      if (job.result?.workflow_id) {
+        workflow = await (await page.request.get("/api/agent/workflows/" + job.result.workflow_id)).json();
+      }
+      return workflow?.state;
+    }).toBe(expected);
+    expect(workflow!.detail.model_calls).toBe(0);
+    const table = workflow!.detail.blocks.find((block: { type: string }) => block.type === "table")?.result;
+    receipts.push({ goal, state: expected, job_id, query: table?.query, rows: table?.rows, sql: table?.source_evidence?.sql });
+    return table;
+  }
+  const source = 'của "Luân chuyển kho.csv"';
+  const measure = "doanh thu thuần chưa VAT";
+  const period = "tháng 2/2024";
+  const first = await ask('Tổng ' + measure + ' ' + source + ' tại chi nhánh "Hà Nội" trong nửa đầu ' + period);
+  expect(first.rows[0].sum_decimal_recognized_0).toBe(fixture.oracle.hanoi_first);
+  const second = await ask('Tổng ' + measure + ' ' + source + ' tại chi nhánh "Hà Nội" trong nửa sau ' + period);
+  expect(second.rows[0].sum_decimal_recognized_0).toBe(fixture.oracle.hanoi_second);
+  const changed = await ask('Còn chi nhánh "Đà Nẵng" thì sao?');
+  expect(changed.rows[0].sum_decimal_recognized_0).toBe(fixture.oracle.danang_second);
+  const exactValue = "X' OR '1'='1";
+  const literal = await ask('Tổng ' + measure + ' ' + source + ' tại chi nhánh "' + exactValue + '"');
+  expect(literal.rows[0].sum_decimal_recognized_0).toBe("6.00");
+  expect(literal.source_evidence.sql).not.toContain(exactValue);
+  await ask('Tổng số tiền ' + source, "WAITING_REVIEW");
+  await expect(result.getByRole("region", { name: "Kết quả truy vấn" })).toHaveCount(0);
+  await ask('Tổng ' + measure + ' của "Sổ ghi nhận độc lập.xlsx" tại chi nhánh "Hà Nội"', "WAITING_REVIEW");
+  const february = await ask('Tổng ' + measure + ' ' + source + ' ' + period);
+  expect(february.rows[0].sum_decimal_recognized_0).toBe(fixture.oracle.feb);
+  const top = await ask("Cho tôi Top 5 nhưng giữ bộ lọc ngày trước đó.");
+  expect(top.query.filters).toEqual(february.query.filters);
+  expect(top.rows.map((row: Record<string, string>) => [row.order_reference, row.booked_on, row.recognized]))
+    .toEqual(fixture.oracle.top5);
+  const ties = await ask("Có bao nhiêu giao dịch đồng hạng tại vị trí thứ 5?");
+  expect(ties.source_evidence.ranking_ties).toBe(fixture.oracle.tie_amount_count);
+  await result.getByText("Điều kiện và nguồn", { exact: true }).click();
+  await expect(result).toContainText("vị trí dòng nguồn");
+  for (const width of [390, 768, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 920 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath("query-" + width + ".png") });
+  }
+  await ask("Xuất Excel cho bảng đang xem.");
+  const download = page.waitForEvent("download");
+  await result.getByRole("link", { name: "Tải bảng đang xem XLSX", exact: true }).click();
+  await (await download).saveAs(info.outputPath("top5.xlsx"));
+  await page.reload();
+  await expect(result.getByRole("link", { name: "Tải bảng đang xem XLSX", exact: true })).toBeVisible();
+  await writeFile(info.outputPath("query-receipts.json"), JSON.stringify(receipts, null, 2));
+  expect(errors).toEqual([]);
 });
 
 test("observed reconciliation uses the requested pairs and retains evidence and exports", async ({ page }, info) => {

@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import Field, JsonValue
 
-from studio.contracts import Contract
+from studio.contracts import Contract, SourceQualityCounts
 from studio.contracts.assistant import Identifier
 
 
@@ -61,6 +61,9 @@ class DataQuery(QueryOperations):
     calendar_bucket: Literal["day", "month"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    ranking_size: int | None = Field(
+        default=None, ge=1, le=50, exclude_if=lambda value: value is None
+    )
 
 
 class SourceMeasure(Contract):
@@ -85,6 +88,12 @@ class SourceQueryEvidence(Contract):
     excluded_rows: int
     matching_rows: int
     counted_rows: int
+    valid_rows: int | None = Field(default=None, exclude_if=lambda value: value is None)
+    out_of_scope_rows: int | None = Field(default=None, exclude_if=lambda value: value is None)
+    quality_counts: SourceQualityCounts | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    ranking_ties: int | None = Field(default=None, exclude_if=lambda value: value is None)
     observed_first: str | None = None
     observed_last: str | None = None
     sql: str

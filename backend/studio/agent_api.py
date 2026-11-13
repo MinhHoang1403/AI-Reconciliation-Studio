@@ -547,6 +547,16 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
         if not any(
             isinstance(block, TableBlock)
             and block.result.query.model_dump(exclude={"offset", "sort"}) == core
+            and (
+                body.source_kind != "CANONICAL"
+                or not (
+                    body.source_measure_id or any(a.op == "sum_decimal" for a in body.aggregations)
+                )
+                or (
+                    block.result.source_evidence
+                    and block.result.source_evidence.valid_rows is not None
+                )
+            )
             for block in state.blocks
         ):
             raise DomainError(
@@ -578,6 +588,10 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
             or not intent
             or intent.intent != "EXPORT_RESULT"
             or query.project_id != row.project_id
+            or (
+                (query.source_measure_id or any(a.op == "sum_decimal" for a in query.aggregations))
+                and not state.source_export_bound
+            )
         ):
             raise DomainError("RESOURCE_NOT_FOUND", "Không tìm thấy bảng đã chọn để xuất.", 404)
         result = execute_query(db, actor, query)
@@ -610,6 +624,35 @@ def build_router(database: Callable[..., Any], current_actor: Callable[..., Any]
                 ],
             ],
         }
+        if evidence and evidence.valid_rows is not None:
+            from studio.contracts import SOURCE_QUALITY_LABELS
+
+            sections["Phạm vi"].extend(
+                [
+                    ["Dòng gốc", evidence.source_rows],
+                    ["Bản ghi hợp lệ", evidence.valid_rows],
+                    ["Bản ghi lỗi", evidence.invalid_rows],
+                    ["Bản ghi ngoài bộ lọc", evidence.out_of_scope_rows],
+                    ["Dòng loại theo quyết định", evidence.excluded_rows],
+                    ["Bản ghi được tính", evidence.counted_rows],
+                ]
+            )
+            if query.ranking_size:
+                sections["Phạm vi"].extend(
+                    [
+                        ["Hạng cuối được yêu cầu", query.ranking_size],
+                        ["Giao dịch đồng hạng ở ngưỡng", evidence.ranking_ties],
+                        ["Thứ tự khi bằng tiền", "Khóa nghiệp vụ, vị trí dòng nguồn, mã bản ghi"],
+                    ]
+                )
+            if evidence.quality_counts:
+                sections["Lý do dòng lỗi"] = [
+                    ["Lý do (một dòng có thể thuộc nhiều nhóm)", "Dòng nguồn"],
+                    *[
+                        [SOURCE_QUALITY_LABELS[reason], count]
+                        for reason, count in evidence.quality_counts.model_dump().items()
+                    ],
+                ]
         format = intent.export_format
         with TemporaryDirectory() as directory:
             path = Path(directory) / f"studio-query.{format}"

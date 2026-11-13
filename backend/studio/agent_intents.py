@@ -717,6 +717,13 @@ def validate_intents(
     tables = {t.table_id: t for d in catalogue.datasets for t in d.tables}
     canonical = {t.canonical_id: t for t in tables.values() if t.canonical_id}
     for index, (goal, intent) in enumerate(zip(goals, batch.intents, strict=True)):
+        from studio.semantic_intents import resolve_source_read, validate_source_query_coverage
+
+        bound_source_read = resolve_source_read(goal, catalogue)
+        if bound_source_read and intent.intent not in {"QUERY_DATA", "CLARIFY", "UNSUPPORTED"}:
+            raise DomainError(
+                "QUERY_SEMANTICS_REQUIRED", "Yêu cầu đọc dữ liệu cần giữ đúng nguồn và phép tính."
+            )
         if intent.source_queries or intent.compare_source_totals:
             raise DomainError("AI_INVALID_INTENT", "Chỉ Backend được chọn truy vấn nhiều nguồn.")
         if intent.intent == "CLARIFY":
@@ -954,10 +961,31 @@ def validate_intents(
                     raise DomainError(
                         "QUERY_SEMANTICS_REQUIRED", "Chọn chỉ tiêu đã xác nhận của nguồn."
                     )
-            if q.source_kind == "CANONICAL" and any(a.op == "sum_decimal" for a in q.aggregations):
-                from studio.semantic_intents import validate_source_money_language
-
-                validate_source_money_language(goal, q, source)
+            if q.source_kind == "CANONICAL":
+                money_fields = (
+                    {
+                        field.id
+                        for field in source.schema_definition.fields
+                        if field.data_type == "decimal"
+                    }
+                    if source and source.schema_definition
+                    else set()
+                )
+                if (
+                    bound_source_read
+                    or q.source_measure_id
+                    or any(
+                        a.op == "sum_decimal"
+                        or (a.op in {"min", "max"} and a.field_id in money_fields)
+                        for a in q.aggregations
+                    )
+                    or any(s.field_id in money_fields for s in q.sort)
+                ):
+                    validate_source_query_coverage(q, bound_source_read)
+            elif bound_source_read:
+                raise DomainError(
+                    "QUERY_SEMANTICS_REQUIRED", "Yêu cầu này cần bản chuẩn hóa đúng phạm vi."
+                )
             if q.source_kind == "VERIFIED_RUN":
                 try:
                     intent.query = q = resolve_verified_metric(

@@ -2,6 +2,12 @@
 
 ## Truy vấn ngữ nghĩa và tổng tài chính
 
+Truy vấn tài chính từ Chat chỉ chạy khi nguồn, chỉ tiêu, phép tính và mọi điều kiện trong câu đều được ràng buộc. Phần còn dư dẫn đến hỏi lại. Kế hoạch do provider đề xuất phải khớp các phép và giá trị được liên kết độc lập. Điều kiện văn bản so khớp bằng giá trị nguyên văn, ưu tiên dùng ngoặc kép cho nhãn có nhiều từ. Giá trị enum cần ánh xạ đã duyệt. Nửa đầu tháng tính ngày 1–15. Nửa sau tính từ ngày 16 đến hết tháng. Các cụm đầu hoặc cuối tháng cần xác định số ngày.
+
+Top N nguồn giữ tối đa N dòng có số tiền. Sau số tiền giảm dần, thứ tự dùng khóa nghiệp vụ theo schema, vị trí dòng gốc nhỏ nhất rồi mã bản ghi bất biến, với NULL xếp cuối ở các khóa phụ. Phân trang và xuất dùng cùng giới hạn. Số đồng hạng tại ngưỡng đếm mọi giao dịch có cùng số tiền, kể cả các dòng ngoài Top N. Bảng lịch sử còn mở được. Truy vấn tài chính nguồn ghi trước cổng phạm vi cần chạy lại trước khi dùng cho câu hỏi tiếp nối hoặc xuất.
+
+Tổng dòng lỗi dùng phân hoạch bản chuẩn hóa. Thống kê lý do đếm dòng nguồn duy nhất trong từng lý do. Một dòng có thể đóng góp vào nhiều lý do. Số hợp lệ ngoài bộ lọc và số tiền thiếu trong các dòng đã lọc được ghi riêng. Nhóm có mã trùng và mã đơn trùng phân biệt dùng hai đơn vị đếm. Snapshot lịch sử thiếu các trường mới hiển thị chưa xác định.
+
 `source_measure_id` chỉ tham chiếu trường Decimal trong schema canonical hiện hành có ngữ nghĩa, cơ sở tiền, đơn vị, tiền tệ và ý nghĩa từng dòng đã xác nhận. `metric_id` tiếp tục dành riêng cho lượt đối soát. Truy vấn nguồn có thể dùng `count_distinct` trên mã dạng chuỗi và nhóm theo ngày hoặc tháng. Các bản ghi lỗi và dòng có quyết định loại được báo riêng. DuckDB 2.0.0 chỉ nhận quan hệ nội bộ từ dữ liệu đã kiểm quyền và checksum. Compiler dùng danh sách phép toán cố định và truyền giá trị lọc bằng tham số. Phép tổng hợp được kiểm lại bằng tập bản ghi do Polars lọc và phép tính Decimal độc lập.
 
 Snapshot của lượt chạy mới lưu `financial` theo từng chỉ tiêu và từng phía. Các nhóm trong phạm vi chia riêng thành khớp, lệch tiền, một phía có giao dịch, mã trùng và chưa đủ điều kiện so sánh. Tiền thiếu giữ null. Hai tổng phía được tính từ bản ghi nguồn có số tiền đủ điều kiện. Chat, Báo cáo và hai định dạng xuất đọc cùng snapshot. Snapshot cũ giữ nguyên và tiếp tục mở được.

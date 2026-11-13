@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from rapidfuzz.distance import Indel
 
-from studio.contracts import CanonicalDataset
+from studio.contracts import CanonicalDataset, SourceQualityCounts, source_quality_reason
 from studio.contracts.reconciliation import (
     CanonicalRecord,
     FinancialMeasure,
@@ -434,6 +434,39 @@ def financial_measures(
         )
 
     indexes = {side: {record.id: record for record in records} for side, records in sources.items()}
+    distinct_duplicate_keys = len(
+        {
+            tuple(group.key)
+            for group in result.groups
+            if "DUPLICATE_KEY" in group.exception_types
+            and group.linkage_state not in {"INVALID", "OUT_OF_SCOPE"}
+        }
+    )
+    quality = {}
+    for side, records in sources.items():
+        amount_fields = {getattr(metric, side) for metric in plan.comparison_metrics}
+        date_fields = {getattr(plan, side).date_field}
+        keys = {getattr(pair, side) for pair in plan.join_keys}
+        rows_by_reason: dict[str, set[str]] = defaultdict(set)
+        for record in records:
+            if not record.invalid:
+                continue
+            reasons = {
+                reason
+                for flag in record.quality_flags
+                if (parts := flag.split(":", 1))
+                and len(parts) == 2
+                and (
+                    reason := source_quality_reason(
+                        parts[0], parts[1], amount_fields, date_fields, keys
+                    )
+                )
+            }
+            for reason in reasons or {"other"}:
+                rows_by_reason[reason].update(ref.source_row_id for ref in record.provenance)
+        quality[side] = SourceQualityCounts(
+            **{reason: len(rows) for reason, rows in rows_by_reason.items()}
+        )
     result_measures = []
     with localcontext() as context:
         context.prec = 100
@@ -531,6 +564,7 @@ def financial_measures(
                     groups=group_counts[side],
                     amount=sum(amounts[side].values(), Decimal(0)) if actual else None,
                     completeness=getattr(plan, side).completeness,
+                    quality_counts=quality[side],
                 )
             result_measures.append(
                 FinancialMeasure(
@@ -543,6 +577,7 @@ def financial_measures(
                     populations=populations,
                     signed_variance=summary.signed_variance,
                     absolute_variance=summary.absolute_variance,
+                    distinct_duplicate_keys=distinct_duplicate_keys,
                 )
             )
     return result_measures

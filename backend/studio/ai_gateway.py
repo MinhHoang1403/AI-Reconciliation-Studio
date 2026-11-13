@@ -356,7 +356,7 @@ def validate_ai_output(
         decision.decision = MappingStatus.AMBIGUOUS
         decision.unresolved_questions = ["Xác nhận cơ sở số tiền, đơn vị và tiền tệ."]
     if unsupported:
-        proposal.status = MappingStatus.AMBIGUOUS
+        proposal.status = "AMBIGUOUS"
     return proposal
 
 

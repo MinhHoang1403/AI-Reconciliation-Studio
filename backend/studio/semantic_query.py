@@ -2,7 +2,7 @@
 
 import json
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date
 from decimal import Decimal, localcontext
 from threading import Timer
@@ -12,12 +12,14 @@ import duckdb
 import polars as pl
 
 from studio.config import settings
-from studio.contracts.data_query import DataQuery, QueryResult, SourceQueryEvidence
+from studio.contracts import SourceQualityCounts, source_quality_reason
+from studio.contracts.data_query import DataQuery, QueryResult, QuerySort, SourceQueryEvidence
 from studio.data_query import QuerySource, _collect_bounded, _value, json_value, source_measures
 from studio.errors import DomainError
 
 OPS = {"eq": "=", "ne": "<>", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 AGGREGATES = {"sum_decimal": "SUM", "min": "MIN", "max": "MAX", "count": "COUNT"}
+SOURCE_POSITION = "_query_source_position"
 
 
 def identifier(name: str) -> str:
@@ -70,6 +72,38 @@ def _sql_type(dtype: pl.DataType) -> str:
     raise DomainError("QUERY_TYPE_UNSUPPORTED", "Kiểu cột chưa được hỗ trợ cho truy vấn này.")
 
 
+def source_quality_counts(
+    errors: pl.LazyFrame | None,
+    invalid: pl.LazyFrame,
+    amount_fields: set[str],
+    date_fields: set[str],
+    key_fields: set[str],
+    deadline: float,
+) -> SourceQualityCounts | None:
+    if errors is None:
+        return None
+    ids = invalid.select(
+        pl.col("source_provenance")
+        .list.explode()
+        .struct.field("source_row_id")
+        .alias("source_row_id")
+    )
+    issues = _collect_bounded(
+        errors.select("source_row_id", "field", "code").join(ids, on="source_row_id", how="semi"),
+        deadline,
+    )
+    row_reasons: dict[str, set[str]] = defaultdict(set)
+    for row, target, code in issues.iter_rows():
+        reason = source_quality_reason(code, target, amount_fields, date_fields, key_fields)
+        if reason:
+            row_reasons[row].add(reason)
+    source_ids = _collect_bounded(ids.unique(), deadline).to_series()
+    counts = Counter(reason for row in source_ids for reason in row_reasons.get(row, {"other"}))
+    if time.monotonic() >= deadline:
+        raise DomainError("QUERY_TIMEOUT", "Truy vấn vượt thời gian kiểm chứng.", 409)
+    return SourceQualityCounts(**counts)
+
+
 def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -> QueryResult:
     canonical, schema = source.canonical, source.definition
     assert canonical and schema
@@ -97,6 +131,12 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
         raise DomainError(
             "QUERY_SEMANTICS_REQUIRED", "Hãy chọn một chỉ tiêu tiền đã xác nhận của nguồn này."
         )
+    if query.ranking_size and (
+        not measure
+        or query.aggregations
+        or query.sort != [QuerySort(field_id=measure.field_id, descending=True)]
+    ):
+        raise DomainError("QUERY_SORT_INVALID", "Top N cần giữ thứ tự theo số tiền đã chọn.")
     if query.currency_field and query.currency_field != "currency":
         raise DomainError("QUERY_CURRENCY_REQUIRED", "Cột tiền tệ phải là trường đã chuẩn hóa.")
     currency = "currency" if measure and "currency" in source.fields else None
@@ -148,6 +188,16 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
         requested.add(currency)
     if not query.aggregations:
         requested.update(fields)
+    tie_keys = (
+        [
+            key
+            for key in schema.business_key_fields
+            if key in source.fields and all(sort.field_id != key for sort in query.sort)
+        ]
+        if not query.aggregations
+        else []
+    )
+    requested.update(tie_keys)
     expected_count = _collect_bounded(source.frame.select(pl.len()), deadline).item()
     if expected_count != canonical.row_count:
         raise DomainError("CANONICAL_COUNT_MISMATCH", "Số dòng không khớp bản chuẩn hóa.")
@@ -169,7 +219,21 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
             "QUERY_CURRENCY_MISMATCH",
             "Có dòng hợp lệ khác tiền tệ đã xác nhận. Hãy kiểm tra phạm vi.",
         )
+    if not query.aggregations:
+        # A canonical table belongs to one source table. Grouped canonical
+        # records use the earliest physical row among their source members.
+        frame = frame.with_columns(
+            pl.col("source_provenance")
+            .list.eval(pl.element().struct.field("row"))
+            .list.min()
+            .cast(pl.Int64)
+            .alias(SOURCE_POSITION)
+        )
+        names.append(SOURCE_POSITION)
     where, parameters, checks = predicates(query, types)
+    if query.ranking_size and measure:
+        where.append(f"{identifier(measure.field_id)} IS NOT NULL")
+        checks.append(pl.col(measure.field_id).is_not_null())
     subset = frame.filter(*checks) if checks else frame
     projections: list[str] = []
     group_fields = [identifier(f) for f in query.group_by]
@@ -206,9 +270,12 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
         f"{identifier(s.field_id)} {'DESC' if s.descending else 'ASC'} NULLS LAST"
         for s in query.sort
     ]
-    order.extend(
-        identifier(f) for f in (query.group_by if query.aggregations else ["canonical_record_id"])
+    fallback_order = (
+        query.group_by
+        if query.aggregations
+        else [*tie_keys, SOURCE_POSITION, "canonical_record_id"]
     )
+    order.extend(f"{identifier(field)} ASC NULLS LAST" for field in fallback_order)
     sql = "SELECT " + ", ".join(projections) + " FROM source"
     where_sql = " WHERE " + " AND ".join(where) if where else ""
     sql += where_sql
@@ -217,6 +284,11 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
     if order:
         sql += " ORDER BY " + ", ".join(order)
     sql += " LIMIT ? OFFSET ?"
+    page_limit = (
+        min(query.limit, max(0, query.ranking_size - query.offset))
+        if query.ranking_size
+        else query.limit
+    )
     names.append("canonical_record_id")
     values = [
         {k: json_value(v) for k, v in row.items()}
@@ -251,7 +323,7 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
                 sql_count = connection.execute(
                     "SELECT COUNT(*) FROM source" + where_sql, parameters
                 ).fetchone()
-                cursor = connection.execute(sql, [*parameters, query.limit, query.offset])
+                cursor = connection.execute(sql, [*parameters, page_limit, query.offset])
                 columns = [d[0] for d in cursor.description]
                 raw_rows = [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
             finally:
@@ -266,6 +338,7 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
     if not sql_count or sql_count[0] != subset.height:
         raise DomainError("QUERY_VERIFICATION_FAILED", "Số dòng khớp điều kiện chưa nhất quán.")
     groups: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
+    ranking_ties = None
     if query.aggregations:
         if not query.group_by:
             groups[()] = []
@@ -311,9 +384,22 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
                     row["_evidence_truncated"] = True
     else:
         evidence = dict(subset.select("canonical_record_id", "source_provenance").iter_rows())
+        ordering = [(sort.field_id, sort.descending) for sort in query.sort] + [
+            (field, False) for field in fallback_order
+        ]
+        keys, directions = zip(*ordering, strict=True)
+        ordered = subset.sort(list(keys), descending=list(directions), nulls_last=True)
+        expected_ids = ordered.slice(query.offset, page_limit)["canonical_record_id"].to_list()
+        if query.ranking_size and measure and ordered.height >= query.ranking_size:
+            boundary = ordered[measure.field_id][query.ranking_size - 1]
+            ranking_ties = subset.filter(pl.col(measure.field_id) == boundary).height
+        if [row["canonical_record_id"] for row in raw_rows] != expected_ids:
+            raise DomainError("QUERY_VERIFICATION_FAILED", "Thứ tự bản ghi không khớp kiểm chứng.")
         for row in raw_rows:
             row["source_provenance"] = evidence[row["canonical_record_id"]]
     total = len(groups) if query.aggregations else subset.height
+    if query.ranking_size:
+        total = min(total, query.ranking_size)
     if (
         len(raw_rows) != max(0, min(total - query.offset, query.limit))
         or time.monotonic() >= deadline
@@ -324,6 +410,18 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
         subset[measure.field_id].len() - subset[measure.field_id].null_count()
         if measure
         else subset.height
+    )
+    quality_counts = (
+        SourceQualityCounts()
+        if canonical.invalid_count == 0
+        else source_quality_counts(
+            source.errors,
+            source.frame.filter(pl.col("invalid")),
+            set(measures),
+            set(date_fields),
+            set(schema.business_key_fields),
+            deadline,
+        )
     )
     return QueryResult(
         project_id=query.project_id,
@@ -362,6 +460,10 @@ def execute_source_sql(query: DataQuery, source: QuerySource, deadline: float) -
             excluded_rows=canonical.excluded_source_rows,
             matching_rows=subset.height,
             counted_rows=counted_rows,
+            valid_rows=valid_count,
+            out_of_scope_rows=valid_count - subset.height,
+            quality_counts=quality_counts,
+            ranking_ties=ranking_ties,
             observed_first=str(observed.min()) if observed is not None and len(observed) else None,
             observed_last=str(observed.max()) if observed is not None and len(observed) else None,
             sql=sql,

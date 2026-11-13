@@ -1,5 +1,5 @@
 import type { AssistantAnswer, AssistantContext, ModelChoice } from "./assistantTypes";
-import type { Group, Plan, Run, Slot, Snapshot, Suggestions } from "./reconciliationTypes";
+import type { Group, Plan, Run, Slot, Snapshot, SourceQualityCounts, Suggestions } from "./reconciliationTypes";
 export type DraftField = {
     source_field: string;
     target_id: string;
@@ -66,6 +66,7 @@ export type Query = {
     metric_id?: string | null;
     source_measure_id?: string;
     calendar_bucket?: "day" | "month";
+    ranking_size?: number;
 };
 export type QueryResult = {
     query: Query;
@@ -96,6 +97,10 @@ export type QueryResult = {
         excluded_rows: number;
         matching_rows: number;
         counted_rows: number;
+        valid_rows?: number;
+        out_of_scope_rows?: number;
+        quality_counts?: SourceQualityCounts;
+        ranking_ties?: number;
         observed_first: string | null;
         observed_last: string | null;
         sql: string;

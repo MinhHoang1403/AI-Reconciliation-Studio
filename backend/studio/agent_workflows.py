@@ -2038,6 +2038,9 @@ def advance(db: Session, row: AgentWorkflowRow, *, approved_only: bool = False) 
     elif intent.intent == "EXPORT_RESULT":
         if state.export_query and state.export_query.source_kind == "CANONICAL":
             require_editor(actor, db, row.id)
+            if state.export_query != catalogue.previous_query:
+                raise DomainError("STALE_CONTEXT", "Bảng nguồn đã đổi. Hãy chọn lại bảng cần xuất.")
+            state.source_export_bound = True
             state.blocks.append(
                 DownloadBlock(
                     export_id=row.id,

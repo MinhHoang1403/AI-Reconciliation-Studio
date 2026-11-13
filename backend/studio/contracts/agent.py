@@ -479,6 +479,7 @@ class WorkflowState(Contract):
     dataset_ids: list[Identifier] = Field(default_factory=list, max_length=5)
     query_selection: QuerySelection | None = None
     export_query: DataQuery | None = None
+    source_export_bound: bool = Field(default=False, exclude_if=lambda value: not value)
     sequence_progress: SequenceProgress | None = None
     sequence_clarifications: list[str] = Field(default_factory=list, max_length=4)
     resumable_job_id: str | None = None

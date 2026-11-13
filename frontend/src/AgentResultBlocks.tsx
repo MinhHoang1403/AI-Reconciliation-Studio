@@ -7,7 +7,7 @@ import { api } from "./api";
 import { Badge, DataTable, formatDecimal, Modal, Notice, sourceDisplayName, Spinner } from "./components";
 import { DataQualityPanel } from "./DataQualityPanel";
 import { FinancialSummary } from "./FinancialSummary";
-import { label } from "./reconciliationTypes";
+import { label, sourceQualityLabels, type SourceQualityCounts } from "./reconciliationTypes";
 import {statusText} from "./types";
 import type { AgentBlock, Chart, Query, QueryResult, SourceStatusLine } from "./agentTypes";
 import type { AssistantContext, Suggestion } from "./assistantTypes";
@@ -122,7 +122,8 @@ function QueryTable({ initial, workflowId, selection, title, showResultHints }: 
     const countUnit = aggregate?.op === "count_distinct" ? "mã đơn duy nhất" : data.query.source_kind === "VERIFIED_RUN" ? "nhóm giao dịch" : "dòng dữ liệu";
     const count = countOnly && data.rows[0] ? data.rows[0][data.fields[0]] : null;
     const columns: ColumnDef<Record<string, unknown>>[] = [{id:'position',header:'Vị trí trong trang',cell:info=>info.row.index+1},...(groupKey?[{id:'business_key',accessorKey:'business_key',header:'Khóa giao dịch'}]:[]),...visibleFields.map<ColumnDef<Record<string, unknown>>>(field => ({ id: field, accessorKey: field,
-        header: () => <button className="text-button" disabled={busy} onClick={() => void page(0, [{ field_id: field, descending: !data.query.sort.find(s => s.field_id === field)?.descending }])}>{data.field_labels?.[field] || (countOnly ? `Số ${countUnit}` : queryLabels[field] || field)} ↕</button>,
+        header: () => data.query.ranking_size ? (data.field_labels?.[field] || queryLabels[field] || field) :
+          <button className="text-button" disabled={busy} onClick={() => void page(0, [{ field_id: field, descending: !data.query.sort.find(s => s.field_id === field)?.descending }])}>{data.field_labels?.[field] || (countOnly ? `Số ${countUnit}` : queryLabels[field] || field)} ↕</button>,
         cell: info => info.getValue() == null ? "—" :
           ['VERIFIED_RUN','EXCEPTIONS'].includes(data.query.source_kind)&&['linkage_state','comparison_state','state','type'].includes(field)?label(String(info.getValue())):
           moneyFields.has(field) ? formatDecimal(String(info.getValue())) : String(info.getValue()) })), {
@@ -148,6 +149,12 @@ function QueryTable({ initial, workflowId, selection, title, showResultHints }: 
     {data.query.source_kind === "PREPARED_ISSUES" && <p>Các dòng có cảnh báo định dạng, kèm giá trị gốc.</p>}
     {data.verification_status === "PARTIAL_VERIFIED" && <p className="agent-answer-note">Kết quả được kiểm chứng một phần. Xem phạm vi trước khi kết luận.</p>}
     {scopeEvidence && <p className="agent-answer-note">Độ đầy đủ của kỳ chưa được xác nhận.</p>}
+    {scopeEvidence?.measure && scopeEvidence.valid_rows === undefined && <p className="agent-answer-note">
+      Đây là bảng lịch sử. Hãy gửi lại câu hỏi để kiểm tra phạm vi trước khi dùng tiếp hoặc xuất.
+    </p>}
+    {data.query.ranking_size && scopeEvidence?.ranking_ties !== undefined && <p>
+      {localCount(scopeEvidence.ranking_ties)} giao dịch có cùng số tiền tại hạng {data.query.ranking_size}.
+    </p>}
     {!countOnly && data.warnings.map(w => <p className="muted" key={w}>{w}</p>)}
     {showEvidenceHint && <Notice transient>{evidenceNote}</Notice>}
     {error && <Notice tone="error">{error}</Notice>}
@@ -162,8 +169,19 @@ function QueryTable({ initial, workflowId, selection, title, showResultHints }: 
       <DataTable rows={data.rows} columns={columns} numericColumns={numericQueryFields}/>{pagination}
     </Modal>
     <details className="agent-answer-details"><summary>Điều kiện và nguồn</summary>
+      {data.query.ranking_size && <p>Khi bằng tiền, xếp theo khóa nghiệp vụ, vị trí dòng nguồn, rồi mã bản ghi.</p>}
       {scopeEvidence && <><p>Tệp nguồn <span className="agent-source-file">{scopeEvidence.source_name}</span></p>
-        <p>{localCount(scopeEvidence.source_rows)} dòng gốc. {scopeEvidence.grain}.</p></>}
+        <p>{localCount(scopeEvidence.source_rows)} dòng gốc. {scopeEvidence.grain}.</p>
+        {scopeEvidence.valid_rows !== undefined && scopeEvidence.out_of_scope_rows !== undefined && <p>
+          {localCount(scopeEvidence.valid_rows)} bản ghi hợp lệ, {localCount(scopeEvidence.out_of_scope_rows)} ngoài bộ lọc,
+          {scopeEvidence.measure && <>, {localCount(scopeEvidence.matching_rows - scopeEvidence.counted_rows)} thiếu số tiền trong phạm vi</>}.
+        </p>}
+        {scopeEvidence.invalid_rows > 0 && (scopeEvidence.quality_counts ? <>
+          <ul>{Object.entries(scopeEvidence.quality_counts).filter(([, count]) => count > 0)
+            .map(([reason, count]) => <li key={reason}>{sourceQualityLabels[reason as keyof SourceQualityCounts]} · {localCount(count)} dòng</li>)}</ul>
+          <p>Một dòng có thể thuộc nhiều nhóm lý do.</p>
+        </> : <p>Chưa lưu số dòng theo từng lý do.</p>)}
+      </>}
       <p>{data.query.filters.map(f => `${f.field_id} ${f.op} ${JSON.stringify(f.value)}`).join("; ") || "Toàn bộ nguồn"}</p>
       <p>{localCount(data.input_count)} dòng được dùng trước khi phân nhóm và phân trang. <Badge status={data.verification_status}/></p>
       {scopeEvidence && <p className="agent-answer-note">{coverageNote}</p>}
@@ -302,7 +320,7 @@ function ObservedResult({block, open}: {block: Extract<AgentBlock, {type: "facts
       ["Nhóm khớp", count(snapshot.comparison_counts.EQUAL ?? 0)],
       ["Nhóm lệch tiền", count(snapshot.comparison_counts.AMOUNT_MISMATCH ?? 0)],
       ["Nhóm chưa thấy đối ứng", count(snapshot.linkage_counts.PENDING ?? 0)],
-      ["Mã đơn trùng", count(scope.duplicate_keys)],
+      ["Mã đơn trùng phân biệt", count(scope.duplicate_keys)],
       ["Chênh lệch có dấu", money ? `${formatDecimal(money.signed_variance)} ${money.currency}` : "—"],
       ["Chênh lệch tuyệt đối", money ? `${formatDecimal(money.absolute_variance)} ${money.currency}` : "—"],
     ];

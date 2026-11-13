@@ -328,6 +328,43 @@ class ApprovedTransformRule(Contract):
     evidence_ids: list[str] = Field(min_length=1)
 
 
+class SourceQualityCounts(Contract):
+    """Distinct source rows per reason. One row may contribute to several reasons."""
+
+    invalid_amount: int = 0
+    missing_amount: int = 0
+    invalid_date: int = 0
+    missing_key: int = 0
+    currency_mismatch: int = 0
+    other: int = 0
+
+
+SOURCE_QUALITY_LABELS = {
+    "invalid_amount": "Không đọc được số tiền",
+    "missing_amount": "Thiếu số tiền",
+    "invalid_date": "Thiếu ngày hoặc ngày không hợp lệ",
+    "missing_key": "Thiếu khóa bắt buộc",
+    "currency_mismatch": "Ngoài phạm vi tiền tệ",
+    "other": "Lỗi chất lượng khác",
+}
+
+
+def source_quality_reason(
+    code: str, field: str, amounts: set[str], dates: set[str], keys: set[str]
+) -> str | None:
+    if code == "NULL":
+        return None
+    if code == "CURRENCY_MISMATCH":
+        return "currency_mismatch"
+    if field in amounts:
+        return "missing_amount" if code == "REQUIRED_NULL" else "invalid_amount"
+    if field in dates:
+        return "invalid_date"
+    if field in keys and code == "REQUIRED_NULL":
+        return "missing_key"
+    return "other"
+
+
 class CanonicalDataset(Contract):
     id: str
     workspace_id: str

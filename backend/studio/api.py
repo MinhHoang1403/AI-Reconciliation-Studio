@@ -1163,7 +1163,7 @@ def preview(
     }
 
 
-def table_mapping_jobs(table: TableRow) -> Select[tuple[JobRow]]:
+def table_mapping_jobs(table: TableRow) -> Select[JobRow]:
     return select(JobRow).where(
         JobRow.workspace_id == table.workspace_id,
         JobRow.kind == "mapping",

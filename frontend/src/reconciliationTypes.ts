@@ -113,6 +113,15 @@ export type Snapshot = {
   unresolved_cases_at_run: number;
   financial?: FinancialMeasure[];
 };
+export const sourceQualityLabels = {
+  invalid_amount: "Không đọc được số tiền",
+  missing_amount: "Thiếu số tiền",
+  invalid_date: "Thiếu ngày hoặc ngày không hợp lệ",
+  missing_key: "Thiếu khóa bắt buộc",
+  currency_mismatch: "Ngoài phạm vi tiền tệ",
+  other: "Lỗi chất lượng khác",
+};
+export type SourceQualityCounts = Partial<Record<keyof typeof sourceQualityLabels, number>>;
 export type FinancialSide = {
   source_rows: number;
   in_scope_records: number;
@@ -123,6 +132,7 @@ export type FinancialSide = {
   groups: number;
   amount: string | null;
   completeness: string;
+  quality_counts?: SourceQualityCounts;
 };
 export type FinancialMeasure = {
   metric_id: string;
@@ -133,6 +143,7 @@ export type FinancialMeasure = {
   right: FinancialSide;
   signed_variance: string;
   absolute_variance: string;
+  distinct_duplicate_keys?: number;
   populations: { state: string; groups: number; left_records: number; right_records: number; left_amount: string | null; right_amount: string | null }[];
 };
 export type Run = {

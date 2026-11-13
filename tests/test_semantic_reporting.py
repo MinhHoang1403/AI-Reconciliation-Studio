@@ -9,10 +9,10 @@ import pytest
 from studio.contracts import CanonicalDataset, SchemaDefinition
 from studio.contracts.agent import DatasetContext, IntentCatalogue, TableContext
 from studio.contracts.assistant import AssistantContext
-from studio.contracts.data_query import DataQuery, QueryAggregation, QueryFilter
+from studio.contracts.data_query import DataQuery, QueryAggregation, QueryFilter, QuerySort
 from studio.data_query import QuerySource
 from studio.errors import DomainError
-from studio.semantic_intents import resolve_source_read, validate_source_money_language
+from studio.semantic_intents import resolve_source_read, validate_source_query_coverage
 from studio.semantic_query import execute_source_sql
 
 
@@ -108,14 +108,10 @@ def test_router_keeps_explicit_scope_and_distinguishes_orders_from_rows():
         QueryFilter(field_id="event_date", op="between", value=["2026-10-03", "2026-10-04"]),
         QueryFilter(field_id="payment_status", op="eq", value="PAID"),
     ]
-    validate_source_money_language(
-        "Tổng doanh thu ngày 03/10/2026 có trạng thái PAID",
-        intent.query,
-        context.datasets[0].tables[0],
-    )
+    validate_source_query_coverage(intent.query, intent)
     with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
-        validate_source_money_language(
-            "Tổng doanh thu ngày 04/10/2026", intent.query, context.datasets[0].tables[0]
+        validate_source_query_coverage(
+            intent.query, resolve_source_read("Tổng doanh thu ngày 04/10/2026", context)
         )
     for goal in (
         "Tổng doanh thu Bán hàng có mã ABC",
@@ -192,3 +188,153 @@ def test_sql_preserves_exclusive_dates_and_month_bucket():
     assert result.rows[0]["sum_decimal_revenue_0"] == "8.76"
     with pytest.raises(DomainError, match="QUERY_TIMEOUT"):
         execute_source_sql(query(source_measure_id="revenue"), source(), monotonic() - 1)
+
+
+@pytest.mark.parametrize(
+    ("clause", "op", "value"),
+    [
+        ("nửa đầu tháng 2/2024", "between", ["2024-02-01", "2024-02-16"]),
+        ("nửa sau tháng 2/2024", "between", ["2024-02-16", "2024-03-01"]),
+        ("từ ngày 28/02/2024 đến hết ngày 29/02/2024", "between", ["2024-02-28", "2024-03-01"]),
+        ("trước ngày 29/02/2024", "lt", "2024-02-29"),
+        ("sau ngày 29/02/2024", "gte", "2024-03-01"),
+        ("quý IV/2024", "between", ["2024-10-01", "2025-01-01"]),
+        ("năm 2024", "between", ["2024-01-01", "2025-01-01"]),
+    ],
+)
+def test_calendar_constraints_are_complete(clause, op, value):
+    intent = resolve_source_read(f"Tổng doanh thu Bán hàng {clause}", catalogue())
+    assert intent and intent.query
+    assert intent.query.filters == [QueryFilter(field_id="event_date", op=op, value=value)]
+
+
+@pytest.mark.parametrize(
+    "clause",
+    [
+        "đầu tháng 2/2024",
+        "cuối tháng 2/2024",
+        "ngày 29/02/2025",
+        "tháng 13/2024",
+        "tháng 2/2024 hoặc tháng 3/2024",
+        "tại chi nhánh Hà Nội",
+        "nửa đầu tháng 2/2024 và theo phương thức giao hàng",
+        "tháng 2/2024 và xóa nguồn",
+        "ngoại trừ các đơn hủy",
+    ],
+)
+def test_unbound_constraints_cannot_be_discarded(clause):
+    intent = resolve_source_read(f"Tổng doanh thu Bán hàng {clause}", catalogue())
+    assert intent and intent.intent == "CLARIFY" and intent.query is None
+
+
+def test_branch_and_calendar_bind_against_confirmed_metadata_and_provider_plan():
+    from studio.agent_intents import validate_intents
+    from studio.contracts import SchemaField
+    from studio.contracts.agent import IntentBatch
+
+    context = catalogue()
+    dataset = context.datasets[0]
+    dataset.name = "Thuê kho tháng thử.xlsx"
+    schema = dataset.tables[0].schema_definition
+    assert schema
+    schema.fields.append(SchemaField(id="depot", name="Chi nhánh", data_type="string"))
+    goals = (
+        'Tổng doanh thu tại chi nhánh "Hà Nội" trong nửa sau tháng 2/2024',
+        'Trong nửa sau tháng 2/2024, tổng doanh thu tại chi nhánh "Hà Nội"',
+        'Tong doanh thu cua tep "Thue kho thang thu.xlsx" tai chi nhanh "Hà Nội" '
+        "nua sau thang 2/2024",
+    )
+    results = [resolve_source_read(goal, context) for goal in goals]
+    assert all(result and result.query for result in results), results
+    first = results[0]
+    assert first and first.query
+    assert all(result and result.query == first.query for result in results)
+    assert first.query.filters == [
+        QueryFilter(field_id="event_date", op="between", value=["2024-02-16", "2024-03-01"]),
+        QueryFilter(field_id="depot", op="eq", value="Hà Nội"),
+    ]
+    validate_intents(IntentBatch(intents=[first]).model_dump_json(), [goals[0]], context)
+    for changes in (
+        {"filters": first.query.filters[:1]},
+        {"filters": [*first.query.filters, QueryFilter(field_id="depot", op="ne", value="A")]},
+        {
+            "filters": [
+                *first.query.filters[:1],
+                QueryFilter(field_id="depot", op="contains", value="Hà Nội"),
+            ]
+        },
+        {"source_measure_id": None, "aggregations": []},
+        {"limit": 3},
+    ):
+        proposal = first.model_copy(update={"query": first.query.model_copy(update=changes)})
+        with pytest.raises(DomainError, match="INPUT_AMBIGUOUS"):
+            validate_intents(IntentBatch(intents=[proposal]).model_dump_json(), [goals[0]], context)
+
+    context.previous_query = first.query
+    reply = resolve_source_read('Còn chi nhánh "Đà Nẵng" thì sao?', context)
+    assert reply and reply.query
+    assert reply.query.filters == [
+        first.query.filters[0],
+        QueryFilter(field_id="depot", op="eq", value="Đà Nẵng"),
+    ]
+    top = resolve_source_read("Cho tôi Top 5 nhưng giữ bộ lọc ngày trước đó", context)
+    assert top and top.query
+    assert top.query.limit == 5 and top.query.filters == first.query.filters
+    assert top.query.sort == [QuerySort(field_id="revenue", descending=True)]
+
+
+def test_top_paginates_ties_by_business_key_then_source_row_then_id():
+    fixture = source()
+    assert fixture.definition
+    fixture.definition.business_key_fields = ["order_reference"]
+    fixture.frame = fixture.frame.with_columns(pl.lit(Decimal("10.01")).alias("revenue"))
+    top = query(
+        source_measure_id="revenue", sort=[QuerySort(field_id="revenue", descending=True)], limit=2
+    )
+    for frame in (fixture.frame, fixture.frame.reverse()):
+        fixture.frame = frame
+        first = execute_source_sql(top.model_copy(deep=True), fixture, monotonic() + 5)
+        second = execute_source_sql(
+            top.model_copy(update={"offset": 2}, deep=True), fixture, monotonic() + 5
+        )
+        assert [r["canonical_record_id"] for r in first.rows + second.rows] == [
+            "r1",
+            "r2",
+            "r3",
+            "r5",
+        ]
+
+
+def test_quality_reasons_count_source_rows_not_error_entries():
+    fixture = source()
+    assert fixture.definition
+    fixture.definition.business_key_fields = ["order_reference"]
+    fixture.frame = fixture.frame.with_columns(
+        pl.Series(
+            "source_provenance", [[{"row": i, "source_row_id": f"s{i}"}] for i in range(2, 7)]
+        )
+    )
+    fixture.errors = pl.DataFrame(
+        {
+            "source_row_id": ["s5", "s5", "s5", "s5", "s4"],
+            "field": ["revenue", "revenue", "event_date", "order_reference", "revenue"],
+            "code": ["INVALID_DECIMAL", "INVALID_DECIMAL", "INVALID_DATE", "REQUIRED_NULL", "NULL"],
+        }
+    ).lazy()
+    result = execute_source_sql(
+        query(
+            source_measure_id="revenue",
+            aggregations=[QueryAggregation(op="sum_decimal", field_id="revenue")],
+        ),
+        fixture,
+        monotonic() + 5,
+    )
+    evidence = result.source_evidence
+    assert evidence and evidence.quality_counts
+    assert evidence.invalid_rows == 1 and evidence.valid_rows == 4
+    assert evidence.matching_rows == 4 and evidence.counted_rows == 3
+    assert evidence.quality_counts.model_dump(exclude_defaults=True) == {
+        "invalid_amount": 1,
+        "invalid_date": 1,
+        "missing_key": 1,
+    }

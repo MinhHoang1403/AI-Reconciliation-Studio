@@ -58,6 +58,7 @@ class QuerySource:
     canonical: CanonicalDataset | None = None
     definition: SchemaDefinition | None = None
     source_name: str = ""
+    errors: pl.LazyFrame | None = None
 
 
 def source_measures(definition: SchemaDefinition) -> list[SourceMeasure]:
@@ -348,7 +349,9 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
         raise DomainError("RESOURCE_NOT_FOUND", "Quyền truy cập không còn hợp lệ.", 404)
     if query.metric_id and query.source_kind != "VERIFIED_RUN":
         raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ chọn metric cho kết quả đã xác minh.")
-    if (query.source_measure_id or query.calendar_bucket) and query.source_kind != "CANONICAL":
+    if (
+        query.source_measure_id or query.calendar_bucket or query.ranking_size
+    ) and query.source_kind != "CANONICAL":
         raise DomainError("QUERY_SEMANTICS_REQUIRED", "Chỉ tiêu nguồn cần bản chuẩn hóa hiện hành.")
     if query.source_kind in {
         "RAW_PREVIEW",
@@ -359,6 +362,7 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
     }:
         canonical = definition = None
         source_name = ""
+        errors = None
         if query.source_kind == "CANONICAL":
             row = get_scoped(db, CanonicalRow, query.source_id, actor)
             canonical = CanonicalDataset.model_validate(row.contract)
@@ -411,6 +415,15 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
                 if f.data_type == "decimal" and f.currency and f.unit and f.semantic_metric
             }
             frame = frame.unnest("record_payload")
+            if canonical.invalid_count:
+                error_artifact = get_scoped(db, ArtifactRow, canonical.error_artifact.id, actor)
+                if (
+                    error_artifact.kind != "errors"
+                    or error_artifact.sha256 != canonical.error_artifact.sha256
+                    or error_artifact.dataset_version_id != canonical.dataset_version_id
+                ):
+                    raise DomainError("ARTIFACT_REF_INVALID", "Dữ liệu lỗi không khớp nguồn.", 409)
+                errors = artifact_scan(error_artifact)
         else:
             fields = [c["id"] for c in table.parsed_contract["columns"]]
             labels = {c["id"]: c["name"] for c in table.parsed_contract["columns"]}
@@ -476,6 +489,7 @@ def _source(db: Session, actor: Actor, query: DataQuery, deadline: float) -> Que
             canonical,
             definition,
             source_name,
+            errors,
         )
     run = get_scoped(db, RunRow, query.source_id, actor)
     if run.project_id != query.project_id:
@@ -598,9 +612,7 @@ def _execute_query(db: Session, actor: Actor, query: DataQuery) -> QueryResult:
     source = _source(db, actor, query, deadline)
     validate_status_predicates(query)
     if query.source_kind == "CANONICAL" and (
-        query.source_measure_id
-        or query.calendar_bucket
-        or query.aggregations
+        query.source_measure_id or query.calendar_bucket or query.aggregations
     ):
         from studio.semantic_query import execute_source_sql
 
