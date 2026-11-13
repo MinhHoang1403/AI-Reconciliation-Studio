@@ -345,7 +345,7 @@ for (const width of [390, 768, 1366, 1440, 1920]) {
     await expect(result).not.toContainText('1 nhóm kết quả');
     await expect(result.getByRole('table')).toHaveCount(0);
     aggregate.result.rows[0].count_rows_0=0;await page.reload();
-    await expect(result).toContainText('Kết quả đếm: 0 dòng dữ liệu');
+    await expect(result).toContainText('Có 0 dòng dữ liệu phù hợp với điều kiện đã chọn.');
     projectName='UAT F Biên & bảo mật — Nguồn giao dịch khu vực miền Nam tháng 10 năm 2026';
     await page.reload();await expect(projectPicker).toHaveAttribute('title',projectName);
     await expect(projectPicker.locator('strong')).toHaveText(projectName);
