@@ -97,6 +97,17 @@ test("processing report reads current sources through the real website", async (
   await expect(reports).toHaveCount(6);
   await reports.first().scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath("processing-report.png") });
+  const desktop = page.viewportSize()!;
+  await page.setViewportSize({ width: 390, height: desktop.height });
+  const scroll = reports.first().getByLabel("Số dòng theo nguồn", { exact: true });
+  await scroll.focus();
+  await expect(scroll).toBeFocused();
+  await expect.poll(() => scroll.evaluate(element =>
+    element.clientWidth < document.documentElement.clientWidth && element.scrollWidth > element.clientWidth,
+  )).toBe(true);
+  await reports.first().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("processing-report-mobile.png") });
+  await page.setViewportSize(desktop);
   await page.reload();
   await expect(page.getByText(combined, { exact: true })).toBeVisible();
   await expect(reports).toHaveCount(6);

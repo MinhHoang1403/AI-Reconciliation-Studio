@@ -2503,6 +2503,7 @@ pre {
   .dataset-item time { grid-column: 2; white-space: nowrap; }
   .dataset-arrow { grid-column: 4; grid-row: 1 / 3; }
 }
+.agent-source-status { min-width: 0; }
 .agent-source-status th[scope="row"] {
   min-width: 12ch;
   overflow-wrap: anywhere;
