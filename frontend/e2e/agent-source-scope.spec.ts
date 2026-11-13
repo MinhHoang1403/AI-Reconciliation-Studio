@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
-import { test } from "./project-selection";
+import { selectProject, test } from "./project-selection";
 
 test("processing report reads current sources through the real website", async ({ page }, info) => {
   const fixture = process.env.STUDIO_PROCESSING_REPORT_FIXTURE;
@@ -77,17 +77,22 @@ test("processing report reads current sources through the real website", async (
   expect(compare.workflow.detail.blocks[0]).toMatchObject({
     type: "source_comparison", name: names[0], row: 805, scope: "CANONICAL",
   });
+  for (const [label, index] of [["Bán hàng", 0], ["Thu ngân", 1], ["Kế toán", 2]] as const) {
+    const item = await ask(`${label} đã tự chuẩn bị xong chưa?`);
+    expect(item.workflow.detail.blocks[0].items).toEqual([expect.objectContaining({
+      name: names[index], original_rows: 5000, valid_rows: 5000, invalid_rows: 0,
+    })]);
+  }
   const reports = page.getByRole("region", { name: "Thống kê chuẩn bị dữ liệu", exact: true });
-  await expect(reports).toHaveCount(3);
+  await expect(reports).toHaveCount(6);
   await reports.first().scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath("processing-report.png") });
   await page.reload();
   await expect(page.getByText(combined, { exact: true })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Thống kê chuẩn bị dữ liệu", exact: true })).toHaveCount(3);
+  await expect(reports).toHaveCount(6);
   await expect(page.getByText("Cần bạn bổ sung", { exact: true })).toHaveCount(0);
 
-  await page.goto("/");
-  await page.goto(`/#page=assistant&project=${issueProject}`);
+  await selectProject(page, issueProject);
   const bad = await ask(combined);
   expect(bad.workflow.detail.blocks[0].totals).toMatchObject({
     original_rows: 15000, valid_rows: 14967, invalid_rows: 33, excluded_rows: 0,
@@ -114,6 +119,11 @@ test("processing report reads current sources through the real website", async (
     .toEqual(["PARTIAL_VERIFIED", "PARTIAL_VERIFIED"]);
   expect(results.map((b: {result: {snapshot: {monetary: {signed_variance: string}[]}}}) =>
     b.result.snapshot.monetary[0].signed_variance)).toEqual(["-60000.00", "-144000.00"]);
+  const afterRun = await ask(combined);
+  expect(afterRun.workflow.detail.blocks[0].totals.invalid_rows).toBe(33);
+  await selectProject(page, project);
+  const returned = await ask(combined);
+  expect(returned.workflow.detail.blocks[0].totals.valid_rows).toBe(15000);
   expect(await settings()).toBe(before);
 });
 

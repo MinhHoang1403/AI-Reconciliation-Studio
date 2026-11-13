@@ -85,21 +85,28 @@ def select_project_datasets(
         from studio.assistant import plain_question
 
         names = {unicodedata.normalize("NFC", name).casefold() for name in dataset_names or ()}
+        label_text = (dataset_label or "").strip(' "“”')
+        filename_label = label_text if re.search(r"\.(?:csv|xlsx)$", label_text) else None
         identities: list[str] = []
         exact: list[str] = []
-        label = " ".join(re.findall(r"[a-z0-9]+", plain_question(dataset_label or "")))
+        label = " ".join(re.findall(r"[a-z0-9]+", label_text))
         lookup = query.with_only_columns(DatasetRow.id, DatasetRow.name)
         with db.execute(lookup.execution_options(yield_per=128)) as result:
             for dataset_id, name in result:
+                folded = plain_question(name)
+                if filename_label:
+                    if folded == filename_label and len(exact) < 6:
+                        exact.append(dataset_id)
+                    continue
                 if label:
-                    words = " ".join(re.findall(r"[a-z0-9]+", plain_question(name)))
+                    words = " ".join(re.findall(r"[a-z0-9]+", folded))
                     if words == label and len(exact) < 6:
                         exact.append(dataset_id)
                     if len(identities) < 6 and f" {label} " in f" {words} ":
                         identities.append(dataset_id)
                     continue
                 if unicodedata.normalize("NFC", name).casefold() in names or (
-                    dataset_stem and plain_question(name.rsplit(".", 1)[0]) == dataset_stem
+                    dataset_stem and folded.rsplit(".", 1)[0] == dataset_stem
                 ):
                     identities.append(dataset_id)
                     if len(identities) == 6:

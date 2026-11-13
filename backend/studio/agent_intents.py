@@ -1720,7 +1720,7 @@ def source_inspection_request(goal: str) -> tuple[str, int, str | None] | None:
     if literal_lookup:
         # Match the command case-insensitively and keep the identifier bytes unchanged.
         return "lookup", 10, goal.strip().rstrip(".!?").rsplit(maxsplit=1)[-1]
-    text = " ".join(plain_question(goal).replace("_", " ").split()).rstrip("?.!")
+    text = " ".join(plain_question(goal).split()).rstrip("?.!")
     listing = re.fullmatch(
         r"(?:(?:cho (?:minh|toi|em)|hay|vui long) )?(?:xem|mo|liet ke) "
         r"(?:(\d{1,2}) (?:dong|hang)(?: dau)? )?(du lieu goc|du lieu da chuan hoa|"
