@@ -17,7 +17,7 @@ ROLE = r"(?:(?:bao cao|so) )?(ban hang|thu ngan|ke toan)"
 DATE = r"\d{1,2}/\d{1,2}/\d{4}"
 DAY_RANGE = rf"(?:tu (?:ngay )?)?({DATE}) den (?:(?:het )?(?:ngay )?)({DATE})"
 SINGLE_DAY = rf"ngay ({DATE})"
-MONTH = r"(?:(nua dau|nua sau) )?thang (\d{1,2})(?:\s*/\s*(\d{4}))?"
+MONTH = r"(?:(nua dau|nua sau) )?thang (\d{1,2})(?:(?:\s*/\s*| nam )(\d{4}))?"
 QUARTER = r"quy (iv|iii|ii|i|[1-4])(?:\s*/\s*| nam )(\d{4})"
 YEAR = r"nam (\d{4})"
 DAY_EDGE = rf"(truoc|sau) (?:ngay )?({DATE})"
@@ -122,7 +122,7 @@ def _by_name(text: str, datasets: list[DatasetContext]) -> list[DatasetContext]:
     return result
 
 
-def _period(clause: str, previous_year: int | None = None) -> CalendarScope:
+def bind_calendar_scope(clause: str, previous_year: int | None = None) -> CalendarScope:
     def day(value: str) -> date:
         d, m, y = map(int, value.split("/"))
         return date(y, m, d)
@@ -541,7 +541,9 @@ def resolve_source_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | 
         return _clarify("Hãy chọn đúng ba nguồn cần tính trong dự án.")
     try:
         period = (
-            _period(calendars[0][0], catalogue.previous_source_year if previous else None)
+            bind_calendar_scope(
+                calendars[0][0], catalogue.previous_source_year if previous else None
+            )
             if calendars
             else None
         )

@@ -744,6 +744,15 @@ def validate_intents(
             raise DomainError("AI_INVALID_SOURCE", "AI chọn nguồn không có trong context.")
         if intent.run_id and intent.run_id not in catalogue.run_ids:
             raise DomainError("AI_INVALID_SOURCE", "AI chọn run ngoài context.")
+        run_target = None
+        if intent.query and intent.query.source_kind == "VERIFIED_RUN":
+            run_target = intent.query.source_id
+        elif intent.intent in {"SUMMARIZE_RESULTS", "EXPORT_RESULT"} and intent.query is None:
+            run_target = intent.run_id or catalogue.context.run_id
+        if run_target in catalogue.run_ids:
+            clarification = resolve_run_filter_clarification(goal, catalogue, run_target)
+            if clarification:
+                raise DomainError("QUERY_SEMANTICS_REQUIRED", clarification.questions[0])
         if intent.export_scope is not None and intent.intent != "EXPORT_RESULT":
             raise DomainError("AI_INVALID_INTENT", "Phạm vi xuất chỉ dành cho xuất kết quả.")
         if intent.intent == "EXPORT_RESULT":
@@ -1464,21 +1473,36 @@ def resolve_run_read(goal: str, catalogue: IntentCatalogue) -> AgentIntent | Non
     )
 
 
-def resolve_run_filter_clarification(goal: str, catalogue: IntentCatalogue) -> AgentIntent | None:
+def resolve_run_filter_clarification(
+    goal: str, catalogue: IntentCatalogue, run_id: str | None = None
+) -> AgentIntent | None:
     """Keep filters that the current comparison-group view cannot represent."""
-    if catalogue.context.run_id not in catalogue.run_ids or explicit_read_layers([goal]):
+    target = run_id or catalogue.context.run_id
+    if target not in catalogue.run_ids or explicit_read_layers([goal]):
         return None
     text = plain_question(re.sub(r'"[^\"]+"|“[^”]+”', "", goal))
-    if not (
-        (
-            explicit_read_request(goal)
-            or re.search(r"\b(?:xem|liet ke|tim|loc|lay|dem|bao nhieu|tong)\b", text)
-        )
-        and re.search(r"\b(?:giao dich|nhom|khoan|don|ban ghi)\b", text)
-        and re.search(r"\b(?:doi ung|lech tien|sai tien|chenh lech)\b", text)
-    ):
+    run_read = re.search(
+        r"\b(?:doi soat|lan chay|run|ket qua|doi ung|lech tien|sai tien|chenh lech)\b",
+        text,
+    ) or re.match(r"^(?:hay )?(?:xuat|tai) bao cao\b", text)
+    run_action = re.search(
+        r"\b(?:tong|tom tat|xem|tinh|liet ke|dem|bao nhieu|xuat|tai|loc|hien thi|tim|lay)\b", text
+    )
+    if not (run_read and run_action):
         return None
-    if re.search(r"\b(?:da|dang|chua) (?:duoc )?(?:xu ly|giai quyet)\b", text):
+    if re.search(r"\b(?:chi nhanh|cua hang|khu vuc)\b", text):
+        return AgentIntent(
+            intent="CLARIFY",
+            questions=[
+                "Báo cáo đã xác minh chưa lọc được theo địa điểm. "
+                "Bạn muốn kiểm tra nguồn dữ liệu hay chọn lượt đối soát có phạm vi phù hợp?"
+            ],
+        )
+    if (
+        re.search(r"\b(?:giao dich|nhom|khoan|don|ban ghi)\b", text)
+        and re.search(r"\b(?:doi ung|lech tien|sai tien|chenh lech)\b", text)
+        and re.search(r"\b(?:da|dang|chua) (?:duoc )?(?:xu ly|giai quyet)\b", text)
+    ):
         return AgentIntent(
             intent="CLARIFY",
             questions=[
@@ -1486,16 +1510,29 @@ def resolve_run_filter_clarification(goal: str, catalogue: IntentCatalogue) -> A
                 "theo trạng thái xử lý? Đây là hai danh sách khác nhau."
             ],
         )
-    months = re.findall(r"\bthang (0?[1-9]|1[0-2])(?: nam ((?:19|20)\d{2}))?\b", text)
-    if not months:
+    from studio.semantic_intents import PERIOD, bind_calendar_scope
+
+    periods = list(re.finditer(rf"(?<![\w/])(?:{PERIOD})(?![\w/])", text))
+    time_mention = (
+        r"\b(?:ngay|thang|quy|nam) (?=\d|truoc\b|sau\b|nay\b|toi\b)"
+        r"|\b(?:hom qua|hom nay|nua dau|nua sau|dau thang|cuoi thang|tuan (?:nay|truoc|sau))\b"
+    )
+    if not periods and not re.search(time_mention, text):
         return None
-    plan = catalogue.confirmed_plan
-    if plan and len(months) == 1 and months[0][1]:
-        month, year = map(int, months[0])
-        start = date(year, month, 1)
-        end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
-        if (start, end) == (plan.period_start, plan.period_end):
-            return None
+    plan = catalogue.confirmed_plan if target == catalogue.context.run_id else None
+    if plan and len(periods) == 1:
+        period = periods[0]
+        remainder = text[: period.start()] + " thang " + text[period.end() :]
+        if not re.search(time_mention, remainder):
+            try:
+                scope = bind_calendar_scope(period[0])
+                if scope.op == "between" and scope.values == (
+                    plan.period_start.isoformat(),
+                    plan.period_end.isoformat(),
+                ):
+                    return None
+            except (ValueError, OverflowError):
+                pass
     return AgentIntent(
         intent="CLARIFY",
         questions=[

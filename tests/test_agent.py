@@ -2172,6 +2172,54 @@ def test_full_run_variance_uses_snapshot_while_filtered_analysis_remains_query(w
     )
 
 
+@pytest.mark.parametrize(
+    "goal,payload",
+    [
+        (
+            "Tổng chênh lệch tuyệt đối của lượt đối soát trong nửa đầu tháng 10/2026",
+            {
+                "intent": "QUERY_DATA",
+                "query": {
+                    "aggregations": [{"op": "sum_decimal", "field_id": "absolute_variance"}],
+                    "filters": [],
+                    "group_by": [],
+                    "currency_field": None,
+                },
+            },
+        ),
+        (
+            "Tóm tắt kết quả đối soát tại chi nhánh Hà Nội",
+            {"intent": "SUMMARIZE_RESULTS", "run_id": "run"},
+        ),
+        (
+            "Xuất báo cáo đối soát tháng trước thành Excel",
+            {"intent": "EXPORT_RESULT", "run_id": "run", "export_format": "xlsx"},
+        ),
+    ],
+)
+def test_provider_cannot_publish_whole_run_after_discarding_scope(goal, payload):
+    from studio.agent_intents import compile_routing, routing_sources
+
+    cat = routing_catalogue()
+    cat.verified_run_fields = ["absolute_variance"]
+    cat.verified_metric_ids = [cat.confirmed_plan.comparison_metrics[0].metric_id]
+    if "query" in payload:
+        payload = {
+            **payload,
+            "query": {
+                **payload["query"],
+                "source_ref": next(
+                    s["ref"] for s in routing_sources(cat) if s["source_kind"] == "VERIFIED_RUN"
+                ),
+            },
+        }
+    with pytest.raises(DomainError, match="QUERY_SEMANTICS_REQUIRED"):
+        compile_routing(json.dumps({"intents": [payload]}), [goal], cat)
+    from studio.agent_intents import resolve_native_read
+
+    assert resolve_native_read(goal, cat).intent == "CLARIFY"
+
+
 def test_explicit_currency_bypass_is_denied_without_treating_missing_fx_as_approval():
     from studio.agent_intents import currency_bypass_requested
 

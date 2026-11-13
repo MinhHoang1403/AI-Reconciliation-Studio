@@ -4,6 +4,8 @@
 
 Truy vấn tài chính từ Chat chỉ chạy khi nguồn, chỉ tiêu, phép tính và mọi điều kiện trong câu đều được ràng buộc. Phần còn dư dẫn đến hỏi lại. Kế hoạch do provider đề xuất phải khớp các phép và giá trị được liên kết độc lập. Điều kiện văn bản so khớp bằng giá trị nguyên văn, ưu tiên dùng ngoặc kép cho nhãn có nhiều từ. Giá trị enum cần ánh xạ đã duyệt. Nửa đầu tháng tính ngày 1–15. Nửa sau tính từ ngày 16 đến hết tháng. Các cụm đầu hoặc cuối tháng cần xác định số ngày.
 
+Tóm tắt và xuất báo cáo dựa trên phạm vi của lượt đối soát đã xác minh. Khi câu hỏi nêu kỳ khác hoặc yêu cầu lọc địa điểm, Chat yêu cầu chọn lại lượt đối soát hoặc nguồn. Kỳ được nêu rõ có thể dùng trực tiếp khi hai cận trùng với kỳ đã duyệt của lượt đang xem.
+
 Top N nguồn giữ tối đa N dòng có số tiền. Sau số tiền giảm dần, thứ tự dùng khóa nghiệp vụ theo schema, vị trí dòng gốc nhỏ nhất rồi mã bản ghi bất biến, với NULL xếp cuối ở các khóa phụ. Phân trang và xuất dùng cùng giới hạn. Số đồng hạng tại ngưỡng đếm mọi giao dịch có cùng số tiền, kể cả các dòng ngoài Top N. Bảng lịch sử còn mở được. Truy vấn tài chính nguồn ghi trước cổng phạm vi cần chạy lại trước khi dùng cho câu hỏi tiếp nối hoặc xuất.
 
 Tổng dòng lỗi dùng phân hoạch bản chuẩn hóa. Thống kê lý do đếm dòng nguồn duy nhất trong từng lý do. Một dòng có thể đóng góp vào nhiều lý do. Số hợp lệ ngoài bộ lọc và số tiền thiếu trong các dòng đã lọc được ghi riêng. Nhóm có mã trùng và mã đơn trùng phân biệt dùng hai đơn vị đếm. Snapshot lịch sử thiếu các trường mới hiển thị chưa xác định.

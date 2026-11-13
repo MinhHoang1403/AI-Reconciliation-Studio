@@ -221,6 +221,29 @@ test("financial snapshot agrees in Chat, Reports and downloaded files", async ({
       }).toEqual({ state: "COMPLETED", calls: 0, snapshot: snapshot.id });
       await expect(page.getByRole("region", { name: "Tổng quan tài chính", exact: true }).last()).toContainText(sum);
     }
+    if (item.kind === "clean") {
+      const checks = [
+        ["Tổng chênh lệch tuyệt đối của lượt đối soát trong nửa đầu tháng 10/2026", "một kỳ đối soát"],
+        ["Tóm tắt kết quả đối soát tại chi nhánh Hà Nội", "chưa lọc được theo địa điểm"],
+        ["Xuất báo cáo đối soát tháng trước thành Excel", "một kỳ đối soát"],
+      ];
+      for (const [goal, clarification] of checks) {
+        await input.fill(goal);
+        const submitted = page.waitForResponse(r => r.url().endsWith("/api/assistant/messages") && r.request().method() === "POST");
+        await page.getByRole("button", { name: "Gửi câu hỏi", exact: true }).click();
+        const { job_id } = await (await submitted).json();
+        await expect.poll(async () => {
+          const job = await (await page.request.get(`/api/jobs/${job_id}`)).json();
+          if (!job.result?.workflow_id) return null;
+          const flow = await (await page.request.get(`/api/agent/workflows/${job.result.workflow_id}`)).json();
+          const hasResult = flow.detail.blocks.some((b: { type: string }) =>
+            ["facts", "table", "export"].includes(b.type));
+          return { state: flow.state, calls: flow.detail.model_calls, hasResult };
+        }).toEqual({ state: "WAITING_REVIEW", calls: 0, hasResult: false });
+        await expect(page.getByText(new RegExp(clarification)).last()).toBeVisible();
+      }
+      await page.screenshot({ path: info.outputPath("run-scope-clarification.png") });
+    }
   }
   expect(await usage()).toBe(before);
 });
