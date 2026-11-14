@@ -1,5 +1,23 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Ổn định toàn hệ thống và nghiệm thu chủ dự án — 14/11/2026
+
+**NOT_READY_FOR_OWNER_UAT.** Hai lỗi trong luồng duyệt Chat đã được sửa. Backend dùng hồ sơ phân tích đã có để tạo đề xuất khi người dùng yêu cầu chuẩn hóa rõ ràng. Frontend hiện cho nhập dữ kiện chung và duyệt theo nhóm khi có đủ thẻ ánh xạ hợp lệ. Tải tệp chỉ để xem vẫn trả bản khám phá. Việc chuẩn hóa vẫn cần thao tác duyệt.
+
+Computer Use tái hiện câu hỏi tổng nửa đầu tháng 10 có đuôi “là bao nhiêu” bị hỏi lại. Bộ định tuyến hiện nhận phần câu hỏi sau mệnh đề thời gian và vẫn yêu cầu làm rõ khi còn điều kiện chưa liên kết. Kiểm trực tiếp sau sửa trả 15.103.547.000 VND từ 2.420 dòng. Chi tiết dùng cận cuối loại trừ 16/10 và kết quả giữ nguyên sau tải lại.
+
+Gemini đã trả HTTP 200 và kết quả có cấu trúc trên dữ liệu TEST, nhưng nhiều kế hoạch dùng cận cuối bao gồm, trường tiền làm mã tiền tệ hoặc trường lọc không thuộc nguồn. Bộ kiểm tra đã chặn các kế hoạch sai. Hợp đồng đầu ra hiện thu hẹp trường tiền tệ cho nguồn canonical và hướng dẫn cận cuối loại trừ. Trên `9d111db`, lô đầu vẫn đề xuất trường tiền tệ không tồn tại. Lô kế tiếp trả 503 hai lần, gồm một lần thử lại có chờ trên cùng job. Ma trận cuối ghi 0 đạt, 5 trượt hợp đồng, 5 `BLOCKED_PROVIDER` và 10 chưa gọi. Công thức và kiểm tra tài chính giữ nguyên.
+
+Lượt Chromium toàn bộ đầu tiên sau sửa luồng duyệt ghi 164 đạt, 3 trượt, 7 bỏ qua và 5 bị chặn bởi nhóm tuần tự. Ba ca trượt gồm hai xác nhận định dạng tiền và một bộ chọn trùng nhãn. Lượt chạy tập trung sau đó xác nhận hai luồng Chat tồn kho đạt hai lần mỗi luồng, không retry. Nhóm Dữ liệu đạt 9 ca ở schema TEST. Ca đọc PDF/DOCX lưu đệm dùng dự án fixture riêng không còn trong schema hiện hành. Chi tiết 29 lỗi ban đầu, ảnh, biên nhận Chromium và Gemini nằm trong `runtime/query-reliability/` và chỉ lưu local.
+
+Lượt Chromium trên `9d111db` bị gián đoạn sau ca 165 với 157 đạt, 8 bỏ qua và 0 lỗi quan sát được. Đã chạy tiếp đủ 14 ca, tất cả đạt trên cùng image và schema TEST, với retries bằng 0. Đối chiếu cả hai phần cho thấy 29/29 lỗi ban đầu đã qua. Trong 8 ca bỏ qua ở schema TEST, 5 ca tài chính đã chạy riêng trên schema vận hành, 2 ca trình duyệt Gemini LIVE chưa chạy và 1 ca đọc PDF/DOCX thiếu fixture. Kết quả Chromium tổng hợp là 176 đạt và 3 chưa nghiệm thu. Chưa có một lượt 179 ca chạy liền mạch trên image này.
+
+Năm ca tài chính Chromium qua Nginx trên `9d111db` đều đạt. Đã mở lại CSV/XLSX và so giá trị với oracle độc lập. Bộ sạch khớp 5.000 nhóm cho mỗi cặp, tổng 30.959.967.000 VND mỗi nguồn và chênh lệch 0. Bộ có lỗi giữ đủ 15.000 dòng, với 14.967 hợp lệ và 33 cần kiểm tra. Chênh lệch có dấu/tuyệt đối của hai cặp lần lượt là −60.000/60.000 và −144.000/264.000 VND. Bốn lượt giữ `PARTIAL_VERIFIED`.
+
+Backend/PostgreSQL trên `9d111db` đạt 979 ca. Ruff, mypy, TypeScript, ESLint và build production đạt. Starlette báo một cảnh báo deprecation và Vite báo hai gói JavaScript lớn hơn 500 kB. Đối chiếu lại 670 SHA-256 của bản sao lưu `backup_9bee4963f73147218ba402f7f4df516b` đã có biên nhận khôi phục thử.
+
+Docker đã trở về `public`, 4/4 healthy trên `9d111db`. Kiểm tra bảo toàn đối chiếu mọi bản ghi trong snapshot gốc, gồm 603 hiện vật nguồn, 31 hiện vật đối soát và 46 tệp báo cáo. Không thiếu hoặc đổi checksum. Chỉ có hoạt động hội thoại và chẩn đoán TEST phát sinh. Image rollback `021afb5` qua kiểm tra tương thích với schema hiện hành. Lượt này chỉ chạy cổng kiểm tra tương thích. Một workflow benchmark TEST bị gián đoạn được đóng trạng thái thất bại, giữ nguyên job, các lần chạy và trace.
+
 ## Phạm vi truy vấn và giải trình tài chính — 13/11/2026
 
 Trạng thái hiện tại là **NOT_READY_FOR_OWNER_UAT**. Trên bản trước sửa, hai câu hỏi về nửa đầu tháng và chi nhánh trả cùng tổng toàn nguồn. Trên bản triển khai, Computer Use xác nhận nửa đầu tháng 10/2026 trả 15.103.547.000 VND từ 2.420 dòng, với cận cuối loại trừ 16/10. Khi thiếu cột chi nhánh đã xác nhận, Chat hỏi lại và không trả số tiền. Kế hoạch provider phải giữ các điều kiện đã liên kết trong câu hỏi. Xem [hợp đồng](DATA_CONTRACTS.md#truy-vấn-ngữ-nghĩa-và-tổng-tài-chính).
