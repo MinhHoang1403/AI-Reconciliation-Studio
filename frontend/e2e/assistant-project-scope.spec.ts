@@ -48,12 +48,12 @@ test("[LIVE] Assistant prepares three 3000-row sources from the full Vietnamese 
     { name: names[2], mimeType: "text/csv", buffer: makeCsv(10000) },
   ]);
   await upload.getByText("Tùy chọn đọc nâng cao", { exact: true }).click();
-  await upload.getByLabel("Dùng AI đề xuất cách đọc cột").uncheck();
+  await upload.getByRole("checkbox", { name: "Dùng AI gợi ý thêm khi dữ liệu chưa đủ căn cứ" }).uncheck();
   await upload.getByRole("button", { name: "Tải 3 tệp", exact: true }).click();
   await expect(upload).not.toBeVisible();
   const list = async (): Promise<{ id: string; name: string; status: string }[]> =>
     (await (await page.request.get(`/api/datasets?project_id=${id}`)).json()).items;
-  await expect.poll(async () => (await list()).filter(source => source.status === "NEEDS_MAPPING_REVIEW").length,
+  await expect.poll(async () => (await list()).filter(source => source.status === "EXPLORATION_ONLY").length,
     { timeout: 45000 }).toBe(3);
   const sources = await list();
   for (const source of sources) {

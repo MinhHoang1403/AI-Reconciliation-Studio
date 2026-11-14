@@ -1,5 +1,19 @@
 # Trạng thái triển khai và nghiệm thu
 
+## Đóng các cổng Gemini, cache tài liệu và Chromium — 14/11/2026
+
+Smoke Gemini trên `967d8cf` thực hiện một lượt gọi `gemini-3.5-flash-lite` qua `v1beta`, nhận HTTP 200 và `STOP` sau 3.695 ms. Payload 27.988 byte, schema 12.211 byte. So khớp tên tệp bằng ID trong danh mục gốc và giới hạn catalogue cho cả lô chỉ đọc đã liên kết đến nguồn canonical. Cả năm đề xuất chọn đúng nguồn, measure và để `currency_field=null` cho nguồn có VND cố định. Bốn kế hoạch khớp oracle khi kiểm riêng. Ca qua ngày nhuận có cận cuối `2024-03-00`, nên lô bị từ chối trước khi chạy SQL. Chưa tính ca nào là `LIVE_CORRECT` toàn hành trình. Biên nhận local `runtime/query-reliability/closure-gemini-smoke.jsonl` có kích thước request, hash schema, usage và kết quả từng đề xuất.
+
+Project PDF/DOCX lịch sử chỉ tồn tại trong một schema TEST cũ. Bản sao lưu đã kiểm restore có đủ raw và parsed artifact. Công cụ fixture đối chiếu SHA-256, tạo định danh mới trong schema TEST hiện hành và giữ nguyên byte của nội dung trích xuất, số trang và provenance. Chromium và Computer Use đọc được PDF (`000123`, `1234.50`) và DOCX (`000701`, `1.234,50`) sau tải lại. Chromium kiểm từ chối khi chuyển workspace và giữ `UNVERIFIED_EXTRACTION`. Ledger của schema TEST ghi 0 job parse, 0 trace và 0 lượt đặt chỗ LlamaParse. Đây là nghiệm thu đọc hiện vật đã lưu từ lần parse trước.
+
+Chromium hoàn tất một lượt liên tục với 179 ca đăng ký, 172 đạt, 0 lỗi, 7 bỏ qua theo điều kiện môi trường, 0 flaky, retries bằng 0. Ca PDF/DOCX đạt sau restart Backend và Worker. Năm ca tài chính và hai ca LIVE có điều kiện riêng. Lượt trước không có mã thoát hoặc báo cáo cuối. Kiểm tra hệ điều hành và trạng thái container không tìm được bằng chứng quy gián đoạn cho OOM hoặc browser crash. Lượt mới vượt ca 165 và ghi manifest JSON đầy đủ trong `runtime/query-reliability/closure-chromium-results.json`.
+
+Backend/PostgreSQL đạt 980 ca. Ruff, mypy, TypeScript, ESLint và build production đạt. Backend và Worker dùng image mang revision `967d8cf`. Image Nginx tiếp tục dùng asset từ revision `9d111db`, vì source giao diện triển khai giữ nguyên.
+
+**NOT_READY_FOR_OWNER_UAT.** Năm ca tài chính chạy riêng trên schema vận hành đều đạt. Đọc lại CSV/XLSX khớp giá trị theo oracle, gồm tổng từng phía, số dòng lỗi, chênh lệch, thứ tự Top 5 và mã gốc. Trong hai ca trình duyệt còn lại, ca lập đề xuất hai cặp gọi Gemini thật một lần, nhận HTTP 200, tạo hai đề xuất `WAITING_REVIEW` và không tạo lượt đối soát. Ca chuẩn bị ba nguồn đạt sau khi cập nhật nhãn checkbox và trạng thái sau tải lên `EXPLORATION_ONLY`. Luồng tạo ba thẻ duyệt bằng xử lý nội bộ, với 0 lượt Gemini. Manifest đối chiếu 179 ID duy nhất đã chạy đạt qua các môi trường tương ứng. Ma trận Text-to-SQL LIVE vẫn mở vì ca cận ngày nhuận trả kế hoạch sai. Ma trận còn lại chưa gọi. Hai lượt Gemini thực tế trong đợt này đều trả 200 và không cần retry.
+
+Docker trở về schema `public`, 4/4 healthy. Đối chiếu snapshot lịch sử và kiểm checksum 603 hiện vật nguồn, 31 hiện vật đối soát và 46 tệp báo cáo không ghi nhận thiếu hay đổi. Thao tác ghi mới nằm trong dữ liệu TEST cho ca trình duyệt và chẩn đoán. Image rollback `021afb5` qua cổng tương thích với schema hiện hành.
+
 ## Ổn định toàn hệ thống và nghiệm thu chủ dự án — 14/11/2026
 
 **NOT_READY_FOR_OWNER_UAT.** Hai lỗi trong luồng duyệt Chat đã được sửa. Backend dùng hồ sơ phân tích đã có để tạo đề xuất khi người dùng yêu cầu chuẩn hóa rõ ràng. Frontend hiện cho nhập dữ kiện chung và duyệt theo nhóm khi có đủ thẻ ánh xạ hợp lệ. Tải tệp chỉ để xem vẫn trả bản khám phá. Việc chuẩn hóa vẫn cần thao tác duyệt.
