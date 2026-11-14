@@ -25,7 +25,7 @@ from studio.contracts.reconciliation import PlanningRequest, PlanningSource
 from studio.data_query import EXCEPTION_FIELDS, resolve_verified_metric, validate_status_predicates
 from studio.errors import DomainError
 
-INTENT_REVISION = "agent-intent-69"
+INTENT_REVISION = "agent-intent-70"
 
 
 def requests_reconciliation_sequence(goal: str) -> bool:
@@ -425,12 +425,12 @@ def read_query_sources(
     """Keep existing-result reads focused on current run/cases, never new source plans."""
     filenames = explicit_source_filenames(goal)
     if len(filenames) == 1:
-        sources = [
-            source
-            for source in sources
-            if source.get("dataset_id")
-            and unicodedata.normalize("NFC", source["name"]).casefold() == filenames[0]
-        ]
+        dataset_ids = {
+            dataset.id
+            for dataset in catalogue.datasets
+            if unicodedata.normalize("NFC", dataset.name).casefold() == filenames[0]
+        }
+        sources = [source for source in sources if source.get("dataset_id") in dataset_ids]
     layers = explicit_read_layers([goal])
     if layers:
         return [s for s in sources if s["source_kind"] in layers]
@@ -2548,14 +2548,32 @@ def interpret_requests(
     schema["properties"]["intents"].pop("minItems", None)
     schema["properties"]["intents"].pop("maxItems", None)
     sources = routing_sources(catalogue)
-    read_only = all(explicit_read_request(goal) for goal in goals)
+    from studio.semantic_intents import resolve_source_read
+
+    grounded_reads = [resolve_source_read(goal, catalogue) for goal in goals]
+    all_canonical_reads = all(
+        intent and intent.query and intent.query.source_kind == "CANONICAL"
+        for intent in grounded_reads
+    )
+    read_only = all_canonical_reads or all(explicit_read_request(goal) for goal in goals)
     layers = explicit_read_layers(goals)
     query_sources = (
         [source for source in sources if source["source_kind"] in layers] if layers else sources
     )
     query_sources = query_sources or sources
-    if read_only and len(goals) == 1:
-        query_sources = read_query_sources(goals[0], catalogue, sources) or query_sources
+    if read_only:
+        if all_canonical_reads:
+            canonical_ids_for_reads = {
+                intent.query.source_id for intent in grounded_reads if intent and intent.query
+            }
+            query_sources = [
+                source
+                for source in query_sources
+                if source["source_kind"] == "CANONICAL"
+                and source["source_id"] in canonical_ids_for_reads
+            ] or query_sources
+        elif len(goals) == 1:
+            query_sources = read_query_sources(goals[0], catalogue, sources) or query_sources
     query_contexts = {
         (source.get("dataset_id", source["source_id"]), source.get("sheet"))
         for source in query_sources
@@ -3015,7 +3033,8 @@ def interpret_requests(
                 "chỉ dùng []/null khi mục tiêu không yêu cầu điều kiện/phép tính đó. "
                 "CANONICAL/RAW_PREVIEW/EXCEPTIONS để metric_id null. Với CANONICAL, "
                 "source_measure_id chỉ dùng field_id có trong source_measures. "
-                "Ngày CANONICAL dùng ISO YYYY-MM-DD. between có cận đầu bao gồm và cận cuối "
+                "Ngày CANONICAL dùng ISO YYYY-MM-DD. between dùng value là mảng đúng hai "
+                'chuỗi ngày, ví dụ ["2024-02-01","2024-03-01"]. Cận đầu bao gồm và cận cuối '
                 "loại trừ: cả tháng kết thúc ở ngày 1 tháng sau, nửa đầu kết thúc ở ngày 16, "
                 "nửa sau bắt đầu ngày 16. Đến hết ngày D dùng ngày sau D làm cận cuối. "
                 "Trước ngày D dùng lt D; sau ngày D dùng gte ngày sau D. "

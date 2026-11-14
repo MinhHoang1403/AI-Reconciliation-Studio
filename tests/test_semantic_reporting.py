@@ -243,6 +243,41 @@ def test_canonical_routing_schema_cannot_use_amount_as_currency(has_currency):
     )
 
 
+def test_explicit_filename_and_bound_financial_batch_do_not_advertise_raw_fields():
+    import json
+
+    from studio.agent_intents import interpret_requests, read_query_sources, routing_sources
+    from studio.contracts import WorkspacePolicy
+
+    context = catalogue()
+    context.datasets.append(
+        context.datasets[0].model_copy(update={"id": "other", "name": "Khác.xlsx"}, deep=True)
+    )
+    context.datasets[-1].tables[0].canonical_id = "other-canonical"
+    context.datasets[-1].tables[0].table_id = "other-table"
+    goal = 'Tổng doanh thu của "Bán hàng.csv" trong tháng 10/2026'
+    sources = routing_sources(context)
+    assert {s["dataset_id"] for s in read_query_sources(goal, context, sources)} == {"file"}
+    captured = {}
+
+    class Capture:
+        local = False
+        usage = {}
+
+        def request_typed(self, prompt, *_args, **kwargs):
+            captured["prompt"] = json.loads(prompt[1]["content"])
+            captured["schema"] = kwargs["response_schema"]
+            return []
+
+    interpret_requests(Capture(), [goal, goal], context, WorkspacePolicy(), lambda: True)
+    assert [(s["source_kind"], s["dataset_id"]) for s in captured["prompt"]["sources"]] == [
+        ("CANONICAL", "file")
+    ]
+    query_defs = captured["schema"]["$defs"]["RoutingQuery"]["anyOf"]
+    assert len(query_defs) == 1
+    assert query_defs[0]["properties"]["source_ref"]["enum"] == ["canonical-1"]
+
+
 @pytest.mark.parametrize(
     "clause",
     [
