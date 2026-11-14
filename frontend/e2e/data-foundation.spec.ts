@@ -2,7 +2,7 @@ import { test } from "./project-selection";
 import { chooseDropdownOption, chooseMappingTarget, openSourceMapping, selectProject } from "./project-selection";
 import { expect, type Page } from "@playwright/test";
 import { mkdir, readFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const uncaughtErrors = new WeakMap<Page, string[]>();
 test.beforeEach(({ page }) => {
@@ -449,16 +449,38 @@ for (const size of [
 
 test("cached document evidence remains readable after parser allowance is closed", async ({
   page,
-}) => {
+}, info) => {
   const receipt = process.env.STUDIO_DOCUMENT_RECEIPT;
   test.skip(!receipt, "Requires the cached two-document fixture in the current schema");
-  const state = JSON.parse(await readFile(receipt!, "utf8")) as { project_id: string };
+  const state = JSON.parse(await readFile(receipt!, "utf8")) as {
+    project_id: string;
+    documents: Record<string, {dataset_id: string; artifact_id: string; raw_sha256: string; parsed_sha256: string}>;
+  };
   await openApp(page);
   await selectProject(page, state.project_id);
+  const providerWrites: string[] = [];
+  page.on('request', request => {
+    if (request.method() === 'POST' && /\/api\/(datasets|jobs)\//.test(request.url())) {
+      providerWrites.push(request.url());
+    }
+  });
+  const documents = (id: string) => page.request.get(`/api/datasets/${id}/documents`);
   for (const [extension, id, amount] of [
     ["pdf", "000123", "1234.50"],
     ["docx", "000701", "1.234,50"],
   ]) {
+    const record = state.documents[extension];
+    const response = await documents(record.dataset_id);
+    expect(response.ok()).toBeTruthy();
+    const [artifact] = await response.json();
+    expect(artifact.artifact).toMatchObject({ id: record.artifact_id, sha256: record.parsed_sha256, quality: 'UNVERIFIED_EXTRACTION' });
+    expect(artifact.source_file.sha256).toBe(record.raw_sha256);
+    expect(artifact.extraction.pages.map((item: {page_number: number}) => item.page_number)).toEqual([1]);
+    expect(artifact.extraction.pages[0].items.length).toBeGreaterThan(0);
+    const raw = await page.request.get(`/api/datasets/${record.dataset_id}/download`);
+    expect(createHash('sha256').update(await raw.body()).digest('hex')).toBe(record.raw_sha256);
+    const bundle = await page.request.get(`/api/datasets/${record.dataset_id}/artifacts`);
+    expect((await bundle.json()).canonical_datasets).toEqual([]);
     await page
       .getByRole("button")
       .filter({
@@ -470,6 +492,7 @@ test("cached document evidence remains readable after parser allowance is closed
     await expect(
       page.getByText("Bản trích xuất chưa được xác minh.", { exact: false }),
     ).toBeVisible();
+    await expect(page.getByRole('heading', {name: 'Trang 1', exact: true})).toBeVisible();
     await expect(
       page.getByRole("cell", { name: id, exact: true }),
     ).toBeVisible();
@@ -479,6 +502,9 @@ test("cached document evidence remains readable after parser allowance is closed
     await expect(
       page.getByRole("button", { name: "Chuẩn hóa dữ liệu", exact: true }),
     ).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole('cell', {name:id,exact:true})).toBeVisible();
+    await page.screenshot({path:info.outputPath(`cached-${extension}.png`)});
     await page.getByRole("button", { name: "Về danh mục nguồn", exact: true }).click();
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -487,4 +513,16 @@ test("cached document evidence remains readable after parser allowance is closed
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  expect(providerWrites).toEqual([]);
+  const manage = page.getByRole('button', {name:'Quản lý không gian làm việc',exact:true});
+  await manage.click();
+  const dialog = page.getByRole('dialog', {name:'Quản lý không gian làm việc',exact:true});
+  await dialog.getByRole('button', {name:'Tạo không gian',exact:true}).click();
+  await dialog.getByLabel('Tên không gian làm việc').fill(`TEST cache isolation ${randomUUID().slice(0,8)}`);
+  await dialog.getByRole('button',{name:'Tạo',exact:true}).click();
+  await expect(dialog).not.toBeVisible();
+  for (const entry of Object.values(state.documents)) {
+    const denied = await documents(entry.dataset_id);
+    expect(denied.status()).toBe(404);
+  }
 });
