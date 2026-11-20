@@ -38,6 +38,7 @@ def _save_table(table: DatasetTable, raw: reading.RawSheet, header_index: int | 
     # sheet chỉ có vài dòng ghi chú (một cột) không phải bảng để đối soát.
     if len(built.column_names) < 2 or built.frame.height == 0:
         table.status = "NO_DATA"
+        table.row_count = 0  # không phải bảng dữ liệu thì không tính dòng
         table.profile = None
         return
     path = storage.table_path(table.id)

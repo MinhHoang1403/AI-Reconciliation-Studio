@@ -86,7 +86,8 @@ def profile_table(frame: pl.DataFrame) -> TableProfile:
             distinct_count=values.n_unique(),
             max_length=int(values.str.len_chars().max() or 0),  # type: ignore[arg-type]
             kind=_observed_kind(values),
-            has_leading_zero=bool(values.str.contains(r"^0\d").any()),
+            # Chỉ tính giá trị toàn chữ số (mã, số điện thoại); ngày như 01/10/2026 không tính.
+            has_leading_zero=bool(values.str.contains(r"^0\d+$").any()),
             samples=values.unique(maintain_order=True).head(SAMPLE_COUNT).to_list(),
         ))
     if columns:

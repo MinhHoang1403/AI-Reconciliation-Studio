@@ -25,4 +25,10 @@ Mỗi dòng là một quyết định đã chốt. Đổi quyết định thì t
 | 2026-11-20 | Cho xóa bộ dữ liệu sau khi xác nhận (xóa cả tệp gốc và bảng đã đọc); không bao giờ sửa tệp gốc | Dọn tệp tải nhầm; R15 cấm sửa, không cấm xóa theo ý người dùng |
 | 2026-11-20 | Giới hạn mỗi tệp tải lên 50 MB; chỉ hỗ trợ bảng mã UTF-8 (có hoặc không BOM), bảng mã khác báo lỗi rõ ràng | Đủ cho ≥ 100.000 dòng, nhẹ cho máy demo |
 | 2026-11-20 | Không bắt người dùng chọn loại dữ liệu khi tải lên; hệ thống tự đoán ở bước ánh xạ | Giảm thao tác |
+| 2026-11-20 | Đọc tệp: Polars cho CSV (tự đoán dấu phân cách bằng `csv.Sniffer`), fastexcel (calamine) cho XLSX, mọi ô dạng chữ; lưu bảng Parquet kèm cột `__row_ref` (số dòng gốc tính từ 1) | Giữ số 0 đầu mã; mọi kết quả về sau truy ngược được dòng gốc |
+| 2026-11-20 | Dòng tiêu đề tự đoán bằng quy tắc kinh nghiệm (dòng đầu tiên có ≥ một nửa số cột có giá trị, ≥ 80% là chữ, ngay sau có dữ liệu); người dùng chỉnh được | Bỏ qua dòng tên báo cáo phía trên bảng; không có quy tắc chuẩn chung nên cho sửa tay |
+| 2026-11-20 | Sheet chỉ được coi là bảng khi có ≥ 2 cột và ≥ 1 dòng dữ liệu; sheet ẩn không đọc | Bỏ sheet ghi chú và bảng tra cứu nội bộ của hệ thống xuất tệp |
+| 2026-11-20 | Đọc tệp chạy nền bằng FastAPI BackgroundTasks, trạng thái lưu trên bảng `datasets`/`dataset_tables`; khởi động lại thì việc dở đánh dấu lỗi để đọc lại | Đủ cho demo (đọc 100.000 dòng dưới 1 giây khi đo), chưa cần hàng đợi riêng (R5) |
+| 2026-11-20 | Alembic cấu hình bằng code (`studio/migrate.py`), không dùng `alembic.ini`; test chạy migration trên SQLite tạm và so với mô hình | `alembic.ini` có tiếng Việt bị đọc sai bảng mã trên Windows |
+| 2026-11-20 | E2E trên container chính chỉ xóa bộ dữ liệu do chính nó tạo, bỏ qua bài nếu tệp mẫu đã có sẵn | Không làm mất dữ liệu người dùng trong môi trường duy nhất (R8) |
 | 2026-11-20 | Miền đầu tiên: bán hàng, bộ cột chuẩn có `fee`, `net_amount`, `debit`, `credit`, `description` | Có đủ ca 1:1, 1:N, lệch tiền, phí cổng, mã trong nội dung chuyển khoản |

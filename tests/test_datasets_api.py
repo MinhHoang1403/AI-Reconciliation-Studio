@@ -61,7 +61,7 @@ def test_every_fixture_reads_and_row_refs_cover_the_answer_key() -> None:
         for table in dataset["tables"]:
             expected_rows = tables[table["sheet_name"]]
             if expected_rows == 0:
-                assert table["status"] == "NO_DATA"
+                assert table["status"] == "NO_DATA" and table["row_count"] == 0
                 continue
             assert table["status"] == "READY"
             if expected_rows is not None:

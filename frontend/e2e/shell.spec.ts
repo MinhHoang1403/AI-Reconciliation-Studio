@@ -5,8 +5,9 @@ import { expect, test } from "@playwright/test";
 test("Tổng quan hiển thị bước tiếp theo, quy trình và trạng thái hệ thống", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Tổng quan" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Tải bộ dữ liệu đầu tiên" })).toBeVisible();
-  await expect(page.getByRole("listitem").filter({ hasText: "Đọc tệp" })).toContainText("Đang chờ tệp");
+  // Nội dung phụ thuộc container đã có dữ liệu hay chưa, nên chấp nhận cả hai trạng thái.
+  await expect(page.getByRole("heading", { name: /Tải bộ dữ liệu đầu tiên|Đã đọc \d+ bộ dữ liệu/ })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Đọc tệp" })).toContainText(/Đang chờ tệp|Đã đọc/);
   await expect(page.getByRole("img", { name: "Chưa kiểm chứng" })).toBeVisible();
   await expect(page.getByText("Hoạt động")).toBeVisible();
   // Gemini chỉ hiện tên model viết hoa từng phần (hoặc báo thiếu khóa), không kèm chữ "Đã cấu hình".
@@ -55,7 +56,7 @@ test("Thu gọn và mở rộng thanh bên, nhớ trạng thái khi tải lại"
 
 test("Nút ở bước tiếp theo dẫn tới trang Dữ liệu", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Đến trang Dữ liệu" }).click();
+  await page.getByRole("button", { name: /Đến trang Dữ liệu|Xem dữ liệu/ }).click();
   await expect(page).toHaveURL("/du-lieu");
 });
 

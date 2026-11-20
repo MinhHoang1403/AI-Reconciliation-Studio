@@ -3,6 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 // E2E chạy trên bộ container chính đang chạy ở 127.0.0.1:18180 (không tạo môi trường riêng).
 export default defineConfig({
   testDir: "e2e",
+  // Các bài dùng chung một backend thật nên chạy lần lượt để không giẫm lên dữ liệu của nhau.
+  workers: 1,
   reporter: "list",
   use: { baseURL: "http://127.0.0.1:18180", trace: "retain-on-failure" },
   projects: [

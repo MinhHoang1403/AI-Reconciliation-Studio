@@ -11,14 +11,16 @@ Trả lời và báo cáo cho Owner bằng tiếng Việt.
 
 ## Trạng thái (20/11/2026)
 
-Giai đoạn 0 (khung dự án) đã xong. Việc tiếp theo: Giai đoạn 1 — đọc dữ liệu, làm trên nhánh `phase-1` (`docs/PLAN.md`).
+Giai đoạn 0 (khung) và 1 (đọc dữ liệu) đã xong. Việc tiếp theo: Giai đoạn 2 — ánh xạ cột chuẩn có gợi ý Gemini, nối Langfuse (`docs/PLAN.md`).
+
+Bộ dữ liệu mẫu có đáp án ở `tests/fixtures/sales/`, sinh lại bằng `uv run --locked python tools/make_sales_fixtures.py` (kết quả luôn giống hệt).
 
 ## Lệnh kiểm
 
 ```powershell
-uv run --locked ruff check backend tests
-uv run --locked mypy backend tests
-uv run --locked pytest -q
+uv run --locked ruff check backend tests tools
+uv run --locked mypy backend tests tools
+uv run --locked pytest -q          # gồm kiểm migration trên SQLite tạm và đo đọc 100.000 dòng
 Push-Location frontend; npm run check; npm run lint; npm run build; Pop-Location
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start.ps1   # build + chạy + kiểm 3/3 healthy + dọn image cũ
 Push-Location frontend; npm run test:e2e; Pop-Location                 # E2E trên 127.0.0.1:18180

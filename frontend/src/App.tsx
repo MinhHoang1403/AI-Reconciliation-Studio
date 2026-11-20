@@ -3,10 +3,11 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { AssistantPage } from "./pages/AssistantPage";
 import { DataPage } from "./pages/DataPage";
+import { DatasetPage } from "./pages/DatasetPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ReconcilePage } from "./pages/ReconcilePage";
 import { ReportsPage } from "./pages/ReportsPage";
-import { ROUTES, navigate, usePath } from "./navigation";
+import { ROUTES, navigate, sectionOf, usePath } from "./navigation";
 
 // Khung ứng dụng: thanh điều hướng (bên trái trên máy tính, dưới đáy trên điện thoại)
 // và vùng nội dung của trang đang mở.
@@ -41,6 +42,9 @@ function saveRailCollapsed(collapsed: boolean): void {
 
 export function App() {
   const path = usePath();
+  const section = sectionOf(path);
+  // Trang chi tiết bộ dữ liệu: /du-lieu/<mã bộ dữ liệu>
+  const datasetId = path.match(/^\/du-lieu\/([0-9a-f-]{36})$/)?.[1];
   const Page = PAGES[path] ?? OverviewPage;
   const [collapsed, setCollapsed] = useState(readRailCollapsed);
 
@@ -91,7 +95,7 @@ export function App() {
                 href={target}
                 aria-label={label}
                 title={collapsed ? label : undefined}
-                aria-current={target === path ? "page" : undefined}
+                aria-current={target === section ? "page" : undefined}
                 onClick={(event) => {
                   event.preventDefault();
                   navigate(target);
@@ -105,7 +109,7 @@ export function App() {
         </ul>
       </nav>
       <main className="page" id="noi-dung">
-        <Page />
+        {datasetId ? <DatasetPage key={datasetId} datasetId={datasetId} /> : <Page />}
       </main>
     </div>
   );

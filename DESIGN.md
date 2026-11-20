@@ -180,6 +180,27 @@ Góc bo vừa phải: 12px cho panel và dải bước tiếp theo, 8px cho nút
 ### Con dấu kiểm chứng (signature)
 Bốn vòng hoa văn guilloche, mỗi vòng là một phép kiểm độc lập. Chưa kiểm: nét xanh nhạt. Đạt: nét xanh đậm, vẽ dần một lần khi xuất hiện. Hỏng: vòng đứt một đoạn và chuyển cam đỏ; lõi đổi màu theo kết quả.
 
+### Nút phụ, nút nguy hiểm, nút biểu tượng
+- **Nút phụ (quiet):** nền trắng, viền line, chữ blue-ink; hover nền blue-tint.
+- **Nút nguy hiểm:** nền attention-200k chữ trắng, chỉ dùng trong hộp thoại xác nhận xóa.
+- **Nút biểu tượng:** ô 36px không viền, hover nền blue-tint; dùng cho xóa, phân trang.
+
+### Nhãn trạng thái (badge)
+Viên tròn 13px đậm: Đã đọc (matched), Đang đọc (active, màu bước đang chạy), Lỗi (attention), Không có bảng (blue-tint).
+
+### Vùng tải tệp và danh sách bộ dữ liệu
+- Vùng tải: panel trắng viền đứt 1.5px; khi kéo tệp vào, viền và nền chuyển xanh. Mỗi tệp đang tải có dòng tiến độ riêng.
+- Danh sách: mỗi bộ một hàng, thanh 4px dài theo số dòng (so với bộ lớn nhất), nhãn trạng thái và số dòng bên phải, nút xóa mở hộp thoại xác nhận.
+
+### Bảng xem trước
+Đầu bảng nền blue-tint dính trên cùng khi cuộn; cột "Dòng gốc" dính bên trái, căn phải, chữ ink-soft. Ô trống để trống, không tô màu (việc đánh giá ô trống thuộc bước làm sạch). Phân trang 50 dòng.
+
+### Hồ sơ cột
+Lưới thẻ (tối thiểu 280px), mỗi cột một thẻ: tên, nhãn dạng dữ liệu (Mã, Số, Ngày, Điện thoại, Chữ, Trống), nhãn "Có số 0 ở đầu" màu active khi có; ba số Có giá trị / Trống / Khác nhau, thanh 4px tỷ lệ có giá trị; giá trị mẫu dạng mã nhỏ.
+
+### Hộp thoại xác nhận
+Thẻ `<dialog>` gốc, bo 12px, nền mờ ink 35%; nút Hủy (phụ) và nút hành động (nguy hiểm).
+
 ## Do's and Don'ts
 
 ### Do:

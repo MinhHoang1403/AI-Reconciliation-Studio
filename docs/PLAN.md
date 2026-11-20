@@ -7,7 +7,7 @@ Làm theo **lát cắt dọc**: mỗi giai đoạn kết thúc bằng một ch�
 | Giai đoạn | Nội dung | Nhánh | Trạng thái |
 | --- | --- | --- | --- |
 | 0 | Khung dự án: 3 container, CI, giao diện khung | `main` | Xong |
-| 1 | Tải và đọc CSV/XLSX, hồ sơ cột | `phase-1` | Chưa bắt đầu |
+| 1 | Tải và đọc CSV/XLSX, hồ sơ cột | `phase-1` | Xong |
 | 2 | Ánh xạ cột chuẩn có gợi ý Gemini, nối Langfuse | `phase-2` | Chưa bắt đầu |
 | 3 | Chuẩn hóa, xử lý lỗi, bộ dữ liệu sạch | `phase-3` | Chưa bắt đầu |
 | 4 | Chọn trường, đối soát 1:1, kiểm chứng | `phase-4` | Chưa bắt đầu |

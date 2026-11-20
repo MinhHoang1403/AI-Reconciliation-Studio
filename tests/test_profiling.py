@@ -24,7 +24,9 @@ def test_profile_detects_kinds_and_counts() -> None:
     assert profile.columns[0].samples == ["HD000101", "HD000102", "HD000103"]
 
 
-def test_leading_zero_flag_marks_codes_stored_as_digits() -> None:
-    frame = pl.DataFrame({ROW_REF: [2, 3], "Mã KH": ["00123", "00456"]})
-    column = profile_table(frame).columns[0]
-    assert column.has_leading_zero is True
+def test_leading_zero_flag_marks_codes_stored_as_digits_but_not_dates() -> None:
+    frame = pl.DataFrame({ROW_REF: [2, 3], "Mã KH": ["00123", "00456"],
+                          "Ngày": ["01/10/2026", "02/10/2026"]})
+    code, date = profile_table(frame).columns
+    assert code.has_leading_zero is True
+    assert date.has_leading_zero is False

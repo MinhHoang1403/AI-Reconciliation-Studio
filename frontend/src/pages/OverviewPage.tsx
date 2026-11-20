@@ -1,11 +1,13 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 
 import { SystemStatusPanel } from "../components/SystemStatusPanel";
 import { VerificationSeal, type SealCheck } from "../components/VerificationSeal";
+import { formatCount } from "../format";
 import { navigate } from "../navigation";
+import { useDatasetList } from "../useDatasets";
 
 // Trang Tổng quan: bước cần làm tiếp theo, quy trình xử lý và con dấu kiểm chứng.
-// Chưa có dữ liệu nên mọi phần đều ở trạng thái ban đầu, không hiển thị số liệu giả.
+// Mọi con số lấy từ backend; chưa có dữ liệu thì hiện trạng thái ban đầu, không hiển thị số liệu giả.
 
 // Các bước hệ thống làm với dữ liệu, giải thích bằng lời thường cho người không chuyên.
 const PIPELINE = [
@@ -25,7 +27,27 @@ const CHECKS: readonly SealCheck[] = [
   { label: "Mọi tham chiếu trỏ về dòng gốc có thật", state: "pending" },
 ];
 
+type StepState = "done" | "current" | "later";
+
 export function OverviewPage() {
+  const { state } = useDatasetList();
+  const ready = state.kind === "ready" ? state.data.filter((dataset) => dataset.status === "READY") : [];
+  const readyRows = ready.reduce(
+    (sum, dataset) =>
+      sum + dataset.tables.filter((table) => table.status === "READY").reduce((rows, table) => rows + table.row_count, 0),
+    0,
+  );
+  const hasData = ready.length > 0;
+  // Bước 1 xong khi đã có bộ dữ liệu đọc được; bước 2 (ánh xạ) đang được xây dựng.
+  const stepState = (index: number): StepState =>
+    index === 0 ? (hasData ? "done" : "current") : index === 1 && hasData ? "current" : "later";
+  const stepLabel = (index: number): string => {
+    const current = stepState(index);
+    if (current === "done") return `Đã đọc ${ready.length} bộ`;
+    if (current === "current") return index === 0 ? "Đang chờ tệp" : "Đang xây dựng";
+    return "Chưa tới";
+  };
+
   return (
     <div className="overview">
       <header className="page__header">
@@ -35,11 +57,23 @@ export function OverviewPage() {
 
       <section className="next-step" aria-labelledby="next-step-title">
         <div>
-          <h2 id="next-step-title">Tải bộ dữ liệu đầu tiên</h2>
-          <p>Chưa có dữ liệu để đối soát. Tải tệp đơn hàng, thanh toán hoặc sao kê (CSV, Excel) để bắt đầu.</p>
+          {hasData ? (
+            <>
+              <h2 id="next-step-title">Đã đọc {ready.length} bộ dữ liệu</h2>
+              <p>
+                {formatCount(readyRows)} dòng sẵn sàng. Bước tiếp theo là ánh xạ cột, chức năng này đang được xây
+                dựng.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 id="next-step-title">Tải bộ dữ liệu đầu tiên</h2>
+              <p>Chưa có dữ liệu để đối soát. Tải tệp đơn hàng, thanh toán hoặc sao kê (CSV, Excel) để bắt đầu.</p>
+            </>
+          )}
         </div>
         <button className="button button--primary" type="button" onClick={() => navigate("/du-lieu")}>
-          Đến trang Dữ liệu
+          {hasData ? "Xem dữ liệu" : "Đến trang Dữ liệu"}
           <ArrowRight aria-hidden="true" size={18} />
         </button>
       </section>
@@ -49,13 +83,15 @@ export function OverviewPage() {
           <h2 id="pipeline-title">Quy trình xử lý</h2>
           <ol className="pipeline__list">
             {PIPELINE.map((step, index) => (
-              <li key={step.name} className="pipeline__step" data-current={index === 0 ? "" : undefined}>
-                <span className="pipeline__index" aria-hidden="true">{index + 1}</span>
+              <li key={step.name} className="pipeline__step" data-state={stepState(index)}>
+                <span className="pipeline__index" aria-hidden="true">
+                  {stepState(index) === "done" ? <Check size={18} strokeWidth={2.4} /> : index + 1}
+                </span>
                 <div>
                   <h3>{step.name}</h3>
                   <p>{step.detail}</p>
                 </div>
-                <span className="pipeline__state">{index === 0 ? "Đang chờ tệp" : "Chưa tới"}</span>
+                <span className="pipeline__state">{stepLabel(index)}</span>
               </li>
             ))}
           </ol>
