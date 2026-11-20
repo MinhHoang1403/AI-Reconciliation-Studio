@@ -36,7 +36,7 @@
       "refersTo": "nav-link-current",
       "description": "Mục trên thanh điều hướng xanh dương nhạt, mục đang mở là ô trắng.",
       "html": "<nav class=\"ds-rail\"><a class=\"ds-link ds-on\">Tổng quan</a><a class=\"ds-link\">Dữ liệu</a></nav>",
-      "css": ".ds-rail{display:flex;flex-direction:column;gap:4px;padding:16px;background:#e4eefb;border-right:1px solid #cfdcef;width:248px}.ds-link{padding:10px 12px;border-radius:8px;color:#2f4a6e;font:500 16px 'Be Vietnam Pro',sans-serif}.ds-link:hover{background:#d2e2f7;color:#14233a}.ds-on{background:#ffffff;color:#1f5fae;font-weight:600}"
+      "css": ".ds-rail{display:flex;flex-direction:column;gap:4px;padding:16px;background:#e4eefb;border-right:1px solid #cfdcef;width:260px}.ds-link{padding:10px 12px;border-radius:8px;color:#2f4a6e;font:500 16px 'Be Vietnam Pro',sans-serif}.ds-link:hover{background:#d2e2f7;color:#14233a}.ds-on{background:#ffffff;color:#1f5fae;font-weight:600}"
     },
     {
       "name": "Chip bước đang xử lý",

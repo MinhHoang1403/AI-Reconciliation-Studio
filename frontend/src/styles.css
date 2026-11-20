@@ -24,7 +24,7 @@
 
   --radius: 12px;
   --radius-small: 8px;
-  --rail-width: 248px;
+  --rail-width: 260px;
   --rail-width-collapsed: 76px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
@@ -63,13 +63,13 @@ a { color: var(--primary); text-underline-offset: 3px; }
   border-right: 1px solid var(--rail-line);
   overflow: hidden;
 }
+/* Đầu thanh bên: logo + tên ở trái, nút thu gọn nhỏ ở góc phải. */
+.rail__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; }
 .rail__brand {
-  display: flex; align-items: center; gap: 12px;
-  padding: 4px 8px; color: inherit; text-decoration: none;
-  font-weight: 700; font-size: 16px; line-height: 1.25;
+  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+  padding: 4px 4px 4px 6px; color: inherit; text-decoration: none;
+  font-weight: 700; font-size: 15px; line-height: 1.25;
 }
-/* Tên dài được xuống dòng; khi thu gọn thì ẩn hẳn nên không bị nhảy chữ. */
-.rail__brand .rail__label { min-width: 150px; }
 .rail__brand img { border-radius: 7px; flex-shrink: 0; }
 .rail__list { display: flex; flex-direction: column; gap: 4px; }
 .rail__link {
@@ -85,22 +85,23 @@ a { color: var(--primary); text-underline-offset: 3px; }
   box-shadow: 0 1px 3px rgb(42 111 201 / 0.14);
 }
 
-/* Nút thu gọn / mở rộng thanh bên, nằm ở đáy thanh. */
+/* Nút thu gọn / mở rộng: ô vuông nhỏ 32px, chỉ có biểu tượng. */
 .rail__toggle {
-  margin-top: auto; display: flex; align-items: center; gap: 12px;
-  min-height: 44px; padding: 10px 12px; border: 0; border-radius: var(--radius-small);
-  background: transparent; color: var(--rail-ink); font: inherit; font-weight: 500;
-  cursor: pointer; white-space: nowrap; text-align: left;
-  transition: background-color 160ms var(--ease-out);
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 32px; height: 32px; margin-top: 4px; padding: 0;
+  border: 0; border-radius: var(--radius-small);
+  background: transparent; color: var(--rail-ink); cursor: pointer;
+  transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out);
 }
-.rail__toggle:hover { background: var(--primary-tint-strong); }
-.rail__toggle svg { flex-shrink: 0; }
+.rail__toggle:hover { background: var(--primary-tint-strong); color: var(--ink); }
 
-/* Khi thu gọn chỉ còn biểu tượng; chữ ẩn đi nhưng tên vẫn có trong aria-label. */
+/* Khi thu gọn chỉ còn biểu tượng; chữ ẩn đi nhưng tên vẫn có trong aria-label.
+   Logo và nút xếp chồng theo chiều dọc vì thanh chỉ còn đủ chỗ cho một biểu tượng. */
 .shell[data-rail="collapsed"] .rail__label { display: none; }
-.shell[data-rail="collapsed"] .rail__brand,
-.shell[data-rail="collapsed"] .rail__link,
-.shell[data-rail="collapsed"] .rail__toggle { justify-content: center; padding-left: 0; padding-right: 0; }
+.shell[data-rail="collapsed"] .rail__head { flex-direction: column; align-items: center; gap: 8px; }
+.shell[data-rail="collapsed"] .rail__brand { flex: none; padding: 4px 0; }
+.shell[data-rail="collapsed"] .rail__toggle { margin-top: 0; }
+.shell[data-rail="collapsed"] .rail__link { justify-content: center; padding-left: 0; padding-right: 0; }
 
 .page { padding: 40px clamp(20px, 4vw, 56px) 64px; max-width: 1280px; width: 100%; }
 .page__header { display: grid; gap: 6px; margin-bottom: 28px; }
@@ -225,7 +226,7 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
     border-right: 0; border-top: 1px solid var(--rail-line);
     box-shadow: 0 -6px 18px rgb(42 111 201 / 0.14);
   }
-  .rail__brand, .rail__toggle { display: none; }
+  .rail__head { display: none; }
   .shell[data-rail="collapsed"] .rail__label { display: inline; }
   .rail__list { flex-direction: row; justify-content: space-around; gap: 0; }
   .rail__list li { flex: 1; }

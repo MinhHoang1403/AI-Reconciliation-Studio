@@ -53,18 +53,36 @@ export function App() {
   return (
     <div className="shell" data-rail={collapsed ? "collapsed" : "expanded"}>
       <nav className="rail" id="thanh-ben" aria-label="Điều hướng chính">
-        <a
-          className="rail__brand"
-          href="/"
-          aria-label="AI Reconciliation Studio"
-          onClick={(event) => {
-            event.preventDefault();
-            navigate("/");
-          }}
-        >
-          <img src="/favicon.svg" alt="" width={32} height={32} />
-          <span className="rail__label">AI Reconciliation Studio</span>
-        </a>
+        <div className="rail__head">
+          <a
+            className="rail__brand"
+            href="/"
+            aria-label="AI Reconciliation Studio"
+            onClick={(event) => {
+              event.preventDefault();
+              navigate("/");
+            }}
+          >
+            <img src="/favicon.svg" alt="" width={32} height={32} />
+            <span className="rail__label">AI Reconciliation Studio</span>
+          </a>
+          {/* Nút nhỏ ở góc trên bên phải để thu gọn / mở rộng thanh bên. */}
+          <button
+            className="rail__toggle"
+            type="button"
+            aria-controls="thanh-ben"
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
+            title={collapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
+            onClick={toggleRail}
+          >
+            {collapsed ? (
+              <PanelLeftOpen aria-hidden="true" size={18} strokeWidth={1.8} />
+            ) : (
+              <PanelLeftClose aria-hidden="true" size={18} strokeWidth={1.8} />
+            )}
+          </button>
+        </div>
         <ul className="rail__list">
           {ROUTES.map(({ path: target, label, icon: Icon }) => (
             <li key={target}>
@@ -85,22 +103,6 @@ export function App() {
             </li>
           ))}
         </ul>
-        <button
-          className="rail__toggle"
-          type="button"
-          aria-controls="thanh-ben"
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
-          title={collapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
-          onClick={toggleRail}
-        >
-          {collapsed ? (
-            <PanelLeftOpen aria-hidden="true" size={20} strokeWidth={1.8} />
-          ) : (
-            <PanelLeftClose aria-hidden="true" size={20} strokeWidth={1.8} />
-          )}
-          <span className="rail__label">Thu gọn</span>
-        </button>
       </nav>
       <main className="page" id="noi-dung">
         <Page />

@@ -72,7 +72,7 @@ components:
   nav-rail:
     backgroundColor: "{colors.blue-tint}"
     textColor: "{colors.rail-ink}"
-    width: "248px"
+    width: "260px"
   nav-link-current:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.blue-ink}"
@@ -150,7 +150,7 @@ Bảng màu tiết chế theo mệnh giá: một màu khung đậm, ba màu tr�
 
 ## Layout
 
-Thanh điều hướng cố định 248px bên trái, thu gọn được còn 76px (chỉ biểu tượng) bằng nút ở đáy thanh, trạng thái được nhớ trong trình duyệt; nội dung tối đa 1280px, lề 40px (co giãn theo màn hình). Tổng quan chia hai cột: nội dung chính và cột 340px cho con dấu kiểm chứng; dưới 860px gộp thành một cột. Dưới 760px thanh điều hướng thành thanh tab cố định ở đáy, lề trang 16px. Khoảng cách: 8px trong nhóm, 16px giữa các phần tử, 28px giữa các khối.
+Thanh điều hướng cố định 260px bên trái, thu gọn được còn 76px (chỉ biểu tượng) bằng nút nhỏ ở góc trên bên phải cạnh tên, trạng thái được nhớ trong trình duyệt; nội dung tối đa 1280px, lề 40px (co giãn theo màn hình). Tổng quan chia hai cột: nội dung chính và cột 340px cho con dấu kiểm chứng; dưới 860px gộp thành một cột. Dưới 760px thanh điều hướng thành thanh tab cố định ở đáy, lề trang 16px. Khoảng cách: 8px trong nhóm, 16px giữa các phần tử, 28px giữa các khối.
 
 ## Elevation & Depth
 
@@ -171,7 +171,7 @@ Góc bo vừa phải: 12px cho panel và dải bước tiếp theo, 8px cho nút
 - **Hover / Focus:** nền đậm hơn; vòng focus 3px màu tím hồng tờ 50.000đ.
 
 ### Navigation
-- **Máy tính:** thanh dọc xanh dương nhạt, viền phải rail-line; mục thường chữ rail-ink, mục đang mở là ô trắng chữ blue-ink có bóng rất nhẹ. Nút "Thu gọn" ở đáy thanh; khi thu gọn chỉ còn biểu tượng, tên mục vẫn có trong aria-label và tooltip.
+- **Máy tính:** thanh dọc xanh dương nhạt, viền phải rail-line; mục thường chữ rail-ink, mục đang mở là ô trắng chữ blue-ink có bóng rất nhẹ. Nút thu gọn là ô vuông 32px chỉ có biểu tượng, đặt ở góc trên bên phải cạnh tên; khi thu gọn, logo và nút xếp dọc, chỉ còn biểu tượng, tên mục vẫn có trong aria-label và tooltip.
 - **Điện thoại:** thanh tab cố định ở đáy, biểu tượng trên nhãn.
 
 ### Cards / Containers
