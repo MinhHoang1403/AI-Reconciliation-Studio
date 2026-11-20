@@ -2,15 +2,18 @@
 name: AI Reconciliation Studio
 description: Đối soát dữ liệu bán hàng có AI hỗ trợ, in kết quả với kỷ luật của một tờ tiền polymer
 colors:
-  polymer-ground: "#f3f6fa"
+  polymer-ground: "#f5f8fc"
   surface: "#ffffff"
   ink: "#14233a"
   ink-soft: "#3a4d66"
-  blue-20k: "#1f5fae"
-  blue-deep: "#174a8a"
-  blue-tint: "#dde8f6"
-  on-blue: "#eaf1fb"
-  on-blue-soft: "#d6e4f5"
+  blue-20k: "#2a6fc9"
+  blue-deep: "#2160b0"
+  blue-ink: "#1f5fae"
+  blue-tint: "#e4eefb"
+  blue-tint-strong: "#d2e2f7"
+  on-blue: "#ffffff"
+  rail-ink: "#2f4a6e"
+  rail-line: "#cfdcef"
   attention-200k: "#b54a26"
   attention-tint: "#f6e4dc"
   matched-100k: "#3a7236"
@@ -67,12 +70,12 @@ components:
   button-primary-hover:
     backgroundColor: "{colors.blue-deep}"
   nav-rail:
-    backgroundColor: "{colors.blue-20k}"
-    textColor: "{colors.on-blue-soft}"
+    backgroundColor: "{colors.blue-tint}"
+    textColor: "{colors.rail-ink}"
     width: "248px"
   nav-link-current:
-    backgroundColor: "{colors.on-blue}"
-    textColor: "{colors.blue-20k}"
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.blue-ink}"
     rounded: "{rounded.small}"
   panel:
     backgroundColor: "{colors.surface}"
@@ -99,7 +102,7 @@ Kết quả đối soát là chuyện tiền bạc, nên giao diện mượn k�
 Đây là màn hình công cụ: điều hướng, nút, bảng đều là loại người dùng đã quen. Thế giới tờ tiền chỉ góp bốn thứ: kiểu chữ, bảng màu, độ dày thông tin và con dấu kiểm chứng.
 
 **Key Characteristics:**
-- Khung điều hướng xanh dương sáng của tờ 20.000đ trên nền polymer trắng ngả xanh.
+- Thanh điều hướng xanh dương nhạt trên nền polymer trắng ngả xanh; xanh dương tờ 20.000đ cho nút chính và con dấu.
 - Mỗi màu mệnh giá có một nghĩa duy nhất: chú ý, đã khớp, bước đang xử lý.
 - Chữ số dạng bảng (tabular) ở mọi nơi.
 - Con dấu guilloche là dấu hiệu riêng, vẽ bằng hình học thật, không phải ảnh.
@@ -109,7 +112,8 @@ Kết quả đối soát là chuyện tiền bạc, nên giao diện mượn k�
 Bảng màu tiết chế theo mệnh giá: một màu khung đậm, ba màu trạng thái, mọi sắc độ phụ suy ra từ chúng.
 
 ### Primary
-- **Xanh dương tờ 20.000đ** (blue-20k): thanh điều hướng, nút chính, nét hoa văn con dấu. Bản đậm hơn (blue-deep) cho trạng thái hover.
+- **Xanh dương tờ 20.000đ** (blue-20k): nút chính, nét hoa văn con dấu. Bản đậm hơn (blue-deep) cho hover; blue-ink cho chữ xanh trên nền sáng.
+- **Xanh dương nhạt** (blue-tint): nền thanh điều hướng và dải bước tiếp theo; blue-tint-strong cho hover trên thanh.
 
 ### Secondary
 - **Cam đỏ tờ 200.000đ** (attention-200k): chỉ cho chỗ cần người dùng chú ý: lệch tiền, lỗi, kiểm chứng hỏng.
@@ -146,7 +150,7 @@ Bảng màu tiết chế theo mệnh giá: một màu khung đậm, ba màu tr�
 
 ## Layout
 
-Thanh điều hướng cố định 248px bên trái; nội dung tối đa 1280px, lề 40px (co giãn theo màn hình). Tổng quan chia hai cột: nội dung chính và cột 340px cho con dấu kiểm chứng; dưới 860px gộp thành một cột. Dưới 760px thanh điều hướng thành thanh tab cố định ở đáy, lề trang 16px. Khoảng cách: 8px trong nhóm, 16px giữa các phần tử, 28px giữa các khối.
+Thanh điều hướng cố định 248px bên trái, thu gọn được còn 76px (chỉ biểu tượng) bằng nút ở đáy thanh, trạng thái được nhớ trong trình duyệt; nội dung tối đa 1280px, lề 40px (co giãn theo màn hình). Tổng quan chia hai cột: nội dung chính và cột 340px cho con dấu kiểm chứng; dưới 860px gộp thành một cột. Dưới 760px thanh điều hướng thành thanh tab cố định ở đáy, lề trang 16px. Khoảng cách: 8px trong nhóm, 16px giữa các phần tử, 28px giữa các khối.
 
 ## Elevation & Depth
 
@@ -167,7 +171,7 @@ Góc bo vừa phải: 12px cho panel và dải bước tiếp theo, 8px cho nút
 - **Hover / Focus:** nền đậm hơn; vòng focus 3px màu tím hồng tờ 50.000đ.
 
 ### Navigation
-- **Máy tính:** thanh dọc xanh dương tờ 20.000đ, mục thường chữ on-blue-soft, mục đang mở là ô sáng on-blue chữ xanh.
+- **Máy tính:** thanh dọc xanh dương nhạt, viền phải rail-line; mục thường chữ rail-ink, mục đang mở là ô trắng chữ blue-ink có bóng rất nhẹ. Nút "Thu gọn" ở đáy thanh; khi thu gọn chỉ còn biểu tượng, tên mục vẫn có trong aria-label và tooltip.
 - **Điện thoại:** thanh tab cố định ở đáy, biểu tượng trên nhãn.
 
 ### Cards / Containers

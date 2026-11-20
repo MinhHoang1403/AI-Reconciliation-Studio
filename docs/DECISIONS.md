@@ -16,6 +16,7 @@ Mỗi dòng là một quyết định đã chốt. Đổi quyết định thì t
 | 2026-11-20 | Demo không làm: xuất PDF, khớp N:N, Docs/PDF đầu vào, nhiều người dùng | Giữ phạm vi demo; engine viết chung để thêm sau |
 | 2026-11-20 | Giao diện theo thế giới hình ảnh "Tờ tiền polymer" (xem `DESIGN.md`); trang đầu là Tổng quan; chỉ tiếng Việt; máy tính và điện thoại đều phải dùng tốt | Owner chọn qua vòng chọn hướng của skill impeccable; trả lời phỏng vấn sản phẩm (`PRODUCT.md`) |
 | 2026-11-20 | Màu chính đổi từ xanh lục lam (tờ 500.000đ) sang xanh dương sáng (tờ 20.000đ, `#1f5fae`); nền ngả xanh dương nhạt | Owner muốn sáng hơn và thích xanh dương; mọi cặp chữ/nền vẫn đạt tương phản ≥ 4,5:1 |
+| 2026-11-20 | Thanh điều hướng đổi sang nền xanh dương nhạt `#e4eefb` chữ đậm; nút chính xanh dương sáng hơn `#2a6fc9`; thêm nút thu gọn thanh bên (nhớ trạng thái trong trình duyệt, không áp dụng trên điện thoại) | Owner muốn nhạt và sáng hơn, cần thu phóng thanh bên; tương phản vẫn ≥ 4,5:1 |
 | 2026-11-20 | Font Be Vietnam Pro tự host qua @fontsource; biểu tượng lucide-react | Đủ dấu tiếng Việt, không tải tài nguyên từ máy chủ ngoài |
 | 2026-11-20 | Điều hướng trang tự viết bằng History API, chưa dùng thư viện router | 5 trang cố định; thêm thư viện khi có nhu cầu thật (R5) |
 | 2026-11-20 | E2E Playwright chạy trên container chính, hai khung máy tính 1440×900 và điện thoại Pixel 7 | Một môi trường duy nhất (R8); kiểm cả hai thiết bị |

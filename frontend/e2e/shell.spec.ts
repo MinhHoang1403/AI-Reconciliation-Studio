@@ -33,6 +33,26 @@ test("Điều hướng tới từng trang và giữ đúng trang khi tải lại
   await expect(page.getByRole("heading", { level: 1, name: "Báo cáo" })).toBeVisible();
 });
 
+test("Thu gọn và mở rộng thanh bên, nhớ trạng thái khi tải lại", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Trên điện thoại thanh bên là thanh tab ở đáy, không có nút thu gọn");
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
+  const widthBefore = (await nav.boundingBox())?.width ?? 0;
+
+  await page.getByRole("button", { name: "Thu gọn thanh bên" }).click();
+  await expect(page.getByRole("button", { name: "Mở rộng thanh bên" })).toHaveAttribute("aria-expanded", "false");
+  await expect(nav.getByText("Dữ liệu", { exact: true })).toBeHidden();
+  // Chữ ẩn nhưng liên kết vẫn có tên để bấm và để trình đọc màn hình đọc.
+  await nav.getByRole("link", { name: "Dữ liệu" }).click();
+  await expect(page).toHaveURL("/du-lieu");
+  await expect.poll(async () => (await nav.boundingBox())?.width ?? 0).toBeLessThan(widthBefore / 2);
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Mở rộng thanh bên" })).toBeVisible();
+  await page.getByRole("button", { name: "Mở rộng thanh bên" }).click();
+  await expect(nav.getByText("Dữ liệu", { exact: true })).toBeVisible();
+});
+
 test("Nút ở bước tiếp theo dẫn tới trang Dữ liệu", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Đến trang Dữ liệu" }).click();

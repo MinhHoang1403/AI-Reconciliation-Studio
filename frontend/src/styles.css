@@ -1,15 +1,18 @@
 /* Hệ thống hình ảnh "Tiền polymer": màu lấy từ các mệnh giá tiền Việt Nam.
    Mỗi màu có một việc riêng; không dùng màu xám tùy tiện ngoài các sắc độ dưới đây. */
 :root {
-  --ground: #f3f6fa;          /* nền polymer trắng ngả xanh dương */
+  --ground: #f5f8fc;          /* nền polymer trắng ngả xanh dương */
   --surface: #ffffff;
   --ink: #14233a;             /* mực chính */
   --ink-soft: #3a4d66;        /* chữ phụ, suy từ mực */
-  --primary: #1f5fae;         /* xanh dương tờ 20.000đ: khung điều hướng, hành động chính */
-  --primary-deep: #174a8a;
-  --primary-tint: #dde8f6;
-  --on-primary: #eaf1fb;
-  --on-primary-soft: #d6e4f5;
+  --primary: #2a6fc9;         /* xanh dương tờ 20.000đ: hành động chính, nét con dấu */
+  --primary-deep: #2160b0;    /* trạng thái hover của nút chính */
+  --primary-ink: #1f5fae;     /* chữ xanh trên nền sáng (mục đang mở) */
+  --primary-tint: #e4eefb;    /* xanh nhạt: thanh bên, dải bước tiếp theo */
+  --primary-tint-strong: #d2e2f7;
+  --on-primary: #ffffff;
+  --rail-ink: #2f4a6e;        /* chữ mục điều hướng trên nền xanh nhạt */
+  --rail-line: #cfdcef;
   --attention: #b54a26;       /* tờ 200.000đ: chỗ cần chú ý */
   --attention-tint: #f6e4dc;
   --matched: #3a7236;         /* tờ 100.000đ: đã khớp, đạt */
@@ -22,6 +25,7 @@
   --radius: 12px;
   --radius-small: 8px;
   --rail-width: 248px;
+  --rail-width-collapsed: 76px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
   color: var(--ink);
@@ -45,30 +49,58 @@ ol, ul { padding: 0; list-style: none; }
 a { color: var(--primary); text-underline-offset: 3px; }
 
 /* ---------- Khung ứng dụng ---------- */
-.shell { display: grid; grid-template-columns: var(--rail-width) 1fr; min-height: 100dvh; }
+.shell {
+  display: grid; grid-template-columns: var(--rail-width) 1fr; min-height: 100dvh;
+  transition: grid-template-columns 220ms var(--ease-out);
+}
+.shell[data-rail="collapsed"] { grid-template-columns: var(--rail-width-collapsed) 1fr; }
 
 .rail {
   position: sticky; top: 0; height: 100dvh;
   display: flex; flex-direction: column; gap: 28px;
-  padding: 24px 16px;
-  background: var(--primary); color: var(--on-primary);
+  padding: 24px 14px 20px;
+  background: var(--primary-tint); color: var(--ink);
+  border-right: 1px solid var(--rail-line);
+  overflow: hidden;
 }
 .rail__brand {
   display: flex; align-items: center; gap: 12px;
   padding: 4px 8px; color: inherit; text-decoration: none;
   font-weight: 700; font-size: 16px; line-height: 1.25;
 }
-.rail__brand img { border-radius: 7px; box-shadow: 0 0 0 1px var(--primary-deep); }
+/* Tên dài được xuống dòng; khi thu gọn thì ẩn hẳn nên không bị nhảy chữ. */
+.rail__brand .rail__label { min-width: 150px; }
+.rail__brand img { border-radius: 7px; flex-shrink: 0; }
 .rail__list { display: flex; flex-direction: column; gap: 4px; }
 .rail__link {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 12px; border-radius: var(--radius-small);
-  color: var(--on-primary-soft); text-decoration: none; font-weight: 500;
+  color: var(--rail-ink); text-decoration: none; font-weight: 500; white-space: nowrap;
   transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out);
 }
-.rail__link:hover { background: var(--primary-deep); color: var(--on-primary); }
-.rail__link[aria-current="page"] { background: var(--on-primary); color: var(--primary); font-weight: 600; }
-.rail__link:focus-visible { outline-color: var(--on-primary); }
+.rail__link svg { flex-shrink: 0; }
+.rail__link:hover { background: var(--primary-tint-strong); color: var(--ink); }
+.rail__link[aria-current="page"] {
+  background: var(--surface); color: var(--primary-ink); font-weight: 600;
+  box-shadow: 0 1px 3px rgb(42 111 201 / 0.14);
+}
+
+/* Nút thu gọn / mở rộng thanh bên, nằm ở đáy thanh. */
+.rail__toggle {
+  margin-top: auto; display: flex; align-items: center; gap: 12px;
+  min-height: 44px; padding: 10px 12px; border: 0; border-radius: var(--radius-small);
+  background: transparent; color: var(--rail-ink); font: inherit; font-weight: 500;
+  cursor: pointer; white-space: nowrap; text-align: left;
+  transition: background-color 160ms var(--ease-out);
+}
+.rail__toggle:hover { background: var(--primary-tint-strong); }
+.rail__toggle svg { flex-shrink: 0; }
+
+/* Khi thu gọn chỉ còn biểu tượng; chữ ẩn đi nhưng tên vẫn có trong aria-label. */
+.shell[data-rail="collapsed"] .rail__label { display: none; }
+.shell[data-rail="collapsed"] .rail__brand,
+.shell[data-rail="collapsed"] .rail__link,
+.shell[data-rail="collapsed"] .rail__toggle { justify-content: center; padding-left: 0; padding-right: 0; }
 
 .page { padding: 40px clamp(20px, 4vw, 56px) 64px; max-width: 1280px; width: 100%; }
 .page__header { display: grid; gap: 6px; margin-bottom: 28px; }
@@ -185,16 +217,22 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 }
 
 @media (max-width: 760px) {
-  .shell { grid-template-columns: 1fr; padding-bottom: 72px; }
+  /* Trên điện thoại thanh bên luôn là thanh tab ở đáy; trạng thái thu gọn không áp dụng. */
+  .shell, .shell[data-rail="collapsed"] { grid-template-columns: 1fr; padding-bottom: 72px; }
   .rail {
     position: fixed; inset: auto 0 0 0; height: auto; z-index: 10;
     padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
-    box-shadow: 0 -6px 18px rgb(31 95 174 / 0.2);
+    border-right: 0; border-top: 1px solid var(--rail-line);
+    box-shadow: 0 -6px 18px rgb(42 111 201 / 0.14);
   }
-  .rail__brand { display: none; }
+  .rail__brand, .rail__toggle { display: none; }
+  .shell[data-rail="collapsed"] .rail__label { display: inline; }
   .rail__list { flex-direction: row; justify-content: space-around; gap: 0; }
   .rail__list li { flex: 1; }
-  .rail__link { flex-direction: column; gap: 2px; padding: 6px 2px; font-size: 12px; text-align: center; }
+  .rail__link,
+  .shell[data-rail="collapsed"] .rail__link {
+    flex-direction: column; gap: 2px; padding: 6px 2px; font-size: 12px; text-align: center;
+  }
   .page { padding: 24px 16px 40px; }
   .next-step { flex-direction: column; align-items: stretch; padding: 20px; }
   .next-step .button { justify-content: center; }
