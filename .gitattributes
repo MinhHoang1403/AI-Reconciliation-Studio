@@ -1,3 +1,7 @@
+# Mọi tệp chữ dùng ký tự xuống dòng LF ở cả kho Git lẫn thư mục làm việc, kể cả trên
+# Windows có core.autocrlf=true, để công cụ và container Linux đọc giống nhau.
+* text=auto eol=lf
+
 # Tệp dữ liệu mẫu phải giữ nguyên từng byte (đáp án và SHA-256 phụ thuộc vào đó),
 # nên Git không được tự đổi ký tự xuống dòng.
 tests/fixtures/** binary

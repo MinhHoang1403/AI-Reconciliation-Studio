@@ -28,6 +28,12 @@ services:
       DATABASE_URL: postgresql+psycopg://studio:${POSTGRES_PASSWORD}@postgres/studio
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      # Langfuse chạy ở bộ container riêng trên máy; từ trong container đi qua host.docker.internal.
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_DOCKER_URL:-http://host.docker.internal:3000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - files:/data/files
     depends_on:

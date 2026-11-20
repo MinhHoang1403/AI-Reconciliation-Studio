@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     # Khóa Gemini nằm trong `.env`, không bao giờ trả ra API hay ghi log (RULES R14).
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.5-flash-lite"
+    # Mỗi lần gọi Gemini: chờ tối đa bao lâu, trả lời tối đa bao nhiêu token, thử lại mấy lần.
+    gemini_timeout_seconds: int = Field(default=45, ge=5, le=300)
+    gemini_max_output_tokens: int = Field(default=4096, ge=256, le=32768)
+    gemini_attempts: int = Field(default=2, ge=1, le=3)
+
+    # Langfuse ghi dấu vết từng lần gọi AI. Thiếu khóa thì không ghi, phần còn lại vẫn chạy.
+    langfuse_public_key: str = ""
+    langfuse_secret_key: SecretStr = SecretStr("")
+    langfuse_base_url: str = "http://host.docker.internal:3000"
 
     # Commit Git của source đã build image, để biết đang chạy bản nào.
     studio_revision: str = "unknown"

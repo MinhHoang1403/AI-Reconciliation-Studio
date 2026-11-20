@@ -1,0 +1,55 @@
+{
+  "_ghi_chu": "Bộ tên cột KHÔNG dùng khi soạn danh sách tên hay gặp, để đo khả năng ánh xạ với tệp lạ. Giá trị là dữ liệu tổng hợp. field rỗng nghĩa là không có cột chuẩn tương ứng.",
+  "tables": [
+    {
+      "name": "xuat-don-san-tieng-anh",
+      "columns": [
+        {"name": "Order No", "field": "order_id", "values": ["2610058KX7QM", "2610064ZT9PA", "261007QW2RTB", "2610087YH3KC", "261009MN5DUE"]},
+        {"name": "Created Time", "field": "order_date", "values": ["2026-10-05 09:12:40", "2026-10-06 14:01:05", "2026-10-07 20:33:12", "2026-10-08 08:45:00", "2026-10-09 11:20:31"]},
+        {"name": "Buyer Username", "field": "customer_name", "values": ["an.nguyen92", "binh_tran", "chau.le88", "dungpham", "hoa.vo01"]},
+        {"name": "Receiver Phone", "field": "customer_phone", "values": ["84912345678", "84387654321", "84901234567", "84376543210", "84988776655"]},
+        {"name": "Order Amount (VND)", "field": "amount", "values": ["259000", "1250000", "480000", "99000", "2100000"]},
+        {"name": "Commission Fee", "field": "fee", "values": ["25900", "125000", "48000", "9900", "210000"]},
+        {"name": "Settlement Amount", "field": "net_amount", "values": ["233100", "1125000", "432000", "89100", "1890000"]},
+        {"name": "Order Status", "field": "status", "values": ["Completed", "Completed", "Cancelled", "Completed", "Completed"]}
+      ]
+    },
+    {
+      "name": "phan-mem-ban-hang-khac",
+      "columns": [
+        {"name": "Số HĐ", "field": "order_id", "values": ["HDB00451", "HDB00452", "HDB00453", "HDB00454", "HDB00455"]},
+        {"name": "Ngày CT", "field": "order_date", "values": ["05/10/2026", "05/10/2026", "06/10/2026", "07/10/2026", "07/10/2026"]},
+        {"name": "Tên KH", "field": "customer_name", "values": ["Nguyễn Thị Hoa", "Trần Văn Nam", "Lê Minh Tuấn", "Phạm Thu Trang", "Võ Gia Bảo"]},
+        {"name": "Mobile", "field": "customer_phone", "values": ["0912345678", "0387654321", "0901234567", "0376543210", "0988776655"]},
+        {"name": "Thành tiền (VNĐ)", "field": "amount", "values": ["1.250.000", "480.000", "2.100.000", "99.000", "350.000"]},
+        {"name": "Hình thức TT", "field": "payment_method", "values": ["Tiền mặt", "Chuyển khoản", "Chuyển khoản", "Thẻ", "Tiền mặt"]},
+        {"name": "Ghi chú", "field": "", "values": ["Giao giờ hành chính", "", "Khách quen", "", "Gói quà"]}
+      ]
+    },
+    {
+      "name": "cong-thanh-toan-tieng-anh",
+      "columns": [
+        {"name": "Transaction ID", "field": "payment_id", "values": ["14523987601", "14523987602", "14523987603", "14523987604", "14523987605"]},
+        {"name": "Merchant Order Ref", "field": "order_id", "values": ["HDB00451", "HDB00453", "HDB00454", "HDB00460", "HDB00462"]},
+        {"name": "Paid At", "field": "transaction_date", "values": ["2026-10-05 10:15:22", "2026-10-06 16:40:03", "2026-10-07 09:02:47", "2026-10-08 13:30:00", "2026-10-09 18:12:59"]},
+        {"name": "Gross", "field": "amount", "values": ["1,250,000", "2,100,000", "99,000", "560,000", "1,875,000"]},
+        {"name": "MDR Fee", "field": "fee", "values": ["13,750", "23,100", "1,089", "6,160", "20,625"]},
+        {"name": "Net Settled", "field": "net_amount", "values": ["1,236,250", "2,076,900", "97,911", "553,840", "1,854,375"]},
+        {"name": "Payout Ref", "field": "payment_batch", "values": ["PO-261006", "PO-261007", "PO-261008", "PO-261009", "PO-261010"]}
+      ]
+    },
+    {
+      "name": "sao-ke-ngan-hang-khac",
+      "columns": [
+        {"name": "No.", "field": "", "values": ["1", "2", "3", "4", "5"]},
+        {"name": "Ngày hiệu lực", "field": "transaction_date", "values": ["05/10/2026", "05/10/2026", "06/10/2026", "07/10/2026", "08/10/2026"]},
+        {"name": "Mã GD NH", "field": "bank_ref", "values": ["5321FT2627801", "5321FT2627802", "5321FT2627903", "5321FT2628004", "5321FT2628105"]},
+        {"name": "Số tiền ghi nợ", "field": "debit", "values": ["", "22.000", "", "", "18.500.000"]},
+        {"name": "Số tiền ghi có", "field": "credit", "values": ["1.250.000", "", "2.076.900", "480.000", ""]},
+        {"name": "Số dư cuối", "field": "balance", "values": ["26.250.000", "26.228.000", "28.304.900", "28.784.900", "10.284.900"]},
+        {"name": "Diễn giải", "field": "description", "values": ["CK HDB00451 NGUYEN THI HOA", "PHI QUAN LY TAI KHOAN", "PO-261006 CONG THANH TOAN CHUYEN TIEN", "TRAN VAN NAM CK TIEN HANG HDB00452", "CHI LUONG NHAN VIEN T9"]},
+        {"name": "Kênh giao dịch", "field": "", "values": ["Internet Banking", "Tự động", "Liên ngân hàng", "Internet Banking", "Internet Banking"]}
+      ]
+    }
+  ]
+}

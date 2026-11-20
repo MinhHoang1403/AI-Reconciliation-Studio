@@ -13,6 +13,10 @@ dependencies = [
   "fastexcel>=0.21.0",
   "python-multipart>=0.0.34",
   "alembic>=1.20.1",
+  "google-genai>=3.6.1",
+  "langfuse>=5.2.0",
+  "rapidfuzz>=3.14.6",
+  "scipy>=1.18.1",
 ]
 
 [dependency-groups]
@@ -47,7 +51,7 @@ mypy_path = "backend"
 strict = true
 plugins = ["pydantic.mypy"]
 
-# xlsxwriter (chỉ dùng để sinh tệp Excel mẫu và trong test) không kèm khai báo kiểu.
+# xlsxwriter (sinh tệp Excel mẫu, test) và scipy không kèm khai báo kiểu cho mypy.
 [[tool.mypy.overrides]]
-module = ["xlsxwriter"]
+module = ["xlsxwriter", "scipy", "scipy.*"]
 ignore_missing_imports = true

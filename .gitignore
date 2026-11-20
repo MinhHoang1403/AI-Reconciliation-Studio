@@ -28,3 +28,6 @@ frontend/playwright-report/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Cấu hình editor cá nhân
+.vscode/

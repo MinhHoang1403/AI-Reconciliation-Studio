@@ -41,6 +41,10 @@ class TableSummary(BaseModel):
     row_count: int
     column_count: int
     error_message: str | None
+    # Ánh xạ cột: trạng thái, loại bảng đoán được và số cột đang chờ người dùng xem.
+    mapping_status: str
+    table_kind: str | None
+    mapping_pending: int
 
 
 class DatasetSummary(BaseModel):
@@ -89,6 +93,8 @@ def summarize(dataset: Dataset) -> DatasetSummary:
                 header_row_chosen_by_user=table.header_row_chosen_by_user,
                 row_count=table.row_count, column_count=len(table.column_names),
                 error_message=table.error_message,
+                mapping_status=table.mapping_status, table_kind=table.table_kind,
+                mapping_pending=sum(mapping.status == "SUGGESTED" for mapping in table.mappings),
             )
             for table in dataset.tables
         ],

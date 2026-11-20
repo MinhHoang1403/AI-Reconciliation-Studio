@@ -10,6 +10,8 @@ from pydantic import BaseModel
 from studio import database, ingestion
 from studio.config import settings
 from studio.datasets_api import router as datasets_router
+from studio.mapping_api import router as mapping_router
+from studio.tracing import langfuse_configured
 
 
 @asynccontextmanager
@@ -24,6 +26,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(datasets_router)
+app.include_router(mapping_router)
 
 # Trạng thái cấu hình của một provider. Chỉ kiểm cấu hình cục bộ, không gọi ra ngoài
 # (RULES R11: không tự gọi API trả phí khi kiểm tra sức khỏe hệ thống).
@@ -44,6 +47,7 @@ class SystemStatus(BaseModel):
     revision: str
     database: Literal["ok", "unavailable"]
     gemini: ProviderStatus
+    langfuse: ProviderStatus
 
 
 @app.get("/api/health")
@@ -71,4 +75,8 @@ def system_status() -> SystemStatus:
         revision=settings.studio_revision,
         database="ok" if database.database_is_reachable() else "unavailable",
         gemini=ProviderStatus(name="Gemini", model=settings.gemini_model, state=gemini_state),
+        langfuse=ProviderStatus(
+            name="Langfuse", model=settings.langfuse_base_url,
+            state="CONFIGURED" if langfuse_configured() else "NEEDS_CONFIGURATION",
+        ),
     )

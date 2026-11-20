@@ -14,6 +14,11 @@ from pathlib import Path
 _WORK_DIR = Path(tempfile.mkdtemp(prefix="studio-test-"))
 os.environ["DATABASE_URL"] = f"sqlite:///{(_WORK_DIR / 'test.db').as_posix()}"
 os.environ["STORAGE_ROOT"] = str(_WORK_DIR / "files")
+# Kiểm thử không bao giờ gọi Gemini hay Langfuse thật (không phát sinh phí); bài nào cần AI
+# thì thay hàm gọi bằng câu trả lời giả lập. Đo với Gemini thật: tools/evaluate_mapping.py.
+os.environ["GEMINI_API_KEY"] = ""
+os.environ["LANGFUSE_PUBLIC_KEY"] = ""
+os.environ["LANGFUSE_SECRET_KEY"] = ""
 
 import pytest  # noqa: E402
 from sqlalchemy import delete  # noqa: E402

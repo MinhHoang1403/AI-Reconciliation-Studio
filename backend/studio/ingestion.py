@@ -11,7 +11,7 @@ from pathlib import Path
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from studio import database, reading, storage
+from studio import database, mapping_service, reading, storage
 from studio.models import Dataset, DatasetTable
 from studio.profiling import profile_table
 
@@ -70,6 +70,10 @@ def read_dataset(dataset_id: uuid.UUID) -> None:
             _fail(session, dataset, "Có lỗi khi đọc tệp. Hãy thử tải lại.")
             return
         session.commit()
+        ready_tables = [table.id for table in dataset.tables if table.status == "READY"]
+    # Đọc xong thì tự gợi ý ánh xạ cột cho từng bảng (quyết định 2026-11-20).
+    for ready_table_id in ready_tables:
+        _suggest_mapping(ready_table_id)
 
 
 def reread_table(table_id: uuid.UUID, header_row: int | None) -> None:
@@ -84,6 +88,7 @@ def reread_table(table_id: uuid.UUID, header_row: int | None) -> None:
             index = None if header_row is None else reading.header_index_from_row(raw, header_row)
             _save_table(table, raw, index)
             table.header_row_chosen_by_user = True
+            table.mapping_status = "NONE"
         except reading.ReadError as error:
             table.status = "FAILED"
             table.error_message = str(error)
@@ -92,6 +97,24 @@ def reread_table(table_id: uuid.UUID, header_row: int | None) -> None:
             table.status = "FAILED"
             table.error_message = "Có lỗi khi đọc lại bảng. Hãy thử lại."
         session.commit()
+        ready = table.status == "READY"
+    if ready:
+        _suggest_mapping(table_id)
+
+
+def _suggest_mapping(table_id: uuid.UUID) -> None:
+    """Gợi ý ánh xạ; lỗi ở bước này không làm hỏng kết quả đọc tệp."""
+    try:
+        mapping_service.suggest_for_table(table_id)
+    except Exception:
+        logger.exception("Lỗi khi gợi ý ánh xạ cho bảng %s", table_id)
+        with database.SessionFactory() as session:
+            table = session.get(DatasetTable, table_id)
+            if table is not None:
+                table.mapping_status = "READY"
+                table.mapping_ai_state = "FAILED"
+                table.mapping_ai_message = "Có lỗi khi gợi ý ánh xạ. Bấm “Gợi ý lại” để thử lại."
+                session.commit()
 
 
 def _fail(session: Session, dataset: Dataset, message: str) -> None:
@@ -109,4 +132,6 @@ def recover_interrupted() -> None:
                         .values(status="FAILED", error_message=INTERRUPTED_MESSAGE))
         session.execute(update(DatasetTable).where(DatasetTable.status == "READING")
                         .values(status="FAILED", error_message=INTERRUPTED_MESSAGE))
+        session.execute(update(DatasetTable).where(DatasetTable.mapping_status == "MAPPING")
+                        .values(mapping_status="NONE"))
         session.commit()

@@ -1,0 +1,36 @@
+file,sheet,column,field
+don-hang-san-tmdt.xlsx,Đơn hàng,Mã đơn hàng,order_id
+don-hang-san-tmdt.xlsx,Đơn hàng,Ngày đặt hàng,order_date
+don-hang-san-tmdt.xlsx,Đơn hàng,Tên người mua,customer_name
+don-hang-san-tmdt.xlsx,Đơn hàng,SĐT người nhận,customer_phone
+don-hang-san-tmdt.xlsx,Đơn hàng,Tổng tiền hàng,amount
+don-hang-san-tmdt.xlsx,Đơn hàng,Phí sàn,fee
+don-hang-san-tmdt.xlsx,Đơn hàng,Số tiền thực nhận,net_amount
+don-hang-san-tmdt.xlsx,Đơn hàng,Trạng thái,status
+don-hang-cua-hang.csv,,MaHD,order_id
+don-hang-cua-hang.csv,,NgayBan,order_date
+don-hang-cua-hang.csv,,KhachHang,customer_name
+don-hang-cua-hang.csv,,DienThoai,customer_phone
+don-hang-cua-hang.csv,,TongTien,amount
+don-hang-cua-hang.csv,,ThanhToan,payment_method
+giao-dich-cong-thanh-toan.csv,,Mã giao dịch,payment_id
+giao-dich-cong-thanh-toan.csv,,Mã đơn hàng,order_id
+giao-dich-cong-thanh-toan.csv,,Thời gian,transaction_date
+giao-dich-cong-thanh-toan.csv,,Số tiền,amount
+giao-dich-cong-thanh-toan.csv,,Phí,fee
+giao-dich-cong-thanh-toan.csv,,Thực nhận,net_amount
+giao-dich-cong-thanh-toan.csv,,Mã đợt chuyển,payment_batch
+sao-ke-ngan-hang.xlsx,TK chinh,STT,
+sao-ke-ngan-hang.xlsx,TK chinh,Ngày giao dịch,transaction_date
+sao-ke-ngan-hang.xlsx,TK chinh,Số tham chiếu,bank_ref
+sao-ke-ngan-hang.xlsx,TK chinh,Nợ,debit
+sao-ke-ngan-hang.xlsx,TK chinh,Có,credit
+sao-ke-ngan-hang.xlsx,TK chinh,Số dư,balance
+sao-ke-ngan-hang.xlsx,TK chinh,Nội dung,description
+sao-ke-ngan-hang.xlsx,TK san,STT,
+sao-ke-ngan-hang.xlsx,TK san,Ngày giao dịch,transaction_date
+sao-ke-ngan-hang.xlsx,TK san,Số tham chiếu,bank_ref
+sao-ke-ngan-hang.xlsx,TK san,Nợ,debit
+sao-ke-ngan-hang.xlsx,TK san,Có,credit
+sao-ke-ngan-hang.xlsx,TK san,Số dư,balance
+sao-ke-ngan-hang.xlsx,TK san,Nội dung,description
