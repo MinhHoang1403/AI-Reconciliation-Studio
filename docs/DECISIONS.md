@@ -20,4 +20,9 @@ Mỗi dòng là một quyết định đã chốt. Đổi quyết định thì t
 | 2026-11-20 | Font Be Vietnam Pro tự host qua @fontsource; biểu tượng lucide-react | Đủ dấu tiếng Việt, không tải tài nguyên từ máy chủ ngoài |
 | 2026-11-20 | Điều hướng trang tự viết bằng History API, chưa dùng thư viện router | 5 trang cố định; thêm thư viện khi có nhu cầu thật (R5) |
 | 2026-11-20 | E2E Playwright chạy trên container chính, hai khung máy tính 1440×900 và điện thoại Pixel 7 | Một môi trường duy nhất (R8); kiểm cả hai thiết bị |
+| 2026-11-20 | Bộ dữ liệu mẫu mô phỏng 4 loại nguồn: sàn TMĐT, phần mềm bán hàng, cổng thanh toán, sao kê ngân hàng; dữ liệu tổng hợp, tên tệp và tên cột chung chung, không mang thương hiệu thật | Demo sát thực tế; không giả mạo tệp của doanh nghiệp thật |
+| 2026-11-20 | Tệp Excel nhiều sheet: đọc được nhiều sheet, mỗi sheet thành một bảng riêng trong cùng bộ dữ liệu | Owner chọn; nhiều hệ thống xuất mỗi kỳ hoặc mỗi tài khoản một sheet |
+| 2026-11-20 | Cho xóa bộ dữ liệu sau khi xác nhận (xóa cả tệp gốc và bảng đã đọc); không bao giờ sửa tệp gốc | Dọn tệp tải nhầm; R15 cấm sửa, không cấm xóa theo ý người dùng |
+| 2026-11-20 | Giới hạn mỗi tệp tải lên 50 MB; chỉ hỗ trợ bảng mã UTF-8 (có hoặc không BOM), bảng mã khác báo lỗi rõ ràng | Đủ cho ≥ 100.000 dòng, nhẹ cho máy demo |
+| 2026-11-20 | Không bắt người dùng chọn loại dữ liệu khi tải lên; hệ thống tự đoán ở bước ánh xạ | Giảm thao tác |
 | 2026-11-20 | Miền đầu tiên: bán hàng, bộ cột chuẩn có `fee`, `net_amount`, `debit`, `credit`, `description` | Có đủ ca 1:1, 1:N, lệch tiền, phí cổng, mã trong nội dung chuyển khoản |

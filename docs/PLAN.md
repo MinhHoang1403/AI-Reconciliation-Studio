@@ -17,7 +17,7 @@ Làm theo **lát cắt dọc**: mỗi giai đoạn kết thúc bằng một ch�
 
 ## Bộ dữ liệu mẫu có đáp án
 
-Làm trước giai đoạn 1 và mở rộng dần, nằm trong `tests/fixtures/sales/`. Gồm 3 tệp tổng hợp (không phải dữ liệu thật): **đơn hàng**, **thanh toán**, **sao kê**. Mỗi tệp có tên cột khác nhau và có cài sẵn: lỗi định dạng, dòng trùng, thiếu khóa, lệch tiền, phí cổng thanh toán, một thanh toán cho nhiều đơn, mã đơn nằm trong nội dung chuyển khoản, tên gần giống nhau. Kèm một tệp **đáp án** ghi cặp nào khớp với cặp nào. Có thêm một bản lớn 100.000 dòng để đo hiệu năng.
+Làm trước giai đoạn 1 và mở rộng dần, nằm trong `tests/fixtures/sales/`, sinh bằng script cố định. Gồm các tệp tổng hợp (không phải dữ liệu thật) mô phỏng 4 loại nguồn: **đơn hàng sàn TMĐT** (có phí sàn, tiền thực nhận), **đơn hàng phần mềm bán hàng**, **giao dịch cổng thanh toán** (có phí cổng, một lần chuyển gộp nhiều đơn), **sao kê ngân hàng** (cột Nợ/Có, mã đơn trong nội dung chuyển khoản; một tệp nhiều sheet). Mỗi tệp có tên cột khác nhau và có cài sẵn: lỗi định dạng, dòng trùng, thiếu khóa, lệch tiền, phí cổng thanh toán, một thanh toán cho nhiều đơn, mã đơn nằm trong nội dung chuyển khoản, tên gần giống nhau. Kèm một tệp **đáp án** ghi cặp nào khớp với cặp nào. Có thêm một bản lớn 100.000 dòng để đo hiệu năng.
 
 ## Giai đoạn 0 — Khung dự án
 
@@ -28,9 +28,9 @@ Làm trước giai đoạn 1 và mở rộng dần, nằm trong `tests/fixtures/
 
 ## Giai đoạn 1 — Đọc dữ liệu
 
-- Tải CSV/XLSX, chọn sheet, phát hiện dòng tiêu đề; lưu tệp gốc + SHA-256; đọc bằng Polars thành Parquet; hồ sơ cột.
-- Giao diện: danh sách bộ dữ liệu, xem trước dòng, hồ sơ cột.
-- **Xong khi:** đọc đúng 3 tệp mẫu; tệp 100.000 dòng đọc được và đo thời gian thật để ghi vào báo cáo; mỗi dòng truy ngược được về dòng gốc.
+- Tải CSV/XLSX tối đa 50 MB (UTF-8); Excel nhiều sheet thì mỗi sheet một bảng; tự đoán dòng tiêu đề, người dùng chỉnh được; lưu tệp gốc + SHA-256, tải trùng thì nhận ra; đọc bằng Polars thành Parquet, mọi ô dạng chữ, mỗi dòng có `row_ref`; hồ sơ cột; xóa bộ dữ liệu có xác nhận.
+- Giao diện: kéo-thả tải tệp, danh sách bộ dữ liệu, xem trước dòng có phân trang, hồ sơ cột.
+- **Xong khi:** đọc đúng mọi tệp mẫu (đủ dòng, giữ số 0 đầu mã, đủ sheet, `row_ref` đúng); tệp 100.000 dòng đọc được và đo thời gian thật để ghi vào báo cáo; tải trùng không lưu thêm bản; test backend và E2E (máy tính, điện thoại) đạt.
 
 ## Giai đoạn 2 — Ánh xạ
 
