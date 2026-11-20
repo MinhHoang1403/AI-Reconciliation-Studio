@@ -1,12 +1,17 @@
 # CLAUDE.md — AI Reconciliation Studio
 
-Đọc trước mọi nhiệm vụ: @RULES.md
+Đọc trước mọi nhiệm vụ, theo thứ tự:
+
+@RULES.md
+@docs/ARCHITECTURE.md
+@docs/PLAN.md
+@docs/DECISIONS.md
 
 Trả lời và báo cáo cho Owner bằng tiếng Việt.
 
 ## Trạng thái (20/11/2026)
 
-Repo đã được làm trống để bắt đầu lại. Owner và Claude đang nghiên cứu hướng triển khai, công nghệ áp dụng, rồi lập lại kế hoạch. Chưa có mã nguồn, kiến trúc hay kế hoạch được chốt.
+Kiến trúc và kế hoạch demo đã được Owner duyệt. Chưa có mã nguồn. Việc tiếp theo: Giai đoạn 0 — khung dự án (`docs/PLAN.md`).
 
 ## Môi trường máy Owner
 

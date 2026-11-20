@@ -1,0 +1,231 @@
+# Kiến trúc — AI Reconciliation Studio (bản nháp chờ duyệt)
+
+Dự án **demo**: chỉ cần các chức năng chính chạy đúng và thể hiện đủ ý nghĩa. Mọi lựa chọn bên dưới đều có nguồn ở mục 10 ([R3](../RULES.md)) và giữ ở mức đơn giản nhất đủ dùng ([R5](../RULES.md)).
+
+## 1. Mục tiêu
+
+- **Người dùng:** tải dữ liệu lên → trò chuyện với AI Assistant → nhận kết quả. Người không biết nghiệp vụ cũng dùng được.
+- **Hệ thống:** tự động hóa gần hết quy trình. Ca đơn giản thì tự xử lý; ca lỗi hoặc mơ hồ thì chỉ ra đúng dòng/ô, AI gợi ý cách xử lý, người dùng xác nhận.
+- **Niềm tin vào kết quả:** mọi dòng được ghép đều có lý do, truy ngược được về dòng gốc, và được kiểm chứng tự động. Hệ thống không bao giờ tự bịa kết quả.
+
+Miền demo đầu tiên: **bán hàng** (đơn hàng ↔ thanh toán ↔ sao kê ngân hàng). Engine viết chung để sau này thêm miền khác.
+
+## 2. Nguyên tắc thiết kế
+
+1. **AI gợi ý, code quyết định.** Mọi con số, mọi cặp ghép do code deterministic (chạy lại ra đúng kết quả cũ) tính. LLM chỉ làm ba việc: đoán nghĩa cột, hiểu câu chat, giải thích kết quả. Đây cũng là cách các hệ thống ERP lớn làm: quy tắc khớp chạy tự động, ca mơ hồ hoặc lệch thì để người kiểm tra ([Oracle Cash Management][oracle-rules]).
+2. **Workflow trước, agent sau.** Quy trình xử lý là một chuỗi bước cố định trong code. Assistant chỉ chọn bước nào cần chạy và giải thích, không tự sáng tác quy trình. Anthropic khuyến nghị bắt đầu từ giải pháp đơn giản nhất và chỉ dùng agent tự quyết khi thật cần ([Building effective agents][anthropic-agents]).
+3. **Phân tầng theo độ tin cậy.** Cao thì tự làm và ghi nhật ký. Trung bình thì gợi ý, người dùng xác nhận một lần cho cả nhóm. Thấp thì dừng lại, chỉ đúng ô và hỏi.
+4. **Dữ liệu gốc bất biến** ([R15](../RULES.md)). Mỗi bước tạo một phiên bản mới; mọi kết quả trỏ về dòng gốc.
+
+## 3. Thành phần
+
+```mermaid
+flowchart LR
+    UI[Frontend<br/>React + Nginx] -->|/api| API[Backend<br/>FastAPI + Polars]
+    API --> DB[(PostgreSQL)]
+    API --> FS[(Volume tệp<br/>gốc + Parquet)]
+    API --> LLM[Gemini 3.5 Flash-Lite]
+    API -.trace.-> LF[Langfuse<br/>đang có trên máy]
+```
+
+| Thành phần | Công nghệ | Vai trò |
+| --- | --- | --- |
+| Frontend | React + TypeScript + Vite, Nginx phục vụ | Giao diện; Nginx chuyển tiếp `/api` về backend cùng địa chỉ. Thiết kế bằng skill impeccable và ui-ux-pro-max |
+| Backend | Python 3.12, FastAPI, Polars | API, chạy các bước xử lý dưới dạng tác vụ nền, gọi Gemini, ghi nhật ký |
+| PostgreSQL | PostgreSQL | Thông tin bộ dữ liệu, ánh xạ, issue, kết quả đối soát, hội thoại |
+| Volume tệp | Tệp gốc + Parquet | Tệp tải lên giữ nguyên; bảng đã đọc và bảng sạch lưu dạng Parquet (định dạng bảng cột, nén tốt, đọc nhanh) |
+| Gemini | `gemini-3.5-flash-lite` qua SDK `google-genai` | Gợi ý ánh xạ, gợi ý xử lý lỗi, Assistant gọi công cụ, viết nhận xét báo cáo |
+| Langfuse | Bộ Langfuse tự host **đã có sẵn trên Docker của máy** | Theo dõi từng câu chat: các bước gọi, độ trễ, token, lỗi |
+
+**Docker: 3 container** (frontend, backend, postgres), cổng duy nhất là `127.0.0.1` cho frontend. Với demo khoảng 100.000 dòng, các bước xử lý chạy nền ngay trong backend kèm bảng trạng thái job; chưa cần container Worker riêng ([R5](../RULES.md)). Khi đo thấy nghẽn thì mới tách.
+
+**Vì sao chọn Polars:** Polars đọc CSV và Excel (engine calamine viết bằng Rust, tài liệu Polars ghi là nhanh nhất trong các engine Excel), xử lý 100.000 dòng trong bộ nhớ thoải mái, ghi Parquet trực tiếp ([Polars read_excel][polars-excel]). Một thư viện thay được cho pandas + openpyxl + pyarrow.
+
+## 4. Luồng dữ liệu
+
+```mermaid
+flowchart LR
+    U[1. Tải tệp] --> P[2. Đọc + hồ sơ cột]
+    P --> M[3. Ánh xạ cột chuẩn]
+    M --> N[4. Chuẩn hóa]
+    N --> C[5. Xử lý lỗi]
+    C --> D[(6. Bộ dữ liệu sạch)]
+    D --> F[7. Chọn trường đối soát]
+    F --> R[8. Đối soát]
+    R --> V[9. Kiểm chứng]
+    V --> B[10. Báo cáo, KPI, biểu đồ]
+```
+
+### 4.1 Đọc tệp và hồ sơ cột
+
+- Đọc CSV và XLSX (chọn sheet, phát hiện dòng tiêu đề), **mục tiêu ≥ 100.000 dòng mỗi tệp**. Docs/PDF để sau.
+- Tệp gốc lưu nguyên bản kèm mã SHA-256 (dấu vân tay để chứng minh tệp không bị đổi). Mỗi dòng có `row_ref` trỏ về số dòng trong tệp gốc.
+- **Hồ sơ cột** (column profile): kiểu dữ liệu quan sát được, tỷ lệ trống, số giá trị khác nhau, vài giá trị mẫu, mẫu định dạng (giống mã, ngày, tiền, số điện thoại).
+
+### 4.2 Ánh xạ về cột chuẩn
+
+**Cột chuẩn** là bộ tên cột thống nhất của miền, ví dụ `order_id`, `amount`, `transaction_date`. Ánh xạ nghĩa là chỉ ra cột "Mã ĐH" trong tệp của người dùng chính là `order_id`.
+
+Cách làm theo mô hình **lọc ứng viên → xếp hạng lại** của Magneto (VLDB 2025): bước rẻ tạo danh sách ứng viên, LLM chỉ xếp hạng lại ([Magneto][magneto]):
+
+1. **Theo tên cột:** bỏ dấu, tách từ (`MaDonHang` → `ma don hang`), từ điển viết tắt Việt/Anh, đo độ giống bằng RapidFuzz ([RapidFuzz][rapidfuzz]).
+2. **Theo giá trị:** khớp mẫu định dạng (mã, ngày, tiền, điện thoại), độ duy nhất.
+3. **Gemini xếp hạng lại:** chỉ gửi tên cột, kiểu quan sát và tối đa 5 giá trị mẫu; Gemini trả JSON đúng schema định sẵn (structured output) ([Gemini structured output][gemini-structured]). Nghiên cứu của Parciak và cộng sự cho thấy LLM ánh xạ kém đi khi bị thiếu **hoặc thừa** ngữ cảnh, nên chỉ gửi vừa đủ ([Schema matching with LLMs][parciak]).
+
+Điểm cao và không có ứng viên cạnh tranh thì tự áp dụng; còn lại vào danh sách xác nhận. Ánh xạ đã xác nhận được **ghi nhớ** theo cấu trúc tệp; lần sau tải tệp cùng cấu trúc thì tự áp dụng. Không có khóa Gemini thì hai lớp đầu vẫn chạy.
+
+### 4.3 Chuẩn hóa
+
+Mỗi cột chuẩn có một kiểu và một bộ chuyển đổi. Kết quả mỗi ô gồm giá trị chuẩn và trạng thái `VALID` (hợp lệ), `EMPTY` (trống) hoặc `INVALID` (không đọc được).
+
+| Kiểu | Ví dụ đầu vào | Giá trị chuẩn |
+| --- | --- | --- |
+| Tiền | `1.000.000`, `1,000,000.00`, `(500)`, `1tr` | Số thập phân chính xác (Decimal, không làm tròn kiểu float) |
+| Ngày | `05/11/2026`, `2026-11-05`, số ngày Excel | `2026-11-05`; thứ tự ngày/tháng suy từ **cả cột**, không đoán từng ô |
+| Mã | `00123`, ` DH-01 ` | Chuỗi, giữ số 0 đầu, bỏ khoảng trắng thừa |
+| Tên | `  Nguyễn  Văn A` | Chuẩn Unicode NFC, gọn khoảng trắng; thêm bản so khớp đã bỏ dấu và danh xưng |
+| Điện thoại | `+84 912…`, `0912…` | Dạng `0912…` |
+
+### 4.4 Xử lý lỗi (làm sạch)
+
+Mỗi vấn đề là một **issue** gắn với dòng/ô, có mức độ và đề xuất. Phát hiện lỗi bằng **luật** rõ ràng; các hệ thống nghiên cứu như Raha/Baran dùng học máy bán giám sát ([Raha & Baran][raha-baran]) nhưng quá nặng cho demo, nên chỉ tham khảo cách phân loại lỗi.
+
+| Mức | Ví dụ | Xử lý |
+| --- | --- | --- |
+| Tự sửa | Khoảng trắng, định dạng số/ngày, dòng trống, dòng trùng y hệt | Tự làm, ghi nhật ký sửa |
+| Gợi ý | Gần trùng, giá trị bất thường, ngày đoán được | Gemini đề xuất cách sửa, người dùng xác nhận theo nhóm |
+| Hỏi | Thiếu khóa, cùng mã khác số tiền, giá trị không đọc được | Chỉ đúng ô, chờ sửa hoặc loại dòng |
+
+Nghiên cứu cho thấy LLM làm được việc phát hiện lỗi và điền giá trị thiếu ([Narayan và cộng sự, VLDB][narayan]), nhưng ở đây Gemini **chỉ đề xuất**, không tự ghi vào dữ liệu.
+
+Kết quả: **bộ dữ liệu sạch**, là một phiên bản mới kèm nhật ký sửa, dùng cho đối soát.
+
+## 5. Engine đối soát
+
+Engine theo đúng các bước kinh điển của bài toán ghép bản ghi (record linkage): tiền xử lý → lọc ứng viên (blocking) → so sánh từng trường → phân loại → đánh giá ([Christen, Data Matching][christen]).
+
+### 5.1 Chọn trường đối soát
+
+Từ các cột chuẩn có ở cả hai bộ, engine chấm điểm theo: độ duy nhất, tỷ lệ có giá trị ở cả hai bên, tỷ lệ khớp thử trên mẫu. Kết quả là một **cấu hình đối soát**:
+
+- khóa chính (ví dụ `order_id`), nếu có;
+- cột số tiền và sai số cho phép;
+- cột hỗ trợ: ngày (khung ±N ngày), tên, nội dung chuyển khoản.
+
+Gemini diễn giải cấu hình bằng lời và gợi ý chỉnh; người dùng xác nhận.
+
+**Tách mã từ nội dung chuyển khoản:** sao kê ngân hàng Việt Nam thường không có cột mã đơn; mã nằm trong nội dung (ví dụ `CK DH12345 NGUYEN VAN A`). Các dịch vụ trong nước như SePay, Casso cũng tách mã bằng mẫu regex từ nội dung ([SePay][sepay], [Casso][casso]). Engine dùng mẫu regex do người dùng xác nhận (Gemini có thể gợi ý mẫu từ vài dòng ví dụ).
+
+### 5.2 Các vòng khớp
+
+Chạy theo thứ tự từ chắc chắn tới kém chắc chắn; dòng đã ghép thì không tham gia vòng sau. Oracle cũng khuyến nghị chạy quy tắc 1:1 trước các loại khác ([Oracle matching rules][oracle-rules]).
+
+1. **Khớp khóa chính xác 1:1:** cùng khóa, tiền trong sai số.
+2. **Khớp theo điểm 1:1:** trong mỗi khối ứng viên (cùng khung ngày, tiền gần nhau), chấm điểm từng cặp từ nhiều trường (lệch tiền, cách ngày, độ giống tên bằng RapidFuzz). Cặp tốt nhất được chọn bằng thuật toán phân công tối ưu (assignment): `scipy.optimize.linear_sum_assignment`, thuật toán Jonker-Volgenant cải tiến ([SciPy][scipy-lsa]). Nó bảo đảm mỗi dòng chỉ dùng một lần và tổng điểm là cao nhất.
+3. **Khớp nhóm 1:N, N:1:** trong cùng khối, tìm tổ hợp dòng có **tổng tiền khớp đúng**, giới hạn kích thước tổ hợp (mặc định ≤ 5 dòng) để không bùng nổ tổ hợp. Không áp sai số tiền cho khớp nhóm, như Oracle quy định ([Oracle tolerance][oracle-tolerance]).
+4. **Còn lại** thì phân loại.
+
+Mỗi kết quả thuộc một loại:
+
+| Loại | Ý nghĩa |
+| --- | --- |
+| `MATCHED` | Khớp hoàn toàn |
+| `AMOUNT_MISMATCH` | Ghép được nhưng lệch tiền ngoài sai số |
+| `ONLY_IN_A` / `ONLY_IN_B` | Chỉ có ở một bên (thiếu / thừa) |
+| `ONE_TO_MANY` / `MANY_TO_ONE` | Ghép nhóm có tổng khớp |
+| `AMBIGUOUS` | Nhiều ứng viên ngang điểm. Không tự chọn; trả về các ứng viên và lý do để người dùng chọn |
+| `DUPLICATE` | Một bên có nhiều dòng giống hệt cùng trỏ một dòng bên kia |
+
+Mỗi kết quả lưu **điểm và lý do** (trường nào khớp, lệch bao nhiêu). Gemini dùng lý do này để giải thích bằng lời vì sao thiếu, lệch hay thừa, nhưng không được tự đổi kết quả.
+
+Đối soát luôn làm **hai bộ một lần** (A ↔ B). Ba bên của miền bán hàng chạy thành chuỗi: đơn hàng ↔ thanh toán, rồi thanh toán ↔ sao kê.
+
+### 5.3 Kiểm chứng tự động
+
+Sau mỗi lần chạy, một module **độc lập** (không gọi lại engine) kiểm:
+
+- mỗi dòng của A và B nằm trong đúng một kết quả;
+- tổng tiền từng bên được bảo toàn;
+- số dòng theo từng loại cộng lại đúng tổng;
+- mọi `row_ref` trỏ tới dòng có thật.
+
+Kiểm chứng thất bại thì kết quả bị đánh dấu không dùng được cho báo cáo.
+
+## 6. AI Assistant
+
+Gemini có **gọi công cụ** (function calling): model không tự chạy hàm, mà trả về tên hàm và tham số để backend chạy ([Gemini function calling][gemini-fc]). Công cụ là chính các hàm mà giao diện dùng.
+
+| Nhóm | Ví dụ | Quy tắc |
+| --- | --- | --- |
+| Đọc | `list_datasets`, `get_profile`, `get_mapping`, `list_issues`, `get_results`, `get_kpis` | Tự chạy |
+| Xử lý | `suggest_mapping`, `prepare_dataset`, `run_reconciliation`, `build_report` | Tự chạy, báo lại đã làm gì |
+| Thay đổi | `confirm_mapping`, `fix_cell`, `exclude_row`, `resolve_ambiguous` | Hiện **thẻ xác nhận** trong khung chat, người dùng bấm mới chạy |
+
+**Bảo vệ** theo OWASP Top 10 cho ứng dụng LLM ([OWASP LLM 2025][owasp]):
+
+- *Prompt injection* (chèn lệnh vào dữ liệu, LLM01): nội dung trong tệp chỉ là dữ liệu, được tách riêng khỏi câu lệnh của người dùng.
+- *Excessive agency* (AI có quá nhiều quyền, LLM06): ít công cụ, tham số kiểm bằng schema, thao tác thay đổi phải xác nhận.
+- Gemini chỉ nhận câu chat, tên cột, thống kê và vài giá trị mẫu; không nhận toàn bộ dữ liệu.
+- Mỗi lần gọi có timeout, giới hạn token. Chỉ gọi khi người dùng thao tác, không gọi lúc khởi động ([R11](../RULES.md)).
+
+**Theo dõi bằng Langfuse:** mỗi câu chat là một *trace* (dấu vết), bên trong có các *span* (từng bước): lần gọi Gemini, từng công cụ, thời gian, token, lỗi. Langfuse SDK Python dựng trên OpenTelemetry; lời gọi `google-genai` được ghi tự động bằng `GoogleGenAIInstrumentor` của OpenInference ([Langfuse SDK][langfuse-sdk], [Langfuse + Gemini][langfuse-gemini]). Dùng bộ Langfuse **đã có trên máy**, nên dữ liệu trace không rời máy.
+
+## 7. Mô hình dữ liệu (PostgreSQL)
+
+| Bảng | Nội dung |
+| --- | --- |
+| `datasets`, `dataset_versions` | Tệp gốc, các phiên bản (đã đọc, đã sạch), đường dẫn Parquet, checksum |
+| `jobs` | Trạng thái các tác vụ nền (đọc, chuẩn hóa, đối soát…) |
+| `column_mappings`, `mapping_memory` | Ánh xạ của từng phiên bản kèm điểm, nguồn gợi ý, trạng thái xác nhận; ánh xạ đã nhớ theo cấu trúc tệp |
+| `data_issues`, `cleaning_log` | Issue theo dòng/ô; nhật ký các sửa đổi |
+| `recon_runs`, `match_results` | Cấu hình, trạng thái, kết quả kiểm chứng; từng kết quả kèm loại, điểm, lý do, các dòng |
+| `chat_threads`, `chat_messages` | Hội thoại và các lần gọi công cụ |
+
+Demo chỉ có **một người dùng**, không làm đăng nhập. Chỉ mở cổng trên `127.0.0.1`.
+
+## 8. Báo cáo
+
+- **KPI:** tỷ lệ khớp theo số dòng và theo giá trị tiền, tổng lệch, số ca cần xử lý, top ngoại lệ.
+- **Biểu đồ:** theo loại kết quả, theo ngày, theo nguồn (vẽ ở frontend, theo skill dataviz).
+- **Xuất:** CSV và XLSX. PDF để sau nếu cần.
+- **Nhận xét AI:** Gemini viết tóm tắt từ KPI do engine tính; mọi con số trong lời nhận xét lấy nguyên từ engine.
+
+## 9. Ngoài phạm vi demo
+
+Đọc Docs/PDF, nhiều người dùng và phân quyền, xuất PDF, đối soát N:N, các miền kế toán/công nợ/bảng lương. Engine được viết chung để có thể thêm sau.
+
+## 10. Nguồn tham khảo
+
+| Chủ đề | Nguồn |
+| --- | --- |
+| Quy trình ghép bản ghi | P. Christen, *Data Matching*, Springer 2012 ([link][christen]) |
+| Mô hình xác suất ghép bản ghi | Fellegi & Sunter 1969; triển khai mã nguồn mở Splink ([link][splink]). Chỉ tham khảo; demo dùng điểm có quy tắc rõ ràng |
+| Phân công tối ưu | Crouse 2016, IEEE TAES; `scipy.optimize.linear_sum_assignment` ([link][scipy-lsa]) |
+| Quy tắc đối soát ngân hàng | Oracle Fusion Cash Management: matching rules, tolerance ([link][oracle-rules], [link][oracle-tolerance]) |
+| Ánh xạ cột bằng LLM | Magneto, PVLDB 18 (2025) ([link][magneto]); Parciak và cộng sự, TaDA@VLDB 2024 ([link][parciak]) |
+| LLM cho làm sạch dữ liệu | Narayan và cộng sự, PVLDB 16 ([link][narayan]); Raha & Baran, CIDR 2021 ([link][raha-baran]) |
+| Tách mã từ nội dung chuyển khoản | Tài liệu SePay ([link][sepay]), Casso ([link][casso]) |
+| Thiết kế agent | Anthropic, *Building effective agents* ([link][anthropic-agents]) |
+| Bảo mật LLM | OWASP Top 10 for LLM Applications 2025 ([link][owasp]) |
+| Công nghệ | Polars ([link][polars-excel]), RapidFuzz ([link][rapidfuzz]), Gemini ([link][gemini-model], [link][gemini-fc], [link][gemini-structured]), Langfuse ([link][langfuse-sdk], [link][langfuse-gemini]) |
+
+[christen]: https://users.cecs.anu.edu.au/~Peter.Christen/data-matching-book-2012.html
+[splink]: https://moj-analytical-services.github.io/splink/
+[scipy-lsa]: https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.linear_sum_assignment.html
+[oracle-rules]: https://docs.oracle.com/en/cloud/saas/financials/24d/faipp/reconciliation-matching-rules.html
+[oracle-tolerance]: https://docs.oracle.com/en/cloud/saas/financials/25d/fairp/overview-of-tolerance-rules.html
+[magneto]: https://arxiv.org/abs/2412.08194
+[parciak]: https://arxiv.org/abs/2407.11852
+[narayan]: https://www.vldb.org/pvldb/vol16/p738-narayan.pdf
+[raha-baran]: https://www.vldb.org/cidrdb/papers/2021/cidr2021_paper14.pdf
+[sepay]: https://developer.sepay.vn/en/sepay-webhooks/doi-soat-giao-dich
+[casso]: https://developer.casso.vn/v1/thuc-hanh/tich-hop-xac-nhan-thanh-toan
+[anthropic-agents]: https://www.anthropic.com/engineering/building-effective-agents
+[owasp]: https://genai.owasp.org/llm-top-10/
+[polars-excel]: https://docs.pola.rs/api/python/stable/reference/api/polars.read_excel.html
+[rapidfuzz]: https://rapidfuzz.github.io/RapidFuzz/Usage/fuzz.html
+[gemini-model]: https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite
+[gemini-fc]: https://ai.google.dev/gemini-api/docs/function-calling
+[gemini-structured]: https://ai.google.dev/gemini-api/docs/structured-output
+[langfuse-sdk]: https://langfuse.com/docs/observability/sdk/python/setup
+[langfuse-gemini]: https://langfuse.com/integrations/model-providers/google-gemini
