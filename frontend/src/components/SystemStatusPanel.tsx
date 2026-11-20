@@ -5,7 +5,15 @@ import { fetchSystemStatus, type SystemStatus } from "../api";
 // Bảng trạng thái hệ thống: cơ sở dữ liệu, cấu hình Gemini, phiên bản đang chạy.
 // Chỉ đọc cấu hình từ backend, không gọi Gemini (RULES R11).
 
-type Load = { kind: "loading" } | { kind: "error" } | { kind: "ready"; status: SystemStatus };
+/** Viết hoa đầu mỗi phần tên model để dễ đọc: "gemini-3.5-flash-lite" → "Gemini-3.5-Flash-Lite". */
+function formatModelName(model: string): string {
+  return model
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("-");
+}
+
+type Load ={ kind: "loading" } | { kind: "error" } | { kind: "ready"; status: SystemStatus };
 
 export function SystemStatusPanel() {
   const [load, setLoad] = useState<Load>({ kind: "loading" });
@@ -41,7 +49,7 @@ export function SystemStatusPanel() {
             <dt>{load.status.gemini.name}</dt>
             <dd data-state={load.status.gemini.state === "CONFIGURED" ? "good" : "bad"}>
               {load.status.gemini.state === "CONFIGURED"
-                ? `Đã cấu hình · ${load.status.gemini.model}`
+                ? formatModelName(load.status.gemini.model)
                 : "Chưa có khóa GEMINI_API_KEY trong .env"}
             </dd>
           </div>

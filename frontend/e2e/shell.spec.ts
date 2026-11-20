@@ -9,6 +9,10 @@ test("Tổng quan hiển thị bước tiếp theo, quy trình và trạng thái
   await expect(page.getByRole("listitem").filter({ hasText: "Đọc tệp" })).toContainText("Đang chờ tệp");
   await expect(page.getByRole("img", { name: "Chưa kiểm chứng" })).toBeVisible();
   await expect(page.getByText("Hoạt động")).toBeVisible();
+  // Gemini chỉ hiện tên model viết hoa từng phần (hoặc báo thiếu khóa), không kèm chữ "Đã cấu hình".
+  const status = page.getByRole("region", { name: "Trạng thái hệ thống" });
+  await expect(status).toContainText(/Gemini-3\.5-Flash-Lite|Chưa có khóa GEMINI_API_KEY/);
+  await expect(status).not.toContainText("Đã cấu hình");
 });
 
 test("Điều hướng tới từng trang và giữ đúng trang khi tải lại", async ({ page }) => {

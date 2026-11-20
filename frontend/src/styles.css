@@ -1,23 +1,23 @@
 /* Hệ thống hình ảnh "Tiền polymer": màu lấy từ các mệnh giá tiền Việt Nam.
    Mỗi màu có một việc riêng; không dùng màu xám tùy tiện ngoài các sắc độ dưới đây. */
 :root {
-  --ground: #f2f5f4;          /* nền polymer trắng lạnh */
+  --ground: #f3f6fa;          /* nền polymer trắng ngả xanh dương */
   --surface: #ffffff;
-  --ink: #13252a;             /* mực chính */
-  --ink-soft: #35504f;        /* chữ phụ, suy từ mực */
-  --teal: #0f4c55;            /* tờ 500.000đ: khung điều hướng, hành động chính */
-  --teal-deep: #0a3a41;
-  --teal-tint: #dbe8e6;
-  --on-teal: #e6f0ee;
-  --on-teal-soft: #a9c6c2;
+  --ink: #14233a;             /* mực chính */
+  --ink-soft: #3a4d66;        /* chữ phụ, suy từ mực */
+  --primary: #1f5fae;         /* xanh dương tờ 20.000đ: khung điều hướng, hành động chính */
+  --primary-deep: #174a8a;
+  --primary-tint: #dde8f6;
+  --on-primary: #eaf1fb;
+  --on-primary-soft: #d6e4f5;
   --attention: #b54a26;       /* tờ 200.000đ: chỗ cần chú ý */
   --attention-tint: #f6e4dc;
   --matched: #3a7236;         /* tờ 100.000đ: đã khớp, đạt */
   --matched-tint: #e1ecdd;
   --active: #7a3e7d;          /* tờ 50.000đ: dành riêng cho bước đang xử lý */
   --active-tint: #efe2ee;
-  --line: #c6d4d1;
-  --line-soft: #dfe8e6;
+  --line: #c8d4e3;
+  --line-soft: #e0e7f1;
 
   --radius: 12px;
   --radius-small: 8px;
@@ -31,8 +31,8 @@
   line-height: 1.55;
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
-  accent-color: var(--teal);
-  caret-color: var(--teal);
+  accent-color: var(--primary);
+  caret-color: var(--primary);
   scrollbar-color: var(--line) transparent;
 }
 
@@ -40,9 +40,9 @@
 body { margin: 0; min-height: 100dvh; }
 h1, h2, h3, p, ol, ul, dl, dd { margin: 0; }
 ol, ul { padding: 0; list-style: none; }
-::selection { background: var(--teal); color: var(--on-teal); }
+::selection { background: var(--primary); color: var(--on-primary); }
 :focus-visible { outline: 3px solid var(--active); outline-offset: 2px; border-radius: 4px; }
-a { color: var(--teal); text-underline-offset: 3px; }
+a { color: var(--primary); text-underline-offset: 3px; }
 
 /* ---------- Khung ứng dụng ---------- */
 .shell { display: grid; grid-template-columns: var(--rail-width) 1fr; min-height: 100dvh; }
@@ -51,24 +51,24 @@ a { color: var(--teal); text-underline-offset: 3px; }
   position: sticky; top: 0; height: 100dvh;
   display: flex; flex-direction: column; gap: 28px;
   padding: 24px 16px;
-  background: var(--teal); color: var(--on-teal);
+  background: var(--primary); color: var(--on-primary);
 }
 .rail__brand {
   display: flex; align-items: center; gap: 12px;
   padding: 4px 8px; color: inherit; text-decoration: none;
   font-weight: 700; font-size: 16px; line-height: 1.25;
 }
-.rail__brand img { border-radius: 7px; box-shadow: 0 0 0 1px var(--teal-deep); }
+.rail__brand img { border-radius: 7px; box-shadow: 0 0 0 1px var(--primary-deep); }
 .rail__list { display: flex; flex-direction: column; gap: 4px; }
 .rail__link {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 12px; border-radius: var(--radius-small);
-  color: var(--on-teal-soft); text-decoration: none; font-weight: 500;
+  color: var(--on-primary-soft); text-decoration: none; font-weight: 500;
   transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out);
 }
-.rail__link:hover { background: var(--teal-deep); color: var(--on-teal); }
-.rail__link[aria-current="page"] { background: var(--on-teal); color: var(--teal); font-weight: 600; }
-.rail__link:focus-visible { outline-color: var(--on-teal); }
+.rail__link:hover { background: var(--primary-deep); color: var(--on-primary); }
+.rail__link[aria-current="page"] { background: var(--on-primary); color: var(--primary); font-weight: 600; }
+.rail__link:focus-visible { outline-color: var(--on-primary); }
 
 .page { padding: 40px clamp(20px, 4vw, 56px) 64px; max-width: 1280px; width: 100%; }
 .page__header { display: grid; gap: 6px; margin-bottom: 28px; }
@@ -85,8 +85,8 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
   border: 1px solid transparent; font: inherit; font-weight: 600; cursor: pointer;
   transition: background-color 160ms var(--ease-out), transform 160ms var(--ease-out);
 }
-.button--primary { background: var(--teal); color: var(--on-teal); }
-.button--primary:hover { background: var(--teal-deep); }
+.button--primary { background: var(--primary); color: var(--on-primary); }
+.button--primary:hover { background: var(--primary-deep); }
 .button--primary:active { transform: translateY(1px); }
 .button:disabled { cursor: not-allowed; opacity: 0.55; }
 
@@ -96,7 +96,7 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .next-step {
   display: flex; align-items: center; justify-content: space-between; gap: 24px;
   padding: 24px 28px; border-radius: var(--radius);
-  background: var(--teal-tint);
+  background: var(--primary-tint);
 }
 .next-step h2 { font-size: 22px; letter-spacing: -0.01em; }
 .next-step p { color: var(--ink-soft); margin-top: 4px; max-width: 62ch; }
@@ -133,7 +133,7 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .verification__checks li { display: flex; gap: 10px; align-items: baseline; color: var(--ink-soft); }
 .verification__checks li::before {
   content: ""; flex: 0 0 8px; height: 8px; border-radius: 50%;
-  border: 1.5px solid var(--teal); transform: translateY(-1px);
+  border: 1.5px solid var(--primary); transform: translateY(-1px);
 }
 .verification__checks li[data-state="passed"]::before { background: var(--matched); border-color: var(--matched); }
 .verification__checks li[data-state="failed"]::before { background: var(--attention); border-color: var(--attention); }
@@ -142,12 +142,12 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .seal { display: block; max-width: 100%; height: auto; }
 .seal__ring path { fill: none; stroke-width: 0.7; vector-effect: non-scaling-stroke; }
 /* Chưa kiểm chứng: hoa văn vẫn rõ nét guilloche nhưng nhạt, chưa "in" đậm. */
-.seal__ring--pending path { stroke: var(--teal); opacity: 0.5; }
-.seal__ring--passed path { stroke: var(--teal); stroke-dasharray: 100; animation: seal-draw 1100ms var(--ease-out) both; }
+.seal__ring--pending path { stroke: var(--primary); opacity: 0.5; }
+.seal__ring--passed path { stroke: var(--primary); stroke-dasharray: 100; animation: seal-draw 1100ms var(--ease-out) both; }
 /* Phép kiểm hỏng: vòng bị đứt một đoạn và đổi sang màu cảnh báo. */
 .seal__ring--failed path { stroke: var(--attention); stroke-dasharray: 78 22; }
-.seal__core { fill: var(--teal-tint); stroke: var(--teal); stroke-width: 0.8; }
-.seal--passed .seal__core { fill: var(--teal); }
+.seal__core { fill: var(--primary-tint); stroke: var(--primary); stroke-width: 0.8; }
+.seal--passed .seal__core { fill: var(--primary); }
 .seal--failed .seal__core { fill: var(--attention); stroke: var(--attention); }
 .seal__mark { color: #fff; }
 @keyframes seal-draw { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
@@ -169,13 +169,13 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
   padding: 28px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line-soft);
   max-width: 760px;
 }
-.planned__body svg { color: var(--teal); flex-shrink: 0; margin-top: 2px; }
+.planned__body svg { color: var(--primary); flex-shrink: 0; margin-top: 2px; }
 .planned__body p { color: var(--ink-soft); margin: 6px 0 10px; }
 .planned__body ul { display: grid; gap: 8px; }
 .planned__body li { padding-left: 18px; position: relative; }
 .planned__body li::before {
   content: ""; position: absolute; left: 0; top: 0.65em; width: 7px; height: 7px;
-  border-radius: 50%; background: var(--teal);
+  border-radius: 50%; background: var(--primary);
 }
 
 /* ---------- Điện thoại: thanh điều hướng xuống đáy ---------- */
@@ -189,7 +189,7 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
   .rail {
     position: fixed; inset: auto 0 0 0; height: auto; z-index: 10;
     padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
-    box-shadow: 0 -6px 18px rgb(15 76 85 / 0.18);
+    box-shadow: 0 -6px 18px rgb(31 95 174 / 0.2);
   }
   .rail__brand { display: none; }
   .rail__list { flex-direction: row; justify-content: space-around; gap: 0; }

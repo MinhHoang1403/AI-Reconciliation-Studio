@@ -2,23 +2,23 @@
 name: AI Reconciliation Studio
 description: Đối soát dữ liệu bán hàng có AI hỗ trợ, in kết quả với kỷ luật của một tờ tiền polymer
 colors:
-  polymer-ground: "#f2f5f4"
+  polymer-ground: "#f3f6fa"
   surface: "#ffffff"
-  ink: "#13252a"
-  ink-soft: "#35504f"
-  teal-500k: "#0f4c55"
-  teal-deep: "#0a3a41"
-  teal-tint: "#dbe8e6"
-  on-teal: "#e6f0ee"
-  on-teal-soft: "#a9c6c2"
+  ink: "#14233a"
+  ink-soft: "#3a4d66"
+  blue-20k: "#1f5fae"
+  blue-deep: "#174a8a"
+  blue-tint: "#dde8f6"
+  on-blue: "#eaf1fb"
+  on-blue-soft: "#d6e4f5"
   attention-200k: "#b54a26"
   attention-tint: "#f6e4dc"
   matched-100k: "#3a7236"
   matched-tint: "#e1ecdd"
   active-50k: "#7a3e7d"
   active-tint: "#efe2ee"
-  line: "#c6d4d1"
-  line-soft: "#dfe8e6"
+  line: "#c8d4e3"
+  line-soft: "#e0e7f1"
 typography:
   display:
     fontFamily: "Be Vietnam Pro, system-ui, sans-serif"
@@ -59,27 +59,27 @@ spacing:
   page: "40px"
 components:
   button-primary:
-    backgroundColor: "{colors.teal-500k}"
-    textColor: "{colors.on-teal}"
+    backgroundColor: "{colors.blue-20k}"
+    textColor: "{colors.on-blue}"
     rounded: "{rounded.small}"
     padding: "0 20px"
     height: "44px"
   button-primary-hover:
-    backgroundColor: "{colors.teal-deep}"
+    backgroundColor: "{colors.blue-deep}"
   nav-rail:
-    backgroundColor: "{colors.teal-500k}"
-    textColor: "{colors.on-teal-soft}"
+    backgroundColor: "{colors.blue-20k}"
+    textColor: "{colors.on-blue-soft}"
     width: "248px"
   nav-link-current:
-    backgroundColor: "{colors.on-teal}"
-    textColor: "{colors.teal-500k}"
+    backgroundColor: "{colors.on-blue}"
+    textColor: "{colors.blue-20k}"
     rounded: "{rounded.small}"
   panel:
     backgroundColor: "{colors.surface}"
     rounded: "{rounded.card}"
     padding: "24px"
   next-step-band:
-    backgroundColor: "{colors.teal-tint}"
+    backgroundColor: "{colors.blue-tint}"
     rounded: "{rounded.card}"
     padding: "24px 28px"
   step-current-chip:
@@ -99,7 +99,7 @@ Kết quả đối soát là chuyện tiền bạc, nên giao diện mượn k�
 Đây là màn hình công cụ: điều hướng, nút, bảng đều là loại người dùng đã quen. Thế giới tờ tiền chỉ góp bốn thứ: kiểu chữ, bảng màu, độ dày thông tin và con dấu kiểm chứng.
 
 **Key Characteristics:**
-- Khung điều hướng xanh lục lam đậm của tờ 500.000đ trên nền polymer trắng lạnh.
+- Khung điều hướng xanh dương sáng của tờ 20.000đ trên nền polymer trắng ngả xanh.
 - Mỗi màu mệnh giá có một nghĩa duy nhất: chú ý, đã khớp, bước đang xử lý.
 - Chữ số dạng bảng (tabular) ở mọi nơi.
 - Con dấu guilloche là dấu hiệu riêng, vẽ bằng hình học thật, không phải ảnh.
@@ -109,7 +109,7 @@ Kết quả đối soát là chuyện tiền bạc, nên giao diện mượn k�
 Bảng màu tiết chế theo mệnh giá: một màu khung đậm, ba màu trạng thái, mọi sắc độ phụ suy ra từ chúng.
 
 ### Primary
-- **Xanh tờ 500.000đ** (teal-500k): thanh điều hướng, nút chính, nét hoa văn con dấu. Bản đậm hơn (teal-deep) cho trạng thái hover.
+- **Xanh dương tờ 20.000đ** (blue-20k): thanh điều hướng, nút chính, nét hoa văn con dấu. Bản đậm hơn (blue-deep) cho trạng thái hover.
 
 ### Secondary
 - **Cam đỏ tờ 200.000đ** (attention-200k): chỉ cho chỗ cần người dùng chú ý: lệch tiền, lỗi, kiểm chứng hỏng.
@@ -119,7 +119,7 @@ Bảng màu tiết chế theo mệnh giá: một màu khung đậm, ba màu tr�
 - **Tím hồng tờ 50.000đ** (active-50k): dành riêng cho bước đang xử lý trong quy trình.
 
 ### Neutral
-- **Nền polymer** (polymer-ground): nền trang, trắng hơi lạnh, không ngả kem.
+- **Nền polymer** (polymer-ground): nền trang, trắng ngả xanh dương nhạt, không ngả kem.
 - **Mực** (ink) và **mực nhạt** (ink-soft): chữ chính và chữ phụ.
 - **Đường kẻ** (line, line-soft): viền panel và đường chia hàng.
 
@@ -153,7 +153,7 @@ Thanh điều hướng cố định 248px bên trái; nội dung tối đa 1280p
 Phẳng theo tầng màu: panel trắng nằm trên nền polymer, ngăn bằng đường kẻ 1px. Chỉ thanh tab đáy trên điện thoại có bóng nhẹ hướng lên để tách khỏi nội dung cuộn.
 
 ### Shadow Vocabulary
-- **Thanh tab đáy** (`box-shadow: 0 -6px 18px rgb(15 76 85 / 0.18)`): chỉ trên điện thoại.
+- **Thanh tab đáy** (`box-shadow: 0 -6px 18px rgb(31 95 174 / 0.2)`): chỉ trên điện thoại.
 
 ## Shapes
 
@@ -163,11 +163,11 @@ Góc bo vừa phải: 12px cho panel và dải bước tiếp theo, 8px cho nút
 
 ### Buttons
 - **Shape:** bo 8px, cao tối thiểu 44px.
-- **Primary:** nền xanh tờ 500.000đ, chữ on-teal, đậm 600.
+- **Primary:** nền xanh dương tờ 20.000đ, chữ on-blue, đậm 600.
 - **Hover / Focus:** nền đậm hơn; vòng focus 3px màu tím hồng tờ 50.000đ.
 
 ### Navigation
-- **Máy tính:** thanh dọc xanh tờ 500.000đ, mục thường chữ on-teal-soft, mục đang mở là ô sáng on-teal chữ xanh.
+- **Máy tính:** thanh dọc xanh dương tờ 20.000đ, mục thường chữ on-blue-soft, mục đang mở là ô sáng on-blue chữ xanh.
 - **Điện thoại:** thanh tab cố định ở đáy, biểu tượng trên nhãn.
 
 ### Cards / Containers

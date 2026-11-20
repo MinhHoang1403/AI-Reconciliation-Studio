@@ -4,14 +4,14 @@
   "title": "Design System: AI Reconciliation Studio",
   "extensions": {
     "colorMeta": {
-      "teal-500k": { "role": "primary", "displayName": "Xanh tờ 500.000đ" },
+      "blue-20k": { "role": "primary", "displayName": "Xanh dương tờ 20.000đ" },
       "attention-200k": { "role": "secondary", "displayName": "Cam đỏ tờ 200.000đ" },
       "matched-100k": { "role": "secondary", "displayName": "Xanh lá tờ 100.000đ" },
       "active-50k": { "role": "tertiary", "displayName": "Tím hồng tờ 50.000đ" },
       "polymer-ground": { "role": "neutral", "displayName": "Nền polymer" }
     },
     "shadows": [
-      { "name": "mobile-tab-bar", "value": "0 -6px 18px rgb(15 76 85 / 0.18)", "purpose": "Tách thanh tab đáy khỏi nội dung cuộn trên điện thoại." }
+      { "name": "mobile-tab-bar", "value": "0 -6px 18px rgb(31 95 174 / 0.2)", "purpose": "Tách thanh tab đáy khỏi nội dung cuộn trên điện thoại." }
     ],
     "motion": [
       { "name": "ease-out", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Chuyển trạng thái nút, mục điều hướng; vẽ con dấu khi kiểm chứng đạt (1100ms)." }
@@ -28,7 +28,7 @@
       "refersTo": "button-primary",
       "description": "Hành động chính của một khối.",
       "html": "<button class=\"ds-btn-primary\">Đến trang Dữ liệu</button>",
-      "css": ".ds-btn-primary{display:inline-flex;align-items:center;min-height:44px;padding:0 20px;border-radius:8px;border:0;background:#0f4c55;color:#e6f0ee;font:600 16px 'Be Vietnam Pro',sans-serif;cursor:pointer;transition:background-color 160ms cubic-bezier(.16,1,.3,1)}.ds-btn-primary:hover{background:#0a3a41}.ds-btn-primary:focus-visible{outline:3px solid #7a3e7d;outline-offset:2px}"
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;min-height:44px;padding:0 20px;border-radius:8px;border:0;background:#1f5fae;color:#eaf1fb;font:600 16px 'Be Vietnam Pro',sans-serif;cursor:pointer;transition:background-color 160ms cubic-bezier(.16,1,.3,1)}.ds-btn-primary:hover{background:#174a8a}.ds-btn-primary:focus-visible{outline:3px solid #7a3e7d;outline-offset:2px}"
     },
     {
       "name": "Mục điều hướng",
@@ -36,7 +36,7 @@
       "refersTo": "nav-link-current",
       "description": "Mục trên thanh điều hướng xanh, mục đang mở sáng lên.",
       "html": "<nav class=\"ds-rail\"><a class=\"ds-link ds-on\">Tổng quan</a><a class=\"ds-link\">Dữ liệu</a></nav>",
-      "css": ".ds-rail{display:flex;flex-direction:column;gap:4px;padding:16px;background:#0f4c55;width:248px}.ds-link{padding:10px 12px;border-radius:8px;color:#a9c6c2;font:500 16px 'Be Vietnam Pro',sans-serif}.ds-link:hover{background:#0a3a41;color:#e6f0ee}.ds-on{background:#e6f0ee;color:#0f4c55;font-weight:600}"
+      "css": ".ds-rail{display:flex;flex-direction:column;gap:4px;padding:16px;background:#1f5fae;width:248px}.ds-link{padding:10px 12px;border-radius:8px;color:#d6e4f5;font:500 16px 'Be Vietnam Pro',sans-serif}.ds-link:hover{background:#174a8a;color:#eaf1fb}.ds-on{background:#eaf1fb;color:#1f5fae;font-weight:600}"
     },
     {
       "name": "Chip bước đang xử lý",
@@ -52,13 +52,13 @@
       "refersTo": "panel",
       "description": "Khối nội dung trên nền polymer.",
       "html": "<section class=\"ds-panel\"><h2>Quy trình xử lý</h2><p>Đọc CSV, Excel và giữ nguyên bản gốc.</p></section>",
-      "css": ".ds-panel{background:#fff;border:1px solid #dfe8e6;border-radius:12px;padding:24px;color:#13252a;font:16px/1.55 'Be Vietnam Pro',sans-serif}.ds-panel p{color:#35504f}"
+      "css": ".ds-panel{background:#fff;border:1px solid #e0e7f1;border-radius:12px;padding:24px;color:#14233a;font:16px/1.55 'Be Vietnam Pro',sans-serif}.ds-panel p{color:#3a4d66}"
     }
   ],
   "narrative": {
     "northStar": "Tờ tiền polymer",
     "keyCharacteristics": [
-      "Khung điều hướng xanh lục lam đậm của tờ 500.000đ trên nền polymer trắng lạnh.",
+      "Khung điều hướng xanh dương sáng của tờ 20.000đ trên nền polymer trắng ngả xanh.",
       "Mỗi màu mệnh giá có một nghĩa duy nhất: chú ý, đã khớp, bước đang xử lý.",
       "Chữ số dạng bảng (tabular) ở mọi nơi.",
       "Con dấu guilloche là dấu hiệu riêng, vẽ bằng hình học thật, không phải ảnh."
