@@ -1,16 +1,29 @@
 """Điểm vào FastAPI: khai báo ứng dụng và các API kiểm tra trạng thái."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Literal
 
 from fastapi import FastAPI, Response, status
 from pydantic import BaseModel
 
-from studio import database
+from studio import database, ingestion
 from studio.config import settings
+from studio.datasets_api import router as datasets_router
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # Việc đọc tệp dở dang từ lần chạy trước không thể tiếp tục; đánh dấu để người dùng đọc lại.
+    ingestion.recover_interrupted()
+    yield
+
 
 app = FastAPI(
-    title="AI Reconciliation Studio", docs_url="/api/docs", openapi_url="/api/openapi.json"
+    title="AI Reconciliation Studio", docs_url="/api/docs", openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
+app.include_router(datasets_router)
 
 # Trạng thái cấu hình của một provider. Chỉ kiểm cấu hình cục bộ, không gọi ra ngoài
 # (RULES R11: không tự gọi API trả phí khi kiểm tra sức khỏe hệ thống).

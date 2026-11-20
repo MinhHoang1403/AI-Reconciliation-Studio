@@ -9,16 +9,26 @@ dependencies = [
   "pydantic-settings",
   "sqlalchemy",
   "psycopg[binary]",
+  "polars>=2.1.0",
+  "fastexcel>=0.21.0",
+  "python-multipart>=0.0.34",
+  "alembic>=1.20.1",
 ]
 
 [dependency-groups]
-dev = ["pytest", "ruff", "mypy", "httpx"]
+dev = [
+    "pytest",
+    "ruff",
+    "mypy",
+    "httpx",
+    "xlsxwriter>=3.3.3",
+]
 
 [tool.uv]
 package = false
 
 [tool.pytest.ini_options]
-pythonpath = ["backend"]
+pythonpath = ["backend", "tests", "tools"]
 testpaths = ["tests"]
 
 [tool.ruff]
@@ -36,3 +46,8 @@ python_version = "3.12"
 mypy_path = "backend"
 strict = true
 plugins = ["pydantic.mypy"]
+
+# xlsxwriter (chỉ dùng để sinh tệp Excel mẫu và trong test) không kèm khai báo kiểu.
+[[tool.mypy.overrides]]
+module = ["xlsxwriter"]
+ignore_missing_imports = true
