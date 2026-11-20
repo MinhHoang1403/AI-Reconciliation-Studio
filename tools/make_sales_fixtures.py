@@ -484,15 +484,36 @@ def csv_bytes(
     return ("﻿" if bom else "").encode() + text.getvalue().encode("utf-8")
 
 
+# Lỗi cài sẵn ở cuối tệp đơn hàng cửa hàng; đáp án cho bước làm sạch nằm ở loi-cai-san.csv.
+# Toàn bộ là đơn trả tiền mặt nên không ảnh hưởng đáp án đối soát (dap-an.csv).
+POS_INJECTED_ERRORS = [
+    ["", "06/10/2026 10:15", "Nguyễn Văn Khoa", "0912000111", "450000", "Tiền mặt"],  # thiếu mã
+    ["HD000901", "07/10/2026 11:00", "Lê Thị Mai", "0913000222", "1tr2", "Tiền mặt"],  # viết tắt
+    ["HD000902", "07/10/2026 11:30", "Phạm Văn Tú", "0914000333", "khoảng 500k", "Tiền mặt"],
+    ["HD000903", "5/10/2026 9:05", "Võ Thị Lan", "84915000444", "320000", "Tiền mặt"],  # đầu 84
+    ["HD000904", "08/10/2026 15:20", "  Trần   Thị  Bình ", "0916000555", "275000", "Tiền mặt"],
+    [
+        "HD000101",
+        "01/10/2026 09:00",
+        "Nguyễn Văn An",
+        "0917000666",
+        "999000",
+        "Tiền mặt",
+    ],  # trùng mã
+    ["HD000905", "ngày 9 tháng 10", "Đỗ Văn Hùng", "0918000777", "150000", "Tiền mặt"],  # ngày lạ
+]
+
+
 def pos_csv(rows: list[list[str]]) -> bytes:
     """CSV phần mềm bán hàng: có BOM, một dòng trùng y hệt và một dòng trống cài sẵn.
 
     Dòng cài thêm được chèn ở cuối để không làm lệch số dòng của các đơn đã ghi trong đáp án.
     """
     extra = [
-        ["", "", "", "", "", ""],
-        rows[10],
-    ]  # dòng trống đứng trước để không bị coi là đuôi tệp
+        ["", "", "", "", "", ""],  # dòng 222: trống (đứng trước để không bị coi là đuôi tệp)
+        rows[10],  # dòng 223: trùng y hệt dòng 12
+        *POS_INJECTED_ERRORS,  # dòng 224–230: lỗi cài sẵn cho bước làm sạch (xem loi-cai-san.csv)
+    ]
     return csv_bytes(
         ["MaHD", "NgayBan", "KhachHang", "DienThoai", "TongTien", "ThanhToan"],
         rows + extra,

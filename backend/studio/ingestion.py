@@ -134,4 +134,6 @@ def recover_interrupted() -> None:
                         .values(status="FAILED", error_message=INTERRUPTED_MESSAGE))
         session.execute(update(DatasetTable).where(DatasetTable.mapping_status == "MAPPING")
                         .values(mapping_status="NONE"))
+        session.execute(update(DatasetTable).where(DatasetTable.clean_status == "BUILDING")
+                        .values(clean_status="FAILED"))
         session.commit()

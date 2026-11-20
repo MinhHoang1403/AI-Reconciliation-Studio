@@ -47,7 +47,7 @@ def all_row_refs(table_id: str) -> list[int]:
 def test_every_fixture_reads_and_row_refs_cover_the_answer_key() -> None:
     expected_tables: dict[str, dict[str | None, int | None]] = {
         "don-hang-san-tmdt.xlsx": {"Đơn hàng": 180, "Hướng dẫn": 0},
-        "don-hang-cua-hang.csv": {None: 222},  # 220 đơn + 1 dòng trống + 1 dòng trùng
+        "don-hang-cua-hang.csv": {None: 229},  # 220 đơn + dòng trống + dòng trùng + 7 lỗi cài sẵn
         "giao-dich-cong-thanh-toan.csv": {None: None},
         "sao-ke-ngan-hang.xlsx": {"TK chinh": None, "TK san": None},
     }

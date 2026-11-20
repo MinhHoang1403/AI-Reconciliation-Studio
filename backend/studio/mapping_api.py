@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from studio import mapping_service
+from studio.cleaning_ai import refresh_clean_data
 from studio.database import get_session
 from studio.datasets_api import fail
 from studio.models import DatasetTable
@@ -109,7 +110,11 @@ def get_mapping(table_id: uuid.UUID, session: SessionDep) -> TableMappingView:
 
 @router.put("/tables/{table_id}/mapping/columns/{position}")
 def choose_field(
-    table_id: uuid.UUID, position: int, choice: FieldChoice, session: SessionDep
+    table_id: uuid.UUID,
+    position: int,
+    choice: FieldChoice,
+    session: SessionDep,
+    background: BackgroundTasks,
 ) -> TableMappingView:
     """Người dùng chọn cột chuẩn cho một cột. Cột chuẩn đang gán cho cột khác thì cột kia
     được bỏ gán và chuyển sang "chờ xem" để người dùng không bỏ sót."""
@@ -130,7 +135,10 @@ def choose_field(
     target.status, target.source, target.confidence = "CONFIRMED", "USER", 1.0
     target.reason = "Bạn đã chọn."
     mapping_service.remember(session, table)
+    # Ánh xạ đổi thì bộ dữ liệu sạch phải dựng lại theo ánh xạ mới.
+    table.clean_status = "BUILDING"
     session.commit()
+    background.add_task(refresh_clean_data, table.id)
     return view(table)
 
 

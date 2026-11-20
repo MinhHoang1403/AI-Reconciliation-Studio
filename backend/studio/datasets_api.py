@@ -31,6 +31,7 @@ def fail(status_code: int, code: str, message: str) -> HTTPException:
 
 # ---------------------------------------------------------------- kiểu dữ liệu trả về
 
+
 class TableSummary(BaseModel):
     id: uuid.UUID
     sheet_name: str | None
@@ -45,6 +46,9 @@ class TableSummary(BaseModel):
     mapping_status: str
     table_kind: str | None
     mapping_pending: int
+    # Làm sạch: trạng thái và số vấn đề còn mở (gợi ý + cần hỏi).
+    clean_status: str
+    clean_open: int
 
 
 class DatasetSummary(BaseModel):
@@ -81,20 +85,43 @@ class HeaderChoice(BaseModel):
     header_row: int | None = Field(default=None, ge=1)
 
 
+def _table_files(table: DatasetTable) -> list[str | None]:
+    """Mọi tệp thuộc một bảng: bảng đã đọc và các phiên bản bộ dữ liệu sạch."""
+    return [table.parquet_path, *(version.parquet_path for version in table.clean_versions)]
+
+
+def _open_clean_issues(table: DatasetTable) -> int:
+    version = table.clean_versions[-1] if table.clean_versions else None
+    return sum(issue["status"] == "OPEN" for issue in version.issues) if version else 0
+
+
 def summarize(dataset: Dataset) -> DatasetSummary:
     return DatasetSummary(
-        id=dataset.id, name=dataset.name, original_filename=dataset.original_filename,
-        file_format=dataset.file_format, size_bytes=dataset.size_bytes, sha256=dataset.sha256,
-        status=dataset.status, error_message=dataset.error_message, created_at=dataset.created_at,
+        id=dataset.id,
+        name=dataset.name,
+        original_filename=dataset.original_filename,
+        file_format=dataset.file_format,
+        size_bytes=dataset.size_bytes,
+        sha256=dataset.sha256,
+        status=dataset.status,
+        error_message=dataset.error_message,
+        created_at=dataset.created_at,
         tables=[
             TableSummary(
-                id=table.id, sheet_name=table.sheet_name, position=table.position,
-                status=table.status, header_row=table.header_row,
+                id=table.id,
+                sheet_name=table.sheet_name,
+                position=table.position,
+                status=table.status,
+                header_row=table.header_row,
                 header_row_chosen_by_user=table.header_row_chosen_by_user,
-                row_count=table.row_count, column_count=len(table.column_names),
+                row_count=table.row_count,
+                column_count=len(table.column_names),
                 error_message=table.error_message,
-                mapping_status=table.mapping_status, table_kind=table.table_kind,
+                mapping_status=table.mapping_status,
+                table_kind=table.table_kind,
                 mapping_pending=sum(mapping.status == "SUGGESTED" for mapping in table.mappings),
+                clean_status=table.clean_status,
+                clean_open=_open_clean_issues(table),
             )
             for table in dataset.tables
         ],
@@ -120,6 +147,7 @@ def _ready_table_or_error(session: Session, table_id: uuid.UUID) -> tuple[Datase
 
 # ---------------------------------------------------------------- tải tệp lên
 
+
 @router.post("/datasets", status_code=202)
 def upload_dataset(
     file: UploadFile, session: SessionDep, response: Response, background: BackgroundTasks
@@ -127,8 +155,11 @@ def upload_dataset(
     filename = Path(file.filename or "tep-tai-len").name
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if extension not in FORMATS:
-        raise fail(415, "UNSUPPORTED_FORMAT",
-                   "Chỉ nhận tệp CSV hoặc Excel (.xlsx). Tệp .xls cũ hãy lưu lại thành .xlsx.")
+        raise fail(
+            415,
+            "UNSUPPORTED_FORMAT",
+            "Chỉ nhận tệp CSV hoặc Excel (.xlsx). Tệp .xls cũ hãy lưu lại thành .xlsx.",
+        )
     try:
         upload = storage.receive_upload(file.file)
     except storage.UploadTooLarge as error:
@@ -153,9 +184,14 @@ def upload_dataset(
 
     raw_path = storage.keep_raw_file(upload, extension)
     dataset = Dataset(
-        id=uuid.uuid4(), name=filename.rsplit(".", 1)[0], original_filename=filename,
-        file_format=FORMATS[extension], size_bytes=upload.size_bytes, sha256=upload.sha256,
-        storage_path=str(raw_path), status="READING",
+        id=uuid.uuid4(),
+        name=filename.rsplit(".", 1)[0],
+        original_filename=filename,
+        file_format=FORMATS[extension],
+        size_bytes=upload.size_bytes,
+        sha256=upload.sha256,
+        storage_path=str(raw_path),
+        status="READING",
     )
     session.add(dataset)
     session.commit()
@@ -165,6 +201,7 @@ def upload_dataset(
 
 
 # ---------------------------------------------------------------- xem
+
 
 @router.get("/datasets")
 def list_datasets(session: SessionDep) -> list[DatasetSummary]:
@@ -179,7 +216,8 @@ def get_dataset(dataset_id: uuid.UUID, session: SessionDep) -> DatasetSummary:
 
 @router.get("/tables/{table_id}/rows")
 def table_rows(
-    table_id: uuid.UUID, session: SessionDep,
+    table_id: uuid.UUID,
+    session: SessionDep,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
 ) -> RowsPage:
@@ -187,10 +225,13 @@ def table_rows(
     page = pl.scan_parquet(parquet_path).slice(offset, limit).collect()
     columns = list(table.column_names)
     return RowsPage(
-        table_id=table.id, columns=columns,
+        table_id=table.id,
+        columns=columns,
         row_refs=page[reading.ROW_REF].to_list(),
         rows=[list(row) for row in page.select(columns).iter_rows()],
-        offset=offset, limit=limit, total=table.row_count,
+        offset=offset,
+        limit=limit,
+        total=table.row_count,
     )
 
 
@@ -201,6 +242,7 @@ def table_profile(table_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------- đọc lại, xóa
+
 
 @router.put("/tables/{table_id}/header-row", status_code=202)
 def choose_header_row(
@@ -226,7 +268,8 @@ def reread_dataset(
     if dataset.status == "READING":
         raise fail(409, "DATASET_BUSY", "Bộ dữ liệu đang được đọc.")
     for table in list(dataset.tables):
-        storage.delete_file(table.parquet_path)
+        for path in _table_files(table):
+            storage.delete_file(path)
         dataset.tables.remove(table)
     dataset.status = "READING"
     dataset.error_message = None
@@ -237,9 +280,12 @@ def reread_dataset(
 
 @router.delete("/datasets/{dataset_id}", status_code=204)
 def delete_dataset(dataset_id: uuid.UUID, session: SessionDep) -> Response:
-    """Xóa hẳn bộ dữ liệu: tệp gốc, các bảng đã đọc và bản ghi trong DB."""
+    """Xóa hẳn bộ dữ liệu: tệp gốc, các bảng đã đọc, các bộ sạch và bản ghi trong DB."""
     dataset = _dataset_or_404(session, dataset_id)
-    paths = [dataset.storage_path, *(table.parquet_path for table in dataset.tables)]
+    paths = [
+        dataset.storage_path,
+        *(path for table in dataset.tables for path in _table_files(table)),
+    ]
     session.delete(dataset)
     session.commit()
     for path in paths:

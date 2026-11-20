@@ -16,6 +16,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -82,8 +83,15 @@ class DatasetTable(Base):
     # NOT_CONFIGURED (thiếu khóa), FAILED (Gemini lỗi) — kèm thông điệp.
     mapping_ai_state: Mapped[str | None] = mapped_column(String(16), nullable=True)
     mapping_ai_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Làm sạch: NONE (chưa), BUILDING (đang dựng bộ sạch), READY, FAILED.
+    clean_status: Mapped[str] = mapped_column(String(16), default="NONE")
+    # Lựa chọn của người dùng khi làm sạch, ví dụ {"date_orders": {"order_date": "MDY"}}.
+    clean_options: Mapped[dict[str, Any]] = mapped_column(default=dict)
 
     dataset: Mapped[Dataset] = relationship(back_populates="tables")
+    clean_versions: Mapped[list["CleanVersion"]] = relationship(
+        back_populates="table", cascade="all, delete-orphan", order_by="CleanVersion.version"
+    )
     mappings: Mapped[list["ColumnMapping"]] = relationship(
         back_populates="table", cascade="all, delete-orphan", order_by="ColumnMapping.position"
     )
@@ -125,6 +133,80 @@ class MappingMemory(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class CleanVersion(Base):
+    """Một phiên bản bộ dữ liệu sạch của bảng. Dựng lại từ đầu mỗi khi ánh xạ hoặc sửa đổi
+    thay đổi; tệp Parquet của mỗi phiên bản không bao giờ bị ghi đè."""
+
+    __tablename__ = "clean_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    table_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("dataset_tables.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    parquet_path: Mapped[str] = mapped_column(Text)
+    row_count: Mapped[int] = mapped_column(Integer)
+    excluded_count: Mapped[int] = mapped_column(Integer)
+    # Tóm tắt: các loại sửa tự động, số đơn hủy, thứ tự ngày của từng cột ngày.
+    summary: Mapped[dict[str, Any]] = mapped_column()
+    # Danh sách vấn đề (mỗi vấn đề gắn với dòng/ô cụ thể, mức SUGGEST hoặc ASK).
+    issues: Mapped[list[Any]] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    table: Mapped[DatasetTable] = relationship(back_populates="clean_versions")
+
+
+class CellCorrection(Base):
+    """Giá trị người dùng nhập (hoặc đồng ý theo gợi ý AI) cho một ô; tệp gốc không bị sửa."""
+
+    __tablename__ = "cell_corrections"
+    __table_args__ = (UniqueConstraint("table_id", "row_ref", "field_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    table_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("dataset_tables.id", ondelete="CASCADE"), index=True
+    )
+    row_ref: Mapped[int] = mapped_column(Integer)
+    field_key: Mapped[str] = mapped_column(String(64))
+    value: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(16))  # USER hoặc AI (người dùng đồng ý gợi ý AI)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RowDecision(Base):
+    """Quyết định của người dùng cho một dòng: loại khỏi bộ sạch (EXCLUDE) hay giữ (KEEP)."""
+
+    __tablename__ = "row_decisions"
+    __table_args__ = (UniqueConstraint("table_id", "row_ref"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    table_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("dataset_tables.id", ondelete="CASCADE"), index=True
+    )
+    row_ref: Mapped[int] = mapped_column(Integer)
+    decision: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AiCellSuggestion(Base):
+    """Giá trị Gemini đề xuất cho một ô không đọc được; chỉ áp dụng khi người dùng đồng ý."""
+
+    __tablename__ = "ai_cell_suggestions"
+    __table_args__ = (UniqueConstraint("table_id", "row_ref", "field_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    table_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("dataset_tables.id", ondelete="CASCADE"), index=True
+    )
+    row_ref: Mapped[int] = mapped_column(Integer)
+    field_key: Mapped[str] = mapped_column(String(64))
+    raw_value: Mapped[str] = mapped_column(Text)
+    suggested_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    reason: Mapped[str] = mapped_column(Text)
 
 
 class AiCall(Base):

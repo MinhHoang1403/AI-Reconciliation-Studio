@@ -8,6 +8,7 @@ from fastapi import FastAPI, Response, status
 from pydantic import BaseModel
 
 from studio import database, ingestion
+from studio.cleaning_api import router as cleaning_router
 from studio.config import settings
 from studio.datasets_api import router as datasets_router
 from studio.mapping_api import router as mapping_router
@@ -27,6 +28,7 @@ app = FastAPI(
 )
 app.include_router(datasets_router)
 app.include_router(mapping_router)
+app.include_router(cleaning_router)
 
 # Trạng thái cấu hình của một provider. Chỉ kiểm cấu hình cục bộ, không gọi ra ngoài
 # (RULES R11: không tự gọi API trả phí khi kiểm tra sức khỏe hệ thống).

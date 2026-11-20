@@ -1,0 +1,11 @@
+file,sheet,rows,field,level,kind,expected
+don-hang-cua-hang.csv,,222,,AUTO,EMPTY_ROW,
+don-hang-cua-hang.csv,,12;223,,SUGGEST,DUPLICATE_ROW,
+don-hang-cua-hang.csv,,224,order_id,ASK,MISSING_VALUE,
+don-hang-cua-hang.csv,,225,amount,AUTO,SHORTHAND_AMOUNT,1200000
+don-hang-cua-hang.csv,,226,amount,ASK,INVALID_VALUE,500000
+don-hang-cua-hang.csv,,227,customer_phone,AUTO,PHONE_PREFIX,0915000444
+don-hang-cua-hang.csv,,227,order_date,AUTO,DATE_FORMAT,2026-10-05
+don-hang-cua-hang.csv,,228,customer_name,AUTO,WHITESPACE,Trần Thị Bình
+don-hang-cua-hang.csv,,2;229,amount,ASK,CONFLICTING_VALUES,
+don-hang-cua-hang.csv,,230,order_date,ASK,INVALID_VALUE,2026-10-09

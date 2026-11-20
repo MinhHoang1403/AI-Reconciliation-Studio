@@ -21,6 +21,7 @@ from scipy.optimize import linear_sum_assignment
 from sqlalchemy.orm import Session
 
 from studio import database
+from studio.cleaning_ai import refresh_clean_data
 from studio.gemini_client import AiUnavailable, generate_json
 from studio.mapping_rules import normalize_name, score_columns, top_candidates
 from studio.masking import mask_sample
@@ -263,7 +264,12 @@ def _save(session: Session, table: DatasetTable, decisions: list[dict[str, Any]]
 
 
 def suggest_for_table(table_id: uuid.UUID, use_memory: bool = True) -> None:
-    """Gợi ý ánh xạ cho một bảng đã đọc xong. Chạy trong tác vụ nền."""
+    """Gợi ý ánh xạ cho một bảng đã đọc xong, rồi dựng bộ dữ liệu sạch. Chạy trong tác vụ nền."""
+    _suggest_mapping(table_id, use_memory)
+    refresh_clean_data(table_id)
+
+
+def _suggest_mapping(table_id: uuid.UUID, use_memory: bool) -> None:
     with database.SessionFactory() as session:
         table = session.get(DatasetTable, table_id)
         if table is None or table.status != "READY" or not table.profile:
