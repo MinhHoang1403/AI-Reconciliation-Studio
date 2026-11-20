@@ -1,0 +1,9 @@
+# Bí mật và cấu hình cá nhân
+.env
+.env.*
+.claude/settings.local.json
+
+# Hệ điều hành
+.DS_Store
+Thumbs.db
+Desktop.ini
