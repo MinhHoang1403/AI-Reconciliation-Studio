@@ -45,7 +45,8 @@ body { margin: 0; min-height: 100dvh; }
 h1, h2, h3, p, ol, ul, dl, dd { margin: 0; }
 ol, ul { padding: 0; list-style: none; }
 ::selection { background: var(--primary); color: var(--on-primary); }
-:focus-visible { outline: 3px solid var(--active); outline-offset: 2px; border-radius: 4px; }
+/* Vòng focus mảnh, chỉ hiện khi dùng bàn phím. */
+:focus-visible { outline: 2px solid rgb(42 111 201 / 0.55); outline-offset: 2px; }
 a { color: var(--primary); text-underline-offset: 3px; }
 
 /* ---------- Khung ứng dụng ---------- */
@@ -63,45 +64,58 @@ a { color: var(--primary); text-underline-offset: 3px; }
   border-right: 1px solid var(--rail-line);
   overflow: hidden;
 }
-/* Đầu thanh bên: logo + tên ở trái, nút thu gọn nhỏ ở góc phải. */
-.rail__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; }
+/* Hình học thanh bên: lề trong 14px, biểu tượng cách mép mục 14px.
+   Nhờ vậy tâm mọi biểu tượng luôn nằm ở x = 38px, đúng giữa thanh khi thu gọn (76px),
+   và biểu tượng không phải dịch chỗ khi thanh co giãn. */
+
+/* Đầu thanh bên: logo + tên ở trái; nút thu gọn đặt tuyệt đối ở góc phải,
+   bám theo mép phải của thanh nên trượt cùng thanh khi co giãn. */
+.rail__head { position: relative; min-height: 40px; }
 .rail__brand {
-  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
-  padding: 4px 4px 4px 6px; color: inherit; text-decoration: none;
+  display: flex; align-items: center; gap: 10px; width: max-content;
+  padding: 4px 6px; color: inherit; text-decoration: none;
   font-weight: 700; font-size: 15px; line-height: 1.25;
 }
 .rail__brand img { border-radius: 7px; flex-shrink: 0; }
+/* Tên có độ rộng cố định nên không xuống dòng lại khi thanh đang co giãn. */
+.rail__brand .rail__label { width: 140px; }
+
 .rail__list { display: flex; flex-direction: column; gap: 4px; }
 .rail__link {
   display: flex; align-items: center; gap: 12px;
-  padding: 10px 12px; border-radius: var(--radius-small);
+  padding: 10px 14px; border-radius: var(--radius-small); overflow: hidden;
   color: var(--rail-ink); text-decoration: none; font-weight: 500; white-space: nowrap;
   transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out);
 }
 .rail__link svg { flex-shrink: 0; }
 .rail__link:hover { background: var(--primary-tint-strong); color: var(--ink); }
-.rail__link[aria-current="page"] {
-  background: var(--surface); color: var(--primary-ink); font-weight: 600;
-  box-shadow: 0 1px 3px rgb(42 111 201 / 0.14);
-}
+.rail__link[aria-current="page"] { background: var(--surface); color: var(--primary-ink); font-weight: 600; }
 
-/* Nút thu gọn / mở rộng: ô vuông nhỏ 32px, chỉ có biểu tượng. */
+/* Nút thu gọn / mở rộng: ô 36px chỉ có biểu tượng, không viền. */
 .rail__toggle {
-  display: grid; place-items: center; flex-shrink: 0;
-  width: 32px; height: 32px; margin-top: 4px; padding: 0;
+  position: absolute; top: 2px; right: 0;
+  display: grid; place-items: center;
+  width: 36px; height: 36px; padding: 0;
   border: 0; border-radius: var(--radius-small);
   background: transparent; color: var(--rail-ink); cursor: pointer;
-  transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out);
+  transition: right 220ms var(--ease-out), background-color 160ms var(--ease-out), color 160ms var(--ease-out);
 }
 .rail__toggle:hover { background: var(--primary-tint-strong); color: var(--ink); }
 
-/* Khi thu gọn chỉ còn biểu tượng; chữ ẩn đi nhưng tên vẫn có trong aria-label.
-   Logo và nút xếp chồng theo chiều dọc vì thanh chỉ còn đủ chỗ cho một biểu tượng. */
-.shell[data-rail="collapsed"] .rail__label { display: none; }
-.shell[data-rail="collapsed"] .rail__head { flex-direction: column; align-items: center; gap: 8px; }
-.shell[data-rail="collapsed"] .rail__brand { flex: none; padding: 4px 0; }
-.shell[data-rail="collapsed"] .rail__toggle { margin-top: 0; }
-.shell[data-rail="collapsed"] .rail__link { justify-content: center; padding-left: 0; padding-right: 0; }
+/* Chữ và logo mờ dần thay vì biến mất đột ngột. Khi mở rộng, chữ hiện sau một nhịp
+   ngắn để thanh kịp rộng ra trước. */
+.rail__label, .rail__brand {
+  transition: opacity 180ms var(--ease-out) 70ms, visibility 0s linear 0s;
+}
+
+/* Khi thu gọn: ẩn logo và chữ (tên vẫn có trong aria-label), nút về đúng chỗ logo. */
+.shell[data-rail="collapsed"] .rail__label,
+.shell[data-rail="collapsed"] .rail__brand {
+  opacity: 0; visibility: hidden;
+  transition: opacity 120ms var(--ease-out), visibility 0s linear 120ms;
+}
+/* 5px = (độ rộng nội dung 47px − nút 36px) / 2, trừ 1px viền phải của thanh. */
+.shell[data-rail="collapsed"] .rail__toggle { right: 5px; }
 
 .page { padding: 40px clamp(20px, 4vw, 56px) 64px; max-width: 1280px; width: 100%; }
 .page__header { display: grid; gap: 6px; margin-bottom: 28px; }
@@ -227,7 +241,7 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
     box-shadow: 0 -6px 18px rgb(42 111 201 / 0.14);
   }
   .rail__head { display: none; }
-  .shell[data-rail="collapsed"] .rail__label { display: inline; }
+  .shell[data-rail="collapsed"] .rail__label { opacity: 1; visibility: visible; }
   .rail__list { flex-direction: row; justify-content: space-around; gap: 0; }
   .rail__list li { flex: 1; }
   .rail__link,

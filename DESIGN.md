@@ -168,10 +168,10 @@ Góc bo vừa phải: 12px cho panel và dải bước tiếp theo, 8px cho nút
 ### Buttons
 - **Shape:** bo 8px, cao tối thiểu 44px.
 - **Primary:** nền xanh dương tờ 20.000đ, chữ on-blue, đậm 600.
-- **Hover / Focus:** nền đậm hơn; vòng focus 3px màu tím hồng tờ 50.000đ.
+- **Hover / Focus:** nền đậm hơn; vòng focus mảnh 2px xanh dương mờ, chỉ hiện khi dùng bàn phím.
 
 ### Navigation
-- **Máy tính:** thanh dọc xanh dương nhạt, viền phải rail-line; mục thường chữ rail-ink, mục đang mở là ô trắng chữ blue-ink có bóng rất nhẹ. Nút thu gọn là ô vuông 32px chỉ có biểu tượng, đặt ở góc trên bên phải cạnh tên; khi thu gọn, logo và nút xếp dọc, chỉ còn biểu tượng, tên mục vẫn có trong aria-label và tooltip.
+- **Máy tính:** thanh dọc xanh dương nhạt, viền phải rail-line; mục thường chữ rail-ink, mục đang mở là ô trắng chữ blue-ink có bóng rất nhẹ. Nút thu gọn là ô 36px chỉ có biểu tượng, không viền, ở góc trên bên phải cạnh tên. Khi thu gọn, logo và chữ mờ đi (180ms), nút trượt về đúng chỗ logo; tâm mọi biểu tượng thẳng cột ở 38px. Tên studio có độ rộng cố định để không xếp lại chữ khi thanh co giãn. Mục đang mở là ô trắng, không bóng, không viền.
 - **Điện thoại:** thanh tab cố định ở đáy, biểu tượng trên nhãn.
 
 ### Cards / Containers
