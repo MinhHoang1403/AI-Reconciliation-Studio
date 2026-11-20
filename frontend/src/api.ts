@@ -21,6 +21,36 @@ export type TableSummary = {
   row_count: number;
   column_count: number;
   error_message: string | null;
+  mapping_status: "NONE" | "MAPPING" | "READY";
+  table_kind: string | null;
+  mapping_pending: number;
+};
+
+export type MappingStatus = "AUTO" | "SUGGESTED" | "CONFIRMED";
+export type MappingSource = "RULE" | "AI" | "RULE_AI" | "MEMORY" | "USER";
+
+export type ColumnMapping = {
+  position: number;
+  column_name: string;
+  field_key: string | null;
+  field_label: string | null;
+  confidence: number;
+  status: MappingStatus;
+  source: MappingSource;
+  reason: string | null;
+  candidates: { field: string; label: string; score: number }[];
+};
+
+export type TableMapping = {
+  table_id: string;
+  status: "NONE" | "MAPPING" | "READY";
+  table_kind: string | null;
+  table_kind_label: string | null;
+  ai_state: "AI" | "MEMORY" | "NOT_CONFIGURED" | "FAILED" | null;
+  ai_message: string | null;
+  pending_count: number;
+  columns: ColumnMapping[];
+  fields: { key: string; label: string; type: string }[];
 };
 
 export type DatasetSummary = {
@@ -115,7 +145,15 @@ export const getProfile = (tableId: string, signal?: AbortSignal) =>
   getJson<TableProfile>(`/api/tables/${tableId}/profile`, signal);
 export const deleteDataset = (id: string) => sendJson<undefined>(`/api/datasets/${id}`, "DELETE");
 export const rereadDataset = (id: string) => sendJson<DatasetSummary>(`/api/datasets/${id}/read`, "POST");
-export const chooseHeaderRow = (tableId: string, headerRow: number | null) =>
+export const getMapping = (tableId: string, signal?: AbortSignal) =>
+  getJson<TableMapping>(`/api/tables/${tableId}/mapping`, signal);
+export const chooseMappingField = (tableId: string, position: number, fieldKey: string | null) =>
+  sendJson<TableMapping>(`/api/tables/${tableId}/mapping/columns/${position}`, "PUT", { field_key: fieldKey });
+export const confirmMapping = (tableId: string) =>
+  sendJson<TableMapping>(`/api/tables/${tableId}/mapping/confirm`, "POST");
+export const suggestMappingAgain = (tableId: string) =>
+  sendJson<TableMapping>(`/api/tables/${tableId}/mapping/suggest`, "POST");
+export const chooseHeaderRow =(tableId: string, headerRow: number | null) =>
   sendJson<TableSummary>(`/api/tables/${tableId}/header-row`, "PUT", { header_row: headerRow });
 
 /**

@@ -11,7 +11,9 @@ Trả lời và báo cáo cho Owner bằng tiếng Việt.
 
 ## Trạng thái (20/11/2026)
 
-Giai đoạn 0 (khung) và 1 (đọc dữ liệu) đã xong. Việc tiếp theo: Giai đoạn 2 — ánh xạ cột chuẩn có gợi ý Gemini, nối Langfuse (`docs/PLAN.md`).
+Giai đoạn 0 (khung), 1 (đọc dữ liệu), 2 (ánh xạ cột có Gemini, Langfuse) đã xong. Việc tiếp theo: Giai đoạn 3 — chuẩn hóa và xử lý lỗi (`docs/PLAN.md`).
+
+Đo độ chính xác ánh xạ: `uv run --locked python tools/evaluate_mapping.py` (chỉ quy tắc, miễn phí); thêm `--with-ai` để gọi Gemini thật (tốn phí, cần nạp khóa từ `.env` vào biến môi trường). Langfuse tự host ở <http://127.0.0.1:3000> (bộ container `langfuse` riêng); khóa trong `.env`.
 
 Bộ dữ liệu mẫu có đáp án ở `tests/fixtures/sales/`, sinh lại bằng `uv run --locked python tools/make_sales_fixtures.py` (kết quả luôn giống hệt).
 

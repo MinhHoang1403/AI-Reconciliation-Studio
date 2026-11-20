@@ -11,6 +11,10 @@ import { StatusBadge } from "./StatusBadge";
 
 type Props = { datasets: DatasetSummary[]; onChanged: () => void };
 
+/** Số cột đang chờ người dùng xem ở bước ánh xạ, cộng qua mọi bảng của bộ dữ liệu. */
+const pendingColumns = (dataset: DatasetSummary) =>
+  dataset.tables.reduce((sum, table) => sum + table.mapping_pending, 0);
+
 const totalRows = (dataset: DatasetSummary) =>
   dataset.tables.filter((table) => table.status === "READY").reduce((sum, table) => sum + table.row_count, 0);
 
@@ -73,7 +77,11 @@ export function DatasetList({ datasets, onChanged }: Props) {
                 </div>
               </div>
               <div className="datasets__side">
-                <StatusBadge status={dataset.status} />
+                {pendingColumns(dataset) > 0 ? (
+                  <span className="badge" data-status="REVIEW">Cần xem {pendingColumns(dataset)} cột</span>
+                ) : (
+                  <StatusBadge status={dataset.status} />
+                )}
                 <span className="datasets__rows">{formatCount(rows)} dòng</span>
               </div>
               <button

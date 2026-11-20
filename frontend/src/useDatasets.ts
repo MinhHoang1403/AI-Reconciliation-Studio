@@ -6,7 +6,8 @@ import { getDataset, listDatasets, type DatasetSummary } from "./api";
 const POLL_MS = 1200;
 
 const isBusy = (dataset: DatasetSummary) =>
-  dataset.status === "READING" || dataset.tables.some((table) => table.status === "READING");
+  dataset.status === "READING" ||
+  dataset.tables.some((table) => table.status === "READING" || table.mapping_status === "MAPPING");
 
 export type Loaded<T> = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; data: T };
 

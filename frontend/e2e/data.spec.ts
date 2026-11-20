@@ -75,6 +75,13 @@ test("tải CSV giữ số 0 đầu mã, nhận ra tệp trùng, xóa có xác n
     await item.getByRole("link", { name: "don-hang-cua-hang" }).click();
     await expect(page.getByRole("cell", { name: "HD000101" })).toBeVisible();
 
+    // Ánh xạ cột: tự gợi ý sau khi đọc (quy tắc, và Gemini nếu container có khóa).
+    await page.getByRole("button", { name: /^Ánh xạ/ }).click();
+    // Gemini trả lời mất vài giây tới hơn chục giây (đo thật 1,7–19 giây), nên chờ tối đa 60 giây.
+    await expect(page.getByLabel("MaHD")).toHaveValue("order_id", { timeout: 60_000 });
+    await expect(page.getByLabel("ThanhToan")).toHaveValue("payment_method");
+    await expect(page.getByText(/Gợi ý bởi quy tắc và Gemini|Chỉ dùng quy tắc/)).toBeVisible();
+
     await page.getByRole("link", { name: "Dữ liệu" }).first().click();
     await page.getByRole("button", { name: "Xóa bộ dữ liệu don-hang-cua-hang" }).click();
     const dialog = page.getByRole("dialog", { name: "Xóa bộ dữ liệu?" });

@@ -38,15 +38,24 @@ export function OverviewPage() {
     0,
   );
   const hasData = ready.length > 0;
-  // Bước 1 xong khi đã có bộ dữ liệu đọc được; bước 2 (ánh xạ) đang được xây dựng.
-  const stepState = (index: number): StepState =>
-    index === 0 ? (hasData ? "done" : "current") : index === 1 && hasData ? "current" : "later";
-  const stepLabel = (index: number): string => {
-    const current = stepState(index);
-    if (current === "done") return `Đã đọc ${ready.length} bộ`;
-    if (current === "current") return index === 0 ? "Đang chờ tệp" : "Đang xây dựng";
-    return "Chưa tới";
-  };
+  const readyTables = ready.flatMap((dataset) => dataset.tables.filter((table) => table.status === "READY"));
+  const pending = readyTables.reduce((sum, table) => sum + table.mapping_pending, 0);
+  const mappingBusy = readyTables.some((table) => table.mapping_status !== "READY");
+  const mapped = hasData && !mappingBusy && pending === 0;
+
+  // Trạng thái từng bước: 1 đọc tệp, 2 ánh xạ cột, 3 chuẩn hóa (đang xây dựng), sau đó chưa tới.
+  const steps: { state: StepState; label: string }[] = PIPELINE.map((_, index) => {
+    if (index === 0) return hasData ? { state: "done", label: `Đã đọc ${ready.length} bộ` } : { state: "current", label: "Đang chờ tệp" };
+    if (index === 1) {
+      if (!hasData) return { state: "later", label: "Chưa tới" };
+      if (mappingBusy) return { state: "current", label: "Đang gợi ý" };
+      return pending > 0 ? { state: "current", label: `Cần xem ${pending} cột` } : { state: "done", label: "Đã ánh xạ" };
+    }
+    if (index === 2 && mapped) return { state: "current", label: "Đang xây dựng" };
+    return { state: "later", label: "Chưa tới" };
+  });
+  const stepState = (index: number): StepState => steps[index]?.state ?? "later";
+  const stepLabel = (index: number): string => steps[index]?.label ?? "Chưa tới";
 
   return (
     <div className="overview">
@@ -57,12 +66,17 @@ export function OverviewPage() {
 
       <section className="next-step" aria-labelledby="next-step-title">
         <div>
-          {hasData ? (
+          {hasData && pending > 0 ? (
+            <>
+              <h2 id="next-step-title">Cần bạn xem {pending} cột ánh xạ</h2>
+              <p>Hệ thống đã tự ánh xạ phần lớn các cột; chỉ còn vài cột chưa chắc chắn, chọn sẵn gợi ý tốt nhất.</p>
+            </>
+          ) : hasData ? (
             <>
               <h2 id="next-step-title">Đã đọc {ready.length} bộ dữ liệu</h2>
               <p>
-                {formatCount(readyRows)} dòng sẵn sàng. Bước tiếp theo là ánh xạ cột, chức năng này đang được xây
-                dựng.
+                {formatCount(readyRows)} dòng sẵn sàng
+                {mapped ? ", cột đã được ánh xạ. Bước tiếp theo là chuẩn hóa dữ liệu, chức năng này đang được xây dựng." : ", đang gợi ý ánh xạ cột."}
               </p>
             </>
           ) : (

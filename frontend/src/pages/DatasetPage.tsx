@@ -3,6 +3,7 @@ import { ArrowLeft, RotateCw } from "lucide-react";
 
 import { chooseHeaderRow, rereadDataset, type DatasetSummary, type TableSummary } from "../api";
 import { ColumnProfileView } from "../components/ColumnProfileView";
+import { MappingView } from "../components/MappingView";
 import { StatusBadge } from "../components/StatusBadge";
 import { TablePreview } from "../components/TablePreview";
 import { formatBytes, formatCount, formatDateTime } from "../format";
@@ -12,7 +13,7 @@ import { useDataset } from "../useDatasets";
 // Trang chi tiết một bộ dữ liệu: các bảng (mỗi sheet một bảng), dòng tiêu đề,
 // xem trước dữ liệu và hồ sơ cột.
 
-type View = "rows" | "profile";
+type View = "rows" | "profile" | "mapping";
 
 export function DatasetPage({ datasetId }: { datasetId: string }) {
   const { state, refresh } = useDataset(datasetId);
@@ -153,10 +154,18 @@ function TableSection({ table, view, onView, onChanged }: TableProps) {
           <button type="button" aria-pressed={view === "profile"} onClick={() => onView("profile")}>
             Hồ sơ cột
           </button>
+          <button type="button" aria-pressed={view === "mapping"} onClick={() => onView("mapping")}>
+            Ánh xạ
+            {table.mapping_pending > 0 && <span className="segmented__count">{table.mapping_pending}</span>}
+          </button>
         </div>
-        <HeaderRowControl table={table} onChanged={onChanged} />
+        {view !== "mapping" && <HeaderRowControl table={table} onChanged={onChanged} />}
       </div>
-      {view === "rows" ? <TablePreview tableId={table.id} /> : <ColumnProfileView tableId={table.id} />}
+      {view === "rows" && <TablePreview tableId={table.id} />}
+      {view === "profile" && <ColumnProfileView tableId={table.id} />}
+      {view === "mapping" && (
+        <MappingView tableId={table.id} mappingStatus={table.mapping_status} onChanged={onChanged} />
+      )}
     </section>
   );
 }

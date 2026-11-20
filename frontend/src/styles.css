@@ -466,3 +466,58 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
   .profile__list { grid-template-columns: 1fr; }
   .preview__scroll { max-height: 60vh; }
 }
+
+/* ================= Ánh xạ cột (Giai đoạn 2) ================= */
+.segmented button { display: inline-flex; align-items: center; gap: 6px; }
+.segmented__count {
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  background: var(--active); color: #fff; font-size: 12px; font-weight: 700; line-height: 20px; text-align: center;
+}
+.badge[data-status="REVIEW"] { background: var(--active-tint); color: var(--active); }
+
+.mapping { display: grid; gap: 14px; }
+.mapping__summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.mapping__ai { font-size: 14px; color: var(--ink-soft); }
+.mapping__ai--warn { color: var(--attention); }
+.mapping__again { margin-left: auto; min-height: 36px; padding: 0 14px; }
+
+.mapping__review {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 16px 20px; border-radius: var(--radius); background: var(--active-tint);
+}
+.mapping__review h3 { color: var(--active); }
+.mapping__review p { color: var(--ink-soft); font-size: 15px; margin-top: 2px; }
+.mapping__review--calm { background: var(--primary-tint); }
+.mapping__review--calm h3 { color: var(--ink); }
+
+.mapping__list {
+  display: grid; background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--radius);
+}
+.mapping__row {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 260px) 190px; gap: 4px 16px;
+  align-items: center; padding: 12px 18px; border-top: 1px solid var(--line-soft);
+}
+.mapping__row:first-child { border-top: 0; }
+.mapping__row[data-status="SUGGESTED"] { background: color-mix(in srgb, var(--active-tint) 45%, var(--surface)); }
+.mapping__source { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.mapping__source label { font-weight: 600; overflow-wrap: anywhere; }
+.mapping__source svg { color: var(--ink-soft); flex-shrink: 0; }
+.mapping__row select {
+  min-height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-small);
+  background: var(--surface); color: var(--ink); font: inherit;
+}
+.mapping__row[data-status="SUGGESTED"] select { border-color: var(--active); }
+.mapping__meta { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.mapping__status { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--matched); }
+.mapping__status[data-status="SUGGESTED"] { color: var(--active); }
+.mapping__status[data-status="CONFIRMED"] { color: var(--primary-ink); }
+.mapping__by { color: var(--ink-soft); }
+.mapping__reason { grid-column: 2 / -1; font-size: 13px; color: var(--ink-soft); }
+
+@media (max-width: 760px) {
+  .mapping__row { grid-template-columns: 1fr; padding: 14px 16px; }
+  .mapping__source svg { transform: rotate(90deg); }
+  .mapping__reason { grid-column: 1; }
+  .mapping__again { margin-left: 0; }
+  .mapping__review .button { width: 100%; justify-content: center; }
+}
