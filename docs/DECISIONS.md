@@ -14,4 +14,8 @@ Mỗi dòng là một quyết định đã chốt. Đổi quyết định thì t
 | 2026-11-20 | Dùng lại bộ Langfuse tự host đã có trên máy (bản 4.70.1) để theo dõi Assistant | Trace không rời máy; không phải dựng thêm hạ tầng |
 | 2026-11-20 | Đối soát luôn hai bộ một lần; ba bên của miền bán hàng chạy thành chuỗi | Tái dùng một engine; đơn giản hơn đối soát ba bên cùng lúc |
 | 2026-11-20 | Demo không làm: xuất PDF, khớp N:N, Docs/PDF đầu vào, nhiều người dùng | Giữ phạm vi demo; engine viết chung để thêm sau |
+| 2026-11-20 | Giao diện theo thế giới hình ảnh "Tờ tiền polymer" (xem `DESIGN.md`); trang đầu là Tổng quan; chỉ tiếng Việt; máy tính và điện thoại đều phải dùng tốt | Owner chọn qua vòng chọn hướng của skill impeccable; trả lời phỏng vấn sản phẩm (`PRODUCT.md`) |
+| 2026-11-20 | Font Be Vietnam Pro tự host qua @fontsource; biểu tượng lucide-react | Đủ dấu tiếng Việt, không tải tài nguyên từ máy chủ ngoài |
+| 2026-11-20 | Điều hướng trang tự viết bằng History API, chưa dùng thư viện router | 5 trang cố định; thêm thư viện khi có nhu cầu thật (R5) |
+| 2026-11-20 | E2E Playwright chạy trên container chính, hai khung máy tính 1440×900 và điện thoại Pixel 7 | Một môi trường duy nhất (R8); kiểm cả hai thiết bị |
 | 2026-11-20 | Miền đầu tiên: bán hàng, bộ cột chuẩn có `fee`, `net_amount`, `debit`, `credit`, `description` | Có đủ ca 1:1, 1:N, lệch tiền, phí cổng, mã trong nội dung chuyển khoản |

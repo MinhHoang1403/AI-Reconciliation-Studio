@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-20T00:00:00Z",
+  "title": "Design System: AI Reconciliation Studio",
+  "extensions": {
+    "colorMeta": {
+      "teal-500k": { "role": "primary", "displayName": "Xanh tờ 500.000đ" },
+      "attention-200k": { "role": "secondary", "displayName": "Cam đỏ tờ 200.000đ" },
+      "matched-100k": { "role": "secondary", "displayName": "Xanh lá tờ 100.000đ" },
+      "active-50k": { "role": "tertiary", "displayName": "Tím hồng tờ 50.000đ" },
+      "polymer-ground": { "role": "neutral", "displayName": "Nền polymer" }
+    },
+    "shadows": [
+      { "name": "mobile-tab-bar", "value": "0 -6px 18px rgb(15 76 85 / 0.18)", "purpose": "Tách thanh tab đáy khỏi nội dung cuộn trên điện thoại." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Chuyển trạng thái nút, mục điều hướng; vẽ con dấu khi kiểm chứng đạt (1100ms)." }
+    ],
+    "breakpoints": [
+      { "name": "single-column", "value": "860px" },
+      { "name": "phone", "value": "760px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Nút chính",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Hành động chính của một khối.",
+      "html": "<button class=\"ds-btn-primary\">Đến trang Dữ liệu</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;min-height:44px;padding:0 20px;border-radius:8px;border:0;background:#0f4c55;color:#e6f0ee;font:600 16px 'Be Vietnam Pro',sans-serif;cursor:pointer;transition:background-color 160ms cubic-bezier(.16,1,.3,1)}.ds-btn-primary:hover{background:#0a3a41}.ds-btn-primary:focus-visible{outline:3px solid #7a3e7d;outline-offset:2px}"
+    },
+    {
+      "name": "Mục điều hướng",
+      "kind": "nav",
+      "refersTo": "nav-link-current",
+      "description": "Mục trên thanh điều hướng xanh, mục đang mở sáng lên.",
+      "html": "<nav class=\"ds-rail\"><a class=\"ds-link ds-on\">Tổng quan</a><a class=\"ds-link\">Dữ liệu</a></nav>",
+      "css": ".ds-rail{display:flex;flex-direction:column;gap:4px;padding:16px;background:#0f4c55;width:248px}.ds-link{padding:10px 12px;border-radius:8px;color:#a9c6c2;font:500 16px 'Be Vietnam Pro',sans-serif}.ds-link:hover{background:#0a3a41;color:#e6f0ee}.ds-on{background:#e6f0ee;color:#0f4c55;font-weight:600}"
+    },
+    {
+      "name": "Chip bước đang xử lý",
+      "kind": "chip",
+      "refersTo": "step-current-chip",
+      "description": "Đánh dấu bước đang chạy trong quy trình.",
+      "html": "<span class=\"ds-chip\">Đang chờ tệp</span>",
+      "css": ".ds-chip{display:inline-block;padding:3px 10px;border-radius:999px;background:#efe2ee;color:#7a3e7d;font:600 14px 'Be Vietnam Pro',sans-serif}"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Khối nội dung trên nền polymer.",
+      "html": "<section class=\"ds-panel\"><h2>Quy trình xử lý</h2><p>Đọc CSV, Excel và giữ nguyên bản gốc.</p></section>",
+      "css": ".ds-panel{background:#fff;border:1px solid #dfe8e6;border-radius:12px;padding:24px;color:#13252a;font:16px/1.55 'Be Vietnam Pro',sans-serif}.ds-panel p{color:#35504f}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Tờ tiền polymer",
+    "keyCharacteristics": [
+      "Khung điều hướng xanh lục lam đậm của tờ 500.000đ trên nền polymer trắng lạnh.",
+      "Mỗi màu mệnh giá có một nghĩa duy nhất: chú ý, đã khớp, bước đang xử lý.",
+      "Chữ số dạng bảng (tabular) ở mọi nơi.",
+      "Con dấu guilloche là dấu hiệu riêng, vẽ bằng hình học thật, không phải ảnh."
+    ],
+    "rules": [
+      { "name": "Quy tắc mệnh giá", "body": "Mỗi màu mệnh giá chỉ mang một nghĩa.", "section": "colors" },
+      { "name": "Quy tắc không xám tùy tiện", "body": "Không thêm màu xám mới; sắc độ phụ lấy từ mực và tint đã có.", "section": "colors" },
+      { "name": "Quy tắc một màu cho bước đang chạy", "body": "Tím hồng tờ 50.000đ chỉ ở bước đang xử lý.", "section": "colors" },
+      { "name": "Quy tắc chữ số thẳng cột", "body": "Mọi con số dùng tabular-nums.", "section": "typography" }
+    ]
+  }
+}

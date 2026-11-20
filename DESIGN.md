@@ -1,0 +1,190 @@
+---
+name: AI Reconciliation Studio
+description: Đối soát dữ liệu bán hàng có AI hỗ trợ, in kết quả với kỷ luật của một tờ tiền polymer
+colors:
+  polymer-ground: "#f2f5f4"
+  surface: "#ffffff"
+  ink: "#13252a"
+  ink-soft: "#35504f"
+  teal-500k: "#0f4c55"
+  teal-deep: "#0a3a41"
+  teal-tint: "#dbe8e6"
+  on-teal: "#e6f0ee"
+  on-teal-soft: "#a9c6c2"
+  attention-200k: "#b54a26"
+  attention-tint: "#f6e4dc"
+  matched-100k: "#3a7236"
+  matched-tint: "#e1ecdd"
+  active-50k: "#7a3e7d"
+  active-tint: "#efe2ee"
+  line: "#c6d4d1"
+  line-soft: "#dfe8e6"
+typography:
+  display:
+    fontFamily: "Be Vietnam Pro, system-ui, sans-serif"
+    fontSize: "clamp(28px, 3vw, 36px)"
+    fontWeight: 700
+    lineHeight: 1.15
+    letterSpacing: "-0.02em"
+  headline:
+    fontFamily: "Be Vietnam Pro, system-ui, sans-serif"
+    fontSize: "22px"
+    fontWeight: 600
+    lineHeight: 1.3
+    letterSpacing: "-0.01em"
+  title:
+    fontFamily: "Be Vietnam Pro, system-ui, sans-serif"
+    fontSize: "18px"
+    fontWeight: 600
+    lineHeight: 1.3
+  body:
+    fontFamily: "Be Vietnam Pro, system-ui, sans-serif"
+    fontSize: "16px"
+    fontWeight: 400
+    lineHeight: 1.55
+    fontFeature: "tnum"
+  label:
+    fontFamily: "Be Vietnam Pro, system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 500
+    lineHeight: 1.4
+rounded:
+  small: "8px"
+  card: "12px"
+  pill: "999px"
+spacing:
+  tight: "8px"
+  group: "16px"
+  section: "28px"
+  page: "40px"
+components:
+  button-primary:
+    backgroundColor: "{colors.teal-500k}"
+    textColor: "{colors.on-teal}"
+    rounded: "{rounded.small}"
+    padding: "0 20px"
+    height: "44px"
+  button-primary-hover:
+    backgroundColor: "{colors.teal-deep}"
+  nav-rail:
+    backgroundColor: "{colors.teal-500k}"
+    textColor: "{colors.on-teal-soft}"
+    width: "248px"
+  nav-link-current:
+    backgroundColor: "{colors.on-teal}"
+    textColor: "{colors.teal-500k}"
+    rounded: "{rounded.small}"
+  panel:
+    backgroundColor: "{colors.surface}"
+    rounded: "{rounded.card}"
+    padding: "24px"
+  next-step-band:
+    backgroundColor: "{colors.teal-tint}"
+    rounded: "{rounded.card}"
+    padding: "24px 28px"
+  step-current-chip:
+    backgroundColor: "{colors.active-tint}"
+    textColor: "{colors.active-50k}"
+    rounded: "{rounded.pill}"
+---
+
+# Design System: AI Reconciliation Studio
+
+## Overview
+
+**Creative North Star: "Tờ tiền polymer"**
+
+Kết quả đối soát là chuyện tiền bạc, nên giao diện mượn kỷ luật của thứ mọi người Việt đều tin là thật: tờ tiền polymer. Màu theo mệnh giá mang nghĩa cố định, chữ số in theo cột thẳng hàng, và nét guilloche (hoa văn sóng đan nhau chống làm giả) chỉ xuất hiện ở đúng một chỗ: nơi kết quả được kiểm chứng.
+
+Đây là màn hình công cụ: điều hướng, nút, bảng đều là loại người dùng đã quen. Thế giới tờ tiền chỉ góp bốn thứ: kiểu chữ, bảng màu, độ dày thông tin và con dấu kiểm chứng.
+
+**Key Characteristics:**
+- Khung điều hướng xanh lục lam đậm của tờ 500.000đ trên nền polymer trắng lạnh.
+- Mỗi màu mệnh giá có một nghĩa duy nhất: chú ý, đã khớp, bước đang xử lý.
+- Chữ số dạng bảng (tabular) ở mọi nơi.
+- Con dấu guilloche là dấu hiệu riêng, vẽ bằng hình học thật, không phải ảnh.
+
+## Colors
+
+Bảng màu tiết chế theo mệnh giá: một màu khung đậm, ba màu trạng thái, mọi sắc độ phụ suy ra từ chúng.
+
+### Primary
+- **Xanh tờ 500.000đ** (teal-500k): thanh điều hướng, nút chính, nét hoa văn con dấu. Bản đậm hơn (teal-deep) cho trạng thái hover.
+
+### Secondary
+- **Cam đỏ tờ 200.000đ** (attention-200k): chỉ cho chỗ cần người dùng chú ý: lệch tiền, lỗi, kiểm chứng hỏng.
+- **Xanh lá tờ 100.000đ** (matched-100k): đã khớp, phép kiểm đạt, dịch vụ hoạt động.
+
+### Tertiary
+- **Tím hồng tờ 50.000đ** (active-50k): dành riêng cho bước đang xử lý trong quy trình.
+
+### Neutral
+- **Nền polymer** (polymer-ground): nền trang, trắng hơi lạnh, không ngả kem.
+- **Mực** (ink) và **mực nhạt** (ink-soft): chữ chính và chữ phụ.
+- **Đường kẻ** (line, line-soft): viền panel và đường chia hàng.
+
+### Named Rules
+**Quy tắc mệnh giá.** Mỗi màu mệnh giá chỉ mang một nghĩa. Không dùng cam đỏ để trang trí, không dùng xanh lá cho thứ chưa được kiểm.
+**Quy tắc không xám tùy tiện.** Không thêm màu xám mới; chữ phụ, đường kẻ và nền nhạt đều lấy từ mực và các sắc độ tint đã có.
+**Quy tắc một màu cho bước đang chạy.** Tím hồng tờ 50.000đ chỉ xuất hiện ở bước đang xử lý, không ở đâu khác.
+
+## Typography
+
+**Body Font:** Be Vietnam Pro (dự phòng system-ui), tự host qua @fontsource, có đủ dấu tiếng Việt.
+
+**Character:** Một kiểu chữ không chân do người Việt thiết kế, rõ ở cỡ nhỏ, dấu thanh không bị chồng; số dạng bảng để cột tiền thẳng hàng.
+
+### Hierarchy
+- **Display** (700, clamp 28–36px, 1.15): tiêu đề trang.
+- **Headline** (600, 22px, 1.3): dải bước tiếp theo.
+- **Title** (600, 18px, 1.3): tiêu đề panel.
+- **Body** (400, 16px, 1.55): nội dung; độ dài dòng tối đa khoảng 65 ký tự cho đoạn mô tả.
+- **Label** (500, 14px): nhãn trạng thái, chú thích.
+
+### Named Rules
+**Quy tắc chữ số thẳng cột.** Mọi con số dùng `font-variant-numeric: tabular-nums`.
+
+## Layout
+
+Thanh điều hướng cố định 248px bên trái; nội dung tối đa 1280px, lề 40px (co giãn theo màn hình). Tổng quan chia hai cột: nội dung chính và cột 340px cho con dấu kiểm chứng; dưới 860px gộp thành một cột. Dưới 760px thanh điều hướng thành thanh tab cố định ở đáy, lề trang 16px. Khoảng cách: 8px trong nhóm, 16px giữa các phần tử, 28px giữa các khối.
+
+## Elevation & Depth
+
+Phẳng theo tầng màu: panel trắng nằm trên nền polymer, ngăn bằng đường kẻ 1px. Chỉ thanh tab đáy trên điện thoại có bóng nhẹ hướng lên để tách khỏi nội dung cuộn.
+
+### Shadow Vocabulary
+- **Thanh tab đáy** (`box-shadow: 0 -6px 18px rgb(15 76 85 / 0.18)`): chỉ trên điện thoại.
+
+## Shapes
+
+Góc bo vừa phải: 12px cho panel và dải bước tiếp theo, 8px cho nút và mục điều hướng, bo tròn hẳn cho chip trạng thái và số thứ tự bước.
+
+## Components
+
+### Buttons
+- **Shape:** bo 8px, cao tối thiểu 44px.
+- **Primary:** nền xanh tờ 500.000đ, chữ on-teal, đậm 600.
+- **Hover / Focus:** nền đậm hơn; vòng focus 3px màu tím hồng tờ 50.000đ.
+
+### Navigation
+- **Máy tính:** thanh dọc xanh tờ 500.000đ, mục thường chữ on-teal-soft, mục đang mở là ô sáng on-teal chữ xanh.
+- **Điện thoại:** thanh tab cố định ở đáy, biểu tượng trên nhãn.
+
+### Cards / Containers
+- **Panel:** nền trắng, viền line-soft 1px, bo 12px, đệm 24px. Không lồng panel trong panel.
+
+### Con dấu kiểm chứng (signature)
+Bốn vòng hoa văn guilloche, mỗi vòng là một phép kiểm độc lập. Chưa kiểm: nét xanh nhạt. Đạt: nét xanh đậm, vẽ dần một lần khi xuất hiện. Hỏng: vòng đứt một đoạn và chuyển cam đỏ; lõi đổi màu theo kết quả.
+
+## Do's and Don'ts
+
+### Do:
+- **Do** giữ mỗi màu mệnh giá đúng một nghĩa (Quy tắc mệnh giá).
+- **Do** dùng con dấu guilloche chỉ cho kết quả kiểm chứng.
+- **Do** dùng biểu tượng lucide nét 1.8, không dùng emoji hay ký tự thay biểu tượng.
+
+### Don't:
+- **Don't** biến giao diện thành bản sao ChatGPT chỉ có ô chat trống.
+- **Don't** dồn bảng biểu dày đặc kiểu phần mềm kế toán cũ.
+- **Don't** thêm gradient, ánh sáng hay hiệu ứng chuyển động trang trí.
+- **Don't** rải hoa văn guilloche làm nền hay trang trí.

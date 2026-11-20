@@ -1,0 +1,38 @@
+[project]
+name = "ai-reconciliation-studio"
+version = "0.1.0"
+description = "Hệ thống đối soát dữ liệu kết hợp AI (bản demo)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "pydantic-settings",
+  "sqlalchemy",
+  "psycopg[binary]",
+]
+
+[dependency-groups]
+dev = ["pytest", "ruff", "mypy", "httpx"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["backend"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["studio"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "backend"
+strict = true
+plugins = ["pydantic.mypy"]

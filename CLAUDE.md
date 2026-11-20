@@ -11,7 +11,22 @@ Trả lời và báo cáo cho Owner bằng tiếng Việt.
 
 ## Trạng thái (20/11/2026)
 
-Kiến trúc và kế hoạch demo đã được Owner duyệt. Chưa có mã nguồn. Việc tiếp theo: Giai đoạn 0 — khung dự án (`docs/PLAN.md`).
+Giai đoạn 0 (khung dự án) đã xong. Việc tiếp theo: Giai đoạn 1 — đọc dữ liệu, làm trên nhánh `phase-1` (`docs/PLAN.md`).
+
+## Lệnh kiểm
+
+```powershell
+uv run --locked ruff check backend tests
+uv run --locked mypy backend tests
+uv run --locked pytest -q
+Push-Location frontend; npm run check; npm run lint; npm run build; Pop-Location
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start.ps1   # build + chạy + kiểm 3/3 healthy + dọn image cũ
+Push-Location frontend; npm run test:e2e; Pop-Location                 # E2E trên 127.0.0.1:18180
+```
+
+## Giao diện
+
+Dùng skill **impeccable** (bối cảnh ở `PRODUCT.md`, `DESIGN.md`, `.impeccable/`) và **ui-ux-pro-max**. Thế giới hình ảnh đã chốt: "Tờ tiền polymer" (`DESIGN.md`).
 
 ## Môi trường máy Owner
 
