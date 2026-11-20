@@ -267,6 +267,7 @@ def clean_rows(
         "columns": [
             {
                 "key": name,
+                "type": FIELDS_BY_KEY[name].type if name in FIELDS_BY_KEY else "TEXT",
                 "label": FIELDS_BY_KEY[name].label
                 if name in FIELDS_BY_KEY
                 else {"customer_name_key": "Tên để so khớp", "is_cancelled": "Đã hủy"}.get(

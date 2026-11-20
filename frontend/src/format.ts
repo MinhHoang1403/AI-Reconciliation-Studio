@@ -14,3 +14,10 @@ export function formatBytes(bytes: number): string {
 }
 
 export const formatDateTime = (iso: string) => dateFormat.format(new Date(iso));
+
+/** Số tiền dạng chuỗi số ("2195000.00") → "2.195.000" (giữ phần lẻ nếu có, ví dụ "1.250,50"). */
+export function formatMoney(value: string): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return value;
+  return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(amount);
+}

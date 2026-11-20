@@ -24,6 +24,61 @@ export type TableSummary = {
   mapping_status: "NONE" | "MAPPING" | "READY";
   table_kind: string | null;
   mapping_pending: number;
+  clean_status: "NONE" | "BUILDING" | "SUGGESTING" | "READY" | "FAILED";
+  clean_open: number;
+};
+
+export type CleaningIssue = {
+  id: string;
+  kind: "DUPLICATE_ROW" | "INVALID_VALUE" | "MISSING_VALUE" | "CONFLICTING_VALUES";
+  level: "SUGGEST" | "ASK";
+  field_key: string | null;
+  field_label: string | null;
+  row_refs: number[];
+  values: (string | null)[];
+  message: string;
+  status: "OPEN" | "RESOLVED";
+  ai_suggestion: { value: string | null; confidence: number; reason: string } | null;
+};
+
+export type CleaningFix = {
+  field_key: string;
+  field_label: string;
+  fix: string;
+  fix_label: string;
+  count: number;
+  examples: { row_ref: number; before: string | null; after: string | null }[];
+};
+
+export type Cleaning = {
+  table_id: string;
+  status: "NONE" | "BUILDING" | "SUGGESTING" | "READY" | "FAILED";
+  version: number | null;
+  row_count: number;
+  excluded_count: number;
+  summary: {
+    fixes: CleaningFix[];
+    empty_rows: number[];
+    cancelled_count: number;
+    date_orders: {
+      field_key: string;
+      field_label: string;
+      order: "DMY" | "MDY";
+      defaulted: boolean;
+      chosen_by_user: boolean;
+    }[];
+  } | null;
+  open_counts: { SUGGEST: number; ASK: number };
+  issues: CleaningIssue[];
+};
+
+export type CleanRows = {
+  columns: { key: string; label: string; type: string }[];
+  row_refs: number[];
+  rows: (string | null)[][];
+  offset: number;
+  limit: number;
+  total: number;
 };
 
 export type MappingStatus = "AUTO" | "SUGGESTED" | "CONFIRMED";
@@ -153,7 +208,30 @@ export const confirmMapping = (tableId: string) =>
   sendJson<TableMapping>(`/api/tables/${tableId}/mapping/confirm`, "POST");
 export const suggestMappingAgain = (tableId: string) =>
   sendJson<TableMapping>(`/api/tables/${tableId}/mapping/suggest`, "POST");
-export const chooseHeaderRow =(tableId: string, headerRow: number | null) =>
+export const getCleaning = (tableId: string, signal?: AbortSignal) =>
+  getJson<Cleaning>(`/api/tables/${tableId}/cleaning`, signal);
+export const getCleanRows = (tableId: string, offset: number, limit: number, signal?: AbortSignal) =>
+  getJson<CleanRows>(`/api/tables/${tableId}/clean-rows?offset=${offset}&limit=${limit}`, signal);
+export const fixCell = (tableId: string, rowRef: number, fieldKey: string, value: string) =>
+  sendJson<Cleaning>(`/api/tables/${tableId}/cleaning/cells`, "POST", {
+    row_ref: rowRef,
+    field_key: fieldKey,
+    value,
+  });
+export const acceptCellSuggestion = (tableId: string, rowRef: number, fieldKey: string) =>
+  sendJson<Cleaning>(
+    `/api/tables/${tableId}/cleaning/suggestions/accept?row_ref=${rowRef}&field_key=${encodeURIComponent(fieldKey)}`,
+    "POST",
+  );
+export const decideRows = (tableId: string, rowRefs: number[], decision: "EXCLUDE" | "KEEP" | "UNDO") =>
+  sendJson<Cleaning>(`/api/tables/${tableId}/cleaning/rows`, "POST", { row_refs: rowRefs, decision });
+export const acceptDuplicates = (tableId: string) =>
+  sendJson<Cleaning>(`/api/tables/${tableId}/cleaning/duplicates/accept`, "POST");
+export const chooseDateOrder = (tableId: string, fieldKey: string, order: "DMY" | "MDY") =>
+  sendJson<Cleaning>(`/api/tables/${tableId}/cleaning/date-order`, "PUT", { field_key: fieldKey, order });
+export const rebuildCleaning = (tableId: string) =>
+  sendJson<Cleaning>(`/api/tables/${tableId}/cleaning/rebuild`, "POST");
+export const chooseHeaderRow = (tableId: string, headerRow: number | null) =>
   sendJson<TableSummary>(`/api/tables/${tableId}/header-row`, "PUT", { header_row: headerRow });
 
 /**

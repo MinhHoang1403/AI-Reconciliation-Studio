@@ -3,6 +3,7 @@ import { ArrowLeft, RotateCw } from "lucide-react";
 
 import { chooseHeaderRow, rereadDataset, type DatasetSummary, type TableSummary } from "../api";
 import { ColumnProfileView } from "../components/ColumnProfileView";
+import { CleaningView } from "../components/CleaningView";
 import { MappingView } from "../components/MappingView";
 import { StatusBadge } from "../components/StatusBadge";
 import { TablePreview } from "../components/TablePreview";
@@ -13,7 +14,7 @@ import { useDataset } from "../useDatasets";
 // Trang chi tiết một bộ dữ liệu: các bảng (mỗi sheet một bảng), dòng tiêu đề,
 // xem trước dữ liệu và hồ sơ cột.
 
-type View = "rows" | "profile" | "mapping";
+type View = "rows" | "profile" | "mapping" | "cleaning";
 
 export function DatasetPage({ datasetId }: { datasetId: string }) {
   const { state, refresh } = useDataset(datasetId);
@@ -158,13 +159,20 @@ function TableSection({ table, view, onView, onChanged }: TableProps) {
             Ánh xạ
             {table.mapping_pending > 0 && <span className="segmented__count">{table.mapping_pending}</span>}
           </button>
+          <button type="button" aria-pressed={view === "cleaning"} onClick={() => onView("cleaning")}>
+            Làm sạch
+            {table.clean_open > 0 && <span className="segmented__count">{table.clean_open}</span>}
+          </button>
         </div>
-        {view !== "mapping" && <HeaderRowControl table={table} onChanged={onChanged} />}
+        {(view === "rows" || view === "profile") && <HeaderRowControl table={table} onChanged={onChanged} />}
       </div>
       {view === "rows" && <TablePreview tableId={table.id} />}
       {view === "profile" && <ColumnProfileView tableId={table.id} />}
       {view === "mapping" && (
         <MappingView tableId={table.id} mappingStatus={table.mapping_status} onChanged={onChanged} />
+      )}
+      {view === "cleaning" && (
+        <CleaningView tableId={table.id} cleanStatus={table.clean_status} onChanged={onChanged} />
       )}
     </section>
   );

@@ -6,7 +6,11 @@ test("Tổng quan hiển thị bước tiếp theo, quy trình và trạng thái
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Tổng quan" })).toBeVisible();
   // Nội dung phụ thuộc container đã có dữ liệu hay chưa, nên chấp nhận cả hai trạng thái.
-  await expect(page.getByRole("heading", { name: /Tải bộ dữ liệu đầu tiên|Đã đọc \d+ bộ dữ liệu/ })).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: /Tải bộ dữ liệu đầu tiên|Đã đọc \d+ bộ dữ liệu|Cần bạn (xem|xử lý) \d+|\d+ bộ dữ liệu đã sạch/,
+    }),
+  ).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: "Đọc tệp" })).toContainText(/Đang chờ tệp|Đã đọc/);
   await expect(page.getByRole("img", { name: "Chưa kiểm chứng" })).toBeVisible();
   await expect(page.getByText("Hoạt động")).toBeVisible();

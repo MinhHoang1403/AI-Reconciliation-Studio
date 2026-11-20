@@ -39,4 +39,11 @@ Mỗi dòng là một quyết định đã chốt. Đổi quyết định thì t
 | 2026-11-20 | Câu trả lời của Gemini bị bắt theo khuôn JSON (chỉ được chọn mã cột chuẩn có thật hoặc NONE) và được kiểm lại; sai khuôn thì dùng kết quả quy tắc | AI không được bịa cột chuẩn hay tên cột |
 | 2026-11-20 | Ánh xạ chỉ được ghi nhớ khi người dùng xác nhận (hoặc tự chọn cột) | "Đã xác nhận" phải do người dùng, không do hệ thống tự cho là đúng |
 | 2026-11-20 | Thêm bộ "tên cột mới" (`ten-cot-moi.json`) chưa dùng khi soạn quy tắc và `tools/evaluate_mapping.py` | Đo trung thực; bộ mẫu dễ đạt 100% vì quy tắc soạn khi đã thấy tên cột |
+| 2026-11-20 | Dòng trùng y hệt chỉ được gợi ý bỏ bản lặp, người dùng đồng ý cho cả nhóm (hoặc giữ tất cả) | Owner chọn; sao kê có thể có giao dịch thật giống hệt |
+| 2026-11-20 | Đơn đã hủy/hoàn tiền giữ trong bộ sạch, gắn cờ `is_cancelled` | Owner chọn; Giai đoạn 4 phát hiện được đơn hủy mà vẫn có tiền về |
+| 2026-11-20 | Gemini đề xuất giá trị cho ô không đọc được; đề xuất phải đọc được bằng bộ đọc của hệ thống và chỉ áp dụng khi người dùng đồng ý | Owner chọn; AI không tự ghi vào dữ liệu |
+| 2026-11-20 | Thứ tự ngày suy từ cả cột; không phân biệt được thì mặc định ngày/tháng, ghi rõ và cho đổi cả cột | Owner chọn; theo thói quen Việt Nam |
+| 2026-11-20 | Kiểu dấu phân cách số (Việt 1.250.000 hay Anh 1,250,000) suy từ cả cột; tiền lưu Decimal 2 chữ số lẻ; viết tắt `tr`, `k`, `triệu`, `nghìn` được tự đọc | Không đoán từng ô; không làm tròn kiểu số thực |
+| 2026-11-20 | Bộ sạch dựng lại từ đầu (bảng gốc + ánh xạ + sửa ô + quyết định dòng + lựa chọn ngày) mỗi khi có thay đổi; mỗi lần một phiên bản Parquet mới, không ghi đè | Kết quả xác định, truy vết được; tệp gốc không bị sửa (R15) |
+| 2026-11-20 | Vấn đề 3 mức: tự sửa (định dạng, khoảng trắng, đầu số 84, dòng trống), gợi ý (dòng trùng), hỏi (thiếu trường bắt buộc theo loại bảng, ô không đọc được, cùng mã khác số tiền) | Theo phân tầng độ tin cậy trong kiến trúc |
 | 2026-11-20 | Miền đầu tiên: bán hàng, bộ cột chuẩn có `fee`, `net_amount`, `debit`, `credit`, `description` | Có đủ ca 1:1, 1:N, lệch tiền, phí cổng, mã trong nội dung chuyển khoản |

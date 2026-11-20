@@ -7,7 +7,9 @@ const POLL_MS = 1200;
 
 const isBusy = (dataset: DatasetSummary) =>
   dataset.status === "READING" ||
-  dataset.tables.some((table) => table.status === "READING" || table.mapping_status === "MAPPING");
+  dataset.tables.some(
+    (table) => table.status === "READING" || table.mapping_status === "MAPPING" || table.clean_status === "BUILDING" || table.clean_status === "SUGGESTING",
+  );
 
 export type Loaded<T> = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; data: T };
 

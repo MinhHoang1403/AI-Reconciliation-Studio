@@ -42,8 +42,11 @@ export function OverviewPage() {
   const pending = readyTables.reduce((sum, table) => sum + table.mapping_pending, 0);
   const mappingBusy = readyTables.some((table) => table.mapping_status !== "READY");
   const mapped = hasData && !mappingBusy && pending === 0;
+  const cleanBusy = readyTables.some((table) => table.clean_status === "BUILDING" || table.clean_status === "NONE");
+  const cleanOpen = readyTables.reduce((sum, table) => sum + table.clean_open, 0);
+  const cleaned = mapped && !cleanBusy && cleanOpen === 0;
 
-  // Trạng thái từng bước: 1 đọc tệp, 2 ánh xạ cột, 3 chuẩn hóa (đang xây dựng), sau đó chưa tới.
+  // Trạng thái từng bước: 1 đọc tệp, 2 ánh xạ, 3 chuẩn hóa, 4 xử lý lỗi, 5 đối soát (đang xây dựng).
   const steps: { state: StepState; label: string }[] = PIPELINE.map((_, index) => {
     if (index === 0) return hasData ? { state: "done", label: `Đã đọc ${ready.length} bộ` } : { state: "current", label: "Đang chờ tệp" };
     if (index === 1) {
@@ -51,7 +54,15 @@ export function OverviewPage() {
       if (mappingBusy) return { state: "current", label: "Đang gợi ý" };
       return pending > 0 ? { state: "current", label: `Cần xem ${pending} cột` } : { state: "done", label: "Đã ánh xạ" };
     }
-    if (index === 2 && mapped) return { state: "current", label: "Đang xây dựng" };
+    if (index === 2) {
+      if (!mapped) return { state: "later", label: "Chưa tới" };
+      return cleanBusy ? { state: "current", label: "Đang chuẩn hóa" } : { state: "done", label: "Đã chuẩn hóa" };
+    }
+    if (index === 3) {
+      if (!mapped || cleanBusy) return { state: "later", label: "Chưa tới" };
+      return cleanOpen > 0 ? { state: "current", label: `Cần xử lý ${cleanOpen}` } : { state: "done", label: "Đã sạch" };
+    }
+    if (index === 4 && cleaned) return { state: "current", label: "Đang xây dựng" };
     return { state: "later", label: "Chưa tới" };
   });
   const stepState = (index: number): StepState => steps[index]?.state ?? "later";
@@ -71,12 +82,19 @@ export function OverviewPage() {
               <h2 id="next-step-title">Cần bạn xem {pending} cột ánh xạ</h2>
               <p>Hệ thống đã tự ánh xạ phần lớn các cột; chỉ còn vài cột chưa chắc chắn, chọn sẵn gợi ý tốt nhất.</p>
             </>
+          ) : hasData && mapped && !cleanBusy && cleanOpen > 0 ? (
+            <>
+              <h2 id="next-step-title">Cần bạn xử lý {cleanOpen} lỗi dữ liệu</h2>
+              <p>Hệ thống đã tự sửa lỗi định dạng; còn vài ô hoặc dòng cần bạn quyết định, có gợi ý sẵn.</p>
+            </>
           ) : hasData ? (
             <>
-              <h2 id="next-step-title">Đã đọc {ready.length} bộ dữ liệu</h2>
+              <h2 id="next-step-title">{cleaned ? `${ready.length} bộ dữ liệu đã sạch` : `Đã đọc ${ready.length} bộ dữ liệu`}</h2>
               <p>
-                {formatCount(readyRows)} dòng sẵn sàng
-                {mapped ? ", cột đã được ánh xạ. Bước tiếp theo là chuẩn hóa dữ liệu, chức năng này đang được xây dựng." : ", đang gợi ý ánh xạ cột."}
+                {formatCount(readyRows)} dòng
+                {cleaned
+                  ? " đã chuẩn hóa và làm sạch. Bước tiếp theo là đối soát, chức năng này đang được xây dựng."
+                  : ", đang ánh xạ và chuẩn hóa…"}
               </p>
             </>
           ) : (

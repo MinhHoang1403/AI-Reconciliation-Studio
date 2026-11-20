@@ -12,6 +12,10 @@ const FIXTURES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 
 type Dataset = { id: string; original_filename: string };
 
+// Các bài này chờ Gemini thật (ánh xạ + đề xuất sửa ô, đo được ~2–19 giây mỗi lần gọi), nên
+// cho mỗi bài tối đa 120 giây; hết giờ giữa chừng thì phần dọn dữ liệu cuối bài không kịp chạy.
+test.describe.configure({ timeout: 120_000 });
+
 async function existingNames(request: APIRequestContext): Promise<Set<string>> {
   const reply = await request.get("/api/datasets");
   return new Set(((await reply.json()) as Dataset[]).map((dataset) => dataset.original_filename));
@@ -66,8 +70,8 @@ test("tải CSV giữ số 0 đầu mã, nhận ra tệp trùng, xóa có xác n
     const file = path.join(FIXTURES, name);
     await page.getByLabel("Chọn tệp").setInputFiles(file);
     const item = page.getByRole("listitem").filter({ hasText: "don-hang-cua-hang" });
-    await expect(item.getByText("Đã đọc")).toBeVisible();
-    await expect(item.getByText("222 dòng")).toBeVisible();
+    // 220 đơn + dòng trống + dòng trùng + 7 dòng lỗi cài sẵn.
+    await expect(item.getByText("229 dòng")).toBeVisible();
 
     await page.getByLabel("Chọn tệp").setInputFiles(file);
     await expect(page.getByText(/Tệp này đã có/)).toBeVisible();
@@ -82,7 +86,18 @@ test("tải CSV giữ số 0 đầu mã, nhận ra tệp trùng, xóa có xác n
     await expect(page.getByLabel("ThanhToan")).toHaveValue("payment_method");
     await expect(page.getByText(/Gợi ý bởi quy tắc và Gemini|Chỉ dùng quy tắc/)).toBeVisible();
 
-    await page.getByRole("link", { name: "Dữ liệu" }).first().click();
+    // Làm sạch: 4 chỗ cần hỏi, 1 nhóm dòng trùng; đồng ý bỏ bản lặp và sửa một ô.
+    await page.getByRole("button", { name: /^Làm sạch/ }).click();
+    await expect(page.getByRole("heading", { name: "Cần bạn xử lý 4 chỗ" })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/1tr2/)).toBeVisible(); // ví dụ trong phần "Hệ thống đã tự sửa"
+    await page.getByRole("button", { name: "Bỏ các bản lặp" }).click();
+    await expect(page.getByRole("heading", { name: /Gợi ý: .* dòng trùng/ })).toHaveCount(0);
+    await page.getByLabel("Giá trị đúng cho Số tiền ở dòng 226").fill("500000");
+    await page.getByLabel("Giá trị đúng cho Số tiền ở dòng 226").press("Enter");
+    await expect(page.getByRole("heading", { name: "Cần bạn xử lý 3 chỗ" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Mã đơn hàng" })).toBeVisible();
+
+    await page.goto("/du-lieu");
     await page.getByRole("button", { name: "Xóa bộ dữ liệu don-hang-cua-hang" }).click();
     const dialog = page.getByRole("dialog", { name: "Xóa bộ dữ liệu?" });
     await expect(dialog).toBeVisible();
@@ -113,7 +128,9 @@ test("Tổng quan đánh dấu bước Đọc tệp đã xong khi có dữ liệ
       },
     });
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: /Đã đọc \d+ bộ dữ liệu/ })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Đã đọc \d+ bộ dữ liệu|Cần bạn (xem|xử lý) \d+|\d+ bộ dữ liệu đã sạch/ }),
+    ).toBeVisible();
     await expect(page.getByRole("listitem").filter({ hasText: "Đọc tệp" })).toContainText(/Đã đọc \d+ bộ/);
   } finally {
     await removeCreated(request, before, [name]);
