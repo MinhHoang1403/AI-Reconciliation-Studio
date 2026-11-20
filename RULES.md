@@ -61,6 +61,7 @@
 **R11. Luôn bật sẵn sàng để test bất kỳ lúc nào.**
 - Các provider AI/LLM/Parser… và các tính năng đã làm phải luôn ở trạng thái bật, sẵn sàng để Owner kiểm thử.
 - Không tự tắt, ẩn hay thay bằng giả lập để né lỗi; có lỗi thì báo đúng lỗi.
+- "Sẵn sàng" không có nghĩa là tự gọi: không gọi API trả phí khi khởi động, khi kiểm tra sức khỏe hệ thống hay khi mở trang. Chỉ gọi khi Owner hoặc một tính năng thật sự cần, để tránh phát sinh chi phí ngoài ý muốn.
 
 ## 8. Giải thích và báo cáo
 
@@ -71,3 +72,13 @@
 - Đã triển khai được gì, đã thay đổi file/phần nào.
 - Chức năng nào chạy thành công (kèm kết quả kiểm thử), chức năng nào còn lỗi hoặc chưa làm.
 - Commit và trạng thái push lên GitHub.
+
+## 9. Dữ liệu và bảo mật
+
+**R14. Bảo mật khóa và bí mật.**
+- Khóa API (như `GEMINI_API_KEY`), mật khẩu và token chỉ nằm trong `.env` trên máy.
+- Không đưa vào Git, log, tài liệu, ảnh chụp hay code chạy trên trình duyệt.
+
+**R15. Dữ liệu gốc không bị sửa.**
+- Tệp người dùng tải lên luôn được giữ nguyên bản.
+- Mọi bước chuẩn hóa, làm sạch đều tạo ra bản mới, để mọi kết quả đối soát truy ngược được về đúng dòng gốc.
