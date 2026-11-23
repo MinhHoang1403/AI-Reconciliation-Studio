@@ -270,6 +270,46 @@ class ReconRun(Base):
     verification: Mapped[dict[str, Any] | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Lần chạy thuộc một chuỗi ba bên (đơn hàng ↔ cổng ↔ sao kê) thì có mã chuỗi.
+    chain_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("recon_chains.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # Dòng chờ tiền về nhận từ kỳ trước: [{"table_id", "version_id", "row_ref"}].
+    carried: Mapped[list[Any] | None] = mapped_column(nullable=True)
+
+
+class ReconChain(Base):
+    """Một lần đối soát cả chuỗi của một kỳ: chạy mọi cặp bảng nối được với nhau."""
+
+    __tablename__ = "recon_chains"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    # RUNNING (đang chạy), READY (xong), FAILED (lỗi).
+    status: Mapped[str] = mapped_column(String(16), default="RUNNING")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    label: Mapped[str] = mapped_column(Text)
+    table_ids: Mapped[list[Any]] = mapped_column()
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ReconChoice(Base):
+    """Lựa chọn của người dùng cho một ca mơ hồ; áp dụng ở mọi lần chạy sau của cùng cặp bảng."""
+
+    __tablename__ = "recon_choices"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    left_table_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("dataset_tables.id", ondelete="CASCADE"), index=True
+    )
+    right_table_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("dataset_tables.id", ondelete="CASCADE"), index=True
+    )
+    left_refs: Mapped[list[Any]] = mapped_column()
+    right_refs: Mapped[list[Any]] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class MatchResult(Base):
@@ -295,6 +335,8 @@ class MatchResult(Base):
     exception_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Dòng chờ từ kỳ trước nằm trong kết quả này: [{"table_id", "version_id", "row_ref"}].
+    carried_left: Mapped[list[Any] | None] = mapped_column(nullable=True)
 
 
 class AuditLog(Base):

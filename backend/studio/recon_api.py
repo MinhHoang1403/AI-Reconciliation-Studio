@@ -16,7 +16,15 @@ from studio import audit, recon_ai, recon_service
 from studio.cleaning import latest_version
 from studio.database import get_session
 from studio.datasets_api import fail
-from studio.models import AuditLog, CleanVersion, DatasetTable, MatchResult, ReconRun
+from studio.models import (
+    AuditLog,
+    CleanVersion,
+    DatasetTable,
+    MatchResult,
+    ReconChain,
+    ReconChoice,
+    ReconRun,
+)
 from studio.reading import ROW_REF
 from studio.reconciliation import KINDS, ReconConfig
 from studio.sales_fields import FIELDS_BY_KEY, TABLE_KIND_LABELS
@@ -26,6 +34,10 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 KIND_LABELS = {
     "MATCHED": "Khớp",
+    "MANY_TO_ONE": "Ghép nhóm",
+    "ONE_TO_MANY": "Ghép nhóm",
+    "AMBIGUOUS": "Cần bạn chọn",
+    "PENDING_SETTLEMENT": "Chờ tiền về",
     "AMOUNT_MISMATCH": "Lệch tiền",
     "DUPLICATE": "Trùng",
     "ONLY_IN_A": "Chỉ có ở A",
@@ -34,7 +46,12 @@ KIND_LABELS = {
     "OUT_OF_SCOPE": "Ngoài phạm vi",
 }
 # Nhóm hiển thị: việc cần làm trước, phần đã xong thu gọn (nguyên tắc giao diện Giai đoạn 4–7).
-type ResultGroup = Literal["todo", "explained", "resolved", "matched", "out_of_scope"]
+type ResultGroup = Literal[
+    "todo", "explained", "resolved", "matched", "pending", "out_of_scope"
+]
+GROUPS: tuple[ResultGroup, ...] = (
+    "todo", "explained", "resolved", "matched", "pending", "out_of_scope"
+)
 # Cột hiển thị cho mỗi dòng của kết quả (ngoài mã, ngày, số tiền theo cấu hình).
 DETAIL_FIELDS = ("customer_name", "payment_method", "status", "description", "payment_id")
 
@@ -59,6 +76,17 @@ class RunAction(BaseModel):
 
 class NoteChange(BaseModel):
     note: str = Field(max_length=1000)
+
+
+class ChainRequest(BaseModel):
+    table_ids: list[uuid.UUID] = Field(min_length=2, max_length=20)
+    label: str | None = Field(default=None, max_length=120)
+
+
+class AmbiguousChoice(BaseModel):
+    result_id: uuid.UUID
+    left_refs: list[int] = Field(min_length=1, max_length=10)
+    right_refs: list[int] = Field(min_length=1, max_length=10)
 
 
 # ---------------------------------------------------------------- tiện ích
@@ -110,7 +138,22 @@ def _field_label(key: str | None) -> str | None:
 def config_view(config: ReconConfig, evidence: dict[str, Any] | None = None) -> dict[str, Any]:
     """Cấu hình kèm nhãn tiếng Việt và câu mô tả do engine sinh (không cần AI)."""
     lines = []
-    if config.key_left:
+    if config.key_left and config.extract:
+        what = "ngày" if config.extract["kind"] == "date" else "mã"
+        line = (
+            f"Tách {what} trong nội dung chuyển khoản theo mẫu "
+            f"{pattern_text(config.extract)} rồi ghép với {_field_label(config.key_left)}"
+        )
+        if evidence:
+            found = next(
+                (item for item in evidence.get("extract", [])
+                 if item["target"] == config.key_left),
+                None,
+            )
+            if found:
+                line += f" ({found['hits']} dòng tách được, {found['precision']:.0%} đúng)"
+        lines.append(line + ".")
+    elif config.key_left:
         line = f"Ghép theo {_field_label(config.key_left)}"
         if config.key_right != config.key_left:
             line += f" ↔ {_field_label(config.key_right)}"
@@ -128,6 +171,11 @@ def config_view(config: ReconConfig, evidence: dict[str, Any] | None = None) -> 
         lines.append(line + ".")
     else:
         lines.append("Hai bên không có cột mã chung; chỉ ghép theo số tiền và ngày.")
+    if config.group_left:
+        lines.append(
+            f"Nhiều dòng bên A chung một {_field_label(config.key_left)} được ghép nhóm với một "
+            "dòng bên B khi tổng tiền bằng đúng."
+        )
     amount = f"So {_field_label(config.amount_left)}"
     if config.amount_right != config.amount_left:
         amount += f" ↔ {_field_label(config.amount_right)}"
@@ -138,6 +186,13 @@ def config_view(config: ReconConfig, evidence: dict[str, Any] | None = None) -> 
             f"Dòng không có mã chung được ghép theo số tiền và {_field_label(config.date_left)}"
             f" ↔ {_field_label(config.date_right)}, "
             f"cách nhau tối đa {config.date_window_days} ngày."
+        )
+    if config.outflow_right:
+        lines.append("Dòng tiền ra (cột Nợ) của bên B để ngoài phạm vi đối soát bán hàng.")
+    if config.settle_days:
+        lines.append(
+            f"Dòng chưa có tiền về mà còn trong hạn T+{config.settle_days} ngày làm việc là "
+            "\"chờ tiền về\", kỳ sau tự ghép lại."
         )
     for side, fields in config.excluded.items():
         for key, values in fields.items():
@@ -159,6 +214,25 @@ def config_view(config: ReconConfig, evidence: dict[str, Any] | None = None) -> 
     }
 
 
+def pattern_text(extract: dict[str, str]) -> str:
+    """Mẫu tách mã dạng dễ đọc: (?<![A-Z0-9])HD\\d{6}(?![A-Z0-9]) → "HD + 6 chữ số"."""
+    if extract["kind"] == "date":
+        return "ngày/tháng/năm"
+    body = re.sub(r"\(\?<?[!=][^)]*\)", "", extract["pattern"])
+    parts = []
+    # Thứ tự quan trọng: đoạn số, đoạn chữ trước; ký tự thoát (\-) và chữ cố định sau.
+    for digits, letters, literal in re.findall(
+        r"\\d\{(\d+)\}|\[A-Z\]\{(\d+)\}|([A-Z]+|\\.)", body
+    ):
+        if digits:
+            parts.append(f"{digits} chữ số")
+        elif letters:
+            parts.append(f"{letters} chữ cái")
+        elif literal:
+            parts.append(literal.replace("\\", ""))
+    return " + ".join(parts) or extract["pattern"]
+
+
 def run_view(session: Session, run: ReconRun) -> dict[str, Any]:
     left = session.get(DatasetTable, run.left_table_id)
     right = session.get(DatasetTable, run.right_table_id)
@@ -178,8 +252,10 @@ def run_view(session: Session, run: ReconRun) -> dict[str, Any]:
     )
     return {
         "id": str(run.id),
+        "chain_id": str(run.chain_id) if run.chain_id else None,
         "status": run.status,
         "error_message": run.error_message,
+        "carried_count": len(run.carried or []),
         "left": _table_view(left) if left else None,
         "right": _table_view(right) if right else None,
         "config": config_view(ReconConfig.from_json(run.config)),
@@ -201,7 +277,7 @@ def run_view(session: Session, run: ReconRun) -> dict[str, Any]:
                 .where((MatchResult.run_id == run.id) & _group_filter(group))
             )
             or 0
-            for group in ("todo", "explained", "resolved", "matched", "out_of_scope")
+            for group in GROUPS
         },
         "kind_labels": KIND_LABELS,
         "created_at": run.created_at.isoformat() if run.created_at else None,
@@ -241,7 +317,9 @@ def _group_filter(group: ResultGroup) -> Any:
         "todo": MatchResult.exception_status == "OPEN",
         "explained": MatchResult.exception_status == "EXPLAINED",
         "resolved": MatchResult.exception_status == "RESOLVED",
-        "matched": (MatchResult.kind == "MATCHED") & MatchResult.exception_status.is_(None),
+        "matched": MatchResult.kind.in_(("MATCHED", "MANY_TO_ONE", "ONE_TO_MANY"))
+        & MatchResult.exception_status.is_(None),
+        "pending": MatchResult.kind == "PENDING_SETTLEMENT",
         "out_of_scope": MatchResult.kind == "OUT_OF_SCOPE",
     }[group]
 
@@ -302,7 +380,7 @@ def start_run(
         raise fail(422, "SAME_TABLE", "Hãy chọn hai bảng khác nhau.")
     left, right = _table(session, request.left_table_id), _table(session, request.right_table_id)
     try:
-        config, _ = recon_service.preview(left, right)
+        config, _ = recon_service.preview(left, right, session)
     except ValueError as error:
         raise fail(422, "CANNOT_RECONCILE", str(error)) from error
     if request.tolerance is not None:
@@ -313,16 +391,7 @@ def start_run(
         config.excluded = {
             side: fields for side, fields in request.excluded.items() if side in ("LEFT", "RIGHT")
         }
-    run = ReconRun(
-        id=uuid.uuid4(),
-        left_table_id=left.id,
-        right_table_id=right.id,
-        left_version_id=latest_version(left).id,  # type: ignore[union-attr]
-        right_version_id=latest_version(right).id,  # type: ignore[union-attr]
-        status="RUNNING",
-        config=config.to_json(),
-    )
-    session.add(run)
+    run = recon_service.create_run(session, left, right, config)
     audit.record(
         session,
         "RECON_RUN",
@@ -401,6 +470,7 @@ def _result_views(
         config.date_right,
         config.amount_right,
     )
+    carried = _carried_details(session, items, config)
     return [
         {
             "id": str(item.id),
@@ -412,11 +482,39 @@ def _result_views(
             "amount_right": None if item.amount_right is None else str(item.amount_right),
             "exception_status": item.exception_status,
             "note": item.note,
-            "left": [left.get(ref, {"row_ref": ref}) for ref in item.left_refs],
+            "left": [left.get(ref, {"row_ref": ref}) for ref in item.left_refs]
+            + [
+                carried.get((row["table_id"], row["row_ref"]), {"row_ref": row["row_ref"]})
+                | {"carried": True}
+                for row in item.carried_left or []
+            ],
             "right": [right.get(ref, {"row_ref": ref}) for ref in item.right_refs],
         }
         for item in items
     ]
+
+
+def _carried_details(
+    session: Session, items: list[MatchResult], config: ReconConfig
+) -> dict[tuple[str, int], dict[str, Any]]:
+    """Giá trị của các dòng chờ từ kỳ trước (đọc từ phiên bản sạch của bảng kỳ trước)."""
+    by_version: dict[str, set[int]] = {}
+    tables: dict[str, str] = {}
+    for item in items:
+        for row in item.carried_left or []:
+            if row.get("version_id"):
+                by_version.setdefault(row["version_id"], set()).add(row["row_ref"])
+                tables[row["version_id"]] = row["table_id"]
+    found: dict[tuple[str, int], dict[str, Any]] = {}
+    for version_id, refs in by_version.items():
+        version = session.get(CleanVersion, uuid.UUID(version_id))
+        table = session.get(DatasetTable, uuid.UUID(tables[version_id]))
+        details = _details(version, refs, config.key_left, config.date_left, config.amount_left)
+        for ref, detail in details.items():
+            found[(tables[version_id], ref)] = detail | {
+                "table_label": audit.table_label(table) if table else None
+            }
+    return found
 
 
 @router.post("/recon/runs/{run_id}/verify")
@@ -524,6 +622,157 @@ def _run_label(session: Session, run: ReconRun) -> str:
     right = session.get(DatasetTable, run.right_table_id)
     names = [audit.table_label(table) if table else "?" for table in (left, right)]
     return " ↔ ".join(names)
+
+
+# ---------------------------------------------------------------- chuỗi ba bên, ca mơ hồ
+
+
+def chain_view(session: Session, chain: ReconChain) -> dict[str, Any]:
+    runs = list(
+        session.scalars(select(ReconRun).where(ReconRun.chain_id == chain.id))
+    )
+    runs.sort(key=lambda run: recon_service._chain_order(session, run))
+    views = [run_view(session, run) for run in runs]
+    return {
+        "id": str(chain.id),
+        "status": chain.status,
+        "error_message": chain.error_message,
+        "label": chain.label,
+        "table_ids": chain.table_ids,
+        "period_start": chain.period_start.isoformat() if chain.period_start else None,
+        "period_end": chain.period_end.isoformat() if chain.period_end else None,
+        "runs": views,
+        "exceptions": {
+            status: sum(view["exceptions"][status] for view in views)
+            for status in ("OPEN", "EXPLAINED", "RESOLVED")
+        },
+        "pending": sum(view["group_counts"]["pending"] for view in views),
+        "verified": chain.status == "READY"
+        and all((view["verification"] or {}).get("passed") for view in views),
+        "created_at": chain.created_at.isoformat() if chain.created_at else None,
+    }
+
+
+@router.get("/recon/periods")
+def recon_periods(session: SessionDep) -> list[dict[str, Any]]:
+    """Các kỳ đối soát nhận ra từ các tệp sao kê, kèm lần chạy chuỗi gần nhất của mỗi kỳ."""
+    tables = recon_service.ready_tables(session)
+    labels = {str(table.id): _table_view(table) for table in tables}
+    periods = recon_service.detect_periods(tables)
+    chains = list(session.scalars(select(ReconChain).order_by(ReconChain.created_at.desc())))
+    result = []
+    for period in periods:
+        latest = next(
+            (chain for chain in chains if set(chain.table_ids) == set(period["table_ids"])), None
+        )
+        result.append(
+            {
+                "label": period["label"],
+                "period_start": period["period_start"].isoformat(),
+                "period_end": period["period_end"].isoformat(),
+                "tables": [labels[table_id] for table_id in period["table_ids"]],
+                "chain_id": str(latest.id) if latest else None,
+            }
+        )
+    return result
+
+
+@router.post("/recon/chains", status_code=202)
+def start_chain(
+    request: ChainRequest, session: SessionDep, background: BackgroundTasks
+) -> dict[str, Any]:
+    """Đối soát cả chuỗi của một kỳ: mọi cặp nối được (đơn hàng ↔ cổng ↔ sao kê)."""
+    tables = [_table(session, table_id) for table_id in dict.fromkeys(request.table_ids)]
+    label = request.label or " · ".join(audit.table_label(table) for table in tables)
+    try:
+        chain = recon_service.create_chain(session, tables, label)
+    except ValueError as error:
+        raise fail(422, "CANNOT_RECONCILE", str(error)) from error
+    audit.record(
+        session,
+        "RECON_CHAIN",
+        "RECON_CHAIN",
+        chain.id,
+        label,
+        f"Đối soát cả chuỗi: {label}.",
+        after={"table_ids": chain.table_ids},
+    )
+    session.commit()
+    background.add_task(recon_service.execute_chain, chain.id)
+    return chain_view(session, chain)
+
+
+@router.get("/recon/chains/{chain_id}")
+def get_chain(chain_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
+    chain = session.get(ReconChain, chain_id)
+    if chain is None:
+        raise fail(404, "CHAIN_NOT_FOUND", "Không tìm thấy chuỗi đối soát.")
+    return chain_view(session, chain)
+
+
+@router.get("/recon/chains/{chain_id}/trace")
+def chain_trace(
+    chain_id: uuid.UUID, table_id: uuid.UUID, row_ref: int, session: SessionDep
+) -> dict[str, Any]:
+    """Đường đi của một dòng qua các cặp trong chuỗi (đơn → giao dịch cổng → dòng sao kê)."""
+    chain = session.get(ReconChain, chain_id)
+    if chain is None:
+        raise fail(404, "CHAIN_NOT_FOUND", "Không tìm thấy chuỗi đối soát.")
+    return {"steps": recon_service.trace(session, chain, table_id, row_ref)}
+
+
+@router.post("/recon/runs/{run_id}/choose", status_code=202)
+def choose_candidate(
+    run_id: uuid.UUID, choice: AmbiguousChoice, session: SessionDep, background: BackgroundTasks
+) -> dict[str, Any]:
+    """Người dùng chọn cặp đúng cho một ca mơ hồ. Lựa chọn được lưu (áp dụng ở mọi lần chạy
+    sau) và cặp bảng (hoặc cả chuỗi) được chạy lại để kết quả và kiểm chứng cập nhật."""
+    run = _run(session, run_id)
+    item = session.get(MatchResult, choice.result_id)
+    if item is None or item.run_id != run.id or item.kind != "AMBIGUOUS":
+        raise fail(404, "RESULT_NOT_FOUND", "Không tìm thấy ca mơ hồ này.")
+    pairs = [
+        pair
+        for reason in item.reasons
+        if reason.get("code") == "CANDIDATES"
+        for pair in reason.get("pairs", [])
+    ]
+    wanted = (sorted(choice.left_refs), sorted(choice.right_refs))
+    if not any((sorted(pair["left"]), sorted(pair["right"])) == wanted for pair in pairs):
+        raise fail(422, "NOT_A_CANDIDATE", "Lựa chọn không nằm trong các ứng viên của ca này.")
+    session.add(
+        ReconChoice(
+            id=uuid.uuid4(),
+            left_table_id=run.left_table_id,
+            right_table_id=run.right_table_id,
+            left_refs=wanted[0],
+            right_refs=wanted[1],
+        )
+    )
+    audit.record(
+        session,
+        "AMBIGUOUS_CHOSEN",
+        "RECON_RUN",
+        run.id,
+        _run_label(session, run),
+        f"Chọn cặp A{', A'.join(map(str, wanted[0]))} ↔ B{', B'.join(map(str, wanted[1]))} "
+        "cho ca mơ hồ.",
+        {"candidates": pairs},
+        {"left_refs": wanted[0], "right_refs": wanted[1]},
+    )
+    if run.chain_id:
+        chain = session.get(ReconChain, run.chain_id)
+        assert chain is not None
+        tables = [_table(session, uuid.UUID(table_id)) for table_id in chain.table_ids]
+        new_chain = recon_service.create_chain(session, tables, chain.label)
+        session.commit()
+        background.add_task(recon_service.execute_chain, new_chain.id)
+        return {"chain_id": str(new_chain.id), "run_id": None}
+    left, right = _table(session, run.left_table_id), _table(session, run.right_table_id)
+    new_run = recon_service.create_run(session, left, right, ReconConfig.from_json(run.config))
+    session.commit()
+    background.add_task(recon_service.execute_run, new_run.id)
+    return {"chain_id": None, "run_id": str(new_run.id)}
 
 
 # ---------------------------------------------------------------- nhật ký kiểm toán

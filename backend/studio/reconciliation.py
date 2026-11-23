@@ -169,6 +169,8 @@ class Side:
     frame: pl.DataFrame
     unclean_refs: set[int] = field(default_factory=set)
     carried: pl.DataFrame | None = None
+    # Trong chuỗi ba bên: dòng đã ghép (hoặc đã báo) ở cặp khác → số dòng: lý do.
+    elsewhere: dict[int, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------- tiện ích
@@ -1166,6 +1168,16 @@ def reconcile(left: Side, right: Side, config: ReconConfig) -> list[Result]:
             out = _scope_reason(row, scope)
             if out:
                 results.append(_single("OUT_OF_SCOPE", row, side, [_reason("SCOPE", out)], False))
+            elif row.ref in source.elsewhere:
+                results.append(
+                    _single(
+                        "OUT_OF_SCOPE",
+                        row,
+                        side,
+                        [_reason("ELSEWHERE", source.elsewhere[row.ref])],
+                        False,
+                    )
+                )
             elif row.outflow:
                 results.append(
                     _single(
