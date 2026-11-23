@@ -50,3 +50,7 @@ Mỗi dòng là một quyết định đã chốt. Đổi quyết định thì t
 | 2026-11-23 | Bổ sung kỳ đối soát và khoản chuyển kỳ (`PENDING_SETTLEMENT`, khung chờ mặc định T+3 ngày làm việc) vào Giai đoạn 5 | Tránh báo thiếu tiền oan cho đơn cuối kỳ; theo cách xử lý khoản đang chuyển trong kế toán |
 | 2026-11-23 | Nguyên tắc giao diện Giai đoạn 4–7: việc cần làm trước, phần đã xong thu gọn, tự động tối đa, một hành động chính mỗi khối | Owner yêu cầu gọn gàng, hiện đại, không thêm thao tác |
 | 2026-11-20 | Miền đầu tiên: bán hàng, bộ cột chuẩn có `fee`, `net_amount`, `debit`, `credit`, `description` | Có đủ ca 1:1, 1:N, lệch tiền, phí cổng, mã trong nội dung chuyển khoản |
+| 2026-11-23 | Đối soát: dòng không thuộc phạm vi bên kia (ví dụ đơn trả tiền mặt khi đối với cổng thanh toán) được tự để ngoài phạm vi theo cột hình thức thanh toán, hiện trong nhóm thu gọn, người dùng đổi lại được | Owner chọn; không báo thiếu oan, danh sách cần xử lý ngắn |
+| 2026-11-23 | Cho chạy đối soát khi bộ sạch còn vấn đề mức "Hỏi"; dòng còn lỗi thành ngoại lệ "dữ liệu chưa sạch" kèm đường dẫn về đúng ô | Owner chọn; không chặn luồng, vẫn chỉ ra chỗ cần sửa |
+| 2026-11-23 | Sai số tiền mặc định khi khớp 1:1 là 0đ (khớp tuyệt đối), chỉnh được trong cấu hình | Owner chọn; VND không có số lẻ |
+| 2026-11-23 | Giai đoạn 4: Gemini chỉ diễn giải cấu hình và giải thích ngoại lệ khi người dùng bấm "Giải thích"; lý do do engine sinh luôn có sẵn | Owner chọn; không phát sinh phí ngoài ý muốn (R11) |
