@@ -24,6 +24,9 @@ frontend/playwright-report/
 .impeccable/questions/
 .impeccable/config.local.json
 
+# Graph code do Graphify (bản mã nguồn mở) dựng trên máy; dựng lại bằng tools/code-graph.ps1
+graphify-out/
+
 # Hệ điều hành
 .DS_Store
 Thumbs.db

@@ -39,6 +39,29 @@ export function CleaningView({ tableId, cleanStatus, onChanged }: Props) {
     return () => controller.abort();
   }, [tableId, cleanStatus]);
 
+  // Khi chính khung này đang ở trạng thái "đang dựng lại" hoặc "AI đang đề xuất" thì tự hỏi lại
+  // backend mỗi giây tới khi xong. Không chỉ dựa vào trạng thái của trang cha: nếu backend dựng
+  // xong trước khi trang cha kịp thấy BUILDING, trạng thái ở đó vẫn là READY → READY (không đổi)
+  // và khung sẽ kẹt mãi ở số liệu cũ.
+  const pending = cleaning?.status === "BUILDING" || cleaning?.status === "SUGGESTING";
+  useEffect(() => {
+    if (!pending) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      getCleaning(tableId, controller.signal)
+        .then((data) => {
+          setCleaning(data);
+          // Dựng xong: báo trang cha tải lại số đếm (nhãn số vấn đề trên tab).
+          if (data.status !== "BUILDING" && data.status !== "SUGGESTING") onChanged();
+        })
+        .catch(() => undefined); // lỗi mạng tạm thời: lần hỏi kế tiếp sẽ thử lại
+    }, 1000);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [tableId, pending, cleaning, onChanged]);
+
   async function run(action: () => Promise<Cleaning>) {
     setBusy(true);
     try {

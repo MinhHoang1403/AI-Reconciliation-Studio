@@ -103,5 +103,6 @@ Thêm chức năng nhưng không thêm thao tác và không làm rối màn hìn
 | xlsx | Tạo và kiểm tra các tệp mẫu Excel |
 | code-review, security-review | Rà lỗi và bảo mật trước khi merge mỗi giai đoạn |
 | run | Chạy app thật để xác nhận chức năng |
-| Graphify | Tra cứu cấu trúc code (định nghĩa, nơi gọi, ảnh hưởng khi sửa) để Claude không phải đọc lại nhiều file |
+| Graphify (bản mã nguồn mở, chạy local) | Graph code: định nghĩa, nơi gọi, ảnh hưởng khi sửa; xem trực quan ở 127.0.0.1:3114 |
+| agentmemory (Docker local) | Bộ nhớ các phiên làm việc của Claude: quyết định, lỗi đã sửa; xem ở 127.0.0.1:3113 |
 | Langfuse | Đánh giá Assistant: xem lại từng câu chat, lỗi, độ trễ, token |
