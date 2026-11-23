@@ -1,4 +1,4 @@
-# Kế hoạch triển khai (bản nháp chờ duyệt)
+# Kế hoạch triển khai
 
 Làm theo **lát cắt dọc**: mỗi giai đoạn kết thúc bằng một chức năng dùng được trên giao diện thật, có kiểm thử. [Kiến trúc](ARCHITECTURE.md) · [Quy tắc](../RULES.md)
 
@@ -34,7 +34,7 @@ Làm trước giai đoạn 1 và mở rộng dần, nằm trong `tests/fixtures/
 
 ## Giai đoạn 2 — Ánh xạ
 
-- Bộ cột chuẩn miền bán hàng: `order_id`, `order_date`, `customer_name`, `customer_phone`, `amount`, `fee`, `net_amount`, `currency`, `payment_id`, `payment_date`, `bank_ref`, `transaction_date`, `debit`, `credit`, `description`.
+- Bộ cột chuẩn miền bán hàng (17 cột, `backend/studio/sales_fields.py`): `order_id`, `order_date`, `customer_name`, `customer_phone`, `amount`, `fee`, `net_amount`, `payment_method`, `status`, `payment_id`, `payment_batch`, `transaction_date`, `bank_ref`, `debit`, `credit`, `balance`, `description`.
 - Gợi ý ba lớp (tên cột, giá trị, Gemini xếp hạng lại), ngưỡng tự áp dụng, ghi nhớ ánh xạ.
 - Kết nối Gemini và Langfuse (dùng bộ Langfuse đã có trên máy).
 - Giao diện: bảng ánh xạ theo nguồn, điểm, nút xác nhận cả nhóm.
@@ -52,8 +52,10 @@ Làm trước giai đoạn 1 và mở rộng dần, nằm trong `tests/fixtures/
 - Chọn trường đối soát tự động, cấu hình đối soát.
 - Vòng khớp khóa 1:1 và khớp theo điểm 1:1 (phân công tối ưu); phân loại `MATCHED`, `AMOUNT_MISMATCH`, `ONLY_IN_A/B`, `DUPLICATE`.
 - Kiểm chứng độc lập sau mỗi lần chạy.
-- Giao diện: chọn hai bộ, xem cấu hình, chạy, xem kết quả theo loại kèm lý do.
-- **Xong khi:** precision và recall ≥ 99% trên bộ mẫu có khóa (so với tệp đáp án); xáo trộn thứ tự dòng vẫn cho cùng kết quả; kiểm chứng bắt được kết quả bị sửa tay.
+- **Xử lý ngoại lệ tối thiểu:** mỗi kết quả không khớp có trạng thái `OPEN` / `EXPLAINED` / `RESOLVED`, lý do do engine sinh ra và ghi chú tùy chọn. Trạng thái tự đổi khi người dùng thao tác (chọn, loại, xác nhận lệch do phí); không bắt điền gì.
+- **Nhật ký kiểm toán:** bảng `audit_log` ghi mọi thay đổi có ý nghĩa từ Giai đoạn 2 trở đi (xác nhận/đổi ánh xạ, sửa ô, giữ/loại dòng, đổi cách đọc ngày, xử lý ngoại lệ): ai, lúc nào, đối tượng, giá trị trước và sau. Ghi tự động; xem ở trang "Lịch sử".
+- Giao diện: chọn hai bộ, xem cấu hình, chạy, xem kết quả theo loại kèm lý do; trang "Lịch sử" đọc nhật ký kiểm toán.
+- **Xong khi:** precision và recall ≥ 99% trên bộ mẫu có khóa (so với tệp đáp án); xáo trộn thứ tự dòng vẫn cho cùng kết quả; kiểm chứng bắt được kết quả bị sửa tay; mọi thao tác thay đổi của người dùng có dòng tương ứng trong nhật ký kiểm toán (có test).
 
 ## Giai đoạn 5 — Ca khó
 
@@ -61,7 +63,17 @@ Làm trước giai đoạn 1 và mở rộng dần, nằm trong `tests/fixtures/
 - Khớp nhóm 1:N, N:1 theo tổng tiền, có giới hạn tổ hợp.
 - `AMBIGUOUS` kèm ứng viên và lý do; người dùng chọn trên giao diện.
 - Chạy chuỗi ba bên: đơn hàng ↔ thanh toán ↔ sao kê.
-- **Xong khi:** đúng đáp án trên bộ mẫu ghép nhóm và ca tên trùng (ví dụ "anh Hoàng", "chú Hoàng" với "Minh Hoàng"); không ca mơ hồ nào bị tự chọn.
+- **Kỳ đối soát và khoản chuyển kỳ:** kỳ tự suy từ khoảng ngày của dữ liệu (người dùng chỉnh được). Dòng chưa khớp nhưng còn trong khung chờ tiền về (mặc định T+3 ngày làm việc, chỉnh được theo nguồn) được xếp loại `PENDING_SETTLEMENT` (chờ tiền về), không báo thiếu. Lần đối soát sau tự đưa các dòng chờ vào khớp lại; quá hạn thì chuyển thành `ONLY_IN_A/B`.
+- **Xong khi:** đúng đáp án trên bộ mẫu ghép nhóm và ca tên trùng (ví dụ "anh Hoàng", "chú Hoàng" với "Minh Hoàng"); không ca mơ hồ nào bị tự chọn; đơn cuối kỳ tiền về đầu kỳ sau (có trong bộ mẫu) được xếp "chờ tiền về" rồi tự khớp ở kỳ sau.
+
+## Nguyên tắc giao diện cho Giai đoạn 4–7
+
+Thêm chức năng nhưng không thêm thao tác và không làm rối màn hình:
+
+- **Việc cần làm trước, phần đã xong thu gọn:** màn hình kết quả mở ra là số ca cần quyết định; khớp đúng, chờ tiền về, đã xử lý nằm trong nhóm thu gọn hoặc tab riêng.
+- **Tự động hết mức:** trạng thái ngoại lệ tự đổi theo thao tác; nhật ký kiểm toán ghi ngầm; kỳ đối soát tự suy; ghi chú luôn là tùy chọn.
+- **Một hành động chính mỗi khối:** mỗi nhóm ngoại lệ có một nút chính (ví dụ "Đồng ý tất cả"), các thao tác phụ nhỏ hơn.
+- **Giữ đúng hệ thống "Tờ tiền polymer"** (`DESIGN.md`): màu theo nghĩa, chữ số thẳng cột, con dấu guilloche chỉ cho kiểm chứng. Mỗi màn hình mới qua quy trình skill impeccable (bối cảnh, craft floor, bộ dò lỗi thiết kế, chụp máy tính + điện thoại) trước khi merge.
 
 ## Giai đoạn 6 — AI Assistant
 

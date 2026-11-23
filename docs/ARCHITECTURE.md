@@ -1,4 +1,4 @@
-# Kiến trúc — AI Reconciliation Studio (bản nháp chờ duyệt)
+# Kiến trúc — AI Reconciliation Studio
 
 Dự án **demo**: chỉ cần các chức năng chính chạy đúng và thể hiện đủ ý nghĩa. Mọi lựa chọn bên dưới đều có nguồn ở mục 10 ([R3](../RULES.md)) và giữ ở mức đơn giản nhất đủ dùng ([R5](../RULES.md)).
 
@@ -135,6 +135,11 @@ Mỗi kết quả thuộc một loại:
 | `ONE_TO_MANY` / `MANY_TO_ONE` | Ghép nhóm có tổng khớp |
 | `AMBIGUOUS` | Nhiều ứng viên ngang điểm. Không tự chọn; trả về các ứng viên và lý do để người dùng chọn |
 | `DUPLICATE` | Một bên có nhiều dòng giống hệt cùng trỏ một dòng bên kia |
+| `PENDING_SETTLEMENT` | Chưa khớp nhưng còn trong khung chờ tiền về (chênh lệch do thời điểm, không phải lỗi); kỳ sau tự khớp lại |
+
+**Kỳ đối soát và khoản chuyển kỳ.** Tiền về muộn hơn ngày đơn (sàn trả sau vài ngày, cổng thanh toán chuyển theo đợt) là chênh lệch do thời điểm, không phải lỗi; kế toán gọi là khoản đang chuyển và mang sang kỳ sau ([Paychex][paychex], [Lumen Learning][lumen]). Mỗi lần đối soát có kỳ (tự suy từ khoảng ngày dữ liệu). Dòng chưa khớp còn trong khung chờ (mặc định T+3 ngày làm việc) được xếp `PENDING_SETTLEMENT`; lần sau tự đưa vào khớp lại, quá hạn mới thành `ONLY_IN_A/B`.
+
+**Xử lý ngoại lệ.** Mỗi kết quả không khớp là một ngoại lệ có trạng thái `OPEN` → `EXPLAINED` / `RESOLVED`, lý do do engine sinh ra và ghi chú tùy chọn. Trạng thái tự đổi theo thao tác của người dùng. Đây là năng lực cốt lõi của phần mềm đối soát: ngoại lệ được chỉ ra, theo dõi tới khi xử lý xong ([iofm][iofm]).
 
 Mỗi kết quả lưu **điểm và lý do** (trường nào khớp, lệch bao nhiêu). Gemini dùng lý do này để giải thích bằng lời vì sao thiếu, lệch hay thừa, nhưng không được tự đổi kết quả.
 
@@ -168,18 +173,24 @@ Gemini có **gọi công cụ** (function calling): model không tự chạy hà
 - Gemini chỉ nhận câu chat, tên cột, thống kê và vài giá trị mẫu; không nhận toàn bộ dữ liệu.
 - Mỗi lần gọi có timeout, giới hạn token. Chỉ gọi khi người dùng thao tác, không gọi lúc khởi động ([R11](../RULES.md)).
 
-**Theo dõi bằng Langfuse:** mỗi câu chat là một *trace* (dấu vết), bên trong có các *span* (từng bước): lần gọi Gemini, từng công cụ, thời gian, token, lỗi. Langfuse SDK Python dựng trên OpenTelemetry; lời gọi `google-genai` được ghi tự động bằng `GoogleGenAIInstrumentor` của OpenInference ([Langfuse SDK][langfuse-sdk], [Langfuse + Gemini][langfuse-gemini]). Dùng bộ Langfuse **đã có trên máy**, nên dữ liệu trace không rời máy.
+**Theo dõi bằng Langfuse:** mỗi câu chat là một *trace* (dấu vết), bên trong có các *span* (từng bước): lần gọi Gemini, từng công cụ, thời gian, token, lỗi. Langfuse SDK Python dựng trên OpenTelemetry ([Langfuse SDK][langfuse-sdk]); backend tự ghi mỗi lần gọi Gemini thành một *generation* (đầu vào đã che, đầu ra, token, lỗi) thay vì dùng gói tự ghi của bên thứ ba, để kiểm soát được nội dung gửi lên. Dùng bộ Langfuse **đã có trên máy**, nên dữ liệu trace không rời máy. Bên cạnh đó, bảng `ai_calls` lưu token và thời gian của mọi lần gọi kể cả khi Langfuse tắt.
+
+**Nhật ký kiểm toán.** Mọi thay đổi của người dùng (xác nhận/đổi ánh xạ, sửa ô, giữ/loại dòng, đổi cách đọc ngày, xử lý ngoại lệ) được ghi tự động vào `audit_log`: ai, lúc nào, đối tượng, giá trị trước và sau. Phần mềm đối soát chuyên nghiệp đều ghi lại từng lần ghép, ngoại lệ, duyệt và điều chỉnh kèm thời điểm để phục vụ kiểm toán ([HighRadius][highradius]). Xem ở trang "Lịch sử".
 
 ## 7. Mô hình dữ liệu (PostgreSQL)
 
 | Bảng | Nội dung |
 | --- | --- |
-| `datasets`, `dataset_versions` | Tệp gốc, các phiên bản (đã đọc, đã sạch), đường dẫn Parquet, checksum |
-| `jobs` | Trạng thái các tác vụ nền (đọc, chuẩn hóa, đối soát…) |
-| `column_mappings`, `mapping_memory` | Ánh xạ của từng phiên bản kèm điểm, nguồn gợi ý, trạng thái xác nhận; ánh xạ đã nhớ theo cấu trúc tệp |
-| `data_issues`, `cleaning_log` | Issue theo dòng/ô; nhật ký các sửa đổi |
-| `recon_runs`, `match_results` | Cấu hình, trạng thái, kết quả kiểm chứng; từng kết quả kèm loại, điểm, lý do, các dòng |
+| `datasets`, `dataset_tables` | Tệp gốc (SHA-256), mỗi bảng đã đọc (một sheet), đường dẫn Parquet, hồ sơ cột, trạng thái đọc/ánh xạ/làm sạch **(đã có)** |
+| `column_mappings`, `mapping_memory` | Ánh xạ từng cột kèm điểm, nguồn, trạng thái; ánh xạ đã xác nhận nhớ theo cấu trúc tệp **(đã có)** |
+| `clean_versions` | Các phiên bản bộ dữ liệu sạch (Parquet), nhật ký sửa tự động và danh sách vấn đề **(đã có)** |
+| `cell_corrections`, `row_decisions`, `ai_cell_suggestions` | Ô người dùng sửa, quyết định giữ/loại dòng, gợi ý sửa của AI **(đã có)** |
+| `ai_calls` | Nhật ký mỗi lần gọi AI: mục đích, kết quả, token, thời gian (không lưu nội dung) **(đã có)** |
+| `recon_runs`, `match_results` | Kỳ, cấu hình, trạng thái, kết quả kiểm chứng; từng kết quả kèm loại, điểm, lý do, các dòng, trạng thái ngoại lệ, ghi chú |
+| `audit_log` | Nhật ký kiểm toán: mọi thay đổi của người dùng (ai, lúc nào, đối tượng, trước/sau) |
 | `chat_threads`, `chat_messages` | Hội thoại và các lần gọi công cụ |
+
+Tác vụ nền chạy bằng FastAPI BackgroundTasks; trạng thái nằm ngay trên các bảng trên, chưa cần bảng `jobs` riêng ([R5](../RULES.md)).
 
 Demo chỉ có **một người dùng**, không làm đăng nhập. Chỉ mở cổng trên `127.0.0.1`.
 
@@ -202,6 +213,7 @@ Demo chỉ có **một người dùng**, không làm đăng nhập. Chỉ mở c
 | Mô hình xác suất ghép bản ghi | Fellegi & Sunter 1969; triển khai mã nguồn mở Splink ([link][splink]). Chỉ tham khảo; demo dùng điểm có quy tắc rõ ràng |
 | Phân công tối ưu | Crouse 2016, IEEE TAES; `scipy.optimize.linear_sum_assignment` ([link][scipy-lsa]) |
 | Quy tắc đối soát ngân hàng | Oracle Fusion Cash Management: matching rules, tolerance ([link][oracle-rules], [link][oracle-tolerance]) |
+| Khoản chuyển kỳ, xử lý ngoại lệ, nhật ký kiểm toán | Paychex ([link][paychex]), Lumen Learning ([link][lumen]), iofm ([link][iofm]), HighRadius ([link][highradius]) |
 | Ánh xạ cột bằng LLM | Magneto, PVLDB 18 (2025) ([link][magneto]); Parciak và cộng sự, TaDA@VLDB 2024 ([link][parciak]) |
 | LLM cho làm sạch dữ liệu | Narayan và cộng sự, PVLDB 16 ([link][narayan]); Raha & Baran, CIDR 2021 ([link][raha-baran]) |
 | Tách mã từ nội dung chuyển khoản | Tài liệu SePay ([link][sepay]), Casso ([link][casso]) |
@@ -229,3 +241,7 @@ Demo chỉ có **một người dùng**, không làm đăng nhập. Chỉ mở c
 [gemini-structured]: https://ai.google.dev/gemini-api/docs/structured-output
 [langfuse-sdk]: https://langfuse.com/docs/observability/sdk/python/setup
 [langfuse-gemini]: https://langfuse.com/integrations/model-providers/google-gemini
+[paychex]: https://www.paychex.com/articles/finance/what-is-a-bank-reconciliation
+[lumen]: https://courses.lumenlearning.com/suny-ecc-finaccounting/chapter/preparing-a-bank-reconciliation/
+[iofm]: https://www.iofm.com/ap/organizational-structure/choosing-the-right-automated-bank-account-reconciliation-software-a-guide-for-treasury-and-finance-leaders
+[highradius]: https://www.highradius.com/product/automated-account-reconciliation-software/
