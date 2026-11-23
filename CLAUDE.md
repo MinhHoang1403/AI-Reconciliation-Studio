@@ -29,6 +29,13 @@ Hai công cụ chạy hoàn toàn trên máy, miễn phí (thay Graphify Cloud):
 - **Bộ nhớ phiên — agentmemory** (plugin Claude Code phạm vi local, máy chủ Docker ở `C:\Work\agentmemory`, bộ container `agentmemory`). Hooks tự ghi lại các phiên làm việc; tìm lại quyết định, lỗi đã sửa của phiên trước bằng công cụ MCP của agentmemory. Trang xem: <http://127.0.0.1:3113> (tự mở khóa qua proxy `viewer-proxy`; tab Graph có graph code do `tools/code-graph.ps1` nhập vào). REST ở 3111 vẫn cần khóa trong `C:\Work\agentmemory\.env`. Chỉ tìm theo từ khóa và embedding local, không gọi LLM trả phí.
 - Cấu hình riêng của máy (không thuộc repo): `C:\Work\agentmemory\docker-compose.override.yml` (proxy 3113, trang graph 3114, gắn `graphify-out` chỉ đọc) và `.claude/settings.local.json` (plugin agentmemory, `MCP_TIMEOUT` 60 giây).
 
+**Quy trình agentmemory (bắt buộc, Owner yêu cầu 23/11/2026):**
+1. **Đầu mỗi việc:** `memory_smart_search` / `memory_recall` (project `ai-reconciliation-studio`) về chủ đề sắp làm, trước khi đọc file hay tài liệu dài.
+2. **Trong khi làm:** chốt một quyết định, sửa xong một lỗi khó, phát hiện một bẫy → `memory_save` ngay (type `architecture`/`bug`/`workflow`/`fact`, kèm `files`).
+3. **Bị Owner sửa cách làm:** `memory_lesson_save`.
+4. **Làm xong một việc (trước khi báo cáo):** `memory_save` tóm tắt việc đã làm, commit, kết quả kiểm thử và việc còn dở.
+Không lưu khóa, mật khẩu hay dữ liệu khách hàng vào agentmemory.
+
 Không đọc cả file hay cả thư mục để "nắm lại dự án"; tra trước, chỉ mở đúng đoạn code cần sửa:
 
 | Cần biết | Công cụ MCP `graphify` |
