@@ -9,7 +9,7 @@
 
 Trả lời và báo cáo cho Owner bằng tiếng Việt.
 
-## Trạng thái (20/11/2026)
+## Trạng thái (23/11/2026)
 
 Giai đoạn 0 (khung), 1 (đọc dữ liệu), 2 (ánh xạ cột có Gemini, Langfuse), 3 (chuẩn hóa, làm sạch) đã xong. Việc tiếp theo: Giai đoạn 4 — đối soát 1:1 và kiểm chứng (`docs/PLAN.md`).
 
@@ -18,6 +18,24 @@ Lỗi cài sẵn cho bước làm sạch: `tests/fixtures/sales/loi-cai-san.csv`
 Đo độ chính xác ánh xạ: `uv run --locked python tools/evaluate_mapping.py` (chỉ quy tắc, miễn phí); thêm `--with-ai` để gọi Gemini thật (tốn phí, cần nạp khóa từ `.env` vào biến môi trường). Langfuse tự host ở <http://127.0.0.1:3000> (bộ container `langfuse` riêng); khóa trong `.env`.
 
 Bộ dữ liệu mẫu có đáp án ở `tests/fixtures/sales/`, sinh lại bằng `uv run --locked python tools/make_sales_fixtures.py` (kết quả luôn giống hệt).
+
+## Tra cứu code bằng Graphify (trước khi đọc file)
+
+Repo `MinhHoang1403/AI-Reconciliation-Studio` đã được Graphify lập chỉ mục (đồ thị hàm, lớp, lời gọi, file, test) và tự lập lại sau mỗi lần push lên `main`. Không đọc cả file hay cả thư mục để "nắm lại dự án"; tra đồ thị trước, chỉ mở đúng đoạn code cần sửa:
+
+| Cần biết | Công cụ Graphify |
+| --- | --- |
+| Hàm/lớp nằm ở đâu | `graphify_find` |
+| Danh sách hàm của một file (không đọc thân hàm) | `graphify_file_neighbors` với `symbols_only` |
+| Ai gọi hàm này | `graphify_callers` |
+| Sửa hàm này ảnh hưởng tới đâu | `graphify_impact` |
+| Test nào kiểm hàm/file này | `graphify_tests_for` |
+| Hỏi bằng lời (ví dụ "chỗ nào ghi trạng thái làm sạch") | `query_graph`, `graphify_rank_files` |
+
+Lưu ý:
+- Chỉ mục ứng với commit đã push (xem `freshness.commit` trong kết quả). Code đang sửa dở chưa push thì tra bằng Grep/Read.
+- Gói miễn phí chỉ lập chỉ mục `README.md` trong số tài liệu; `docs/` vẫn đọc trực tiếp.
+- `n=0` ở `graphify_callers` nghĩa là đồ thị chưa thấy cạnh nào, không chắc là không có; kiểm lại bằng Grep trước khi xóa hay đổi tên.
 
 ## Lệnh kiểm
 
