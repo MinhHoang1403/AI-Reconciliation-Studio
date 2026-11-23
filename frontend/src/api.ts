@@ -265,3 +265,155 @@ export function uploadDataset(file: File, onProgress: (share: number) => void): 
     request.send(form);
   });
 }
+
+// ---------------------------------------------------------------- đối soát (Giai đoạn 4)
+
+export type ReconKind =
+  | "MATCHED"
+  | "AMOUNT_MISMATCH"
+  | "DUPLICATE"
+  | "ONLY_IN_A"
+  | "ONLY_IN_B"
+  | "NEEDS_CLEANING"
+  | "OUT_OF_SCOPE";
+
+export type ReconTable = {
+  id: string;
+  label: string;
+  table_kind: string | null;
+  table_kind_label: string;
+  row_count: number;
+  clean_open: number;
+};
+
+export type ScopeOption = {
+  side: "LEFT" | "RIGHT";
+  field: string;
+  value: string;
+  rows: number;
+  matched: number;
+  excluded: boolean;
+};
+
+export type ReconConfig = {
+  key_left: string | null;
+  key_right: string | null;
+  amount_left: string;
+  amount_right: string;
+  date_left: string | null;
+  date_right: string | null;
+  tolerance: string;
+  date_window_days: number;
+  min_score: number;
+  excluded: Partial<Record<"LEFT" | "RIGHT", Record<string, string[]>>>;
+  labels: Record<string, string | null>;
+  description: string[];
+  scope_options: ScopeOption[];
+};
+
+export type VerificationCheck = { code: string; label: string; passed: boolean; detail: string };
+export type Verification = { passed: boolean; checks: VerificationCheck[]; error?: string };
+
+export type ReconRun = {
+  id: string;
+  status: "RUNNING" | "READY" | "FAILED";
+  error_message: string | null;
+  left: ReconTable | null;
+  right: ReconTable | null;
+  config: ReconConfig;
+  period_start: string | null;
+  period_end: string | null;
+  summary: {
+    counts: Record<ReconKind, number>;
+    rows: Record<ReconKind, { A: number; B: number }>;
+    amounts: Record<ReconKind, { A: string; B: string }>;
+    total_results: number;
+    needs_review: number;
+  } | null;
+  verification: Verification | null;
+  exceptions: { OPEN: number; EXPLAINED: number; RESOLVED: number };
+  open_by_kind: Record<ReconKind, number>;
+  group_counts: Record<ResultGroup, number>;
+  kind_labels: Record<ReconKind, string>;
+  created_at: string | null;
+  finished_at: string | null;
+};
+
+export type ResultRow = {
+  row_ref: number;
+  key?: string | null;
+  date?: string | null;
+  amount?: string | null;
+  customer_name?: string | null;
+  payment_method?: string | null;
+  status?: string | null;
+  description?: string | null;
+  payment_id?: string | null;
+};
+
+export type ReconResult = {
+  id: string;
+  kind: ReconKind;
+  kind_label: string;
+  score: number | null;
+  reasons: { code: string; text: string }[];
+  amount_left: string | null;
+  amount_right: string | null;
+  exception_status: "OPEN" | "EXPLAINED" | "RESOLVED" | null;
+  note: string | null;
+  left: ResultRow[];
+  right: ResultRow[];
+};
+
+export type ResultGroup = "todo" | "explained" | "resolved" | "matched" | "out_of_scope";
+export type ResultsPage = { total: number; offset: number; limit: number; items: ReconResult[] };
+
+export type AuditEntry = {
+  id: string;
+  created_at: string | null;
+  actor: string;
+  action: string;
+  object_type: string;
+  object_id: string;
+  object_label: string;
+  summary: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+};
+export type AuditPage = { total: number; offset: number; limit: number; items: AuditEntry[] };
+
+type Pair = { left_table_id: string; right_table_id: string };
+
+export const getReconTables = (signal?: AbortSignal) =>
+  getJson<{ tables: ReconTable[]; suggested: Pair | null }>("/api/recon/tables", signal);
+export const previewRecon = (pair: Pair) =>
+  sendJson<{ left: ReconTable; right: ReconTable; config: ReconConfig }>("/api/recon/preview", "POST", pair);
+export const explainPreview = (pair: Pair) => sendJson<{ text: string }>("/api/recon/preview/explain", "POST", pair);
+export const startRun = (
+  body: Pair & { tolerance?: string; date_window_days?: number; excluded?: ReconConfig["excluded"] },
+) => sendJson<ReconRun>("/api/recon/runs", "POST", body);
+export const listRuns = (limit: number, signal?: AbortSignal) =>
+  getJson<ReconRun[]>(`/api/recon/runs?limit=${limit}`, signal);
+export const getRun = (id: string, signal?: AbortSignal) => getJson<ReconRun>(`/api/recon/runs/${id}`, signal);
+export const getResults = (
+  runId: string,
+  group: ResultGroup,
+  offset: number,
+  limit: number,
+  signal?: AbortSignal,
+) => getJson<ResultsPage>(`/api/recon/runs/${runId}/results?group=${group}&offset=${offset}&limit=${limit}`, signal);
+export const verifyRun = (id: string) => sendJson<ReconRun>(`/api/recon/runs/${id}/verify`, "POST");
+export const actOnResults = (
+  runId: string,
+  body: { action: "RESOLVE" | "REOPEN"; result_ids?: string[]; kind?: ReconKind },
+) => sendJson<ReconRun>(`/api/recon/runs/${runId}/actions`, "POST", body);
+export const saveNote = (resultId: string, note: string) =>
+  sendJson<{ id: string; note: string | null; exception_status: ReconResult["exception_status"] }>(
+    `/api/recon/results/${resultId}/note`,
+    "PUT",
+    { note },
+  );
+export const explainResult = (resultId: string) =>
+  sendJson<{ text: string }>(`/api/recon/results/${resultId}/explain`, "POST");
+export const getAudit = (offset: number, limit: number, signal?: AbortSignal) =>
+  getJson<AuditPage>(`/api/audit?offset=${offset}&limit=${limit}`, signal);

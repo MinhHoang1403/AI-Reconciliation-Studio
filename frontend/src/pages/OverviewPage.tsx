@@ -1,10 +1,14 @@
+import { useEffect, useState } from "react";
 import { ArrowRight, Check } from "lucide-react";
 
+import { listRuns, type ReconRun } from "../api";
+
 import { SystemStatusPanel } from "../components/SystemStatusPanel";
-import { VerificationSeal, type SealCheck } from "../components/VerificationSeal";
+import { VerificationSeal } from "../components/VerificationSeal";
 import { formatCount } from "../format";
 import { navigate } from "../navigation";
 import { useDatasetList } from "../useDatasets";
+import { sealChecks } from "../verification";
 
 // Trang Tổng quan: bước cần làm tiếp theo, quy trình xử lý và con dấu kiểm chứng.
 // Mọi con số lấy từ backend; chưa có dữ liệu thì hiện trạng thái ban đầu, không hiển thị số liệu giả.
@@ -19,18 +23,21 @@ const PIPELINE = [
   { name: "Báo cáo", detail: "KPI, biểu đồ và tệp kết quả để tải về." },
 ] as const;
 
-// Bốn phép kiểm độc lập chạy sau mỗi lần đối soát; mỗi phép là một vòng của con dấu.
-const CHECKS: readonly SealCheck[] = [
-  { label: "Mỗi dòng nằm trong đúng một kết quả", state: "pending" },
-  { label: "Tổng tiền từng bên được bảo toàn", state: "pending" },
-  { label: "Số dòng theo từng loại cộng đủ tổng", state: "pending" },
-  { label: "Mọi tham chiếu trỏ về dòng gốc có thật", state: "pending" },
-];
-
 type StepState = "done" | "current" | "later";
 
 export function OverviewPage() {
   const { state } = useDatasetList();
+  // Lần đối soát gần nhất: quyết định bước Đối soát và con dấu kiểm chứng.
+  const [run, setRun] = useState<ReconRun | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    listRuns(1, controller.signal)
+      .then((runs) => setRun(runs[0] ?? null))
+      .catch(() => setRun(null));
+    return () => controller.abort();
+  }, []);
+  const checks = sealChecks(run?.status === "READY" ? run.verification : null);
+  const reconOpen = run?.status === "READY" ? run.exceptions.OPEN : 0;
   const ready = state.kind === "ready" ? state.data.filter((dataset) => dataset.status === "READY") : [];
   const readyRows = ready.reduce(
     (sum, dataset) =>
@@ -48,7 +55,7 @@ export function OverviewPage() {
   const cleanOpen = readyTables.reduce((sum, table) => sum + table.clean_open, 0);
   const cleaned = mapped && !cleanBusy && cleanOpen === 0;
 
-  // Trạng thái từng bước: 1 đọc tệp, 2 ánh xạ, 3 chuẩn hóa, 4 xử lý lỗi, 5 đối soát (đang xây dựng).
+  // Trạng thái từng bước: 1 đọc tệp, 2 ánh xạ, 3 chuẩn hóa, 4 xử lý lỗi, 5 đối soát, 6 báo cáo.
   const steps: { state: StepState; label: string }[] = PIPELINE.map((_, index) => {
     if (index === 0) return hasData ? { state: "done", label: `Đã đọc ${ready.length} bộ` } : { state: "current", label: "Đang chờ tệp" };
     if (index === 1) {
@@ -64,9 +71,17 @@ export function OverviewPage() {
       if (!mapped || cleanBusy) return { state: "later", label: "Chưa tới" };
       return cleanOpen > 0 ? { state: "current", label: `Cần xử lý ${cleanOpen}` } : { state: "done", label: "Đã sạch" };
     }
-    if (index === 4 && cleaned) return { state: "current", label: "Đang xây dựng" };
+    if (index === 4) {
+      if (run?.status === "RUNNING") return { state: "current", label: "Đang chạy" };
+      if (run?.status === "READY") {
+        return reconOpen > 0 ? { state: "current", label: `Cần xem ${reconOpen} ca` } : { state: "done", label: "Đã đối soát" };
+      }
+      if (cleaned) return { state: "current", label: "Sẵn sàng" };
+    }
     return { state: "later", label: "Chưa tới" };
   });
+  // Nút của dải bước tiếp theo dẫn tới Đối soát khi ánh xạ và làm sạch không còn việc chờ.
+  const toRecon = hasData && pending === 0 && !(mapped && !cleanBusy && cleanOpen > 0) && (cleaned || run !== null);
   const stepState = (index: number): StepState => steps[index]?.state ?? "later";
   const stepLabel = (index: number): string => steps[index]?.label ?? "Chưa tới";
 
@@ -89,14 +104,24 @@ export function OverviewPage() {
               <h2 id="next-step-title">Cần bạn xử lý {cleanOpen} lỗi dữ liệu</h2>
               <p>Hệ thống đã tự sửa lỗi định dạng; còn vài ô hoặc dòng cần bạn quyết định, có gợi ý sẵn.</p>
             </>
+          ) : hasData && reconOpen > 0 ? (
+            <>
+              <h2 id="next-step-title">Cần bạn xem {formatCount(reconOpen)} ca đối soát</h2>
+              <p>Phần lớn các dòng đã tự khớp; còn vài ca lệch tiền, thiếu hoặc thừa, mỗi ca có lý do sẵn.</p>
+            </>
+          ) : hasData && run?.status === "READY" ? (
+            <>
+              <h2 id="next-step-title">
+                {run.verification?.passed ? "Đối soát xong, kết quả đã kiểm chứng" : "Đối soát xong nhưng kiểm chứng chưa đạt"}
+              </h2>
+              <p>Mọi ngoại lệ đã được xử lý. Bước tiếp theo là báo cáo, chức năng này đang được xây dựng.</p>
+            </>
           ) : hasData ? (
             <>
               <h2 id="next-step-title">{cleaned ? `${ready.length} bộ dữ liệu đã sạch` : `Đã đọc ${ready.length} bộ dữ liệu`}</h2>
               <p>
                 {formatCount(readyRows)} dòng
-                {cleaned
-                  ? " đã chuẩn hóa và làm sạch. Bước tiếp theo là đối soát, chức năng này đang được xây dựng."
-                  : ", đang ánh xạ và chuẩn hóa…"}
+                {cleaned ? " đã chuẩn hóa và làm sạch, sẵn sàng đối soát." : ", đang ánh xạ và chuẩn hóa…"}
               </p>
             </>
           ) : (
@@ -106,8 +131,12 @@ export function OverviewPage() {
             </>
           )}
         </div>
-        <button className="button button--primary" type="button" onClick={() => navigate("/du-lieu")}>
-          {hasData ? "Xem dữ liệu" : "Đến trang Dữ liệu"}
+        <button
+          className="button button--primary"
+          type="button"
+          onClick={() => navigate(toRecon ? "/doi-soat" : "/du-lieu")}
+        >
+          {toRecon ? (reconOpen > 0 || run ? "Đến trang Đối soát" : "Chạy đối soát") : hasData ? "Xem dữ liệu" : "Đến trang Dữ liệu"}
           <ArrowRight aria-hidden="true" size={18} />
         </button>
       </section>
@@ -133,12 +162,16 @@ export function OverviewPage() {
 
         <aside className="verification" aria-labelledby="verification-title">
           <h2 id="verification-title">Kiểm chứng kết quả</h2>
-          <VerificationSeal checks={CHECKS} />
+          <VerificationSeal checks={checks} />
           <p className="verification__lead">
-            Sau mỗi lần đối soát, một module độc lập kiểm lại kết quả. Mỗi vòng hoa văn là một phép kiểm.
+            {run?.status === "READY"
+              ? run.verification?.passed
+                ? "Lần đối soát gần nhất đạt cả bốn phép kiểm độc lập."
+                : "Lần đối soát gần nhất có phép kiểm không đạt; kết quả không dùng cho báo cáo."
+              : "Sau mỗi lần đối soát, một module độc lập kiểm lại kết quả. Mỗi vòng hoa văn là một phép kiểm."}
           </p>
           <ul className="verification__checks">
-            {CHECKS.map((check) => (
+            {checks.map((check) => (
               <li key={check.label} data-state={check.state}>{check.label}</li>
             ))}
           </ul>

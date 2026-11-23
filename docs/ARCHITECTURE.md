@@ -136,6 +136,8 @@ Mỗi kết quả thuộc một loại:
 | `AMBIGUOUS` | Nhiều ứng viên ngang điểm. Không tự chọn; trả về các ứng viên và lý do để người dùng chọn |
 | `DUPLICATE` | Một bên có nhiều dòng giống hệt cùng trỏ một dòng bên kia |
 | `PENDING_SETTLEMENT` | Chưa khớp nhưng còn trong khung chờ tiền về (chênh lệch do thời điểm, không phải lỗi); kỳ sau tự khớp lại |
+| `NEEDS_CLEANING` | Dòng còn vấn đề mức "Hỏi" ở bước làm sạch; không ghép, chỉ ra để sửa rồi chạy lại |
+| `OUT_OF_SCOPE` | Dòng không thuộc phạm vi bên kia (ví dụ đơn tiền mặt khi đối với cổng thanh toán, đơn đã hủy không có tiền về); suy từ dữ liệu, người dùng đổi được |
 
 **Kỳ đối soát và khoản chuyển kỳ.** Tiền về muộn hơn ngày đơn (sàn trả sau vài ngày, cổng thanh toán chuyển theo đợt) là chênh lệch do thời điểm, không phải lỗi; kế toán gọi là khoản đang chuyển và mang sang kỳ sau ([Paychex][paychex], [Lumen Learning][lumen]). Mỗi lần đối soát có kỳ (tự suy từ khoảng ngày dữ liệu). Dòng chưa khớp còn trong khung chờ (mặc định T+3 ngày làm việc) được xếp `PENDING_SETTLEMENT`; lần sau tự đưa vào khớp lại, quá hạn mới thành `ONLY_IN_A/B`.
 
@@ -186,8 +188,8 @@ Gemini có **gọi công cụ** (function calling): model không tự chạy hà
 | `clean_versions` | Các phiên bản bộ dữ liệu sạch (Parquet), nhật ký sửa tự động và danh sách vấn đề **(đã có)** |
 | `cell_corrections`, `row_decisions`, `ai_cell_suggestions` | Ô người dùng sửa, quyết định giữ/loại dòng, gợi ý sửa của AI **(đã có)** |
 | `ai_calls` | Nhật ký mỗi lần gọi AI: mục đích, kết quả, token, thời gian (không lưu nội dung) **(đã có)** |
-| `recon_runs`, `match_results` | Kỳ, cấu hình, trạng thái, kết quả kiểm chứng; từng kết quả kèm loại, điểm, lý do, các dòng, trạng thái ngoại lệ, ghi chú |
-| `audit_log` | Nhật ký kiểm toán: mọi thay đổi của người dùng (ai, lúc nào, đối tượng, trước/sau) |
+| `recon_runs`, `match_results` | Kỳ, cấu hình, phiên bản bộ sạch đã dùng, trạng thái, kết quả kiểm chứng; từng kết quả kèm loại, điểm, lý do, các dòng, số tiền, trạng thái ngoại lệ, ghi chú **(đã có)** |
+| `audit_log` | Nhật ký kiểm toán: mọi thay đổi của người dùng (ai, lúc nào, đối tượng, trước/sau) **(đã có)** |
 | `chat_threads`, `chat_messages` | Hội thoại và các lần gọi công cụ |
 
 Tác vụ nền chạy bằng FastAPI BackgroundTasks; trạng thái nằm ngay trên các bảng trên, chưa cần bảng `jobs` riêng ([R5](../RULES.md)).

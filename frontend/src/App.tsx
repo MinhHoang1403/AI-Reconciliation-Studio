@@ -4,6 +4,7 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { AssistantPage } from "./pages/AssistantPage";
 import { DataPage } from "./pages/DataPage";
 import { DatasetPage } from "./pages/DatasetPage";
+import { HistoryPage } from "./pages/HistoryPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ReconcilePage } from "./pages/ReconcilePage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -18,6 +19,7 @@ const PAGES: Record<string, () => React.JSX.Element> = {
   "/du-lieu": DataPage,
   "/doi-soat": ReconcilePage,
   "/bao-cao": ReportsPage,
+  "/lich-su": HistoryPage,
 };
 
 // Trạng thái thu gọn thanh bên được nhớ trong trình duyệt của người dùng.

@@ -150,7 +150,7 @@ Bảng màu tiết chế theo mệnh giá: một màu khung đậm, ba màu tr�
 
 ## Layout
 
-Thanh điều hướng cố định 260px bên trái, thu gọn được còn 76px (chỉ biểu tượng) bằng nút nhỏ ở góc trên bên phải cạnh tên, trạng thái được nhớ trong trình duyệt; nội dung tối đa 1280px, lề 40px (co giãn theo màn hình). Tổng quan chia hai cột: nội dung chính và cột 340px cho con dấu kiểm chứng; dưới 860px gộp thành một cột. Dưới 760px thanh điều hướng thành thanh tab cố định ở đáy, lề trang 16px. Khoảng cách: 8px trong nhóm, 16px giữa các phần tử, 28px giữa các khối.
+Thanh điều hướng cố định 260px bên trái, thu gọn được còn 76px (chỉ biểu tượng) bằng nút nhỏ ở góc trên bên phải cạnh tên, trạng thái được nhớ trong trình duyệt; nội dung tối đa 1280px, lề 40px (co giãn theo màn hình). Tổng quan và Đối soát chia hai cột: nội dung chính và cột 340px cho con dấu kiểm chứng; dưới 860px (Đối soát: 1080px) gộp thành một cột. Thanh điều hướng có 6 mục, thêm Lịch sử. Dưới 760px thanh điều hướng thành thanh tab cố định ở đáy, lề trang 16px. Khoảng cách: 8px trong nhóm, 16px giữa các phần tử, 28px giữa các khối.
 
 ## Elevation & Depth
 
@@ -200,6 +200,17 @@ Lưới thẻ (tối thiểu 280px), mỗi cột một thẻ: tên, nhãn dạng
 
 ### Hộp thoại xác nhận
 Thẻ `<dialog>` gốc, bo 12px, nền mờ ink 35%; nút Hủy (phụ) và nút hành động (nguy hiểm).
+
+### Trang Đối soát
+- **Thanh chọn:** panel trắng, hai ô chọn Bên A / Bên B (hệ thống chọn sẵn), nút đổi chỗ ở giữa, một nút chính "Chạy đối soát". Cấu hình nằm trong `<details>` thu gọn, dòng tóm tắt một câu; mở ra là các câu mô tả do engine sinh, sai số, khung ngày, ô đánh dấu "ngoài phạm vi", nút phụ "Giải thích bằng AI".
+- **Dải việc cần làm:** dùng lại dải bước tiếp theo (blue-tint): "Cần bạn xem N ca", tên hai bảng và kỳ đối soát.
+- **Thanh tỷ lệ:** một thanh cao 12px chia đoạn theo số dòng (cả hai bên): khớp (matched), cần xem (attention), ngoài phạm vi (blue-tint-strong); chú thích có số dòng và phần trăm. Độ dài mang nghĩa, không trang trí.
+- **Nhóm kết quả:** segmented tab Cần xử lý / Đã ghi chú / Đã xử lý / Khớp / Ngoài phạm vi; tab đầu luôn mở trước. Trong "Cần xử lý", mỗi loại ngoại lệ là một nhóm có tiêu đề màu attention, câu giải thích lời thường và một nút phụ "Đánh dấu cả nhóm đã xử lý".
+- **Một kết quả:** hàng trong danh sách có đường chia; hai bên A ↔ B cạnh nhau (điện thoại: chồng dọc), mỗi bên có nhãn A/B, mã đậm, số tiền căn phải, dòng gốc và ngày chữ nhỏ; lý do do engine sinh ngay bên dưới; thao tác: "Đã xử lý" (phụ), "Ghi chú", "Giải thích" (nút chữ). Lời AI nằm trong khối blue-tint riêng, tách khỏi lý do của engine.
+- **Con dấu:** cột phải 340px, dính khi cuộn; bốn vòng = phủ dòng, bảo toàn tiền, số đếm theo loại, loại đúng dữ liệu. Dưới 1080px chuyển xuống dưới.
+
+### Trang Lịch sử
+Nhật ký kiểm toán gom theo ngày; mỗi mục một hàng: giờ (cột 84px), câu tóm tắt, đối tượng và người làm (chữ nhỏ), "Giá trị trước và sau" thu gọn.
 
 ## Do's and Don'ts
 

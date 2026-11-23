@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { BarChart3, Database, GitCompareArrows, LayoutDashboard, MessagesSquare } from "lucide-react";
+import { BarChart3, Database, GitCompareArrows, History, LayoutDashboard, MessagesSquare } from "lucide-react";
 
 // Các trang chính của ứng dụng; đường dẫn tiếng Việt không dấu để URL dễ đọc.
 export type Route = { path: string; label: string; icon: LucideIcon };
@@ -11,6 +11,7 @@ export const ROUTES: readonly Route[] = [
   { path: "/du-lieu", label: "Dữ liệu", icon: Database },
   { path: "/doi-soat", label: "Đối soát", icon: GitCompareArrows },
   { path: "/bao-cao", label: "Báo cáo", icon: BarChart3 },
+  { path: "/lich-su", label: "Lịch sử", icon: History },
 ];
 
 /** Trang con thuộc mục nào (ví dụ /du-lieu/abc thuộc mục Dữ liệu). */

@@ -11,7 +11,9 @@ Trả lời và báo cáo cho Owner bằng tiếng Việt.
 
 ## Trạng thái (23/11/2026)
 
-Giai đoạn 0 (khung), 1 (đọc dữ liệu), 2 (ánh xạ cột có Gemini, Langfuse), 3 (chuẩn hóa, làm sạch) đã xong. Việc tiếp theo: Giai đoạn 4 — đối soát 1:1 và kiểm chứng (`docs/PLAN.md`).
+Giai đoạn 0 (khung), 1 (đọc dữ liệu), 2 (ánh xạ cột có Gemini, Langfuse), 3 (chuẩn hóa, làm sạch), 4 (đối soát 1:1, kiểm chứng, ngoại lệ, nhật ký kiểm toán) đã xong. Việc tiếp theo: Giai đoạn 5 — tách mã từ nội dung chuyển khoản, khớp nhóm, ca mơ hồ, kỳ đối soát (`docs/PLAN.md`).
+
+Đáp án đối soát cặp đơn cửa hàng ↔ cổng thanh toán nằm trong `tests/fixtures/sales/dap-an.csv` (quan hệ `cua-hang↔cong-thanh-toan`); `tests/test_reconciliation.py` đo precision/recall trên đó.
 
 Lỗi cài sẵn cho bước làm sạch: `tests/fixtures/sales/loi-cai-san.csv` (dòng 222–230 của tệp đơn hàng cửa hàng). E2E gọi Gemini thật nên mỗi bài trong `data.spec.ts` được tối đa 120 giây.
 

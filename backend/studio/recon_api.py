@@ -181,6 +181,16 @@ def run_view(session: Session, run: ReconRun) -> dict[str, Any]:
             "RESOLVED": statuses.get("RESOLVED", 0),
         },
         "open_by_kind": {kind: open_by_kind.get(kind, 0) for kind in KINDS},
+        # Số kết quả của từng nhóm hiển thị (cùng điều kiện lọc với API danh sách kết quả).
+        "group_counts": {
+            group: session.scalar(
+                select(func.count())
+                .select_from(MatchResult)
+                .where((MatchResult.run_id == run.id) & _group_filter(group))
+            )
+            or 0
+            for group in ("todo", "explained", "resolved", "matched", "out_of_scope")
+        },
         "kind_labels": KIND_LABELS,
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,

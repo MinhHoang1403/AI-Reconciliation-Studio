@@ -54,3 +54,9 @@ Mỗi dòng là một quyết định đã chốt. Đổi quyết định thì t
 | 2026-11-23 | Cho chạy đối soát khi bộ sạch còn vấn đề mức "Hỏi"; dòng còn lỗi thành ngoại lệ "dữ liệu chưa sạch" kèm đường dẫn về đúng ô | Owner chọn; không chặn luồng, vẫn chỉ ra chỗ cần sửa |
 | 2026-11-23 | Sai số tiền mặc định khi khớp 1:1 là 0đ (khớp tuyệt đối), chỉnh được trong cấu hình | Owner chọn; VND không có số lẻ |
 | 2026-11-23 | Giai đoạn 4: Gemini chỉ diễn giải cấu hình và giải thích ngoại lệ khi người dùng bấm "Giải thích"; lý do do engine sinh luôn có sẵn | Owner chọn; không phát sinh phí ngoài ý muốn (R11) |
+| 2026-11-23 | Engine đối soát: chọn khóa theo tỷ lệ khớp thử (60%), độ phủ (20%), độ duy nhất (20%); cột tiền theo tỷ lệ bằng nhau trên dòng cùng khóa; cột ngày theo độ lệch trung vị nhỏ nhất | Theo bước "chọn trường" của Christen; số liệu lấy từ chính dữ liệu, không đoán |
+| 2026-11-23 | Khớp theo điểm 1:1 chỉ xét ứng viên cùng số tiền (trong sai số) và trong khung ngày (mặc định ±3 ngày); điểm = ngày 50%, độ giống mã 30%, độ giống tên 20% (chỉ tính phần cả hai bên có); ngưỡng 0,7; chọn cặp bằng `linear_sum_assignment`; cặp có ứng viên khác ngang điểm thì không tự chọn | Ưu tiên không ghép sai; ca mơ hồ để người dùng chọn (Giai đoạn 5) |
+| 2026-11-23 | Thêm hai loại kết quả `NEEDS_CLEANING` và `OUT_OF_SCOPE` để mọi dòng nằm trong đúng một kết quả | Điều kiện của bước kiểm chứng; không báo thiếu oan |
+| 2026-11-23 | Kiểm chứng gom thành bốn vòng con dấu: phủ dòng (A, B), bảo toàn tiền (A, B), số đếm theo loại, loại đúng với dữ liệu; chạy lại được từ kết quả đã lưu | Kiểm chứng độc lập với engine, bắt được kết quả bị sửa tay |
+| 2026-11-23 | Trạng thái và ghi chú ngoại lệ mang sang lần chạy sau khi kết quả giống hệt (cùng loại, cùng các dòng hai bên) | Chạy lại không làm mất công người dùng đã xử lý |
+| 2026-11-23 | Thêm trang "Lịch sử" vào thanh điều hướng (6 mục) | Nơi xem nhật ký kiểm toán; trên điện thoại 6 tab vẫn vừa khung 375px |
