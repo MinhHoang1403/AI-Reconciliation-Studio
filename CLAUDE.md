@@ -26,7 +26,8 @@ Bộ dữ liệu mẫu có đáp án ở `tests/fixtures/sales/`, sinh lại b�
 Hai công cụ chạy hoàn toàn trên máy, miễn phí (thay Graphify Cloud):
 
 - **Graph code — Graphify bản mã nguồn mở** (MCP `graphify` trong `.mcp.json`, đọc `graphify-out/graph.json`). Code được đọc bằng tree-sitter, không gọi LLM. Dựng lại sau khi sửa code: `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\code-graph.ps1`. Xem graph trực quan: <http://127.0.0.1:3114/graph.html>.
-- **Bộ nhớ phiên — agentmemory** (plugin Claude Code phạm vi local, máy chủ Docker ở `C:\Work\agentmemory`, bộ container `agentmemory`). Hooks tự ghi lại các phiên làm việc; tìm lại quyết định, lỗi đã sửa của phiên trước bằng công cụ MCP của agentmemory. Trang xem: <http://127.0.0.1:3113>. Chỉ tìm theo từ khóa và embedding local, không gọi LLM trả phí.
+- **Bộ nhớ phiên — agentmemory** (plugin Claude Code phạm vi local, máy chủ Docker ở `C:\Work\agentmemory`, bộ container `agentmemory`). Hooks tự ghi lại các phiên làm việc; tìm lại quyết định, lỗi đã sửa của phiên trước bằng công cụ MCP của agentmemory. Trang xem: <http://127.0.0.1:3113> (tự mở khóa qua proxy `viewer-proxy`; tab Graph có graph code do `tools/code-graph.ps1` nhập vào). REST ở 3111 vẫn cần khóa trong `C:\Work\agentmemory\.env`. Chỉ tìm theo từ khóa và embedding local, không gọi LLM trả phí.
+- Cấu hình riêng của máy (không thuộc repo): `C:\Work\agentmemory\docker-compose.override.yml` (proxy 3113, trang graph 3114, gắn `graphify-out` chỉ đọc) và `.claude/settings.local.json` (plugin agentmemory, `MCP_TIMEOUT` 60 giây).
 
 Không đọc cả file hay cả thư mục để "nắm lại dự án"; tra trước, chỉ mở đúng đoạn code cần sửa:
 
