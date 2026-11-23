@@ -161,8 +161,11 @@ def test_tied_candidates_are_not_auto_picked() -> None:
         "order_id", "order_id", "amount", "amount", "order_date", "transaction_date"
     )
     results = reconcile(Side(left), Side(right), config)
-    assert [item.kind for item in results] == ["ONLY_IN_A", "ONLY_IN_B", "ONLY_IN_B"]
-    assert any(reason["code"] == "TIED" for reason in results[0].reasons)
+    # Giai đoạn 5: các ứng viên ngang điểm gom thành một ca mơ hồ để người dùng chọn.
+    assert [item.kind for item in results] == ["AMBIGUOUS"]
+    assert results[0].left_refs == [2] and results[0].right_refs == [2, 3]
+    candidates = results[0].reasons[0]
+    assert candidates["code"] == "CANDIDATES" and len(candidates["pairs"]) == 2
 
 
 def test_unclean_rows_are_reported_not_matched() -> None:
