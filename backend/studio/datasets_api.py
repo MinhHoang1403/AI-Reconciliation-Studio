@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from studio import ingestion, reading, storage
+from studio import audit, ingestion, reading, storage
 from studio.config import settings
 from studio.database import get_session
 from studio.models import Dataset, DatasetTable
@@ -195,6 +195,15 @@ def upload_dataset(
         status="READING",
     )
     session.add(dataset)
+    audit.record(
+        session,
+        "DATASET_UPLOADED",
+        "DATASET",
+        dataset.id,
+        dataset.name,
+        f"Tải lên tệp “{filename}” ({upload.size_bytes:,} byte).".replace(",", "."),
+        after={"sha256": upload.sha256, "file": filename},
+    )
     try:
         session.commit()
     except IntegrityError:
@@ -264,6 +273,17 @@ def choose_header_row(
         raise fail(404, "TABLE_NOT_FOUND", "Không tìm thấy bảng dữ liệu.")
     if table.status == "READING":
         raise fail(409, "TABLE_BUSY", "Bảng đang được đọc, hãy đợi một chút.")
+    audit.record(
+        session,
+        "HEADER_ROW_CHANGED",
+        "TABLE",
+        table.id,
+        audit.table_label(table),
+        "Đọc lại bảng với "
+        + (f"dòng tiêu đề {choice.header_row}." if choice.header_row else "bảng không có tiêu đề."),
+        {"header_row": table.header_row},
+        {"header_row": choice.header_row},
+    )
     table.status = "READING"
     session.commit()
     background.add_task(ingestion.reread_table, table.id, choice.header_row)
@@ -282,6 +302,14 @@ def reread_dataset(
         for path in _table_files(table):
             storage.delete_file(path)
         dataset.tables.remove(table)
+    audit.record(
+        session,
+        "DATASET_REREAD",
+        "DATASET",
+        dataset.id,
+        dataset.name,
+        "Đọc lại toàn bộ tệp gốc.",
+    )
     dataset.status = "READING"
     dataset.error_message = None
     session.commit()
@@ -297,6 +325,15 @@ def delete_dataset(dataset_id: uuid.UUID, session: SessionDep) -> Response:
         dataset.storage_path,
         *(path for table in dataset.tables for path in _table_files(table)),
     ]
+    audit.record(
+        session,
+        "DATASET_DELETED",
+        "DATASET",
+        dataset.id,
+        dataset.name,
+        f"Xóa bộ dữ liệu “{dataset.name}” cùng tệp gốc và các bảng đã đọc.",
+        {"file": dataset.original_filename, "sha256": dataset.sha256},
+    )
     session.delete(dataset)
     session.commit()
     for path in paths:

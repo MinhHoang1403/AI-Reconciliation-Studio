@@ -21,11 +21,10 @@ os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 
 import pytest  # noqa: E402
-from sqlalchemy import delete  # noqa: E402
 
 from studio import database  # noqa: E402
 from studio.migrate import upgrade_to_latest  # noqa: E402
-from studio.models import Dataset  # noqa: E402
+from studio.models import Base  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures" / "sales"
@@ -44,8 +43,11 @@ def migrated_database() -> Iterator[None]:
 def clean_state() -> Iterator[None]:
     """Mỗi bài kiểm bắt đầu với DB trống và thư mục tệp trống."""
     yield
+    # SQLite trong kiểm thử không bật xóa dây chuyền theo khóa ngoại như PostgreSQL, nên xóa
+    # lần lượt mọi bảng (bảng con trước) để không còn dòng mồ côi của bài trước.
     with database.SessionFactory() as session:
-        session.execute(delete(Dataset))
+        for table in reversed(Base.metadata.sorted_tables):
+            session.execute(table.delete())
         session.commit()
     files = _WORK_DIR / "files"
     if files.exists():

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from studio import audit
 from studio.cleaning import latest_version, parse_user_value, source_cell
 from studio.cleaning_ai import refresh_clean_data
 from studio.database import get_session
@@ -59,6 +60,18 @@ def _save_correction(
     cell = source_cell(table, row_ref, field_key)
     if cell is None:
         raise fail(404, "CELL_NOT_FOUND", "Không tìm thấy ô này trong bảng.")
+    label = FIELDS_BY_KEY[field_key].label
+    audit.record(
+        session,
+        "CELL_FIXED" if source == "USER" else "AI_SUGGESTION_ACCEPTED",
+        "TABLE",
+        table.id,
+        audit.table_label(table),
+        f"Dòng {row_ref}, {label.lower()}: “{cell[1] or ''}” → “{value}”"
+        + (" (theo gợi ý AI)." if source == "AI" else "."),
+        {"row_ref": row_ref, "field_key": field_key, "value": cell[1]},
+        {"row_ref": row_ref, "field_key": field_key, "value": value},
+    )
     session.execute(
         delete(CellCorrection).where(
             CellCorrection.table_id == table.id,
@@ -178,6 +191,26 @@ def decide_rows(
 ) -> dict[str, Any]:
     """Loại dòng khỏi bộ sạch, giữ dòng (ví dụ giao dịch lặp thật), hoặc bỏ quyết định cũ."""
     table = _table_or_404(session, table_id)
+    previous = {
+        item.row_ref: item.decision
+        for item in session.scalars(
+            select(RowDecision).where(
+                RowDecision.table_id == table_id, RowDecision.row_ref.in_(choice.row_refs)
+            )
+        )
+    }
+    refs = ", ".join(map(str, choice.row_refs[:10])) + ("…" if len(choice.row_refs) > 10 else "")
+    verb = {"EXCLUDE": "Loại", "KEEP": "Giữ", "UNDO": "Bỏ quyết định cho"}[choice.decision]
+    audit.record(
+        session,
+        f"ROWS_{choice.decision}",
+        "TABLE",
+        table.id,
+        audit.table_label(table),
+        f"{verb} {len(choice.row_refs)} dòng ({refs}).",
+        {"decisions": {str(ref): value for ref, value in previous.items()}},
+        {"row_refs": choice.row_refs, "decision": choice.decision},
+    )
     session.execute(
         delete(RowDecision).where(
             RowDecision.table_id == table_id, RowDecision.row_ref.in_(choice.row_refs)
@@ -212,6 +245,15 @@ def accept_duplicate_suggestions(
     ]
     if not extra:
         return cleaning_view(session, table)
+    audit.record(
+        session,
+        "DUPLICATES_EXCLUDED",
+        "TABLE",
+        table.id,
+        audit.table_label(table),
+        f"Đồng ý bỏ {len(extra)} dòng lặp, giữ dòng đầu mỗi nhóm.",
+        after={"row_refs": extra},
+    )
     session.execute(
         delete(RowDecision).where(RowDecision.table_id == table_id, RowDecision.row_ref.in_(extra))
     )
@@ -238,6 +280,18 @@ def choose_date_order(
         raise fail(422, "NOT_A_DATE_FIELD", "Cột này không phải cột ngày.")
     options = dict(table.clean_options or {})
     orders = dict(options.get("date_orders", {}))
+    names = {"DMY": "ngày/tháng", "MDY": "tháng/ngày"}
+    audit.record(
+        session,
+        "DATE_ORDER_CHANGED",
+        "TABLE",
+        table.id,
+        audit.table_label(table),
+        f"Đọc cột {FIELDS_BY_KEY[choice.field_key].label.lower()} theo "
+        f"{names[choice.order]}.",
+        {"field_key": choice.field_key, "order": orders.get(choice.field_key)},
+        {"field_key": choice.field_key, "order": choice.order},
+    )
     orders[choice.field_key] = choice.order
     options["date_orders"] = orders
     table.clean_options = options

@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from studio import mapping_service
+from studio import audit, mapping_service
 from studio.cleaning_ai import refresh_clean_data
 from studio.database import get_session
 from studio.datasets_api import fail
@@ -103,6 +103,12 @@ def view(table: DatasetTable) -> TableMappingView:
     )
 
 
+def _field_label(field_key: str | None) -> str:
+    return FIELDS_BY_KEY[field_key].label if field_key and field_key in FIELDS_BY_KEY else (
+        "không ánh xạ"
+    )
+
+
 @router.get("/tables/{table_id}/mapping")
 def get_mapping(table_id: uuid.UUID, session: SessionDep) -> TableMappingView:
     return view(_table_or_404(session, table_id))
@@ -124,6 +130,7 @@ def choose_field(
     target = next((mapping for mapping in table.mappings if mapping.position == position), None)
     if target is None:
         raise fail(404, "COLUMN_NOT_FOUND", "Không tìm thấy cột.")
+    before = target.field_key
     for other in table.mappings:
         if other is not target and choice.field_key and other.field_key == choice.field_key:
             other.field_key = None
@@ -134,6 +141,16 @@ def choose_field(
     target.field_key = choice.field_key
     target.status, target.source, target.confidence = "CONFIRMED", "USER", 1.0
     target.reason = "Bạn đã chọn."
+    audit.record(
+        session,
+        "MAPPING_CHANGED",
+        "TABLE",
+        table.id,
+        audit.table_label(table),
+        f"Cột “{target.column_name}”: {_field_label(before)} → {_field_label(choice.field_key)}.",
+        {"column": target.column_name, "field_key": before},
+        {"column": target.column_name, "field_key": choice.field_key},
+    )
     mapping_service.remember(session, table)
     # Ánh xạ đổi thì bộ dữ liệu sạch phải dựng lại theo ánh xạ mới.
     table.clean_status = "BUILDING"
@@ -146,9 +163,20 @@ def choose_field(
 def confirm_all(table_id: uuid.UUID, session: SessionDep) -> TableMappingView:
     """Đồng ý mọi gợi ý đang chờ và ghi nhớ ánh xạ cho tệp cùng cấu trúc."""
     table = _table_or_404(session, table_id)
+    confirmed = []
     for mapping in table.mappings:
         if mapping.status in ("SUGGESTED", "AUTO"):
             mapping.status = "CONFIRMED"
+            confirmed.append({"column": mapping.column_name, "field_key": mapping.field_key})
+    audit.record(
+        session,
+        "MAPPING_CONFIRMED",
+        "TABLE",
+        table.id,
+        audit.table_label(table),
+        f"Xác nhận ánh xạ {len(confirmed)} cột.",
+        after={"columns": confirmed},
+    )
     mapping_service.remember(session, table)
     session.commit()
     return view(table)
@@ -165,6 +193,14 @@ def suggest_again(
     if table.mapping_status == "MAPPING":
         raise fail(409, "MAPPING_BUSY", "Đang gợi ý ánh xạ, hãy đợi một chút.")
     table.mapping_status = "MAPPING"
+    audit.record(
+        session,
+        "MAPPING_RESUGGESTED",
+        "TABLE",
+        table.id,
+        audit.table_label(table),
+        "Yêu cầu gợi ý lại ánh xạ từ đầu.",
+    )
     session.commit()
     background.add_task(mapping_service.suggest_for_table, table.id, False)
     return view(table)

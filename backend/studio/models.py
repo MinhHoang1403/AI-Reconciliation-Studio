@@ -4,16 +4,19 @@ Dữ liệu dạng bảng lớn (các dòng đã đọc) nằm trong tệp Parqu
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Literal
 
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Date,
     DateTime,
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -234,3 +237,81 @@ class AiCall(Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReconRun(Base):
+    """Một lần đối soát hai bảng sạch A ↔ B: cấu hình, kỳ, tóm tắt và kết quả kiểm chứng."""
+
+    __tablename__ = "recon_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    left_table_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("dataset_tables.id", ondelete="CASCADE"), index=True
+    )
+    right_table_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("dataset_tables.id", ondelete="CASCADE"), index=True
+    )
+    # Phiên bản bộ sạch đã dùng: kết quả luôn truy ngược được về đúng dữ liệu lúc chạy.
+    left_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("clean_versions.id", ondelete="CASCADE"), nullable=True
+    )
+    right_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("clean_versions.id", ondelete="CASCADE"), nullable=True
+    )
+    # RUNNING (đang chạy), READY (xong), FAILED (lỗi).
+    status: Mapped[str] = mapped_column(String(16), default="RUNNING")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config: Mapped[dict[str, Any]] = mapped_column()
+    # Kỳ đối soát suy từ khoảng ngày của dữ liệu hai bên.
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    summary: Mapped[dict[str, Any] | None] = mapped_column(nullable=True)
+    # {"passed": bool, "checks": [...]}; không đạt thì không dùng cho báo cáo.
+    verification: Mapped[dict[str, Any] | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MatchResult(Base):
+    """Một kết quả đối soát: loại, các dòng hai bên, điểm, lý do và trạng thái ngoại lệ."""
+
+    __tablename__ = "match_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("recon_runs.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(24))
+    left_refs: Mapped[list[Any]] = mapped_column()
+    right_refs: Mapped[list[Any]] = mapped_column()
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # [{"code": ..., "text": ...}] do engine sinh ra; Gemini chỉ diễn giải lại khi được hỏi.
+    reasons: Mapped[list[Any]] = mapped_column()
+    amount_left: Mapped[Decimal | None] = mapped_column(Numeric(20, 2), nullable=True)
+    amount_right: Mapped[Decimal | None] = mapped_column(Numeric(20, 2), nullable=True)
+    # Ngoại lệ: OPEN (cần xem) → EXPLAINED (đã ghi chú) / RESOLVED (đã xử lý); trống nếu
+    # kết quả không cần người xem (khớp, ngoài phạm vi).
+    exception_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AuditLog(Base):
+    """Nhật ký kiểm toán: mọi thay đổi của người dùng, ai làm, lúc nào, trước và sau."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    actor: Mapped[str] = mapped_column(String(32))
+    action: Mapped[str] = mapped_column(String(48))
+    # Không dùng khóa ngoại: nhật ký giữ lại kể cả khi đối tượng đã bị xóa.
+    object_type: Mapped[str] = mapped_column(String(32))
+    object_id: Mapped[str] = mapped_column(String(64))
+    object_label: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text)
+    before: Mapped[dict[str, Any] | None] = mapped_column(nullable=True)
+    after: Mapped[dict[str, Any] | None] = mapped_column(nullable=True)

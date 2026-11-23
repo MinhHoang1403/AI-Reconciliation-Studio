@@ -203,33 +203,83 @@ class SalesFixtureBuilder:
 
     # ---------- giao dịch cổng thanh toán ----------
     # CSV dấu ;, tiền kiểu 1.250.000, cổng trả tiền gộp theo từng đợt.
+    # Ca cài sẵn cho đối soát đơn cửa hàng ↔ cổng (theo thứ tự đơn quẹt thẻ, không dùng số
+    # ngẫu nhiên để các tệp khác không đổi).
+    GW_SHORT_PAID_AT = 3  # cổng thu ít hơn giá trên đơn 20.000đ → AMOUNT_MISMATCH
+    GW_MISSING_AT = 10  # đơn quẹt thẻ nhưng cổng không có giao dịch → ONLY_IN_A
+    GW_NO_CODE_AT = 15  # giao dịch không ghi mã đơn → khớp theo số tiền và ngày
+    GW_TYPO_AT = 20  # mã đơn gõ sai một ký tự → khớp theo số tiền và ngày
+    GW_CHARGED_TWICE_AT = 25  # khách bị trừ tiền hai lần → một khớp, một DUPLICATE
+
     def build_gateway(self) -> list[list[str]]:
         rows: list[list[str]] = []
         batches: dict[str, list[tuple[int, int]]] = defaultdict(list)
-        for index, (pos_line, moment, total, code) in enumerate(self._pos_card):
-            fee = round(total * 0.011)
+        relation = "cua-hang↔cong-thanh-toan"
+
+        def emit(txn: str, code: str, moment: dt.datetime, charged: int) -> int:
+            """Ghi một giao dịch cổng; trả về số dòng của nó trong tệp (dòng 1 là tên cột)."""
+            fee = round(charged * 0.011)
             batch = "DOT" + (moment.date() + dt.timedelta(days=1)).strftime("%y%m%d")
-            txn = f"GD{self.rng.randrange(10**9, 10**10)}"
             rows.append(
                 [
                     txn,
                     code,
                     moment.strftime("%Y-%m-%d %H:%M:%S"),
-                    vn_money(total),
+                    vn_money(charged),
                     vn_money(fee),
-                    vn_money(total - fee),
+                    vn_money(charged - fee),
                     batch,
                 ]
             )
-            gateway_line = index + 2
+            line = len(rows) + 1
+            batches[batch].append((line, charged - fee))
+            return line
+
+        for index, (pos_line, moment, total, code) in enumerate(self._pos_card):
+            txn = f"GD{self.rng.randrange(10**9, 10**10)}"
+            pos_ref = Ref(POS_FILE, "", pos_line)
+            if index == self.GW_MISSING_AT:
+                self.answers.add(
+                    f"POS-GW-{code}",
+                    relation,
+                    "ONLY_IN_A",
+                    pos_ref,
+                    None,
+                    "Đơn quẹt thẻ nhưng cổng không có giao dịch",
+                )
+                continue
+            kind, note, shown_code, charged = "MATCHED", "", code, total
+            if index == self.GW_SHORT_PAID_AT:
+                kind, charged = "AMOUNT_MISMATCH", total - 20_000
+                note = "Cổng thu ít hơn đơn 20.000đ"
+            elif index == self.GW_NO_CODE_AT:
+                note, shown_code = "Giao dịch không ghi mã đơn; khớp theo số tiền và ngày", ""
+            elif index == self.GW_TYPO_AT:
+                note, shown_code = "Mã đơn gõ sai; khớp theo số tiền và ngày", code[:-1] + "X"
+            line = emit(txn, shown_code, moment, charged)
             self.answers.add(
-                f"POS-GW-{code}",
-                "cua-hang↔cong-thanh-toan",
-                "MATCHED",
-                Ref(POS_FILE, "", pos_line),
-                Ref(GATEWAY_FILE, "", gateway_line),
+                f"POS-GW-{code}", relation, kind, pos_ref, Ref(GATEWAY_FILE, "", line), note
             )
-            batches[batch].append((gateway_line, total - fee))
+            if index == self.GW_CHARGED_TWICE_AT:
+                again = emit(f"GD{int(txn[2:]) + 7}", code, moment + dt.timedelta(minutes=1), total)
+                self.answers.add(
+                    f"POS-GW-{code}-LAN-2",
+                    relation,
+                    "DUPLICATE",
+                    pos_ref,
+                    Ref(GATEWAY_FILE, "", again),
+                    "Khách bị trừ tiền hai lần",
+                )
+        # Giao dịch có mã đơn không tồn tại trong phần mềm bán hàng → ONLY_IN_B.
+        stray = emit("GD9000000001", "HD000950", dt.datetime(2026, 10, 5, 14, 20, 0), 780_000)
+        self.answers.add(
+            "GW-ONLY-HD000950",
+            relation,
+            "ONLY_IN_B",
+            None,
+            Ref(GATEWAY_FILE, "", stray),
+            "Giao dịch không có đơn trong phần mềm bán hàng",
+        )
         self._gateway_batches = batches
         return rows
 
