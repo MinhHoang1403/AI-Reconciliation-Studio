@@ -54,22 +54,24 @@ def read_dataset(dataset_id: uuid.UUID) -> None:
         dataset = session.get(Dataset, dataset_id)
         if dataset is None:
             return
+        created: list[uuid.UUID] = []  # bảng đã ghi Parquet, để dọn nếu đọc thất bại
         try:
             for position, raw in enumerate(_raw_sheets(dataset)):
                 table = DatasetTable(id=uuid.uuid4(), dataset=dataset, sheet_name=raw.name,
                                      position=position)
+                created.append(table.id)
                 _save_table(table, raw, reading.detect_header_row(raw.frame))
                 session.add(table)
             dataset.status = "READY"
             dataset.error_message = None
+            session.commit()
         except reading.ReadError as error:
-            _fail(session, dataset, str(error))
+            _fail(session, dataset_id, created, str(error))
             return
         except Exception:
             logger.exception("Lỗi không lường trước khi đọc bộ dữ liệu %s", dataset_id)
-            _fail(session, dataset, "Có lỗi khi đọc tệp. Hãy thử tải lại.")
+            _fail(session, dataset_id, created, "Có lỗi khi đọc tệp. Hãy thử tải lại.")
             return
-        session.commit()
         ready_tables = [table.id for table in dataset.tables if table.status == "READY"]
     # Đọc xong thì tự gợi ý ánh xạ cột cho từng bảng (quyết định 2026-11-20).
     for ready_table_id in ready_tables:
@@ -117,9 +119,17 @@ def _suggest_mapping(table_id: uuid.UUID) -> None:
                 session.commit()
 
 
-def _fail(session: Session, dataset: Dataset, message: str) -> None:
+def _fail(
+    session: Session, dataset_id: uuid.UUID, created: list[uuid.UUID], message: str
+) -> None:
+    """Đánh dấu bộ dữ liệu đọc lỗi và dọn các tệp Parquet đã lỡ ghi (bảng không được lưu)."""
     session.rollback()
-    dataset = session.get(Dataset, dataset.id) or dataset
+    for table_id in created:
+        storage.delete_file(storage.table_path(table_id))
+    # Người dùng có thể đã xóa bộ dữ liệu trong lúc đọc: không tạo lại nó.
+    dataset = session.get(Dataset, dataset_id)
+    if dataset is None:
+        return
     dataset.status = "FAILED"
     dataset.error_message = message
     session.commit()

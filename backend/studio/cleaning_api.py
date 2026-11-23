@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from studio.cleaning import latest_version, parse_user_value
+from studio.cleaning import latest_version, parse_user_value, source_cell
 from studio.cleaning_ai import refresh_clean_data
 from studio.database import get_session
 from studio.datasets_api import fail
@@ -52,6 +52,34 @@ def _rebuild(session: Session, table: DatasetTable, background: BackgroundTasks)
     return cleaning_view(session, table)
 
 
+def _save_correction(
+    session: Session, table: DatasetTable, row_ref: int, field_key: str, value: str, source: str
+) -> None:
+    """Ghi giá trị sửa cho một ô (thay bản cũ), kèm ô gốc lúc sửa để biết khi nào hết hiệu lực."""
+    cell = source_cell(table, row_ref, field_key)
+    if cell is None:
+        raise fail(404, "CELL_NOT_FOUND", "Không tìm thấy ô này trong bảng.")
+    session.execute(
+        delete(CellCorrection).where(
+            CellCorrection.table_id == table.id,
+            CellCorrection.row_ref == row_ref,
+            CellCorrection.field_key == field_key,
+        )
+    )
+    session.add(
+        CellCorrection(
+            id=uuid.uuid4(),
+            table_id=table.id,
+            row_ref=row_ref,
+            field_key=field_key,
+            value=value,
+            source=source,
+            source_column=cell[0],
+            original_value=cell[1],
+        )
+    )
+
+
 def cleaning_view(session: Session, table: DatasetTable) -> dict[str, Any]:
     version = latest_version(table)
     suggestions = {
@@ -68,9 +96,12 @@ def cleaning_view(session: Session, table: DatasetTable) -> dict[str, Any]:
             if issue["field_key"]
             else None
         )
+        # Gợi ý chỉ còn đúng khi ô vẫn mang đúng giá trị gốc lúc AI được hỏi.
         item["ai_suggestion"] = (
             None
-            if suggestion is None or issue["kind"] != "INVALID_VALUE"
+            if suggestion is None
+            or issue["kind"] != "INVALID_VALUE"
+            or suggestion.raw_value != (issue["values"][0] or "")
             else {
                 "value": suggestion.suggested_value,
                 "confidence": suggestion.confidence,
@@ -110,23 +141,7 @@ def fix_cell(
     if parse_user_value(fix.value, fix.field_key).state != "VALID":
         label = FIELDS_BY_KEY[fix.field_key].label.lower()
         raise fail(422, "INVALID_VALUE", f"“{fix.value}” không phải {label} hợp lệ.")
-    session.execute(
-        delete(CellCorrection).where(
-            CellCorrection.table_id == table_id,
-            CellCorrection.row_ref == fix.row_ref,
-            CellCorrection.field_key == fix.field_key,
-        )
-    )
-    session.add(
-        CellCorrection(
-            id=uuid.uuid4(),
-            table_id=table_id,
-            row_ref=fix.row_ref,
-            field_key=fix.field_key,
-            value=fix.value.strip(),
-            source="USER",
-        )
-    )
+    _save_correction(session, table, fix.row_ref, fix.field_key, fix.value.strip(), "USER")
     return _rebuild(session, table, background)
 
 
@@ -149,23 +164,11 @@ def accept_suggestion(
     )
     if suggestion is None or suggestion.suggested_value is None:
         raise fail(404, "SUGGESTION_NOT_FOUND", "Không có gợi ý cho ô này.")
-    session.execute(
-        delete(CellCorrection).where(
-            CellCorrection.table_id == table_id,
-            CellCorrection.row_ref == row_ref,
-            CellCorrection.field_key == field_key,
-        )
-    )
-    session.add(
-        CellCorrection(
-            id=uuid.uuid4(),
-            table_id=table_id,
-            row_ref=row_ref,
-            field_key=field_key,
-            value=suggestion.suggested_value,
-            source="AI",
-        )
-    )
+    cell = source_cell(table, row_ref, field_key)
+    if cell is None or (cell[1] or "") != suggestion.raw_value:
+        # Ô đã đổi (ánh xạ sang cột khác, đọc lại tiêu đề): gợi ý cũ không còn đúng ô.
+        raise fail(409, "SUGGESTION_STALE", "Gợi ý này đã cũ vì ô đã thay đổi.")
+    _save_correction(session, table, row_ref, field_key, suggestion.suggested_value, "AI")
     return _rebuild(session, table, background)
 
 

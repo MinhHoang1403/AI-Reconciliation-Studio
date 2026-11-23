@@ -9,6 +9,7 @@ import polars as pl
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from studio import ingestion, reading, storage
@@ -194,7 +195,17 @@ def upload_dataset(
         status="READING",
     )
     session.add(dataset)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # Hai lần tải cùng một tệp chạy song song: lần sau vấp ràng buộc duy nhất của SHA-256.
+        # Tệp gốc đặt tên theo SHA-256 nên vẫn là tệp của lần trước; trả về như tải trùng.
+        session.rollback()
+        existing = session.scalar(select(Dataset).where(Dataset.sha256 == upload.sha256))
+        if existing is None:
+            raise
+        response.status_code = 200
+        return UploadReply(dataset=summarize(existing), duplicate=True)
     session.refresh(dataset)
     background.add_task(ingestion.read_dataset, dataset.id)
     return UploadReply(dataset=summarize(dataset), duplicate=False)

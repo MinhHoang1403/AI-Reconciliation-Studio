@@ -140,6 +140,10 @@ class CleanVersion(Base):
     thay đổi; tệp Parquet của mỗi phiên bản không bao giờ bị ghi đè."""
 
     __tablename__ = "clean_versions"
+    # Mỗi bảng không có hai phiên bản cùng số (chặn thêm một lớp ngoài khóa theo bảng).
+    __table_args__ = (
+        UniqueConstraint("table_id", "version", name="uq_clean_versions_table_id_version"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     table_id: Mapped[uuid.UUID] = mapped_column(
@@ -172,6 +176,11 @@ class CellCorrection(Base):
     field_key: Mapped[str] = mapped_column(String(64))
     value: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(16))  # USER hoặc AI (người dùng đồng ý gợi ý AI)
+    # Ô gốc lúc sửa: tên cột trong tệp và giá trị gốc. Nếu sau đó cột chuẩn được ánh xạ sang
+    # cột khác hoặc đọc lại với dòng tiêu đề khác, ô không còn là ô đã sửa nên bỏ qua giá trị
+    # sửa. Để trống ở các bản sửa trước khi có hai cột này (khi đó vẫn áp dụng như cũ).
+    source_column: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    original_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

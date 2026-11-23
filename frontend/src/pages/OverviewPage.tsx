@@ -42,7 +42,9 @@ export function OverviewPage() {
   const pending = readyTables.reduce((sum, table) => sum + table.mapping_pending, 0);
   const mappingBusy = readyTables.some((table) => table.mapping_status !== "READY");
   const mapped = hasData && !mappingBusy && pending === 0;
-  const cleanBusy = readyTables.some((table) => table.clean_status === "BUILDING" || table.clean_status === "NONE");
+  // Chỉ BUILDING là đang chuẩn hóa. NONE nghĩa là bảng không có cột nào được ánh xạ nên
+  // không có gì để làm sạch; coi là bận thì bước này kẹt mãi (danh sách không tự tải lại khi NONE).
+  const cleanBusy = readyTables.some((table) => table.clean_status === "BUILDING");
   const cleanOpen = readyTables.reduce((sum, table) => sum + table.clean_open, 0);
   const cleaned = mapped && !cleanBusy && cleanOpen === 0;
 

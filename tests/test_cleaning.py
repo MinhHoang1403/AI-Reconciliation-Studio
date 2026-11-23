@@ -10,8 +10,15 @@ import pytest
 from conftest import FIXTURES
 from fastapi.testclient import TestClient
 
-from studio import cleaning_ai, main, reading
-from studio.cleaning import BuildInput, _plan_columns, build
+from studio import cleaning_ai, database, ingestion, main, reading, storage
+from studio.cleaning import (
+    BuildInput,
+    Correction,
+    _plan_columns,
+    build,
+    build_clean_version,
+    parse_user_value,
+)
 from studio.gemini_client import AiReply
 from studio.value_parsers import (
     detect_date_order,
@@ -92,7 +99,7 @@ def pos_build(
             "ORDERS_POS",
             table.frame,
             _plan_columns(table.frame, POS_MAPPING, {}),
-            corrections or {},
+            {key: Correction(value) for key, value in (corrections or {}).items()},
             decisions or {},
             {},
         )
@@ -299,6 +306,172 @@ def test_deleting_dataset_removes_clean_files() -> None:
     from studio.config import settings
 
     dataset = upload("giao-dich-cong-thanh-toan.csv")
-    assert list(Path(settings.storage_root).rglob("*-sach-v*.parquet"))
+    assert list(Path(settings.storage_root).rglob("*-sach-phien-ban-*.parquet"))
     client.delete(f"/api/datasets/{dataset['id']}")
     assert not list(Path(settings.storage_root).rglob("*.parquet"))
+
+
+# ---------------------------------------------------------------- lỗi tìm thấy khi rà code
+
+
+def small_build(rows: list[list[str]], corrections: dict[tuple[int, str], Correction]) -> Any:
+    """Dựng bộ sạch cho một bảng đơn hàng nhỏ (cột MaHD, TongTien), dòng gốc tính từ 2."""
+    import polars as pl
+
+    frame = pl.DataFrame(
+        {
+            "MaHD": [row[0] for row in rows],
+            "TongTien": [row[1] for row in rows],
+            "__row_ref": list(range(2, len(rows) + 2)),
+        }
+    )
+    mapping = [("MaHD", "order_id"), ("TongTien", "amount")]
+    return build(
+        BuildInput(
+            uuid.uuid4(),
+            "ORDERS_POS",
+            frame,
+            _plan_columns(frame, mapping, {}),
+            corrections,
+            {},
+            {},
+        )
+    )
+
+
+def test_conflicting_amounts_with_an_unreadable_one_do_not_crash() -> None:
+    """Cùng mã, một dòng số tiền không đọc được: trước đây sắp xếp None với số làm hỏng cả bước."""
+    result = small_build([["HD1", "100000"], ["HD1", "abc"], ["HD1", "200000"]], {})
+    conflict = next(issue for issue in result.issues if issue["kind"] == "CONFLICTING_VALUES")
+    assert "100.000, 200.000, trống" in conflict["message"]
+
+
+def test_correction_only_applies_to_the_cell_it_was_made_for() -> None:
+    rows = [["HD1", "abc"]]
+    same_cell = Correction("500000", source_column="TongTien", original_value="abc")
+    assert small_build(rows, {(2, "amount"): same_cell}).frame["amount"][0] == Decimal("500000")
+    # Cột chuẩn đã được ánh xạ sang cột khác, hoặc ô gốc đã đổi: bỏ qua giá trị sửa cũ.
+    other_column = Correction("500000", source_column="ThanhTien", original_value="abc")
+    other_value = Correction("500000", source_column="TongTien", original_value="xyz")
+    for stale in (other_column, other_value):
+        result = small_build(rows, {(2, "amount"): stale})
+        assert result.frame["amount"][0] is None
+        assert any(issue["kind"] == "INVALID_VALUE" for issue in result.issues)
+
+
+def test_user_money_accepts_vietnamese_and_english_separators() -> None:
+    assert parse_user_value("1.200.000", "amount").value == Decimal("1200000")
+    assert parse_user_value("1,200,000", "amount").value == Decimal("1200000")
+    assert parse_user_value("1,5", "amount").value == Decimal("1.5")  # kiểu Việt được ưu tiên
+
+
+def test_cell_fix_records_the_source_cell() -> None:
+    from sqlalchemy import select
+
+    from studio.models import CellCorrection
+
+    table = upload("don-hang-cua-hang.csv")["tables"][0]
+    unreadable = next(
+        issue
+        for issue in cleaning(table["id"])["issues"]
+        if issue["kind"] == "INVALID_VALUE" and issue["row_refs"] == [226]
+    )
+    reply = client.post(
+        f"/api/tables/{table['id']}/cleaning/cells",
+        json={"row_ref": 226, "field_key": "amount", "value": "1,200,000"},
+    )
+    assert reply.status_code == 202
+    with database.SessionFactory() as session:
+        saved = session.scalars(
+            select(CellCorrection).where(CellCorrection.table_id == uuid.UUID(table["id"]))
+        ).one()
+    assert saved.source_column == "TongTien"
+    assert saved.original_value == unreadable["values"][0]
+    view = cleaning(table["id"])
+    assert not any(
+        issue["kind"] == "INVALID_VALUE" and issue["row_refs"] == [226] for issue in view["issues"]
+    )
+
+
+def test_stale_ai_suggestion_is_hidden_and_cannot_be_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy import update
+
+    from studio.models import AiCellSuggestion
+
+    def fake_ai(**kwargs: Any) -> AiReply:
+        cells = kwargs["payload"]["cells"]
+        return AiReply(
+            data={
+                "suggestions": [
+                    {"id": cell["id"], "value": "500000", "confidence": 0.8, "reason": "giả lập"}
+                    for cell in cells
+                    if cell["field"] == "amount"
+                ]
+            },
+            input_tokens=1,
+            output_tokens=1,
+        )
+
+    monkeypatch.setattr(cleaning_ai, "generate_json", fake_ai)
+    table = upload("don-hang-cua-hang.csv")["tables"][0]
+    # Giả lập ô đã đổi sau khi AI được hỏi: gợi ý mang giá trị gốc khác giá trị hiện tại.
+    with database.SessionFactory() as session:
+        session.execute(update(AiCellSuggestion).values(raw_value="giá trị cũ"))
+        session.commit()
+    amount = next(
+        issue
+        for issue in cleaning(table["id"])["issues"]
+        if issue["kind"] == "INVALID_VALUE" and issue["field_key"] == "amount"
+    )
+    assert amount["ai_suggestion"] is None
+    reply = client.post(
+        f"/api/tables/{table['id']}/cleaning/suggestions/accept",
+        params={"row_ref": 226, "field_key": "amount"},
+    )
+    assert reply.status_code == 409
+    # Lần dựng sau hỏi lại AI cho ô này và thay gợi ý cũ.
+    client.post(f"/api/tables/{table['id']}/cleaning/rebuild")
+    amount = next(
+        issue
+        for issue in cleaning(table["id"])["issues"]
+        if issue["kind"] == "INVALID_VALUE" and issue["field_key"] == "amount"
+    )
+    assert amount["ai_suggestion"]["value"] == "500000"
+
+
+def test_concurrent_rebuilds_give_distinct_versions() -> None:
+    import threading
+
+    table = upload("giao-dich-cong-thanh-toan.csv")["tables"][0]
+    workers = [
+        threading.Thread(target=build_clean_version, args=(uuid.UUID(table["id"]),))
+        for _ in range(4)
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+    from sqlalchemy import select
+
+    from studio.models import CleanVersion
+
+    with database.SessionFactory() as session:
+        versions = session.scalars(
+            select(CleanVersion.version).where(CleanVersion.table_id == uuid.UUID(table["id"]))
+        ).all()
+    assert sorted(versions) == list(range(1, len(versions) + 1)) and len(versions) == 5
+
+
+def test_failed_read_does_not_recreate_a_deleted_dataset() -> None:
+    from studio.models import Dataset
+
+    table_id = uuid.uuid4()
+    path = storage.table_path(table_id)
+    path.write_bytes(b"ban do dang ghi")
+    missing = uuid.uuid4()
+    with database.SessionFactory() as session:
+        ingestion._fail(session, missing, [table_id], "lỗi")
+        assert session.get(Dataset, missing) is None
+    assert not path.exists()  # tệp Parquet đã lỡ ghi được dọn

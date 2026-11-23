@@ -24,6 +24,7 @@ from studio import database, storage
 from studio.models import CellCorrection, CleanVersion, DatasetTable, RowDecision
 from studio.reading import ROW_REF
 from studio.sales_fields import FIELDS_BY_KEY
+from studio.table_locks import table_lock
 from studio.value_parsers import (
     DateOrder,
     NumberStyle,
@@ -84,12 +85,30 @@ class ColumnPlan:
 
 
 @dataclass
+class Correction:
+    """Giá trị người dùng sửa cho một ô, kèm ô gốc lúc sửa (cột trong tệp, giá trị gốc)."""
+
+    value: str
+    source_column: str | None = None
+    original_value: str | None = None
+
+    def applies_to(self, column: str, original: str | None) -> bool:
+        """Chỉ áp dụng khi ô hiện tại vẫn là ô đã sửa: cùng cột gốc, cùng giá trị gốc.
+
+        Bản sửa cũ chưa ghi ô gốc (source_column trống) thì áp dụng như trước.
+        """
+        if self.source_column is None:
+            return True
+        return self.source_column == column and self.original_value == original
+
+
+@dataclass
 class BuildInput:
     table_id: uuid.UUID
     table_kind: str | None
     raw: pl.DataFrame
     plans: list[ColumnPlan]
-    corrections: dict[tuple[int, str], str]
+    corrections: dict[tuple[int, str], Correction]
     decisions: dict[int, str]
     date_order_choices: dict[str, str]
 
@@ -116,8 +135,17 @@ def parse_cell(raw: str | None, plan: ColumnPlan) -> Parsed:
 
 
 def parse_user_value(value: str, field_key: str) -> Parsed:
-    """Đọc giá trị người dùng nhập: tiền kiểu Việt, ngày ngày/tháng hoặc năm-tháng-ngày."""
-    return parse_cell(value, ColumnPlan(column="", field_key=field_key))
+    """Đọc giá trị người dùng (hoặc AI) nhập cho một ô.
+
+    Tiền: thử kiểu Việt trước (1.250.000), không được thì kiểu Anh (1,250,000), vì một ô lẻ
+    không có cả cột để suy kiểu. Ngày: ngày/tháng hoặc năm-tháng-ngày.
+    """
+    plan = ColumnPlan(column="", field_key=field_key)
+    parsed = parse_cell(value, plan)
+    if parsed.state == "INVALID" and FIELDS_BY_KEY[field_key].type == "MONEY":
+        plan.number_style = "EN"
+        parsed = parse_cell(value, plan)
+    return parsed
 
 
 def _plan_columns(
@@ -209,8 +237,8 @@ def build(data: BuildInput) -> BuildOutput:
             ref = row_refs[index]
             original = raw_rows[index][position]
             correction = data.corrections.get((ref, plan.field_key))
-            if correction is not None:
-                parsed = parse_user_value(correction, plan.field_key)
+            if correction is not None and correction.applies_to(plan.column, original):
+                parsed = parse_user_value(correction.value, plan.field_key)
                 fix: str | None = "USER_CORRECTION"
             else:
                 parsed = parse_cell(original, plan)
@@ -247,7 +275,12 @@ def build(data: BuildInput) -> BuildOutput:
             values.append(parsed.value)
         parsed_values[plan.field_key] = values
 
-    # 4. Thiếu trường bắt buộc theo loại bảng.
+    # 4. Thiếu trường bắt buộc theo loại bảng (ô đã báo "không đọc được" thì không báo thêm).
+    invalid_cells = {
+        (issue["row_refs"][0], issue["field_key"])
+        for issue in issues
+        if issue["kind"] == "INVALID_VALUE"
+    }
     for group in REQUIRED_FIELDS.get(data.table_kind or "", []):
         present = [key for key in group if key in parsed_values]
         if not present:
@@ -255,13 +288,7 @@ def build(data: BuildInput) -> BuildOutput:
         for offset, index in enumerate(included):
             if all(parsed_values[key][offset] is None for key in present):
                 ref = row_refs[index]
-                already_invalid = any(
-                    issue["kind"] == "INVALID_VALUE"
-                    and issue["row_refs"] == [ref]
-                    and issue["field_key"] in present
-                    for issue in issues
-                )
-                if not already_invalid:
+                if not any((ref, key) in invalid_cells for key in present):
                     labels = " hoặc ".join(FIELDS_BY_KEY[key].label.lower() for key in present)
                     issues.append(
                         _issue(
@@ -283,6 +310,8 @@ def build(data: BuildInput) -> BuildOutput:
                 by_key[key].append(offset)
         for key, offsets in by_key.items():
             amounts = {parsed_values["amount"][offset] for offset in offsets}
+            # Số tiền trống (ô không đọc được) xếp cuối, không so sánh None với số.
+            ordered = sorted(amounts, key=lambda amount: (amount is None, amount or 0))
             if len(offsets) > 1 and len(amounts) > 1:
                 refs = [row_refs[included[offset]] for offset in offsets]
                 kept = all(data.decisions.get(ref) == "KEEP" for ref in refs)
@@ -292,7 +321,7 @@ def build(data: BuildInput) -> BuildOutput:
                         "ASK",
                         refs,
                         f"Mã {key} xuất hiện ở {len(refs)} dòng với số tiền khác nhau "
-                        f"({', '.join(_money_vi(amount) for amount in sorted(amounts))}). "
+                        f"({', '.join(_money_vi(amount) for amount in ordered)}). "
                         "Sửa số tiền "
                         "đúng, loại dòng sai, hoặc giữ cả nếu đúng là nhiều giao dịch.",
                         "amount",
@@ -376,7 +405,16 @@ def _display(value: Any) -> str | None:
 
 
 def build_clean_version(table_id: uuid.UUID) -> None:
-    """Dựng phiên bản sạch mới cho bảng (chạy nền); lỗi được ghi lại, không làm hỏng dữ liệu."""
+    """Dựng phiên bản sạch mới cho bảng (chạy nền); lỗi được ghi lại, không làm hỏng dữ liệu.
+
+    Các lần dựng cùng bảng chạy lần lượt (khóa theo bảng): lần sau luôn đọc đủ mọi sửa đổi
+    và luôn là phiên bản mới nhất, không có hai phiên bản trùng số.
+    """
+    with table_lock(table_id):
+        _build_clean_version(table_id)
+
+
+def _build_clean_version(table_id: uuid.UUID) -> None:
     with database.SessionFactory() as session:
         table = session.get(DatasetTable, table_id)
         if table is None or table.status != "READY" or table.parquet_path is None:
@@ -394,7 +432,9 @@ def build_clean_version(table_id: uuid.UUID) -> None:
         session.commit()
         raw = pl.read_parquet(table.parquet_path)
         corrections = {
-            (item.row_ref, item.field_key): item.value
+            (item.row_ref, item.field_key): Correction(
+                item.value, item.source_column, item.original_value
+            )
             for item in session.scalars(
                 select(CellCorrection).where(CellCorrection.table_id == table_id)
             )
@@ -434,7 +474,7 @@ def build_clean_version(table_id: uuid.UUID) -> None:
             )
             or 0
         ) + 1
-        path = storage.tables_dir() / f"{table_id}-sach-v{version}.parquet"
+        path = storage.tables_dir() / f"{table_id}-sach-phien-ban-{version}.parquet"
         path.parent.mkdir(parents=True, exist_ok=True)
         result.frame.write_parquet(path)
         session.add(
@@ -451,6 +491,28 @@ def build_clean_version(table_id: uuid.UUID) -> None:
         )
         table.clean_status = "READY"
         session.commit()
+
+
+def source_cell(table: DatasetTable, row_ref: int, field_key: str) -> tuple[str, str | None] | None:
+    """Ô gốc đang được ánh xạ vào cột chuẩn ở một dòng: (tên cột trong tệp, giá trị gốc).
+
+    Trả None khi cột chuẩn chưa được ánh xạ hoặc không có dòng gốc này.
+    """
+    column = next(
+        (mapping.column_name for mapping in table.mappings if mapping.field_key == field_key),
+        None,
+    )
+    if column is None or table.parquet_path is None:
+        return None
+    rows = (
+        pl.scan_parquet(table.parquet_path)
+        .filter(pl.col(ROW_REF) == row_ref)
+        .select(column)
+        .collect()
+    )
+    if rows.height == 0:
+        return None
+    return column, rows[column][0]
 
 
 def latest_version(table: DatasetTable) -> CleanVersion | None:

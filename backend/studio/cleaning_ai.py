@@ -10,7 +10,7 @@ import uuid
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from studio import database
 from studio.cleaning import build_clean_version, latest_version, parse_user_value
@@ -80,8 +80,10 @@ def suggest_cell_fixes(table_id: uuid.UUID) -> None:
         version = latest_version(table) if table is not None else None
         if table is None or version is None:
             return
+        # Đã hỏi AI cho đúng ô này với đúng giá trị gốc này thì không hỏi lại; ô đổi giá trị
+        # (ví dụ ánh xạ sang cột khác) thì gợi ý cũ hết hạn và được hỏi lại.
         known = {
-            (item.row_ref, item.field_key)
+            (item.row_ref, item.field_key, item.raw_value)
             for item in session.scalars(
                 select(AiCellSuggestion).where(AiCellSuggestion.table_id == table_id)
             )
@@ -91,7 +93,7 @@ def suggest_cell_fixes(table_id: uuid.UUID) -> None:
             for issue in version.issues
             if issue["kind"] == "INVALID_VALUE"
             and issue["status"] == "OPEN"
-            and (issue["row_refs"][0], issue["field_key"]) not in known
+            and (issue["row_refs"][0], issue["field_key"], issue["values"][0] or "") not in known
         ][:MAX_CELLS_PER_CALL]
         if not open_cells:
             return
@@ -150,6 +152,14 @@ def _ask_ai_and_save(
             value = item.value
             if value is not None and parse_user_value(value, issue["field_key"]).state != "VALID":
                 value = None  # đề xuất không đọc được bằng bộ đọc của hệ thống thì bỏ
+            # Thay gợi ý cũ (đã hết hạn) của cùng ô.
+            session.execute(
+                delete(AiCellSuggestion).where(
+                    AiCellSuggestion.table_id == table_id,
+                    AiCellSuggestion.row_ref == issue["row_refs"][0],
+                    AiCellSuggestion.field_key == issue["field_key"],
+                )
+            )
             session.add(
                 AiCellSuggestion(
                     id=uuid.uuid4(),
