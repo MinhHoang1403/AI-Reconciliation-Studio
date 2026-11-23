@@ -12,7 +12,7 @@ Làm theo **lát cắt dọc**: mỗi giai đoạn kết thúc bằng một ch�
 | 3 | Chuẩn hóa, xử lý lỗi, bộ dữ liệu sạch | `phase-3` | Xong |
 | 4 | Chọn trường, đối soát 1:1, kiểm chứng | `phase-4` | Xong |
 | 5 | Tách mã từ nội dung, khớp nhóm 1:N/N:1, ca mơ hồ | `phase-5` | Xong |
-| 6 | AI Assistant điều phối toàn bộ luồng | `phase-6` | Chưa bắt đầu |
+| 6 | AI Assistant điều phối toàn bộ luồng | `phase-6` | Đã chốt cách làm |
 | 7 | Báo cáo, KPI, biểu đồ, xuất CSV/XLSX, nhận xét AI | `phase-7` | Chưa bắt đầu |
 
 ## Bộ dữ liệu mẫu có đáp án
@@ -79,6 +79,20 @@ Thêm chức năng nhưng không thêm thao tác và không làm rối màn hìn
 
 - Vòng gọi công cụ Gemini; các công cụ đọc, xử lý, thay đổi; thẻ xác nhận trong khung chat.
 - Lưu hội thoại, tiếp tục được sau khi tải lại trang; mỗi câu chat là một trace trên Langfuse.
+
+**Cách làm (Owner chốt 23/11/2026, `DECISIONS.md`):**
+
+1. **Bộ câu lệnh mẫu trước:** `tests/fixtures/assistant/cau-lenh-mau.json`, 30 câu tiếng Việt (rõ ràng, mơ hồ, nhiều bước, câu cài lệnh trong dữ liệu), mỗi câu ghi công cụ và tham số mong đợi.
+2. **Công cụ = chính các hàm giao diện đang dùng** (`assistant_tools.py`), mỗi công cụ một khuôn tham số kiểm bằng schema:
+   - *Đọc* (tự chạy): danh sách bộ dữ liệu, trạng thái, ánh xạ, vấn đề làm sạch, các kỳ, kết quả đối soát, đường đi của một dòng, nhật ký.
+   - *Xử lý* (tự chạy, báo lại đã làm gì): gợi ý lại ánh xạ, đối soát cả chuỗi, đối soát hai bảng, kiểm chứng lại.
+   - *Thay đổi* (thẻ xác nhận, người dùng bấm mới chạy): xác nhận/đổi ánh xạ, sửa ô, giữ/loại dòng, đồng ý bỏ dòng trùng, đổi cách đọc ngày, chọn ca mơ hồ, ghép tay, gỡ ghép, đánh dấu đã xử lý/mở lại, ghi chú.
+3. **Vòng gọi công cụ** (`assistant.py`): Gemini trả tên công cụ + tham số, backend chạy (function calling, không để SDK tự gọi). Tối đa 8 bước mỗi lượt; việc chạy nền (đọc tệp, làm sạch, đối soát) thì chờ trong lượt, mỗi bước ghi vào tin nhắn để giao diện hiện "đang làm gì". Không truyền chữ từng phần (streaming).
+4. **Bảo vệ** (OWASP LLM01, LLM06): kết quả công cụ đưa cho Gemini dưới dạng dữ liệu JSON, chỉ dẫn hệ thống nói rõ dữ liệu không phải lệnh; Gemini chỉ thấy tóm tắt, số đếm và vài dòng đã che, không thấy cả bảng; thao tác thay đổi không bao giờ tự chạy.
+5. **Lưu hội thoại**: bảng `chat_threads`, `chat_messages` (tin nhắn, lần gọi công cụ, thẻ xác nhận và trạng thái). Mỗi lượt là một trace Langfuse: một generation mỗi lần gọi Gemini, một span mỗi công cụ.
+6. **Giao diện trang Assistant** (impeccable + ui-ux-pro-max): danh sách hội thoại, khung tin nhắn, các bước đang làm, thẻ xác nhận, ô nhập có đính kèm tệp (dùng lại API tải tệp), nút dẫn sang đúng trang Dữ liệu / Đối soát.
+7. **Kiểm thử**: test với Gemini giả lập (đúng công cụ, đúng tham số, thẻ xác nhận không tự chạy, lệnh cài trong dữ liệu bị bỏ qua) và E2E; đo với Gemini thật bằng `tools/evaluate_assistant.py` (tốn phí, Owner chạy).
+
 - **Xong khi:** bộ 30 câu lệnh mẫu tiếng Việt (gồm câu mơ hồ) gọi đúng công cụ và tham số ≥ 90%, do Owner chạy thật và đánh giá qua Langfuse; câu lệnh cài trong dữ liệu nguồn không làm thay đổi hành vi.
 
 ## Giai đoạn 7 — Báo cáo
