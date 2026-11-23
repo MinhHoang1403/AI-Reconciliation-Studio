@@ -776,3 +776,96 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
   .recon-group__head .button { width: 100%; justify-content: center; }
   .history__item { grid-template-columns: 1fr; padding: 12px 16px; }
 }
+
+/* ================= Chuỗi ba bên, kỳ đối soát (Giai đoạn 5) ================= */
+/* "Chờ tiền về" là trạng thái đang chờ, không phải lỗi: dùng xanh dương của hành động,
+   không dùng tím (tím tờ 50.000đ chỉ dành cho bước đang xử lý). */
+.composition__bar span[data-tone="pending"] { background: var(--primary); }
+.composition__legend span[data-tone="pending"]::before { background: var(--primary); }
+
+/* ---------- Khối "Đối soát theo kỳ" ---------- */
+.period-panel {
+  display: grid; gap: 14px; padding: 20px 24px;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--radius);
+}
+.period-panel__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.period-panel__head h2 { display: inline-flex; align-items: center; gap: 8px; }
+.period-panel__head h2 svg { color: var(--primary); }
+.period-panel__tables { display: flex; flex-wrap: wrap; gap: 8px; }
+.period-panel__tables li {
+  display: grid; gap: 1px; padding: 8px 12px; border-radius: var(--radius-small);
+  background: var(--ground); min-width: 0;
+}
+.period-panel__name { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+.period-panel__kind { font-size: 13px; color: var(--ink-soft); }
+.period-panel__actions { display: flex; align-items: center; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; }
+.period-panel__actions p { color: var(--ink-soft); font-size: 15px; max-width: 62ch; }
+
+/* ---------- Kết quả cả chuỗi ---------- */
+.chain { display: grid; gap: 18px; }
+.chain__band h2 { font-size: 22px; }
+.chain__pairs { display: grid; gap: 8px; }
+.chain__pair {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 20px; align-items: center; gap: 6px 16px;
+  width: 100%; padding: 12px 16px; border: 1px solid var(--line-soft); border-radius: var(--radius-small);
+  background: var(--surface); color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+  transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out);
+}
+.chain__pair:hover { background: var(--primary-tint); }
+.chain__pair[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-tint); }
+.chain__pair-name { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-weight: 600; overflow-wrap: anywhere; }
+.chain__pair-name svg { color: var(--ink-soft); flex-shrink: 0; }
+.chain__pair-stats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; color: var(--ink-soft); justify-content: flex-end; }
+.chain__pair-stats [data-tone="matched"] { color: var(--matched); font-weight: 600; }
+.chain__pair-stats [data-tone="attention"] { color: var(--attention); font-weight: 600; }
+.chain__pair-stats [data-tone="pending"] { color: var(--primary-ink); font-weight: 600; }
+.chain__seal[data-state="passed"] { color: var(--matched); }
+.chain__seal[data-state="failed"] { color: var(--attention); }
+.chain__tabs { justify-self: start; }
+
+/* Nhãn cặp trên mỗi ca khi gộp ngoại lệ của cả chuỗi. */
+.result__pair {
+  justify-self: start; padding: 1px 8px; border-radius: 999px; background: var(--ground);
+  color: var(--ink-soft); font-size: 12px; font-weight: 600;
+}
+.side__carried {
+  display: inline-flex; align-items: center; gap: 3px; margin-right: 6px; padding: 0 6px;
+  border-radius: 5px; background: var(--primary-tint); color: var(--primary-ink); font-weight: 600;
+}
+
+/* Ca mơ hồ: các ứng viên, mỗi ứng viên một nút "Chọn". */
+.candidates {
+  display: grid; gap: 6px; margin: 0; padding: 10px 12px; border: 0;
+  border-radius: var(--radius-small); background: var(--attention-tint);
+}
+.candidates legend { padding: 0; font-size: 14px; font-weight: 600; color: var(--attention); float: left; margin-bottom: 4px; }
+.candidates__row {
+  clear: both; display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap;
+  padding: 6px 0; border-top: 1px solid rgb(181 74 38 / 0.18); font-size: 15px;
+}
+.candidates__row:first-of-type { border-top: 0; }
+.candidates__row .button { min-height: 34px; padding: 0 12px; background: var(--surface); }
+.candidates__busy { font-size: 14px; color: var(--ink-soft); }
+
+/* Đường đi của một dòng qua các cặp. */
+.trace { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--radius-small); background: var(--ground); font-size: 14px; }
+.trace li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.trace li + li { padding-top: 4px; border-top: 1px dashed var(--line); }
+.trace__pair { font-weight: 600; }
+.trace__kind { color: var(--matched); font-weight: 600; }
+.trace__kind:is([data-kind="AMOUNT_MISMATCH"], [data-kind="ONLY_IN_A"], [data-kind="ONLY_IN_B"], [data-kind="AMBIGUOUS"]) { color: var(--attention); }
+.trace__kind[data-kind="PENDING_SETTLEMENT"] { color: var(--primary-ink); }
+.trace__refs { color: var(--ink-soft); }
+
+/* Đối soát hai bảng tự chọn: thu gọn dưới khối theo kỳ. */
+.recon-manual { border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.recon-manual summary { cursor: pointer; font-weight: 600; color: var(--primary-ink); width: fit-content; }
+.recon-manual__body { display: grid; gap: 24px; margin-top: 16px; }
+
+@media (max-width: 760px) {
+  .period-panel { padding: 16px; }
+  .period-panel__actions .button { width: 100%; justify-content: center; }
+  .chain__pair { grid-template-columns: minmax(0, 1fr) 20px; }
+  .chain__pair-stats { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; }
+  .candidates__row .button { width: 100%; justify-content: center; }
+}

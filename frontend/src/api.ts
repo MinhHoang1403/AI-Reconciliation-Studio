@@ -270,6 +270,10 @@ export function uploadDataset(file: File, onProgress: (share: number) => void): 
 
 export type ReconKind =
   | "MATCHED"
+  | "MANY_TO_ONE"
+  | "ONE_TO_MANY"
+  | "AMBIGUOUS"
+  | "PENDING_SETTLEMENT"
   | "AMOUNT_MISMATCH"
   | "DUPLICATE"
   | "ONLY_IN_A"
@@ -309,6 +313,9 @@ export type ReconConfig = {
   labels: Record<string, string | null>;
   description: string[];
   scope_options: ScopeOption[];
+  extract: { source: string; kind: "code" | "date"; pattern: string } | null;
+  group_left: boolean;
+  settle_days: number;
 };
 
 export type VerificationCheck = { code: string; label: string; passed: boolean; detail: string };
@@ -316,6 +323,8 @@ export type Verification = { passed: boolean; checks: VerificationCheck[]; error
 
 export type ReconRun = {
   id: string;
+  chain_id: string | null;
+  carried_count: number;
   status: "RUNNING" | "READY" | "FAILED";
   error_message: string | null;
   left: ReconTable | null;
@@ -349,6 +358,8 @@ export type ResultRow = {
   status?: string | null;
   description?: string | null;
   payment_id?: string | null;
+  carried?: boolean;  // dòng chờ tiền về mang từ kỳ trước
+  table_label?: string | null;
 };
 
 export type ReconResult = {
@@ -356,7 +367,11 @@ export type ReconResult = {
   kind: ReconKind;
   kind_label: string;
   score: number | null;
-  reasons: { code: string; text: string }[];
+  reasons: {
+    code: string;
+    text: string;
+    pairs?: { left: number[]; right: number[]; score: number | null }[];
+  }[];
   amount_left: string | null;
   amount_right: string | null;
   exception_status: "OPEN" | "EXPLAINED" | "RESOLVED" | null;
@@ -365,7 +380,7 @@ export type ReconResult = {
   right: ResultRow[];
 };
 
-export type ResultGroup = "todo" | "explained" | "resolved" | "matched" | "out_of_scope";
+export type ResultGroup = "todo" | "explained" | "resolved" | "matched" | "pending" | "out_of_scope";
 export type ResultsPage = { total: number; offset: number; limit: number; items: ReconResult[] };
 
 export type AuditEntry = {
@@ -415,5 +430,53 @@ export const saveNote = (resultId: string, note: string) =>
   );
 export const explainResult = (resultId: string) =>
   sendJson<{ text: string }>(`/api/recon/results/${resultId}/explain`, "POST");
+// ---------------------------------------------------------------- chuỗi ba bên (Giai đoạn 5)
+
+export type ReconPeriod = {
+  label: string;
+  period_start: string;
+  period_end: string;
+  tables: ReconTable[];
+  chain_id: string | null;
+};
+
+export type ReconChain = {
+  id: string;
+  status: "RUNNING" | "READY" | "FAILED";
+  error_message: string | null;
+  label: string;
+  table_ids: string[];
+  period_start: string | null;
+  period_end: string | null;
+  runs: ReconRun[];
+  exceptions: { OPEN: number; EXPLAINED: number; RESOLVED: number };
+  pending: number;
+  verified: boolean;
+  created_at: string | null;
+};
+
+export type TraceStep = {
+  run_id: string;
+  pair: string;
+  kind: ReconKind;
+  result_id: string;
+  left_refs: number[];
+  right_refs: number[];
+  reason: string;
+};
+
+export const getPeriods = (signal?: AbortSignal) => getJson<ReconPeriod[]>("/api/recon/periods", signal);
+export const startChain = (tableIds: string[], label: string) =>
+  sendJson<ReconChain>("/api/recon/chains", "POST", { table_ids: tableIds, label });
+export const getChain = (id: string, signal?: AbortSignal) => getJson<ReconChain>(`/api/recon/chains/${id}`, signal);
+export const traceRow = (chainId: string, tableId: string, rowRef: number) =>
+  getJson<{ steps: TraceStep[] }>(`/api/recon/chains/${chainId}/trace?table_id=${tableId}&row_ref=${rowRef}`);
+export const chooseCandidate = (runId: string, resultId: string, leftRefs: number[], rightRefs: number[]) =>
+  sendJson<{ chain_id: string | null; run_id: string | null }>(`/api/recon/runs/${runId}/choose`, "POST", {
+    result_id: resultId,
+    left_refs: leftRefs,
+    right_refs: rightRefs,
+  });
+
 export const getAudit = (offset: number, limit: number, signal?: AbortSignal) =>
   getJson<AuditPage>(`/api/audit?offset=${offset}&limit=${limit}`, signal);

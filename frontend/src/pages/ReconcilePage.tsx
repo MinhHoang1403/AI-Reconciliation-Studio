@@ -1,24 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, Play, Sparkles } from "lucide-react";
+import { ArrowLeftRight, Layers, Play, Sparkles } from "lucide-react";
 
 import {
   explainPreview,
+  getChain,
+  getPeriods,
   getReconTables,
   getRun,
   listRuns,
   previewRecon,
+  startChain,
   startRun,
+  type ReconChain,
   type ReconConfig,
+  type ReconPeriod,
   type ReconRun,
   type ReconTable,
   type ScopeOption,
 } from "../api";
-import { ReconRunView } from "../components/ReconRunView";
+import { ChainView } from "../components/ChainView";
+import { ReconRunView, type Rerun } from "../components/ReconRunView";
 import { formatCount } from "../format";
 import { linkTo } from "../navigation";
 
-// Trang Đối soát: chọn hai bảng sạch (hệ thống gợi ý sẵn), xem cấu hình (thu gọn, chỉnh được),
-// bấm một nút để chạy; kết quả mở ra ở phần việc cần làm trước.
+// Trang Đối soát. Có tệp sao kê thì mở ra là "Đối soát theo kỳ": hệ thống tự nhận các kỳ (mỗi
+// tệp sao kê một kỳ) và các bảng thuộc kỳ, một nút chạy cả chuỗi đơn hàng ↔ cổng ↔ sao kê
+// (docs/DECISIONS.md 2026-11-23). Đối soát hai bảng tự chọn (Giai đoạn 4) nằm trong mục thu gọn.
 
 type Pair = { left: string; right: string };
 
@@ -28,16 +35,24 @@ export function ReconcilePage() {
   const [tables, setTables] = useState<ReconTable[] | null>(null);
   const [runs, setRuns] = useState<ReconRun[]>([]);
   const [pair, setPair] = useState<Pair | null>(null);
+  const [periods, setPeriods] = useState<ReconPeriod[] | null>(null);
+  const [periodIndex, setPeriodIndex] = useState(0);
+  const [chain, setChain] = useState<ReconChain | null>(null);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Lần đầu: tải các bảng đã sạch, lần đối soát gần nhất; chọn sẵn cặp của lần đó hoặc cặp gợi ý.
+  // Lần đầu: bảng đã sạch, các kỳ, lần đối soát gần nhất. Kỳ được chọn sẵn là kỳ sớm nhất chưa
+  // đối soát (để dòng chờ tiền về được mang sang đúng thứ tự), nếu đã hết thì kỳ mới nhất.
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([getReconTables(controller.signal), listRuns(20, controller.signal)])
-      .then(([data, recent]) => {
+    Promise.all([getReconTables(controller.signal), listRuns(20, controller.signal), getPeriods(controller.signal)])
+      .then(([data, recent, found]) => {
         setTables(data.tables);
         setRuns(recent);
-        const last = recent.find((run) => run.left && run.right);
+        setPeriods(found);
+        const waiting = found.findIndex((period) => !period.chain_id);
+        setPeriodIndex(waiting >= 0 ? waiting : Math.max(found.length - 1, 0));
+        const last = recent.find((run) => run.left && run.right && !run.chain_id);
         if (last?.left && last.right) setPair({ left: last.left.id, right: last.right.id });
         else if (data.suggested) setPair({ left: data.suggested.left_table_id, right: data.suggested.right_table_id });
         else {
@@ -51,6 +66,29 @@ export function ReconcilePage() {
     return () => controller.abort();
   }, []);
 
+  const period = periods?.[periodIndex] ?? null;
+
+  // Đổi kỳ: tải chuỗi gần nhất của kỳ đó (nếu đã chạy).
+  useEffect(() => {
+    if (!period?.chain_id) return;
+    const controller = new AbortController();
+    getChain(period.chain_id, controller.signal)
+      .then(setChain)
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setError(message(reason, "Không tải được kết quả của kỳ."));
+      });
+    return () => controller.abort();
+  }, [period?.chain_id]);
+
+  // Chuỗi đang chạy nền: hỏi lại mỗi giây tới khi xong.
+  useEffect(() => {
+    if (!chain || chain.status !== "RUNNING") return;
+    const timer = window.setInterval(() => {
+      getChain(chain.id).then(setChain).catch(() => undefined);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [chain]);
+
   const run = useMemo(
     () => (pair ? runs.find((item) => item.left?.id === pair.left && item.right?.id === pair.right) ?? null : null),
     [runs, pair],
@@ -60,7 +98,7 @@ export function ReconcilePage() {
     setRuns((current) => [next, ...current.filter((item) => item.id !== next.id)]);
   }, []);
 
-  // Lần chạy đang chạy nền: hỏi lại mỗi giây tới khi xong.
+  // Lần chạy hai bảng đang chạy nền: hỏi lại mỗi giây tới khi xong.
   useEffect(() => {
     if (!run || run.status !== "RUNNING") return;
     const timer = window.setInterval(() => {
@@ -69,11 +107,58 @@ export function ReconcilePage() {
     return () => window.clearInterval(timer);
   }, [run, replaceRun]);
 
+  function rememberChain(next: ReconChain) {
+    setChain(next);
+    setPeriods((current) =>
+      current?.map((item, index) => (index === periodIndex ? { ...item, chain_id: next.id } : item)) ?? null,
+    );
+  }
+
+  async function runChain() {
+    if (!period) return;
+    setStarting(true);
+    try {
+      rememberChain(await startChain(period.tables.map((table) => table.id), period.label));
+      setError(null);
+    } catch (reason) {
+      setError(message(reason, "Không chạy được đối soát cả chuỗi."));
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  // Sau khi chọn ứng viên cho ca mơ hồ, hệ thống chạy lại chuỗi (hoặc cặp) và trả về mã mới.
+  async function onRerun(target: Rerun) {
+    try {
+      if (target.chain_id) rememberChain(await getChain(target.chain_id));
+      else if (target.run_id) replaceRun(await getRun(target.run_id));
+    } catch (reason) {
+      setError(message(reason, "Không tải được kết quả mới."));
+    }
+  }
+
+  const earlierMissing = periods?.slice(0, periodIndex).some((item) => !item.chain_id) ?? false;
+  const shownChain = chain && period?.chain_id === chain.id ? chain : null;
+  const pairMode = tables !== null && tables.length >= 2 && pair && (
+    <>
+      <ReconSetup
+        key={`${pair.left}:${pair.right}`}
+        tables={tables}
+        pair={pair}
+        hasRun={run !== null}
+        busy={run?.status === "RUNNING"}
+        onPair={setPair}
+        onStarted={replaceRun}
+      />
+      {run && <ReconRunView key={run.id} run={run} onRun={replaceRun} onRerun={onRerun} />}
+    </>
+  );
+
   return (
     <div className="recon">
       <header className="page__header">
         <h1>Đối soát</h1>
-        <p>Ghép từng dòng giữa hai bộ dữ liệu sạch. Mỗi kết quả có lý do và trỏ về đúng dòng gốc.</p>
+        <p>Ghép từng dòng giữa các bộ dữ liệu sạch. Mỗi kết quả có lý do và trỏ về đúng dòng gốc.</p>
       </header>
 
       {error && <p className="notice notice--error" role="alert">{error}</p>}
@@ -86,18 +171,76 @@ export function ReconcilePage() {
           <a className="button button--quiet" {...linkTo("/du-lieu")}>Đến trang Dữ liệu</a>
         </div>
       )}
-      {tables !== null && tables.length >= 2 && pair && (
-        <ReconSetup
-          key={`${pair.left}:${pair.right}`}
-          tables={tables}
-          pair={pair}
-          hasRun={run !== null}
-          busy={run?.status === "RUNNING"}
-          onPair={setPair}
-          onStarted={replaceRun}
-        />
+
+      {period && periods && (
+        <section className="period-panel" aria-labelledby="period-title">
+          <div className="period-panel__head">
+            <h2 id="period-title">
+              <Layers aria-hidden="true" size={18} /> Đối soát theo kỳ
+            </h2>
+            {periods.length > 1 && (
+              <div className="segmented" role="group" aria-label="Chọn kỳ">
+                {periods.map((item, index) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    aria-pressed={index === periodIndex}
+                    onClick={() => {
+                      setChain(null);
+                      setPeriodIndex(index);
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <ul className="period-panel__tables" aria-label="Các bảng thuộc kỳ">
+            {period.tables.map((table) => (
+              <li key={table.id}>
+                <span className="period-panel__name">{table.label}</span>
+                <span className="period-panel__kind">
+                  {table.table_kind_label} · {formatCount(table.row_count)} dòng
+                </span>
+              </li>
+            ))}
+          </ul>
+          {earlierMissing && (
+            <p className="recon-setup__warn">
+              Kỳ trước chưa được đối soát: các khoản chờ tiền về của kỳ trước sẽ chưa được mang sang kỳ này.
+            </p>
+          )}
+          <div className="period-panel__actions">
+            <p>
+              Hệ thống tự nhận các cặp nối được (đơn hàng ↔ cổng ↔ sao kê), tự tách mã trong nội dung chuyển khoản
+              và ghép nhóm theo tổng tiền.
+            </p>
+            <button
+              className="button button--primary"
+              type="button"
+              disabled={starting || shownChain?.status === "RUNNING"}
+              onClick={() => void runChain()}
+            >
+              <Play aria-hidden="true" size={17} strokeWidth={2} />
+              {shownChain?.status === "RUNNING" ? "Đang đối soát…" : shownChain ? "Chạy lại cả chuỗi" : "Đối soát cả chuỗi"}
+            </button>
+          </div>
+        </section>
       )}
-      {run && <ReconRunView key={run.id} run={run} onRun={replaceRun} />}
+
+      {shownChain && <ChainView key={shownChain.id} chain={shownChain} onChain={setChain} onRerun={onRerun} />}
+
+      {periods && periods.length > 0 ? (
+        pairMode && (
+          <details className="recon-manual">
+            <summary>Đối soát hai bảng tự chọn</summary>
+            <div className="recon-manual__body">{pairMode}</div>
+          </details>
+        )
+      ) : (
+        pairMode
+      )}
     </div>
   );
 }

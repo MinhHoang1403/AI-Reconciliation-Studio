@@ -260,6 +260,14 @@ def test_trace_follows_a_card_order_to_the_bank_line() -> None:
     ]
     assert steps[1]["kind"] in ("MANY_TO_ONE", "MATCHED")
 
+    # Xóa một bộ dữ liệu của chuỗi thì chuỗi (và các lần chạy trong đó) cũng bị xóa theo.
+    dataset = next(
+        item for item in client.get("/api/datasets").json()
+        if item["original_filename"] == "sao-ke-ngan-hang.xlsx"
+    )
+    assert client.delete(f"/api/datasets/{dataset['id']}").status_code == 204
+    assert client.get(f"/api/recon/chains/{chain['id']}").status_code == 404
+
 
 # ---------------------------------------------------------------- từng phần của engine
 

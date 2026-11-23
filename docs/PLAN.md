@@ -11,7 +11,7 @@ Làm theo **lát cắt dọc**: mỗi giai đoạn kết thúc bằng một ch�
 | 2 | Ánh xạ cột chuẩn có gợi ý Gemini, nối Langfuse | `phase-2` | Xong |
 | 3 | Chuẩn hóa, xử lý lỗi, bộ dữ liệu sạch | `phase-3` | Xong |
 | 4 | Chọn trường, đối soát 1:1, kiểm chứng | `phase-4` | Xong |
-| 5 | Tách mã từ nội dung, khớp nhóm 1:N/N:1, ca mơ hồ | `phase-5` | Chưa bắt đầu |
+| 5 | Tách mã từ nội dung, khớp nhóm 1:N/N:1, ca mơ hồ | `phase-5` | Xong |
 | 6 | AI Assistant điều phối toàn bộ luồng | `phase-6` | Chưa bắt đầu |
 | 7 | Báo cáo, KPI, biểu đồ, xuất CSV/XLSX, nhận xét AI | `phase-7` | Chưa bắt đầu |
 
