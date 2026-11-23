@@ -33,6 +33,7 @@ from studio.value_parsers import (
     detect_number_style,
     is_blank,
     is_cancelled_status,
+    money_vi,
     name_match_key,
     parse_date,
     parse_identifier,
@@ -321,7 +322,7 @@ def build(data: BuildInput) -> BuildOutput:
                         "ASK",
                         refs,
                         f"Mã {key} xuất hiện ở {len(refs)} dòng với số tiền khác nhau "
-                        f"({', '.join(_money_vi(amount) for amount in ordered)}). "
+                        f"({', '.join(money_vi(amount) for amount in ordered)}). "
                         "Sửa số tiền "
                         "đúng, loại dòng sai, hoặc giữ cả nếu đúng là nhiều giao dịch.",
                         "amount",
@@ -383,15 +384,6 @@ def build(data: BuildInput) -> BuildOutput:
         ],
     }
     return BuildOutput(frame=frame, excluded_count=len(excluded), summary=summary, issues=issues)
-
-
-def _money_vi(value: Decimal | None) -> str:
-    """Số tiền kiểu Việt để hiển thị trong thông điệp: 2195000 → 2.195.000."""
-    if value is None:
-        return "trống"
-    whole = f"{int(value):,}".replace(",", ".")
-    fraction = abs(value) % 1
-    return whole if fraction == 0 else f"{whole},{str(fraction.quantize(CENT))[2:]}"
 
 
 def _display(value: Any) -> str | None:

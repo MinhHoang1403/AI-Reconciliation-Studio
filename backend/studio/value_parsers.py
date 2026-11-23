@@ -252,3 +252,17 @@ CANCELLED_WORDS = ("huy", "cancel", "hoan tien", "hoan hang", "refund", "return"
 
 def is_cancelled_status(status: str) -> bool:
     return any(word in name_match_key(status) for word in CANCELLED_WORDS)
+
+
+def money_vi(value: Decimal | None, unit: str = "") -> str:
+    """Số tiền kiểu Việt để hiển thị trong thông điệp: 2195000 → "2.195.000" (+ đơn vị nếu có).
+
+    Dùng chung cho thông điệp làm sạch và lý do đối soát; ô trống hiện là "trống".
+    """
+    if value is None:
+        return "trống"
+    sign = "-" if value < 0 else ""
+    whole = f"{int(abs(value)):,}".replace(",", ".")
+    fraction = abs(value) % 1
+    text = whole if fraction == 0 else f"{whole},{str(fraction.quantize(Decimal('0.01')))[2:]}"
+    return f"{sign}{text}{unit}"

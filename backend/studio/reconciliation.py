@@ -20,7 +20,7 @@ Engine là code thuần: cùng đầu vào luôn cho cùng kết quả, kể c�
 """
 
 import bisect
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -33,6 +33,7 @@ from scipy.optimize import linear_sum_assignment
 
 from studio.reading import ROW_REF
 from studio.sales_fields import FIELDS_BY_KEY
+from studio.value_parsers import money_vi
 
 # Các loại kết quả. OUT_OF_SCOPE và NEEDS_CLEANING bổ sung cho danh sách ở kiến trúc để mọi
 # dòng đều nằm trong đúng một kết quả (điều kiện của bước kiểm chứng).
@@ -52,6 +53,13 @@ SCOPE_FIELDS = ("payment_method",)
 # Một giá trị bị coi là ngoài phạm vi khi không dòng nào của nó khớp mã với bên kia, trong khi
 # giá trị khớp nhiều nhất đạt ít nhất tỷ lệ này.
 SCOPE_MIN_OTHER_RATE = 0.5
+# Giới hạn để ghép không chậm theo bình phương số dòng khi dữ liệu có rất nhiều dòng giống nhau:
+# số cặp tối đa xếp hạng đầy đủ trong một mã lặp; số ứng viên tối đa của một dòng và số dòng
+# tối đa mỗi bên của một nhóm ứng viên khi ghép theo điểm. Vượt giới hạn thì không tự ghép
+# (để người dùng xem), vì nhiều ứng viên giống nhau như vậy thì điểm không phân biệt được.
+MAX_SAME_KEY_PAIRS = 10_000
+MAX_CANDIDATES_PER_ROW = 50
+MAX_COMPONENT_ROWS = 400
 
 
 @dataclass
@@ -117,15 +125,9 @@ class Side:
 # ---------------------------------------------------------------- tiện ích
 
 
-def money_vi(value: Decimal | None) -> str:
+def money_dong(value: Decimal | None) -> str:
     """2195000 → '2.195.000đ' để đưa vào lý do."""
-    if value is None:
-        return "trống"
-    sign = "-" if value < 0 else ""
-    whole = f"{int(abs(value)):,}".replace(",", ".")
-    fraction = abs(value) % 1
-    text = whole if fraction == 0 else f"{whole},{str(fraction.quantize(Decimal('0.01')))[2:]}"
-    return f"{sign}{text}đ"
+    return money_vi(value, "đ")
 
 
 def _reason(code: str, text: str) -> dict[str, str]:
@@ -325,7 +327,7 @@ def _pair_result(left: Row, right: Row, config: ReconConfig, how: str) -> Result
     gap = _days_apart(left.day, right.day)
     if _within(left.amount, right.amount, config.tolerance):
         kind = "MATCHED"
-        reasons.append(_reason("AMOUNT_EQUAL", f"Số tiền khớp: {money_vi(left.amount)}."))
+        reasons.append(_reason("AMOUNT_EQUAL", f"Số tiền khớp: {money_dong(left.amount)}."))
     else:
         kind = "AMOUNT_MISMATCH"
         difference = (
@@ -334,8 +336,8 @@ def _pair_result(left: Row, right: Row, config: ReconConfig, how: str) -> Result
         reasons.append(
             _reason(
                 "AMOUNT_DIFF",
-                f"Lệch tiền: A {money_vi(left.amount)}, B {money_vi(right.amount)}"
-                + (f" (B {'thừa' if difference > 0 else 'thiếu'} {money_vi(abs(difference))})."
+                f"Lệch tiền: A {money_dong(left.amount)}, B {money_dong(right.amount)}"
+                + (f" (B {'thừa' if difference > 0 else 'thiếu'} {money_dong(abs(difference))})."
                    if difference is not None else "."),
             )
         )
@@ -360,6 +362,54 @@ def _pair_result(left: Row, right: Row, config: ReconConfig, how: str) -> Result
     )
 
 
+def _pair_same_key(
+    lefts: list[Row], rights: list[Row], config: ReconConfig
+) -> list[tuple[Row, Row]]:
+    """Ghép các dòng cùng một mã: cặp tốt nhất trước (đúng tiền, gần ngày, dòng sớm).
+
+    Ít dòng (trường hợp thường gặp): xếp hạng mọi cặp một lần rồi ghép tham lam.
+    Nhiều dòng trùng mã (ví dụ mã giữ chỗ "0" lặp hàng nghìn lần): không so mọi cặp nữa mà
+    ghép theo số tiền bằng nhau, rồi phần còn lại theo thứ tự dòng gốc, để không chậm theo
+    bình phương số dòng.
+    """
+    if len(lefts) == 1 and len(rights) == 1:
+        return [(lefts[0], rights[0])]
+    paired: list[tuple[Row, Row]] = []
+    used_left: set[int] = set()
+    used_right: set[int] = set()
+    if len(lefts) * len(rights) <= MAX_SAME_KEY_PAIRS:
+        ranked = sorted(
+            ((a, b) for a in lefts for b in rights),
+            key=lambda pair: (
+                not _within(pair[0].amount, pair[1].amount, config.tolerance),
+                _days_apart(pair[0].day, pair[1].day) or 0,
+                pair[0].ref,
+                pair[1].ref,
+            ),
+        )
+        for a, b in ranked:
+            if a.ref not in used_left and b.ref not in used_right:
+                paired.append((a, b))
+                used_left.add(a.ref)
+                used_right.add(b.ref)
+        return paired
+    by_amount: dict[Decimal | None, list[Row]] = defaultdict(list)
+    for b in sorted(rights, key=lambda row: row.ref):
+        by_amount[b.amount].append(b)
+    rest_left = []
+    for a in sorted(lefts, key=lambda row: row.ref):
+        bucket = by_amount.get(a.amount) if a.amount is not None else None
+        if bucket:
+            b = bucket.pop(0)
+            paired.append((a, b))
+            used_right.add(b.ref)
+        else:
+            rest_left.append(a)
+    rest_right = [b for b in sorted(rights, key=lambda row: row.ref) if b.ref not in used_right]
+    paired += list(zip(rest_left, rest_right, strict=False))
+    return paired
+
+
 def _key_round(
     left: list[Row], right: list[Row], config: ReconConfig
 ) -> tuple[list[Result], set[int], set[int]]:
@@ -377,22 +427,11 @@ def _key_round(
             by_key_right[row.key].append(row)
 
     for key in sorted(by_key_left.keys() & by_key_right.keys()):
-        lefts, rights = list(by_key_left[key]), list(by_key_right[key])
-        paired: list[tuple[Row, Row]] = []
-        # Cùng mã nhiều dòng: ghép lần lượt cặp tốt nhất (đúng tiền trước, gần ngày, dòng sớm).
-        while lefts and rights:
-            best = min(
-                ((a, b) for a in lefts for b in rights),
-                key=lambda pair: (
-                    not _within(pair[0].amount, pair[1].amount, config.tolerance),
-                    _days_apart(pair[0].day, pair[1].day) or 0,
-                    pair[0].ref,
-                    pair[1].ref,
-                ),
-            )
-            paired.append(best)
-            lefts.remove(best[0])
-            rights.remove(best[1])
+        paired = _pair_same_key(by_key_left[key], by_key_right[key], config)
+        paired_left = {a.ref for a, _ in paired}
+        paired_right = {b.ref for _, b in paired}
+        lefts = [row for row in by_key_left[key] if row.ref not in paired_left]
+        rights = [row for row in by_key_right[key] if row.ref not in paired_right]
         for a, b in paired:
             results.append(_pair_result(a, b, config, "KEY"))
             used_left.add(a.ref)
@@ -410,7 +449,7 @@ def _key_round(
                             "DUPLICATE_KEY",
                             f"Trùng mã {key} với dòng {other.ref} bên "
                             f"{'B' if side == 'A' else 'A'} đã được ghép "
-                            f"(số tiền {money_vi(extra.amount)}).",
+                            f"(số tiền {money_dong(extra.amount)}).",
                         )
                     ],
                     amount_left=extra.amount if side == "A" else None,
@@ -442,18 +481,44 @@ def _pair_score(a: Row, b: Row, config: ReconConfig) -> float | None:
     return round(sum(SCORE_WEIGHTS[name] * value for name, value in parts.items()) / weight, 6)
 
 
+def _components(candidates: dict[tuple[int, int], float]) -> list[list[tuple[int, int]]]:
+    """Chia đồ thị ứng viên (A — B) thành các thành phần liên thông (union-find).
+
+    Hai dòng chỉ có thể tranh nhau khi nằm cùng thành phần, nên ghép tối ưu trên từng thành
+    phần nhỏ cho đúng kết quả như ghép trên toàn bộ, mà không phải dựng ma trận A×B khổng lồ.
+    """
+    parent: dict[tuple[str, int], tuple[str, int]] = {}
+
+    def find(node: tuple[str, int]) -> tuple[str, int]:
+        parent.setdefault(node, node)
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for a_ref, b_ref in candidates:
+        root_a, root_b = find(("A", a_ref)), find(("B", b_ref))
+        if root_a != root_b:
+            parent[root_b] = root_a
+    groups: dict[tuple[str, int], list[tuple[int, int]]] = defaultdict(list)
+    for pair in sorted(candidates):
+        groups[find(("A", pair[0]))].append(pair)
+    return list(groups.values())
+
+
 def _score_round(
     left: list[Row], right: list[Row], config: ReconConfig
-) -> tuple[list[Result], set[int], set[int], dict[tuple[str, int], int]]:
+) -> tuple[list[Result], set[int], set[int], dict[tuple[str, int], str]]:
     """Khớp theo điểm 1:1 bằng phân công tối ưu; cặp có đối thủ ngang điểm thì để lại.
 
-    Trả về kết quả, số dòng đã dùng và số ứng viên ngang điểm của các dòng bị để lại.
+    Trả về kết quả, số dòng đã dùng và lý do không tự ghép của các dòng bị để lại.
     """
     by_amount: dict[Decimal, list[Row]] = defaultdict(list)
     for row in right:
         if row.amount is not None:
             by_amount[row.amount].append(row)
     sorted_amounts = sorted(by_amount)
+    skipped: dict[tuple[str, int], str] = {}  # (bên, số dòng) → lý do không tự ghép
 
     candidates: dict[tuple[int, int], float] = {}
     for a in left:
@@ -461,60 +526,85 @@ def _score_round(
             continue
         # Lọc ứng viên (blocking): chỉ xét số tiền trong sai số, không so mọi cặp.
         low = bisect.bisect_left(sorted_amounts, a.amount - config.tolerance)
+        found: list[tuple[int, float]] = []
         for amount in sorted_amounts[low:]:
             if amount > a.amount + config.tolerance:
                 break
             for b in by_amount[amount]:
                 score = _pair_score(a, b, config)
                 if score is not None and score >= config.min_score:
-                    candidates[(a.ref, b.ref)] = score
+                    found.append((b.ref, score))
+        # Quá nhiều dòng cùng số tiền, gần ngày: ghép theo điểm không còn đáng tin.
+        if len(found) > MAX_CANDIDATES_PER_ROW:
+            skipped[("A", a.ref)] = (
+                f"Có {len(found)} dòng cùng số tiền, gần ngày ở bên B nên không tự ghép."
+            )
+            for b_ref, _ in found:
+                skipped.setdefault(
+                    ("B", b_ref),
+                    "Có quá nhiều dòng cùng số tiền, gần ngày ở bên A nên không tự ghép.",
+                )
+            continue
+        for b_ref, score in found:
+            candidates[(a.ref, b_ref)] = score
     if not candidates:
-        return [], set(), set(), {}
+        return [], set(), set(), skipped
 
-    left_refs = sorted({pair[0] for pair in candidates})
-    right_refs = sorted({pair[1] for pair in candidates})
-    row_index = {ref: index for index, ref in enumerate(left_refs)}
-    col_index = {ref: index for index, ref in enumerate(right_refs)}
-    # Ma trận chi phí = -điểm; cặp không phải ứng viên có chi phí 0 (không lợi gì khi chọn).
-    cost = np.zeros((len(left_refs), len(right_refs)))
+    # Chỉ mục điểm theo từng dòng để kiểm "đối thủ ngang điểm" không phải quét mọi cặp.
+    scores_of_left: dict[int, Counter[float]] = defaultdict(Counter)
+    scores_of_right: dict[int, Counter[float]] = defaultdict(Counter)
     for (a_ref, b_ref), score in candidates.items():
-        cost[row_index[a_ref], col_index[b_ref]] = -score
-    rows, cols = linear_sum_assignment(cost)
+        scores_of_left[a_ref][score] += 1
+        scores_of_right[b_ref][score] += 1
 
     left_by_ref = {row.ref: row for row in left}
     right_by_ref = {row.ref: row for row in right}
     results: list[Result] = []
     used_left: set[int] = set()
     used_right: set[int] = set()
-    ties: dict[tuple[str, int], int] = {}  # (bên, số dòng) → số ứng viên ngang điểm
-    for r, c in zip(rows, cols, strict=True):
-        a_ref, b_ref = left_refs[r], right_refs[c]
-        score = candidates.get((a_ref, b_ref))
-        if score is None:
+    for component in _components(candidates):
+        left_refs = sorted({pair[0] for pair in component})
+        right_refs = sorted({pair[1] for pair in component})
+        if len(left_refs) > MAX_COMPONENT_ROWS or len(right_refs) > MAX_COMPONENT_ROWS:
+            message = (
+                f"Thuộc một nhóm {len(left_refs)} × {len(right_refs)} dòng cùng số tiền, "
+                "gần ngày nên không tự ghép."
+            )
+            skipped.update({("A", ref): message for ref in left_refs})
+            skipped.update({("B", ref): message for ref in right_refs})
             continue
-        rivals = [
-            pair
-            for pair, other in candidates.items()
-            if other == score and pair != (a_ref, b_ref) and (pair[0] == a_ref or pair[1] == b_ref)
-        ]
-        if rivals:  # có ứng viên khác ngang điểm: không tự chọn
-            ties[("A", a_ref)] = ties[("B", b_ref)] = len(rivals) + 1
-            continue
-        a, b = left_by_ref[a_ref], right_by_ref[b_ref]
-        result = _pair_result(a, b, config, "SCORE")
-        detail = [f"điểm {score:.2f}"]
-        if a.key and b.key and a.key != b.key:
-            detail.append(f"mã khác nhau ({a.key} / {b.key}), có thể gõ sai")
-        elif not (a.key and b.key):
-            detail.append("một bên không ghi mã")
-        result.reasons.insert(
-            0, _reason("SCORE", "Ghép theo số tiền và ngày: " + ", ".join(detail) + ".")
-        )
-        result.score = score
-        results.append(result)
-        used_left.add(a_ref)
-        used_right.add(b_ref)
-    return results, used_left, used_right, ties
+        row_index = {ref: index for index, ref in enumerate(left_refs)}
+        col_index = {ref: index for index, ref in enumerate(right_refs)}
+        # Ma trận chi phí = -điểm; cặp không phải ứng viên có chi phí 0 (không lợi gì khi chọn).
+        cost = np.zeros((len(left_refs), len(right_refs)))
+        for a_ref, b_ref in component:
+            cost[row_index[a_ref], col_index[b_ref]] = -candidates[(a_ref, b_ref)]
+        rows, cols = linear_sum_assignment(cost)
+        for r, c in zip(rows, cols, strict=True):
+            a_ref, b_ref = left_refs[r], right_refs[c]
+            score = candidates.get((a_ref, b_ref))
+            if score is None:
+                continue
+            rivals = scores_of_left[a_ref][score] + scores_of_right[b_ref][score] - 2
+            if rivals:  # có ứng viên khác ngang điểm: không tự chọn
+                message = f"Có {rivals + 1} ứng viên ngang điểm nên không tự ghép."
+                skipped[("A", a_ref)] = skipped[("B", b_ref)] = message
+                continue
+            a, b = left_by_ref[a_ref], right_by_ref[b_ref]
+            result = _pair_result(a, b, config, "SCORE")
+            detail = [f"điểm {score:.2f}"]
+            if a.key and b.key and a.key != b.key:
+                detail.append(f"mã khác nhau ({a.key} / {b.key}), có thể gõ sai")
+            elif not (a.key and b.key):
+                detail.append("một bên không ghi mã")
+            result.reasons.insert(
+                0, _reason("SCORE", "Ghép theo số tiền và ngày: " + ", ".join(detail) + ".")
+            )
+            result.score = score
+            results.append(result)
+            used_left.add(a_ref)
+            used_right.add(b_ref)
+    return results, used_left, used_right, skipped
 
 
 # ---------------------------------------------------------------- chạy toàn bộ
@@ -578,7 +668,7 @@ def reconcile(left: Side, right: Side, config: ReconConfig) -> list[Result]:
     rest_right = [row for row in pools["B"] if row.ref not in used_right]
 
     # 4. Khớp theo điểm 1:1 cho phần còn lại.
-    scored, used_left, used_right, ties = _score_round(rest_left, rest_right, config)
+    scored, used_left, used_right, skipped = _score_round(rest_left, rest_right, config)
     results += scored
 
     # 5. Còn lại: chỉ có ở một bên.
@@ -586,7 +676,8 @@ def reconcile(left: Side, right: Side, config: ReconConfig) -> list[Result]:
         for row in rows:
             if row.ref in used:
                 continue
-            if side == "A" and row.cancelled:
+            # Đơn đã hủy (ở bên nào cũng vậy) mà không có dòng tương ứng là bình thường.
+            if row.cancelled:
                 single(
                     "OUT_OF_SCOPE",
                     row,
@@ -603,13 +694,8 @@ def reconcile(left: Side, right: Side, config: ReconConfig) -> list[Result]:
                     + ".",
                 )
             ]
-            if (side, row.ref) in ties:
-                reasons.append(
-                    _reason(
-                        "TIED",
-                        f"Có {ties[(side, row.ref)]} ứng viên ngang điểm nên không tự ghép.",
-                    )
-                )
+            if (side, row.ref) in skipped:
+                reasons.append(_reason("TIED", skipped[(side, row.ref)]))
             single("ONLY_IN_A" if side == "A" else "ONLY_IN_B", row, side, reasons, True)
 
     # Thứ tự cố định: theo loại, rồi theo số dòng gốc.

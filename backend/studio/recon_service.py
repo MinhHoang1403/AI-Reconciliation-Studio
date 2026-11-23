@@ -10,6 +10,8 @@ Nối engine (`reconciliation`), kiểm chứng độc lập (`recon_verificatio
 import logging
 import uuid
 from datetime import UTC, date, datetime
+from decimal import Decimal
+from functools import lru_cache
 from itertools import combinations
 from typing import Any
 
@@ -22,6 +24,7 @@ from studio.cleaning import latest_version
 from studio.models import CleanVersion, DatasetTable, MatchResult, ReconRun
 from studio.recon_verification import verify
 from studio.reconciliation import ReconConfig, Side, reconcile, suggest_config, summarize
+from studio.sales_fields import FIELDS_BY_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -53,24 +56,50 @@ def unclean_refs(version: CleanVersion) -> set[int]:
     }
 
 
+@lru_cache(maxsize=64)
+def _key_sets(version_id: uuid.UUID, parquet_path: str) -> dict[str, frozenset[str]]:
+    """Tập giá trị của từng cột mã trong một phiên bản bộ sạch (phiên bản không bao giờ đổi
+    nội dung nên nhớ theo mã phiên bản là an toàn). Chỉ đọc các cột mã, không đọc cả bảng."""
+    names = pl.scan_parquet(parquet_path).collect_schema().names()
+    keys = [
+        name
+        for name in names
+        if name in FIELDS_BY_KEY and FIELDS_BY_KEY[name].type == "IDENTIFIER"
+    ]
+    if not keys:
+        return {}
+    frame = pl.read_parquet(parquet_path, columns=keys)
+    return {name: frozenset(frame[name].drop_nulls().to_list()) for name in keys}
+
+
 def suggest_pair(tables: list[DatasetTable]) -> tuple[uuid.UUID, uuid.UUID] | None:
-    """Cặp bảng nên đối soát: cặp có điểm chọn khóa cao nhất; bên A là bảng đơn hàng."""
-    frames = {table.id: clean_frame(latest_version(table)) for table in tables}  # type: ignore[arg-type]
+    """Cặp bảng nên đối soát: cặp có tỷ lệ khớp mã cao nhất; bên A là bảng đơn hàng.
+
+    Chỉ so tập mã của các cột mã (rẻ, nhớ theo phiên bản bộ sạch), không dựng cấu hình đầy
+    đủ cho mọi cặp. Bảng nào đọc lỗi thì bỏ qua, không làm hỏng cả trang.
+    """
+    keys: dict[uuid.UUID, dict[str, frozenset[str]]] = {}
+    for table in tables:
+        version = latest_version(table)
+        if version is None:
+            continue
+        try:
+            keys[table.id] = _key_sets(version.id, version.parquet_path)
+        except Exception:
+            logger.warning("Không đọc được bộ sạch của bảng %s; bỏ qua khi gợi ý cặp", table.id)
     best: tuple[float, uuid.UUID, uuid.UUID] | None = None
-    for first, second in combinations(tables, 2):
+    for first, second in combinations([table for table in tables if table.id in keys], 2):
         left, right = sorted(
             (first, second),
             key=lambda table: (SIDE_RANK.get(table.table_kind or "", 3), str(table.id)),
         )
-        try:
-            config, evidence = suggest_config(frames[left.id], frames[right.id])
-        except ValueError:
-            continue  # không có cột tiền
-        if not config.key_left:
-            continue
-        rate = max(item["match_rate"] for item in evidence["keys"])
-        if rate >= MIN_PAIR_MATCH_RATE and (best is None or rate > best[0]):
-            best = (rate, left.id, right.id)
+        for left_values in keys[left.id].values():
+            for right_values in keys[right.id].values():
+                if not left_values:
+                    continue
+                rate = len(left_values & right_values) / len(left_values)
+                if rate >= MIN_PAIR_MATCH_RATE and (best is None or rate > best[0]):
+                    best = (rate, left.id, right.id)
     return (best[1], best[2]) if best else None
 
 
@@ -123,9 +152,26 @@ def verify_run(session: Session, run: ReconRun) -> dict[str, Any]:
     )
 
 
-def _previous_decisions(
-    session: Session, run: ReconRun
-) -> dict[tuple[str, tuple[int, ...], tuple[int, ...]], MatchResult]:
+# Khóa so một kết quả giữa hai lần chạy: loại, các dòng hai bên và số tiền hai bên. Số tiền
+# nằm trong khóa để khi dữ liệu đổi (ví dụ sửa ô làm lệch tiền khác đi), ca đã xử lý không
+# được coi là "đã xử lý" nữa.
+type ResultKey = tuple[str, tuple[int, ...], tuple[int, ...], Decimal | None, Decimal | None]
+
+
+def result_key(
+    kind: str,
+    left_refs: list[int],
+    right_refs: list[int],
+    amount_left: Decimal | None,
+    amount_right: Decimal | None,
+) -> ResultKey:
+    def money(value: Decimal | None) -> Decimal | None:
+        return None if value is None else Decimal(value).quantize(Decimal("0.01"))
+
+    return kind, tuple(left_refs), tuple(right_refs), money(amount_left), money(amount_right)
+
+
+def _previous_decisions(session: Session, run: ReconRun) -> dict[ResultKey, MatchResult]:
     """Kết quả đã được người dùng xử lý ở lần chạy trước của cùng cặp bảng."""
     previous = session.scalar(
         select(ReconRun)
@@ -141,7 +187,9 @@ def _previous_decisions(
     if previous is None:
         return {}
     return {
-        (item.kind, tuple(item.left_refs), tuple(item.right_refs)): item
+        result_key(
+            item.kind, item.left_refs, item.right_refs, item.amount_left, item.amount_right
+        ): item
         for item in result_rows(session, previous.id)
         if item.note or item.exception_status in ("EXPLAINED", "RESOLVED")
     }
@@ -181,7 +229,11 @@ def _execute(run_id: uuid.UUID) -> None:
         carried = _previous_decisions(session, run)
         now = datetime.now(UTC)
         for position, item in enumerate(results):
-            earlier = carried.get((item.kind, tuple(item.left_refs), tuple(item.right_refs)))
+            earlier = carried.get(
+                result_key(
+                    item.kind, item.left_refs, item.right_refs, item.amount_left, item.amount_right
+                )
+            )
             session.add(
                 MatchResult(
                     id=uuid.uuid4(),

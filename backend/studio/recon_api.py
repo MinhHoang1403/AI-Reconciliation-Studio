@@ -1,8 +1,9 @@
 """API đối soát: gợi ý cặp bảng và cấu hình, chạy, xem kết quả, xử lý ngoại lệ, kiểm chứng."""
 
+import re
 import uuid
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 import polars as pl
@@ -61,6 +62,17 @@ class NoteChange(BaseModel):
 
 
 # ---------------------------------------------------------------- tiện ích
+
+
+def parse_tolerance(text: str) -> Decimal:
+    """Sai số tiền người dùng nhập: số đồng nguyên, không âm, có thể có dấu phân cách nghìn
+    ("1.000", "1,000", "1 000"). Số lẻ, số âm, NaN hay vô cực đều bị từ chối (422)."""
+    compact = text.strip().replace(" ", "")
+    if not re.fullmatch(r"\d{1,3}([.,]\d{3})*|\d+", compact):
+        raise fail(
+            422, "INVALID_TOLERANCE", "Sai số phải là số đồng nguyên không âm, ví dụ 1.000."
+        )
+    return Decimal(re.sub(r"[.,]", "", compact))
 
 
 def _table(session: Session, table_id: uuid.UUID) -> DatasetTable:
@@ -294,12 +306,7 @@ def start_run(
     except ValueError as error:
         raise fail(422, "CANNOT_RECONCILE", str(error)) from error
     if request.tolerance is not None:
-        try:
-            config.tolerance = Decimal(request.tolerance.replace(".", "").replace(",", "."))
-        except InvalidOperation as error:
-            raise fail(422, "INVALID_TOLERANCE", "Sai số phải là số tiền.") from error
-        if config.tolerance < 0:
-            raise fail(422, "INVALID_TOLERANCE", "Sai số không được âm.")
+        config.tolerance = parse_tolerance(request.tolerance)
     if request.date_window_days is not None:
         config.date_window_days = request.date_window_days
     if request.excluded is not None:
@@ -367,6 +374,18 @@ def run_results(
             .limit(limit)
         )
     )
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "items": _result_views(session, run, items),
+    }
+
+
+def _result_views(
+    session: Session, run: ReconRun, items: list[MatchResult]
+) -> list[dict[str, Any]]:
+    """Kết quả kèm giá trị đã chuẩn hóa của các dòng hai bên (chỉ đọc đúng các dòng cần)."""
     config = ReconConfig.from_json(run.config)
     left = _details(
         session.get(CleanVersion, run.left_version_id),
@@ -382,27 +401,22 @@ def run_results(
         config.date_right,
         config.amount_right,
     )
-    return {
-        "total": total,
-        "offset": offset,
-        "limit": limit,
-        "items": [
-            {
-                "id": str(item.id),
-                "kind": item.kind,
-                "kind_label": KIND_LABELS.get(item.kind, item.kind),
-                "score": item.score,
-                "reasons": item.reasons,
-                "amount_left": None if item.amount_left is None else str(item.amount_left),
-                "amount_right": None if item.amount_right is None else str(item.amount_right),
-                "exception_status": item.exception_status,
-                "note": item.note,
-                "left": [left.get(ref, {"row_ref": ref}) for ref in item.left_refs],
-                "right": [right.get(ref, {"row_ref": ref}) for ref in item.right_refs],
-            }
-            for item in items
-        ],
-    }
+    return [
+        {
+            "id": str(item.id),
+            "kind": item.kind,
+            "kind_label": KIND_LABELS.get(item.kind, item.kind),
+            "score": item.score,
+            "reasons": item.reasons,
+            "amount_left": None if item.amount_left is None else str(item.amount_left),
+            "amount_right": None if item.amount_right is None else str(item.amount_right),
+            "exception_status": item.exception_status,
+            "note": item.note,
+            "left": [left.get(ref, {"row_ref": ref}) for ref in item.left_refs],
+            "right": [right.get(ref, {"row_ref": ref}) for ref in item.right_refs],
+        }
+        for item in items
+    ]
 
 
 @router.post("/recon/runs/{run_id}/verify")
@@ -439,11 +453,13 @@ def act_on_results(run_id: uuid.UUID, action: RunAction, session: SessionDep) ->
         after = "RESOLVED" if action.action == "RESOLVE" else ("EXPLAINED" if item.note else "OPEN")
         if before != after:
             item.exception_status, item.updated_at = after, now
-            changed.append({"id": str(item.id), "before": before, "after": after})
+            changed.append(
+                {"id": str(item.id), "before": before, "after": after, "label": _result_label(item)}
+            )
     if changed:
         verb = "Đánh dấu đã xử lý" if action.action == "RESOLVE" else "Mở lại"
         target = (
-            _result_label(items[0])
+            changed[0]["label"]
             if len(changed) == 1
             else f"{len(changed)} kết quả"
             + (f" loại {KIND_LABELS.get(action.kind, action.kind)}" if action.kind else "")
@@ -499,21 +515,8 @@ def explain_result(result_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
     if item is None:
         raise fail(404, "RESULT_NOT_FOUND", "Không tìm thấy kết quả.")
     run = _run(session, item.run_id)
-    page = run_results(run.id, session, group=_group_of(item), kind=None, offset=0, limit=200)
-    view = next((entry for entry in page["items"] if entry["id"] == str(item.id)), None)
-    if view is None:  # nằm ngoài trang đầu: dựng riêng
-        view = {"kind": item.kind, "reasons": item.reasons, "left": [], "right": []}
-    return recon_ai.explain_result(view, run_view(session, run)["config"])
-
-
-def _group_of(item: MatchResult) -> ResultGroup:
-    if item.exception_status == "OPEN":
-        return "todo"
-    if item.exception_status == "EXPLAINED":
-        return "explained"
-    if item.exception_status == "RESOLVED":
-        return "resolved"
-    return "out_of_scope" if item.kind == "OUT_OF_SCOPE" else "matched"
+    view = _result_views(session, run, [item])[0]
+    return recon_ai.explain_result(view, config_view(ReconConfig.from_json(run.config)))
 
 
 def _run_label(session: Session, run: ReconRun) -> str:
