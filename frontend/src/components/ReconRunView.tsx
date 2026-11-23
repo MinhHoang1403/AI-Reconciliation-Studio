@@ -63,6 +63,7 @@ export const KIND_HELP: [ReconKind, string][] = [
   ["NEEDS_CLEANING", "Dòng còn lỗi ở bước làm sạch; sửa xong rồi chạy lại."],
   ["MATCHED", "Đã ghép được nhưng cần xem lại, ví dụ đơn đã hủy vẫn có tiền về."],
   ["MANY_TO_ONE", "Đã ghép nhóm nhưng cần xem lại."],
+  ["ONE_TO_MANY", "Đã ghép nhóm nhưng cần xem lại."],
 ];
 const PAGE = 50;
 const MATCHED_KINDS: ReconKind[] = ["MATCHED", "MANY_TO_ONE", "ONE_TO_MANY"];
@@ -201,7 +202,12 @@ export function ReconRunView({ run, onRun, onRerun, chainId }: Props) {
             {items === null ? (
               <p className="notice">Đang tải kết quả…</p>
             ) : group === "todo" ? (
-              <TodoGroups items={items.map((item) => ({ item, context }))} kindLabels={run.kind_labels} />
+              <TodoGroups
+                items={items.map((item) => ({ item, context }))}
+                kindLabels={run.kind_labels}
+                counts={run.open_by_kind}
+                more={items.length < total ? { count: total - items.length, load: () => void load(items.length) } : undefined}
+              />
             ) : items.length === 0 ? (
               <p className="notice">Không có kết quả trong nhóm này.</p>
             ) : (
@@ -266,12 +272,21 @@ export type ItemContext = {
 
 /** Ngoại lệ đang mở gom theo loại; mỗi nhóm có một nút chính "Đánh dấu cả nhóm đã xử lý"
  *  (chỉ khi mọi ca của nhóm cùng một lần chạy, để thao tác gộp đúng phạm vi). */
+/**
+ * Danh sách cần xử lý, gom theo loại ngoại lệ. `counts` là số ca đang mở của từng loại do
+ * backend đếm (đúng cả khi danh sách mới tải một phần); `more` hiện nút tải thêm khi còn ca
+ * chưa tải, để không ca nào bị giấu.
+ */
 export function TodoGroups({
   items,
   kindLabels,
+  counts,
+  more,
 }: {
   items: { item: ReconResult; context: ItemContext }[];
   kindLabels: Record<ReconKind, string>;
+  counts: Partial<Record<ReconKind, number>>;
+  more?: { count: number; load: () => void };
 }) {
   if (items.length === 0) {
     return (
@@ -296,7 +311,8 @@ export function TodoGroups({
             <div className="recon-group__head">
               <div>
                 <h3 id={`group-${kind}`}>
-                  {kindLabels[kind] ?? kind} <span className="recon-group__count">{formatCount(group.length)}</span>
+                  {kindLabels[kind] ?? kind}{" "}
+                  <span className="recon-group__count">{formatCount(Math.max(counts[kind] ?? 0, group.length))}</span>
                 </h3>
                 <p>{help}</p>
               </div>
@@ -320,6 +336,11 @@ export function TodoGroups({
           </section>
         );
       })}
+      {more && (
+        <button className="button button--quiet recon-run__more" type="button" onClick={more.load}>
+          Xem thêm ({formatCount(more.count)} ca)
+        </button>
+      )}
     </div>
   );
 }

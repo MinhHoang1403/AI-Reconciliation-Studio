@@ -567,7 +567,7 @@ def act_on_results(run_id: uuid.UUID, action: RunAction, session: SessionDep) ->
             f"EXCEPTION_{action.action}",
             "RECON_RUN",
             run.id,
-            _run_label(session, run),
+            recon_service.run_label(session, run),
             f"{verb} {target}.",
             {"results": [{"id": item["id"], "status": item["before"]} for item in changed]},
             {"results": [{"id": item["id"], "status": item["after"]} for item in changed]},
@@ -596,7 +596,7 @@ def change_note(result_id: uuid.UUID, change: NoteChange, session: SessionDep) -
         "EXCEPTION_NOTE",
         "RECON_RUN",
         run.id,
-        _run_label(session, run),
+        recon_service.run_label(session, run),
         f"Ghi chú cho {_result_label(item)}: “{note}”." if note else
         f"Xóa ghi chú của {_result_label(item)}.",
         before,
@@ -617,13 +617,6 @@ def explain_result(result_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
     return recon_ai.explain_result(view, config_view(ReconConfig.from_json(run.config)))
 
 
-def _run_label(session: Session, run: ReconRun) -> str:
-    left = session.get(DatasetTable, run.left_table_id)
-    right = session.get(DatasetTable, run.right_table_id)
-    names = [audit.table_label(table) if table else "?" for table in (left, right)]
-    return " ↔ ".join(names)
-
-
 # ---------------------------------------------------------------- chuỗi ba bên, ca mơ hồ
 
 
@@ -631,7 +624,7 @@ def chain_view(session: Session, chain: ReconChain) -> dict[str, Any]:
     runs = list(
         session.scalars(select(ReconRun).where(ReconRun.chain_id == chain.id))
     )
-    runs.sort(key=lambda run: recon_service._chain_order(session, run))
+    runs.sort(key=lambda run: recon_service.chain_order(session, run))
     views = [run_view(session, run) for run in runs]
     return {
         "id": str(chain.id),
@@ -754,7 +747,7 @@ def choose_candidate(
         "AMBIGUOUS_CHOSEN",
         "RECON_RUN",
         run.id,
-        _run_label(session, run),
+        recon_service.run_label(session, run),
         f"Chọn cặp A{', A'.join(map(str, wanted[0]))} ↔ B{', B'.join(map(str, wanted[1]))} "
         "cho ca mơ hồ.",
         {"candidates": pairs},

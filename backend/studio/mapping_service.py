@@ -155,6 +155,26 @@ def parse_ai_reply(
     return kind, choices
 
 
+# Họ loại bảng: hai loại đơn hàng (sàn, phần mềm bán hàng) có cùng vai trò khi đối soát.
+_KIND_FAMILY = {"ORDERS_PLATFORM": "ORDERS", "ORDERS_POS": "ORDERS"}
+
+
+def resolve_table_kind(guess: str | None, fields: set[str]) -> str:
+    """Loại bảng cuối cùng: giữ loại AI (hoặc lần trước) đoán nếu không mâu thuẫn với các cột
+    đã ánh xạ; mâu thuẫn (ví dụ AI nói "đơn hàng" mà bảng có cột Nợ/Có) thì theo cột.
+
+    Loại bảng quyết định trường bắt buộc khi làm sạch và vai trò A/B khi đối soát, nên phải
+    khớp với ánh xạ người dùng đã xác nhận.
+    """
+    inferred = infer_table_kind(fields)
+    if not guess or guess == "UNKNOWN":
+        return inferred
+    same_family = _KIND_FAMILY.get(guess, guess) == _KIND_FAMILY.get(inferred, inferred)
+    if inferred == "UNKNOWN" or same_family:
+        return guess
+    return inferred
+
+
 def infer_table_kind(fields: set[str]) -> str:
     """Đoán loại bảng từ các cột chuẩn đã ánh xạ (dùng khi không có AI)."""
     if {"debit", "credit"} & fields:
@@ -264,8 +284,23 @@ def _save(session: Session, table: DatasetTable, decisions: list[dict[str, Any]]
 
 
 def suggest_for_table(table_id: uuid.UUID, use_memory: bool = True) -> None:
-    """Gợi ý ánh xạ cho một bảng đã đọc xong, rồi dựng bộ dữ liệu sạch. Chạy trong tác vụ nền."""
-    _suggest_mapping(table_id, use_memory)
+    """Gợi ý ánh xạ cho một bảng đã đọc xong, rồi dựng bộ dữ liệu sạch. Chạy trong tác vụ nền.
+
+    Lỗi không lường trước được ghi lại và bảng thoát trạng thái "đang gợi ý" (để người dùng
+    bấm "Gợi ý lại"), không bao giờ kẹt ở trạng thái đó.
+    """
+    try:
+        _suggest_mapping(table_id, use_memory)
+    except Exception:
+        logger.exception("Lỗi khi gợi ý ánh xạ cho bảng %s", table_id)
+        with database.SessionFactory() as session:
+            table = session.get(DatasetTable, table_id)
+            if table is not None:
+                table.mapping_status = "READY"
+                table.mapping_ai_state = "FAILED"
+                table.mapping_ai_message = "Có lỗi khi gợi ý ánh xạ. Bấm “Gợi ý lại” để thử lại."
+                session.commit()
+        return
     refresh_clean_data(table_id)
 
 
@@ -281,6 +316,9 @@ def _suggest_mapping(table_id: uuid.UUID, use_memory: bool) -> None:
 
         memory = session.get(MappingMemory, structure_signature(names)) if use_memory else None
         if memory is not None:
+            # Bộ nhớ nhận ra cấu trúc theo tên cột đã chuẩn hóa (bỏ dấu, chữ thường), nên tra
+            # theo tên chuẩn hóa: "Mã ĐH" của tệp mới vẫn lấy được ánh xạ đã nhớ của "MA DH".
+            remembered = {normalize_name(name): key for name, key in memory.mapping.items()}
             _save(
                 session,
                 table,
@@ -288,7 +326,7 @@ def _suggest_mapping(table_id: uuid.UUID, use_memory: bool) -> None:
                     {
                         "position": index,
                         "column_name": name,
-                        "field_key": memory.mapping.get(name),
+                        "field_key": remembered.get(normalize_name(name)),
                         "confidence": 1.0,
                         "status": "CONFIRMED",
                         "source": "MEMORY",
@@ -336,7 +374,7 @@ def _suggest_mapping(table_id: uuid.UUID, use_memory: bool) -> None:
             return
         _save(session, table, decisions)
         fields = {decision["field_key"] for decision in decisions if decision["field_key"]}
-        table.table_kind = ai_kind if ai_kind and ai_kind != "UNKNOWN" else infer_table_kind(fields)
+        table.table_kind = resolve_table_kind(ai_kind, fields)
         table.mapping_ai_state, table.mapping_ai_message = ai_state, ai_message
         table.mapping_status = "READY"
         session.commit()

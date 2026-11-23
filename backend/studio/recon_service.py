@@ -82,8 +82,14 @@ def unclean_refs(version: CleanVersion) -> set[int]:
     }
 
 
-def table_label(table: DatasetTable) -> str:
-    return audit.table_label(table)
+def forget_chains(session: Session, table_ids: list[uuid.UUID]) -> None:
+    """Xóa các chuỗi đối soát có dùng một trong các bảng sắp bị xóa (xóa hoặc đọc lại bộ dữ
+    liệu). Chuỗi lưu danh sách bảng dạng JSON, không có khóa ngoại để tự xóa theo; các lần
+    chạy trong chuỗi bị xóa theo chuỗi (ondelete CASCADE)."""
+    wanted = {str(table_id) for table_id in table_ids}
+    for chain in session.scalars(select(ReconChain)):
+        if wanted & {str(item) for item in chain.table_ids}:
+            session.delete(chain)
 
 
 # ---------------------------------------------------------------- gợi ý cặp, kỳ
@@ -267,31 +273,41 @@ def result_rows(session: Session, run_id: uuid.UUID) -> list[MatchResult]:
 def pending_from_previous(
     session: Session, left: DatasetTable, right: DatasetTable
 ) -> list[dict[str, Any]]:
-    """Dòng "chờ tiền về" ở lần đối soát gần nhất của kỳ trước cùng loại bảng.
+    """Dòng "chờ tiền về" ở lần đối soát của kỳ liền trước, cùng loại bảng.
 
-    Kỳ trước: lần chạy xong gần nhất có bảng A cùng loại, bảng B cùng loại và cùng tên sheet,
-    nhưng là bảng khác (tệp của kỳ khác). Lấy cả dòng chờ mà lần đó đã nhận từ kỳ trước nữa.
+    Kỳ trước: bảng A cùng loại, bảng B cùng loại và cùng tên sheet nhưng là bảng khác (tệp của
+    kỳ khác), và dữ liệu bên B bắt đầu TRƯỚC bên B hiện tại. Chọn kỳ gần nhất theo ngày dữ liệu
+    (không theo thời điểm bấm chạy: chạy lại kỳ 1 sau kỳ 2 không được nhận dòng chờ của kỳ 2);
+    trong cùng kỳ lấy lần chạy mới nhất. Lấy cả dòng chờ mà lần đó đã nhận từ kỳ trước nữa.
     """
-    candidates = session.scalars(
-        select(ReconRun)
-        .where(
+    current = _start_day(right)
+    if current is None:
+        return []
+    earlier: list[tuple[date, str, ReconRun]] = []
+    for run in session.scalars(
+        select(ReconRun).where(
             ReconRun.status == "READY",
             ReconRun.left_table_id != left.id,
             ReconRun.right_table_id != right.id,
         )
-        .order_by(ReconRun.created_at.desc())
-    )
-    for run in candidates:
+    ):
         run_left = session.get(DatasetTable, run.left_table_id)
         run_right = session.get(DatasetTable, run.right_table_id)
+        version = session.get(CleanVersion, run.right_version_id) if run.right_version_id else None
         if (
             run_left is None
             or run_right is None
+            or version is None
             or run_left.table_kind != left.table_kind
             or run_right.table_kind != right.table_kind
             or run_right.sheet_name != right.sheet_name
         ):
             continue
+        found = _date_range(version.id, version.parquet_path)
+        if found and found[0] < current:
+            earlier.append((found[0], str(run.created_at), run))
+    if earlier:
+        run = max(earlier, key=lambda item: (item[0], item[1]))[2]
         rows: list[dict[str, Any]] = []
         for item in result_rows(session, run.id):
             if item.kind != "PENDING_SETTLEMENT":
@@ -304,6 +320,15 @@ def pending_from_previous(
             rows += list(item.carried_left or [])
         return rows
     return []
+
+
+def _start_day(table: DatasetTable) -> date | None:
+    """Ngày sớm nhất trong bộ sạch mới nhất của bảng (None nếu chưa có bộ sạch hay cột ngày)."""
+    version = latest_version(table)
+    if version is None:
+        return None
+    found = _date_range(version.id, version.parquet_path)
+    return found[0] if found else None
 
 
 def carried_frame(session: Session, carried: list[dict[str, Any]]) -> pl.DataFrame | None:
@@ -545,7 +570,8 @@ def chain_pairs(session: Session, tables: list[DatasetTable]) -> list[ChainPair]
     sao kê. Thứ tự này quyết định cặp nào báo một dòng chưa ghép (cặp đầu tiên có nó)."""
     pairs = []
     ordered = sorted(
-        tables, key=lambda table: (SIDE_RANK.get(table.table_kind or "", 3), table_label(table))
+        tables,
+        key=lambda table: (SIDE_RANK.get(table.table_kind or "", 3), audit.table_label(table)),
     )
     for left in ordered:
         for right in ordered:
@@ -564,8 +590,8 @@ def chain_pairs(session: Session, tables: list[DatasetTable]) -> list[ChainPair]
         key=lambda pair: (
             SIDE_RANK.get(pair.left.table_kind or "", 3),
             SIDE_RANK.get(pair.right.table_kind or "", 3),
-            table_label(pair.left),
-            table_label(pair.right),
+            audit.table_label(pair.left),
+            audit.table_label(pair.right),
         ),
     )
 
@@ -593,83 +619,97 @@ def _strong(item: Result) -> bool:
     )
 
 
+# Một dòng trong chuỗi: (bảng, vai A/B, số dòng). Hai cặp chỉ tranh nhau một dòng khi bảng đó
+# đứng CÙNG VAI ở cả hai cặp (ví dụ sao kê là bên B ở cặp cửa hàng ↔ sao kê và cặp cổng ↔ sao
+# kê). Cùng một dòng ở hai vai khác nhau (giao dịch cổng: bên B khi so với đơn, bên A khi so
+# với sao kê) là một mắt xích của chuỗi, không phải tranh chấp.
+type ChainRow = tuple[uuid.UUID, str, int]
+
+
+@dataclass
+class ChainClaims:
+    """Kết quả lượt 1: mỗi dòng đã được cặp nào nhận.
+
+    - strong: cặp đầu tiên ghép chắc chắn dòng đó (theo mã hoặc do người dùng chọn);
+    - handled: cặp đầu tiên đã ghép dòng đó (kể cả theo điểm) hoặc đang chờ người dùng chọn;
+    - owner: cặp đầu tiên báo dòng đó "chỉ có ở một bên".
+    """
+
+    strong: dict[ChainRow, uuid.UUID]
+    handled: dict[ChainRow, uuid.UUID]
+    owner: dict[ChainRow, uuid.UUID]
+
+
+def _sides(run: ReconRun, item: Result) -> list[tuple[uuid.UUID, str, list[int]]]:
+    return [(run.left_table_id, "A", item.left_refs), (run.right_table_id, "B", item.right_refs)]
+
+
+def _claims(runs: list[ReconRun], first: dict[uuid.UUID, list[Result]]) -> ChainClaims:
+    claims = ChainClaims({}, {}, {})
+    for run in runs:  # theo thứ tự chuỗi: cặp đứng trước được nhận trước
+        for item in first[run.id]:
+            for table_id, role, refs in _sides(run, item):
+                for ref in refs:
+                    key = (table_id, role, ref)
+                    if _strong(item):
+                        claims.strong.setdefault(key, run.id)
+                    if item.kind in PAIRED_KINDS + ("AMBIGUOUS",):
+                        claims.handled.setdefault(key, run.id)
+                    elif item.kind in ("ONLY_IN_A", "ONLY_IN_B"):
+                        claims.owner.setdefault(key, run.id)
+    return claims
+
+
+def _elsewhere(
+    run: ReconRun, results: list[Result], claims: ChainClaims, labels: dict[uuid.UUID, str]
+) -> dict[str, dict[int, str]]:
+    """Dòng của cặp này đã được cặp khác lo, kèm lý do; ở lượt 2 chúng thành "ngoài phạm vi".
+
+    1. Cặp khác đã ghép chắc chắn, còn cặp này chỉ ghép yếu hoặc không ghép được.
+    2. Cặp này không ghép được, nhưng cặp khác đã ghép (hoặc đang chờ người dùng chọn).
+    3. Không cặp nào ghép được: chỉ cặp đầu tiên báo "chỉ có ở một bên", các cặp sau không
+       báo lặp lại.
+    """
+    elsewhere: dict[str, dict[int, str]] = {"A": {}, "B": {}}
+    for item in results:
+        unmatched = item.kind in ("ONLY_IN_A", "ONLY_IN_B")
+        for table_id, role, refs in _sides(run, item):
+            for ref in refs:
+                key = (table_id, role, ref)
+                strong, done, first_owner = (
+                    claims.strong.get(key), claims.handled.get(key), claims.owner.get(key)
+                )
+                if strong and strong != run.id and not _strong(item):
+                    elsewhere[role][ref] = f"Đã ghép ở cặp {labels[strong]}."
+                elif unmatched and done and done != run.id:
+                    elsewhere[role][ref] = f"Đã xử lý ở cặp {labels[done]}."
+                elif unmatched and first_owner and first_owner != run.id and not strong:
+                    elsewhere[role][ref] = f"Chưa ghép được; đã báo ở cặp {labels[first_owner]}."
+    return elsewhere
+
+
 def execute_chain(chain_id: uuid.UUID) -> None:
     """Chạy cả chuỗi (tác vụ nền) theo hai lượt.
 
-    Lượt 1 chạy từng cặp độc lập để biết dòng nào đã ghép chắc chắn (theo mã hoặc do người
-    dùng chọn) ở cặp nào, và cặp nào là cặp đầu tiên có một dòng chưa ghép. Lượt 2 chạy lại
-    từng cặp: dòng đã ghép chắc chắn ở cặp khác, hoặc chưa ghép nhưng đã được báo ở cặp trước,
-    thành "ngoài phạm vi" kèm lý do, để mỗi khoản tiền chỉ hiện một lần trong danh sách cần xử
-    lý (ví dụ đợt chuyển của cổng thanh toán không bị báo "chỉ có ở sao kê" ở cặp đơn hàng).
+    Lượt 1 chạy từng cặp độc lập để biết dòng nào đã được cặp nào nhận (`_claims`). Lượt 2
+    chạy lại từng cặp, dòng đã được cặp khác lo thành "ngoài phạm vi" kèm lý do (`_elsewhere`),
+    để mỗi khoản tiền chỉ hiện một lần trong danh sách cần xử lý (ví dụ đợt chuyển của cổng
+    thanh toán không bị báo "chỉ có ở sao kê" ở cặp đơn hàng ↔ sao kê).
     """
     try:
         with database.SessionFactory() as session:
             chain = session.get(ReconChain, chain_id)
             if chain is None:
                 return
-            runs = list(
-                session.scalars(
-                    select(ReconRun).where(ReconRun.chain_id == chain.id).order_by(
-                        ReconRun.created_at, ReconRun.id
-                    )
-                )
-            )
-            runs.sort(key=lambda run: _chain_order(session, run))
+            runs = list(session.scalars(select(ReconRun).where(ReconRun.chain_id == chain.id)))
+            runs.sort(key=lambda run: (*chain_order(session, run), str(run.id)))
             first = {run.id: compute(session, run)[0] for run in runs}
-            labels = {run.id: _run_label(session, run) for run in runs}
-
-            # Hai cặp chỉ tranh nhau một dòng khi bảng đó đứng CÙNG VAI ở cả hai cặp (ví dụ sao
-            # kê là bên B ở cặp cửa hàng ↔ sao kê và cặp cổng ↔ sao kê). Cùng một dòng ở hai vai
-            # khác nhau (giao dịch cổng: bên B khi so với đơn, bên A khi so với sao kê) là một
-            # mắt xích của chuỗi, không phải tranh chấp. Khóa: (bảng, vai, số dòng).
-            strong: dict[tuple[uuid.UUID, str, int], uuid.UUID] = {}
-            handled: dict[tuple[uuid.UUID, str, int], uuid.UUID] = {}  # đã ghép / chờ chọn
-            owner: dict[tuple[uuid.UUID, str, int], uuid.UUID] = {}
-            for run in runs:
-                for item in first[run.id]:
-                    sides = (
-                        (run.left_table_id, "A", item.left_refs),
-                        (run.right_table_id, "B", item.right_refs),
-                    )
-                    for table_id, role, refs in sides:
-                        for ref in refs:
-                            if _strong(item):
-                                strong.setdefault((table_id, role, ref), run.id)
-                            if item.kind in PAIRED_KINDS + ("AMBIGUOUS",):
-                                handled.setdefault((table_id, role, ref), run.id)
-                            elif item.kind in ("ONLY_IN_A", "ONLY_IN_B"):
-                                owner.setdefault((table_id, role, ref), run.id)
+            labels = {run.id: run_label(session, run) for run in runs}
+            claims = _claims(runs, first)
 
             days: list[date] = []
             for run in runs:
-                elsewhere: dict[str, dict[int, str]] = {"A": {}, "B": {}}
-                for side, table_id in (("A", run.left_table_id), ("B", run.right_table_id)):
-                    for item in first[run.id]:
-                        refs = item.left_refs if side == "A" else item.right_refs
-                        for ref in refs:
-                            where = strong.get((table_id, side, ref))
-                            if where and where != run.id and not _strong(item):
-                                elsewhere[side][ref] = f"Đã ghép ở cặp {labels[where]}."
-                                continue
-                            # Chưa ghép ở cặp này nhưng đã ghép (hoặc đang chờ chọn) ở cặp khác.
-                            done = handled.get((table_id, side, ref))
-                            if (
-                                item.kind in ("ONLY_IN_A", "ONLY_IN_B")
-                                and done
-                                and done != run.id
-                            ):
-                                elsewhere[side][ref] = f"Đã xử lý ở cặp {labels[done]}."
-                                continue
-                            first_owner = owner.get((table_id, side, ref))
-                            if (
-                                item.kind in ("ONLY_IN_A", "ONLY_IN_B")
-                                and first_owner
-                                and first_owner != run.id
-                                and (table_id, side, ref) not in strong
-                            ):
-                                elsewhere[side][ref] = (
-                                    f"Chưa ghép được; đã báo ở cặp {labels[first_owner]}."
-                                )
+                elsewhere = _elsewhere(run, first[run.id], claims, labels)
                 results, left, right, config = compute(session, run, elsewhere)
                 period = _period(left, right, config)
                 persist(session, run, results, period)
@@ -698,21 +738,21 @@ def execute_chain(chain_id: uuid.UUID) -> None:
                 session.commit()
 
 
-def _chain_order(session: Session, run: ReconRun) -> tuple[int, int, str, str]:
+def chain_order(session: Session, run: ReconRun) -> tuple[int, int, str, str]:
     left = session.get(DatasetTable, run.left_table_id)
     right = session.get(DatasetTable, run.right_table_id)
     return (
         SIDE_RANK.get(left.table_kind or "", 3) if left else 3,
         SIDE_RANK.get(right.table_kind or "", 3) if right else 3,
-        table_label(left) if left else "",
-        table_label(right) if right else "",
+        audit.table_label(left) if left else "",
+        audit.table_label(right) if right else "",
     )
 
 
-def _run_label(session: Session, run: ReconRun) -> str:
+def run_label(session: Session, run: ReconRun) -> str:
     left = session.get(DatasetTable, run.left_table_id)
     right = session.get(DatasetTable, run.right_table_id)
-    return " ↔ ".join(table_label(table) if table else "?" for table in (left, right))
+    return " ↔ ".join(audit.table_label(table) if table else "?" for table in (left, right))
 
 
 def trace(
@@ -745,7 +785,7 @@ def trace(
                 steps.append(
                     {
                         "run_id": str(run.id),
-                        "pair": _run_label(session, run),
+                        "pair": run_label(session, run),
                         "kind": item.kind,
                         "result_id": str(item.id),
                         "left_refs": item.left_refs,

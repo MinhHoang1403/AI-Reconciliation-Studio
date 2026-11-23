@@ -121,7 +121,8 @@ def detect_header_row(frame: pl.DataFrame) -> int | None:
     """Đoán vị trí (tính từ 0) của dòng tiêu đề trong phần đầu sheet.
 
     Quy tắc kinh nghiệm: dòng tiêu đề là dòng đầu tiên có ít nhất một nửa số cột
-    của bảng có giá trị, gần như toàn bộ là chữ (không phải số), và ngay sau nó có dữ liệu.
+    của bảng có giá trị, gần như toàn bộ là chữ (không phải số), và bên dưới nó có dữ liệu
+    (cho phép vài dòng trống xen giữa, như tệp Excel hay để một dòng trống dưới tiêu đề).
     Dòng tiêu đề báo cáo phía trên (chỉ một ô) bị bỏ qua. Người dùng có thể chỉnh lại.
     """
     rows = list(frame.head(HEADER_SCAN_ROWS).iter_rows())
@@ -134,7 +135,7 @@ def detect_header_row(frame: pl.DataFrame) -> int | None:
         if len(cells) < needed:
             continue
         label_share = sum(_looks_like_label(cell) for cell in cells) / len(cells)
-        if label_share >= 0.8 and len(filled[index + 1]) >= 1:
+        if label_share >= 0.8 and any(filled[index + 1 :]):
             return index
     return None
 

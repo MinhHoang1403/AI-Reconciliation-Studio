@@ -12,12 +12,13 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from studio import database, mapping_service, reading, storage
-from studio.models import Dataset, DatasetTable
+from studio.models import Dataset, DatasetTable, ReconChain, ReconRun
 from studio.profiling import profile_table
 
 logger = logging.getLogger(__name__)
 
 INTERRUPTED_MESSAGE = "Việc đọc tệp bị gián đoạn do hệ thống khởi động lại. Hãy đọc lại."
+RECON_INTERRUPTED_MESSAGE = "Đối soát bị gián đoạn do hệ thống khởi động lại. Hãy chạy lại."
 
 
 def _raw_sheets(dataset: Dataset) -> list[reading.RawSheet]:
@@ -75,7 +76,7 @@ def read_dataset(dataset_id: uuid.UUID) -> None:
         ready_tables = [table.id for table in dataset.tables if table.status == "READY"]
     # Đọc xong thì tự gợi ý ánh xạ cột cho từng bảng (quyết định 2026-11-20).
     for ready_table_id in ready_tables:
-        _suggest_mapping(ready_table_id)
+        mapping_service.suggest_for_table(ready_table_id)
 
 
 def reread_table(table_id: uuid.UUID, header_row: int | None) -> None:
@@ -101,22 +102,7 @@ def reread_table(table_id: uuid.UUID, header_row: int | None) -> None:
         session.commit()
         ready = table.status == "READY"
     if ready:
-        _suggest_mapping(table_id)
-
-
-def _suggest_mapping(table_id: uuid.UUID) -> None:
-    """Gợi ý ánh xạ; lỗi ở bước này không làm hỏng kết quả đọc tệp."""
-    try:
         mapping_service.suggest_for_table(table_id)
-    except Exception:
-        logger.exception("Lỗi khi gợi ý ánh xạ cho bảng %s", table_id)
-        with database.SessionFactory() as session:
-            table = session.get(DatasetTable, table_id)
-            if table is not None:
-                table.mapping_status = "READY"
-                table.mapping_ai_state = "FAILED"
-                table.mapping_ai_message = "Có lỗi khi gợi ý ánh xạ. Bấm “Gợi ý lại” để thử lại."
-                session.commit()
 
 
 def _fail(
@@ -136,7 +122,8 @@ def _fail(
 
 
 def recover_interrupted() -> None:
-    """Khi backend khởi động lại giữa chừng, đánh dấu các việc đọc dở là thất bại."""
+    """Khi backend khởi động lại giữa chừng, các việc nền dở dang (đọc tệp, ánh xạ, làm sạch,
+    đối soát) không thể chạy tiếp: đánh dấu rõ ràng để người dùng làm lại."""
     with database.SessionFactory() as session:
         session.execute(update(Dataset).where(Dataset.status == "READING")
                         .values(status="FAILED", error_message=INTERRUPTED_MESSAGE))
@@ -146,4 +133,12 @@ def recover_interrupted() -> None:
                         .values(mapping_status="NONE"))
         session.execute(update(DatasetTable).where(DatasetTable.clean_status == "BUILDING")
                         .values(clean_status="FAILED"))
+        # Bộ sạch đã dựng xong, chỉ phần AI gợi ý sửa ô bị dừng: bộ sạch vẫn dùng được.
+        session.execute(update(DatasetTable).where(DatasetTable.clean_status == "SUGGESTING")
+                        .values(clean_status="READY"))
+        # Đối soát dở dang không chạy tiếp được: báo lỗi để người dùng chạy lại, không để
+        # giao diện chờ mãi.
+        for model in (ReconRun, ReconChain):
+            session.execute(update(model).where(model.status == "RUNNING")
+                            .values(status="FAILED", error_message=RECON_INTERRUPTED_MESSAGE))
         session.commit()

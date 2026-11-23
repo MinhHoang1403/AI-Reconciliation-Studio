@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, ShieldAlert, ShieldCheck } from "lucide-react";
 
-import { getChain, getResults, type ReconChain, type ReconResult, type ReconRun } from "../api";
+import { getChain, getResults, type ReconChain, type ReconKind, type ReconResult, type ReconRun } from "../api";
 import { formatCount } from "../format";
 import { sealChecks, type SealRing } from "../verification";
 import { ReconRunView, TodoGroups, formatDay, message, type ItemContext, type Rerun } from "./ReconRunView";
@@ -17,12 +17,29 @@ type Props = { chain: ReconChain; onChain: (chain: ReconChain) => void; onRerun:
 const shortLabel = (run: ReconRun) => `${run.left?.label ?? "?"} ↔ ${run.right?.label ?? "?"}`;
 const pairName = (run: ReconRun | undefined) => (run ? shortLabel(run) : "?");
 
-/** Ghép trang ngoại lệ của từng cặp với cặp tương ứng (cùng thứ tự). */
-function withRuns(pages: { items: ReconResult[] }[], runs: ReconRun[]) {
-  return pages.flatMap((page, index) => {
-    const run = runs[index];
-    return run ? page.items.map((item) => ({ item, run })) : [];
+const TODO_PAGE = 200;
+
+type TodoItem = { item: ReconResult; run: ReconRun };
+// Ngoại lệ đã tải của cả chuỗi và tổng số ca đang mở của từng cặp (để biết còn ca chưa tải).
+type Todo = { items: TodoItem[]; totals: Record<string, number> };
+
+/** Tải một trang ngoại lệ của mọi cặp còn ca chưa tải (offset theo số ca đã tải của cặp). */
+async function loadTodoPage(runs: ReconRun[], current: Todo | null, signal?: AbortSignal): Promise<Todo> {
+  const loaded = (run: ReconRun) => current?.items.filter((entry) => entry.run.id === run.id).length ?? 0;
+  const wanted = runs.filter((run) => !current || loaded(run) < (current.totals[run.id] ?? 0));
+  const pages = await Promise.all(wanted.map((run) => getResults(run.id, "todo", loaded(run), TODO_PAGE, signal)));
+  const items = [...(current?.items ?? [])];
+  const totals = { ...(current?.totals ?? {}) };
+  pages.forEach((page, index) => {
+    const run = wanted[index];
+    if (!run) return;
+    totals[run.id] = page.total;
+    items.push(...page.items.map((item) => ({ item, run })));
   });
+  // Giữ thứ tự cặp trong chuỗi để các ca của cùng cặp đứng gần nhau trong mỗi nhóm.
+  const order = new Map(runs.map((run, index) => [run.id, index]));
+  items.sort((a, b) => (order.get(a.run.id) ?? 0) - (order.get(b.run.id) ?? 0));
+  return { items, totals };
 }
 
 /** Gộp con dấu của nhiều cặp: hỏng nếu một cặp hỏng, chưa kiểm nếu một cặp chưa kiểm. */
@@ -44,38 +61,36 @@ function mergedRings(runs: ReconRun[]): SealRing[] {
 
 export function ChainView({ chain, onChain, onRerun }: Props) {
   const [tab, setTab] = useState<string>("all");
-  const [todo, setTodo] = useState<{ item: ReconResult; run: ReconRun }[] | null>(null);
+  const [todo, setTodo] = useState<Todo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const ready = chain.status === "READY";
 
-  const loadTodo = useCallback(async () => {
-    const pages = await Promise.all(chain.runs.map((run) => getResults(run.id, "todo", 0, 200)));
-    setTodo(withRuns(pages, chain.runs));
-  }, [chain.runs]);
-
+  // Tải trang đầu mỗi khi chuỗi đổi (sau mỗi thao tác, chuỗi được tải lại nên danh sách cũng
+  // tải lại từ đầu, không cần tải riêng).
   useEffect(() => {
     if (!ready || tab !== "all") return;
-    let cancelled = false;
-    Promise.all(chain.runs.map((run) => getResults(run.id, "todo", 0, 200)))
-      .then((pages) => {
-        if (!cancelled) setTodo(withRuns(pages, chain.runs));
-      })
+    const controller = new AbortController();
+    loadTodoPage(chain.runs, null, controller.signal)
+      .then(setTodo)
       .catch((reason: unknown) => {
-        if (!cancelled) setError(message(reason, "Không tải được ngoại lệ."));
+        if (!controller.signal.aborted) setError(message(reason, "Không tải được ngoại lệ."));
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [ready, tab, chain.runs]);
 
-  // Thao tác trên một ca: lưu, rồi tải lại số đếm của chuỗi và danh sách ngoại lệ.
+  const loadMore = useCallback(() => {
+    loadTodoPage(chain.runs, todo)
+      .then(setTodo)
+      .catch((reason: unknown) => setError(message(reason, "Không tải được ngoại lệ.")));
+  }, [chain.runs, todo]);
+
+  // Thao tác trên một ca: lưu, rồi tải lại chuỗi (số đếm và danh sách ngoại lệ tự cập nhật).
   async function act(action: () => Promise<unknown>) {
     setBusy(true);
     try {
       await action();
       onChain(await getChain(chain.id));
-      await loadTodo();
       setError(null);
     } catch (reason) {
       setError(message(reason, "Không lưu được."));
@@ -88,6 +103,14 @@ export function ChainView({ chain, onChain, onRerun }: Props) {
   const selected = chain.runs.find((run) => run.id === tab);
   const kindLabels = chain.runs[0]?.kind_labels;
   const rings = mergedRings(chain.runs);
+  // Số ca đang mở theo loại, cộng mọi cặp (backend đếm, đúng cả khi danh sách mới tải một phần).
+  const openByKind: Partial<Record<ReconKind, number>> = {};
+  for (const run of chain.runs) {
+    for (const [kind, count] of Object.entries(run.open_by_kind) as [ReconKind, number][]) {
+      openByKind[kind] = (openByKind[kind] ?? 0) + count;
+    }
+  }
+  const hidden = todo ? Object.values(todo.totals).reduce((sum, value) => sum + value, 0) - todo.items.length : 0;
 
   return (
     <div className="chain">
@@ -169,7 +192,9 @@ export function ChainView({ chain, onChain, onRerun }: Props) {
             ) : (
               <TodoGroups
                 kindLabels={kindLabels}
-                items={todo.map(({ item, run }) => {
+                counts={openByKind}
+                more={hidden > 0 ? { count: hidden, load: loadMore } : undefined}
+                items={todo.items.map(({ item, run }) => {
                   const context: ItemContext = { run, busy, act, onRerun, chainId: chain.id, pairLabel: shortLabel(run) };
                   return { item, context };
                 })}

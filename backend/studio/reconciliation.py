@@ -308,7 +308,7 @@ def _column(frame: pl.DataFrame, name: str | None) -> list[Any]:
     return frame[name].to_list()
 
 
-def _left_keys(value: Any, config: ReconConfig) -> list[str]:
+def _left_keys(value: Any) -> list[str]:
     if value is None:
         return []
     if hasattr(value, "isoformat"):  # khóa là ngày (doanh thu sàn trả theo ngày đơn)
@@ -326,7 +326,7 @@ def rows_of(frame: pl.DataFrame, config: ReconConfig, side: str) -> list[Row]:
     cancelled = _column(frame, "is_cancelled")
     if left:
         raw_keys: list[list[str]] = [
-            _left_keys(value, config) for value in _column(frame, config.key_left)
+            _left_keys(value) for value in _column(frame, config.key_left)
         ]
         names = _column(frame, "customer_name_key")
         outflows = [False] * frame.height
@@ -875,12 +875,28 @@ def _score_round(
 
     Trả về kết quả, số dòng đã dùng và lý do không tự ghép của các dòng bị để lại.
     """
+    # Lọc ứng viên (blocking) hai tầng: theo số tiền (trong sai số), rồi trong mỗi số tiền theo
+    # khung ngày bằng tìm nhị phân. Dòng B không có ngày luôn là ứng viên (không loại được).
     by_amount: dict[Decimal, list[Row]] = defaultdict(list)
     for row in right:
         if row.amount is not None:
             by_amount[row.amount].append(row)
+    buckets: dict[Decimal, tuple[list[date], list[Row], list[Row]]] = {}
+    for amount, rows in by_amount.items():
+        dated = sorted((row for row in rows if row.day), key=lambda row: (row.day, row.ref))
+        undated = [row for row in rows if not row.day]
+        buckets[amount] = ([row.day for row in dated if row.day], dated, undated)
     sorted_amounts = sorted(by_amount)
+    window = timedelta(days=config.date_window_days)
     skipped: dict[tuple[str, int], str] = {}  # (bên, số dòng) → lý do không tự ghép
+
+    def nearby(a: Row, amount: Decimal) -> list[Row]:
+        days, dated, undated = buckets[amount]
+        if a.day is None:
+            return dated + undated
+        start = bisect.bisect_left(days, a.day - window)
+        end = bisect.bisect_right(days, a.day + window)
+        return dated[start:end] + undated
 
     candidates: dict[tuple[int, int], float] = {}
     for a in left:
@@ -892,14 +908,17 @@ def _score_round(
         for amount in sorted_amounts[low:]:
             if amount > a.amount + config.tolerance:
                 break
-            for b in by_amount[amount]:
+            for b in nearby(a, amount):
                 score = _pair_score(a, b, config)
                 if score is not None and score >= config.min_score:
                     found.append((b.ref, score))
+            if len(found) > MAX_CANDIDATES_PER_ROW:
+                break  # đã quá nhiều ứng viên: dừng sớm, không quét hết
         # Quá nhiều dòng cùng số tiền, gần ngày: ghép theo điểm không còn đáng tin.
         if len(found) > MAX_CANDIDATES_PER_ROW:
             skipped[("A", a.ref)] = (
-                f"Có {len(found)} dòng cùng số tiền, gần ngày ở bên B nên không tự ghép."
+                f"Có hơn {MAX_CANDIDATES_PER_ROW} dòng cùng số tiền, gần ngày ở bên B "
+                "nên không tự ghép."
             )
             for b_ref, _ in found:
                 skipped.setdefault(
@@ -1044,25 +1063,34 @@ def _sum_round(
     results: list[Result] = []
     used_left: set[int] = set()
     used_right: set[int] = set()
-    window = config.date_window_days
-
-    def close(first: Row, later: Row) -> bool:
-        # Dòng gộp ghi sau (hoặc cùng ngày) các dòng thành phần, trong khung ngày.
-        if first.day is None or later.day is None:
-            return False
-        return 0 <= (later.day - first.day).days <= window
+    window = timedelta(days=config.date_window_days)
 
     for one, many, one_side in ((right, left, "B"), (left, right, "A")):
         used_one = used_right if one_side == "B" else used_left
         used_many = used_left if one_side == "B" else used_right
+        # Lọc ứng viên theo ngày bằng tìm nhị phân trên danh sách đã sắp theo ngày, để không
+        # phải so mọi dòng với mọi dòng (hai bảng lớn không có mã chung vẫn chạy nhanh).
+        dated = sorted(
+            (row for row in many if row.day and row.amount is not None and row.amount > 0),
+            key=lambda row: (row.day, row.ref),
+        )
+        days = [row.day for row in dated if row.day]
         for target in sorted(one, key=lambda row: row.ref):
             if target.ref in used_one or target.amount is None or target.amount <= 0:
                 continue
+            if target.day is None:
+                continue
+            # Dòng gộp ghi sau (hoặc cùng ngày) các dòng thành phần, trong khung ngày: B gộp
+            # nhiều A thì A nằm trong [ngày B − khung, ngày B]; A trả bằng nhiều B thì ngược lại.
+            low, high = (
+                (target.day - window, target.day) if one_side == "B"
+                else (target.day, target.day + window)
+            )
             pool = [
-                row for row in many
-                if row.ref not in used_many and row.amount is not None and row.amount > 0
+                row
+                for row in dated[bisect.bisect_left(days, low) : bisect.bisect_right(days, high)]
+                if row.ref not in used_many and row.amount is not None
                 and row.amount < target.amount
-                and (close(row, target) if one_side == "B" else close(target, row))
             ]
             if len(pool) < 2 or len(pool) > MAX_SUBSET_CANDIDATES:
                 continue

@@ -204,6 +204,24 @@ Demo chỉ có **một người dùng**, không làm đăng nhập. Chỉ mở c
 - **Xuất:** CSV và XLSX. PDF để sau nếu cần.
 - **Nhận xét AI:** Gemini viết tóm tắt từ KPI do engine tính; mọi con số trong lời nhận xét lấy nguyên từ engine.
 
+## 8b. Bản đồ mã nguồn
+
+Mỗi bước của luồng dữ liệu (mục 4) nằm ở đúng một nhóm file; backend ở `backend/studio/`, giao diện ở `frontend/src/`, kiểm thử ở `tests/`.
+
+| Bước | Backend: xử lý | Backend: API | Giao diện | Kiểm thử |
+| --- | --- | --- | --- | --- |
+| 1–2. Tải và đọc tệp, hồ sơ cột | `storage.py` (tệp gốc, SHA-256), `reading.py` (CSV/XLSX, dòng tiêu đề, `row_ref`), `profiling.py`, `ingestion.py` (tác vụ nền) | `datasets_api.py` | `pages/DataPage`, `DatasetPage`, `UploadZone`, `TablePreview`, `ColumnProfileView` | `test_reading`, `test_datasets_api`, `test_profiling`, `test_upload_race` |
+| 3. Ánh xạ cột chuẩn | `sales_fields.py` (17 cột chuẩn), `mapping_rules.py` (quy tắc), `masking.py` (che dữ liệu), `mapping_service.py` (gộp với Gemini, loại bảng, bộ nhớ) | `mapping_api.py` | `MappingView` | `test_mapping` |
+| 4–6. Chuẩn hóa, làm sạch | `value_parsers.py` (tiền, ngày, mã, tên, điện thoại), `cleaning.py` (dựng bộ sạch, phát hiện vấn đề), `cleaning_ai.py` (Gemini gợi ý sửa ô), `table_locks.py` | `cleaning_api.py` | `CleaningView`, `CleanPreview` | `test_cleaning` |
+| 7–8. Chọn trường, đối soát | `reconciliation.py` (engine thuần: các vòng khớp, ca mơ hồ, chờ tiền về) | `recon_api.py` | `pages/ReconcilePage`, `ReconRunView`, `ChainView` | `test_reconciliation`, `test_phase5`, `test_recon_review_fixes` |
+| Kỳ, chuỗi ba bên, lưu kết quả | `recon_service.py` (kỳ, cặp nối được, hai lượt của chuỗi, dòng chờ kỳ trước, lựa chọn của người dùng) | `recon_api.py` | `ChainView` | `test_phase5` |
+| 9. Kiểm chứng | `recon_verification.py` (độc lập với engine) | `recon_api.py` (`/verify`) | `VerificationSeal` | `test_reconciliation`, `test_phase5` |
+| AI giải thích | `gemini_client.py` (timeout, thử lại, bảng `ai_calls`), `tracing.py` (Langfuse), `recon_ai.py` | (trong các API trên) | nút "Giải thích" | `test_mapping`, `test_recon_review_fixes` |
+| Nhật ký kiểm toán | `audit.py` | `recon_api.py` (`/audit`) | `pages/HistoryPage` | các bài có kiểm `audit_log` |
+| Khung | `main.py`, `config.py`, `database.py`, `models.py`, `migrate.py` + `migrations/` | `/api/health`, `/api/ready`, `/api/status` | `App.tsx`, `navigation.ts`, `OverviewPage` | `test_status_api`, `test_migrations` |
+
+Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foundation_review.py`. E2E: `frontend/e2e/` (`data`, `recon`, `chain`, `shell`).
+
 ## 9. Ngoài phạm vi demo
 
 Đọc Docs/PDF, nhiều người dùng và phân quyền, xuất PDF, đối soát N:N, các miền kế toán/công nợ/bảng lương. Engine được viết chung để có thể thêm sau.

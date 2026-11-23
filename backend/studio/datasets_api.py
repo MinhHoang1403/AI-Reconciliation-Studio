@@ -12,10 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from studio import audit, ingestion, reading, storage
+from studio import audit, ingestion, reading, recon_service, storage
 from studio.config import settings
 from studio.database import get_session
-from studio.models import Dataset, DatasetTable, ReconChain
+from studio.models import Dataset, DatasetTable
 
 router = APIRouter(prefix="/api")
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -298,6 +298,7 @@ def reread_dataset(
     dataset = _dataset_or_404(session, dataset_id)
     if dataset.status == "READING":
         raise fail(409, "DATASET_BUSY", "Bộ dữ liệu đang được đọc.")
+    recon_service.forget_chains(session, [table.id for table in dataset.tables])
     for table in list(dataset.tables):
         for path in _table_files(table):
             storage.delete_file(path)
@@ -334,12 +335,7 @@ def delete_dataset(dataset_id: uuid.UUID, session: SessionDep) -> Response:
         f"Xóa bộ dữ liệu “{dataset.name}” cùng tệp gốc và các bảng đã đọc.",
         {"file": dataset.original_filename, "sha256": dataset.sha256},
     )
-    # Chuỗi đối soát lưu danh sách bảng dạng JSON (không có khóa ngoại), nên xóa tay các chuỗi
-    # có dùng bảng của bộ này; các lần chạy trong chuỗi bị xóa theo (ondelete CASCADE).
-    table_ids = {str(table.id) for table in dataset.tables}
-    for chain in session.scalars(select(ReconChain)):
-        if table_ids & {str(item) for item in chain.table_ids}:
-            session.delete(chain)
+    recon_service.forget_chains(session, [table.id for table in dataset.tables])
     session.delete(dataset)
     session.commit()
     for path in paths:

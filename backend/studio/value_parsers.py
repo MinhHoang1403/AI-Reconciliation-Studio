@@ -119,10 +119,11 @@ def parse_money(raw: str | None, style: NumberStyle = "VN") -> Parsed:
 
 # ---------------------------------------------------------------- ngày
 
-_ISO = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$")
-_SLASHED = re.compile(
-    r"^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$"
-)
+# Phần giờ đi kèm ngày (bỏ qua khi đọc ngày): 08:30, 08:30:15.123, 2:30 PM, múi giờ Z / +07:00.
+_TIME = r"(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:\s*[AaPp][Mm])?(?:Z|[+-]\d{2}:?\d{2})?)?"
+# Năm đứng đầu: 2026-11-05, 2026/11/05, 2026.11.05 (thứ tự năm-tháng-ngày không bao giờ mơ hồ).
+_ISO = re.compile(r"^(\d{4})([-/.])(\d{1,2})\2(\d{1,2})" + _TIME + "$")
+_SLASHED = re.compile(r"^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})" + _TIME + "$")
 EXCEL_EPOCH = date(1899, 12, 30)
 
 
@@ -155,7 +156,7 @@ def parse_date(raw: str | None, order: DateOrder = "DMY") -> Parsed:
     iso = _ISO.match(text)
     try:
         if iso:
-            value = date(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)))
+            value = date(int(iso.group(1)), int(iso.group(3)), int(iso.group(4)))
             exact = text == value.isoformat()
             return Parsed(value, "VALID", None if exact else "DATE_FORMAT")
         slashed = _SLASHED.match(text)
@@ -164,8 +165,9 @@ def parse_date(raw: str | None, order: DateOrder = "DMY") -> Parsed:
             day, month = (first, second) if order == "DMY" else (second, first)
             full_year = int(year) + (2000 if len(year) == 2 else 0)
             return Parsed(date(full_year, month, day), "VALID", "DATE_FORMAT")
-        if re.fullmatch(r"\d{5}(\.0+)?", text):  # số ngày kiểu Excel, ví dụ 46300
-            serial = int(float(text))
+        # Số ngày kiểu Excel, ví dụ 46300; phần lẻ (46300.5) là giờ trong ngày, bỏ qua.
+        if re.fullmatch(r"\d{5}(\.\d+)?", text):
+            serial = int(text.split(".")[0])
             if 20000 <= serial <= 80000:
                 return Parsed(EXCEL_EPOCH + timedelta(days=serial), "VALID", "EXCEL_SERIAL_DATE")
     except ValueError:
@@ -188,17 +190,20 @@ def parse_identifier(raw: str | None) -> Parsed:
 
 
 def parse_phone(raw: str | None) -> Parsed:
-    """Số điện thoại Việt Nam về dạng 10 số bắt đầu bằng 0 (84… và +84… đổi thành 0…)."""
+    """Số điện thoại Việt Nam về dạng bắt đầu bằng 0 (84… và +84… đổi thành 0…).
+
+    Di động 10 số (09…, 03…); máy bàn 11 số (mã vùng 02x, ví dụ 028 3822 1234).
+    """
     if is_blank(raw):
         return EMPTY
     assert raw is not None
     digits = re.sub(r"\D", "", raw)
     fix = None if digits == raw.strip() else "PHONE_FORMAT"
-    if digits.startswith("84") and len(digits) == 11:
+    if digits.startswith("84") and (len(digits) == 11 or (len(digits) == 12 and digits[2] == "2")):
         digits, fix = "0" + digits[2:], "PHONE_PREFIX"
     elif len(digits) == 9 and digits[0] in "35789":  # mất số 0 đầu do Excel đọc thành số
         digits, fix = "0" + digits, "PHONE_LEADING_ZERO"
-    if not re.fullmatch(r"0\d{9}", digits):
+    if not re.fullmatch(r"0\d{9}|02\d{9}", digits):
         return INVALID
     return Parsed(digits, "VALID", fix)
 
@@ -247,11 +252,16 @@ def name_match_key(name: str) -> str:
 
 
 # Từ cho biết đơn đã hủy hoặc hoàn tiền (so sau khi bỏ dấu).
-CANCELLED_WORDS = ("huy", "cancel", "hoan tien", "hoan hang", "refund", "return", "tra hang")
+CANCELLED_WORDS = (
+    "huy", "da huy", "cancel", "cancelled", "canceled", "hoan tien", "hoan hang", "refund",
+    "refunded", "return", "returned", "tra hang",
+)
 
 
 def is_cancelled_status(status: str) -> bool:
-    return any(word in name_match_key(status) for word in CANCELLED_WORDS)
+    """So theo từ trọn vẹn: "huy" khớp "Đã hủy" nhưng không khớp "Chuyển khoản", "Khuyến mãi"."""
+    padded = f" {name_match_key(status)} "
+    return any(f" {word} " in padded for word in CANCELLED_WORDS)
 
 
 def money_vi(value: Decimal | None, unit: str = "") -> str:

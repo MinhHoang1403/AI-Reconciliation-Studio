@@ -151,6 +151,10 @@ def choose_field(
         {"column": target.column_name, "field_key": before},
         {"column": target.column_name, "field_key": choice.field_key},
     )
+    # Loại bảng phải khớp với ánh xạ mới (ví dụ người dùng gán cột Nợ/Có thì là sao kê).
+    table.table_kind = mapping_service.resolve_table_kind(
+        table.table_kind, {mapping.field_key for mapping in table.mappings if mapping.field_key}
+    )
     mapping_service.remember(session, table)
     # Ánh xạ đổi thì bộ dữ liệu sạch phải dựng lại theo ánh xạ mới.
     table.clean_status = "BUILDING"
