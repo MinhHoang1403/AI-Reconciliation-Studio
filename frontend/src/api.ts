@@ -472,11 +472,28 @@ export const getChain = (id: string, signal?: AbortSignal) => getJson<ReconChain
 export const traceRow = (chainId: string, tableId: string, rowRef: number) =>
   getJson<{ steps: TraceStep[] }>(`/api/recon/chains/${chainId}/trace?table_id=${tableId}&row_ref=${rowRef}`);
 export const chooseCandidate = (runId: string, resultId: string, leftRefs: number[], rightRefs: number[]) =>
-  sendJson<{ chain_id: string | null; run_id: string | null }>(`/api/recon/runs/${runId}/choose`, "POST", {
+  sendJson<Rerun>(`/api/recon/runs/${runId}/choose`, "POST", {
     result_id: resultId,
     left_refs: leftRefs,
     right_refs: rightRefs,
   });
+
+// Ghép tay, gỡ ghép: lưu quyết định rồi hệ thống chạy lại chuỗi (hoặc cặp) và trả mã mới.
+export type Rerun = { chain_id: string | null; run_id: string | null };
+
+export type MatchCandidates = {
+  side: "A" | "B";  // bên của các ứng viên
+  target: ResultRow;
+  candidates: { result_id: string; row: ResultRow; amount_gap: string | null }[];
+};
+
+export const getMatchCandidates = (resultId: string, signal?: AbortSignal) =>
+  getJson<MatchCandidates>(`/api/recon/results/${resultId}/match-candidates`, signal);
+
+export const manualMatch = (runId: string, leftRefs: number[], rightRefs: number[]) =>
+  sendJson<Rerun>(`/api/recon/runs/${runId}/match`, "POST", { left_refs: leftRefs, right_refs: rightRefs });
+
+export const unmatchResult = (resultId: string) => sendJson<Rerun>(`/api/recon/results/${resultId}/unmatch`, "POST");
 
 export const getAudit = (offset: number, limit: number, signal?: AbortSignal) =>
   getJson<AuditPage>(`/api/audit?offset=${offset}&limit=${limit}`, signal);

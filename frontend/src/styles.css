@@ -847,6 +847,26 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .candidates__row .button { min-height: 34px; padding: 0 12px; background: var(--surface); }
 .candidates__busy { font-size: 14px; color: var(--ink-soft); }
 
+/* Ghép tay: danh sách dòng chưa ghép bên kia, tích chọn rồi bấm một nút chính. */
+.match-picker {
+  display: grid; gap: 8px; margin: 0; padding: 10px 12px; border: 1px solid var(--line-soft);
+  border-radius: var(--radius-small); background: var(--ground);
+}
+.match-picker legend { padding: 0; font-size: 14px; font-weight: 600; color: var(--primary-ink); float: left; }
+.match-picker__hint { clear: both; font-size: 14px; color: var(--ink-soft); }
+.match-picker__list { display: grid; max-height: 320px; overflow-y: auto; background: var(--surface); border-radius: var(--radius-small); }
+.match-picker__list li + li { border-top: 1px solid var(--line-soft); }
+.match-picker__list label {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline;
+  padding: 8px 10px; cursor: pointer;
+}
+.match-picker__list input { margin: 0; width: 16px; height: 16px; align-self: center; accent-color: var(--primary); }
+.match-picker__key { font-weight: 600; overflow-wrap: anywhere; }
+.match-picker__amount { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+.match-picker__meta { grid-column: 2 / -1; font-size: 13px; color: var(--ink-soft); }
+.match-picker__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; }
+.match-picker__sum { margin-right: auto; font-size: 14px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
 /* Đường đi của một dòng qua các cặp. */
 .trace { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--radius-small); background: var(--ground); font-size: 14px; }
 .trace li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
@@ -868,4 +888,6 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
   .chain__pair { grid-template-columns: minmax(0, 1fr) 20px; }
   .chain__pair-stats { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; }
   .candidates__row .button { width: 100%; justify-content: center; }
+  .match-picker__actions .button { flex: 1 1 auto; justify-content: center; }
+  .match-picker__sum { flex-basis: 100%; }
 }

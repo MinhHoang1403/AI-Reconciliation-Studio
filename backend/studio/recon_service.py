@@ -349,11 +349,18 @@ def carried_frame(session: Session, carried: list[dict[str, Any]]) -> pl.DataFra
     return pl.concat(frames, how="diagonal_relaxed") if frames else None
 
 
-def choices_for(session: Session, left_id: uuid.UUID, right_id: uuid.UUID) -> list[dict[str, Any]]:
-    """Lựa chọn của người dùng cho ca mơ hồ của cặp bảng (cũ trước, mới sau)."""
+def choices_for(
+    session: Session, left_id: uuid.UUID, right_id: uuid.UUID, action: str = "MATCH"
+) -> list[dict[str, Any]]:
+    """Lựa chọn của người dùng cho cặp bảng (cũ trước, mới sau): MATCH là các cặp phải ghép
+    (chọn ca mơ hồ, ghép tay), UNMATCH là các cặp đã gỡ, không được tự ghép lại."""
     rows = session.scalars(
         select(ReconChoice)
-        .where(ReconChoice.left_table_id == left_id, ReconChoice.right_table_id == right_id)
+        .where(
+            ReconChoice.left_table_id == left_id,
+            ReconChoice.right_table_id == right_id,
+            ReconChoice.action == action,
+        )
         .order_by(ReconChoice.created_at)
     )
     return [{"left": list(row.left_refs), "right": list(row.right_refs)} for row in rows]
@@ -373,7 +380,8 @@ def create_run(
     left_version, right_version = latest_version(left), latest_version(right)
     if left_version is None or right_version is None:
         raise ValueError("Bảng chưa có bộ dữ liệu sạch.")
-    config.forced = choices_for(session, left.id, right.id)
+    config.forced = choices_for(session, left.id, right.id, "MATCH")
+    config.forbidden = choices_for(session, left.id, right.id, "UNMATCH")
     run = ReconRun(
         id=uuid.uuid4(),
         left_table_id=left.id,

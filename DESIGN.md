@@ -212,6 +212,8 @@ Thẻ `<dialog>` gốc, bo 12px, nền mờ ink 35%; nút Hủy (phụ) và nút
 - **Kết quả chuỗi:** dải "Cần bạn xem N ca" kèm số cặp, kỳ và số khoản chờ tiền về; danh sách cặp (tên A → B, số khớp màu matched, số cần xem màu attention, số chờ tiền về màu blue, khiên kiểm chứng); segmented "Tất cả cần xử lý" + một tab mỗi cặp. "Tất cả cần xử lý" gộp ngoại lệ mọi cặp, mỗi ca có nhãn cặp nhỏ phía trên; con dấu gộp: một vòng chỉ đạt khi đạt ở mọi cặp.
 - **Ca mơ hồ:** khối "Chọn cặp đúng" nền attention nhạt, mỗi ứng viên một hàng với nút phụ "Chọn"; không có lựa chọn mặc định. **Đường đi:** nút chữ mở dải nhỏ liệt kê từng cặp mà dòng đi qua (cặp, loại, các dòng). **Kỳ trước:** dòng mang sang từ kỳ trước có nhãn nhỏ biểu tượng đồng hồ. **Chờ tiền về:** tab riêng sau "Cần xử lý", màu blue (không phải attention): đây là chênh lệch thời điểm, không phải lỗi.
 
+- **Ghép tay:** nút chữ "Ghép tay" ở dòng chỉ có ở một bên mở khối nền `ground` viền mảnh ngay trong kết quả: danh sách dòng chưa ghép bên kia (ô tích, mã đậm, số tiền căn phải chữ số thẳng cột, dòng gốc · ngày · "đúng số tiền"/"lệch Xđ"), dòng tổng đã chọn cập nhật trực tiếp, một nút chính "Ghép N dòng". **Gỡ ghép:** nút chữ "Gỡ ghép" ở kết quả đã ghép, luôn qua hộp xác nhận (nút đỏ "Gỡ ghép") vì hệ thống sẽ không tự ghép lại các dòng đó.
+
 ### Trang Lịch sử
 Nhật ký kiểm toán gom theo ngày; mỗi mục một hàng: giờ (cột 84px), câu tóm tắt, đối tượng và người làm (chữ nhỏ), "Giá trị trước và sau" thu gọn.
 

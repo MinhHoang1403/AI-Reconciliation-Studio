@@ -1,0 +1,321 @@
+Order No,Created At,Buyer,Total (VND),Payment,State
+SO-26-004779,2026-11-02T09:40:00+07:00,Phạm Thu Tuấn,"1,115,000",Bank transfer,Completed
+SO-26-006270,2026-11-02T09:50:00+07:00,Phan Quốc Vy,"1,050,000",Bank transfer,Completed
+SO-26-004653,2026-11-02T10:36:00+07:00,Trần Văn An,"295,000",COD,Completed
+SO-26-004240,2026-11-02T11:17:00+07:00,Bùi Thị Hòa,"1,145,000",Bank transfer,Completed
+SO-26-004450,2026-11-02T11:20:00+07:00,Phạm Văn Mai,"3,775,000",COD,Completed
+SO-26-004989,2026-11-02T11:31:00+07:00,Đặng Minh Châu,"2,595,000",Bank transfer,Completed
+SO-26-004604,2026-11-02T12:08:00+07:00,Huỳnh Thanh Dũng,"3,700,000",COD,Completed
+SO-26-005871,2026-11-02T12:41:00+07:00,Nguyễn Quốc Tâm,"2,450,000",Bank transfer,Completed
+SO-26-005479,2026-11-02T13:21:00+07:00,Phạm Quốc Hòa,"2,505,000",COD,Completed
+SO-26-004198,2026-11-02T14:42:00+07:00,Vũ Ngọc Tâm,"1,320,000",Bank transfer,Completed
+SO-26-006144,2026-11-02T15:02:00+07:00,Nguyễn Hữu Long,"3,400,000",Bank transfer,Completed
+SO-26-005500,2026-11-02T15:29:00+07:00,Vũ Văn Trang,"3,440,000",COD,Completed
+SO-26-004723,2026-11-02T16:37:00+07:00,Lê Thu Linh,"2,545,000",Bank transfer,Completed
+SO-26-005822,2026-11-02T17:23:00+07:00,Đỗ Kim Hùng,"4,310,000",Bank transfer,Completed
+SO-26-004884,2026-11-02T17:47:00+07:00,Lê Đức Khoa,"1,860,000",COD,Completed
+SO-26-005591,2026-11-02T21:54:00+07:00,Võ Ngọc Tâm,"3,430,000",Bank transfer,Completed
+SO-26-005899,2026-11-03T08:56:00+07:00,Vũ Minh Vy,"3,530,000",Bank transfer,Completed
+SO-26-005752,2026-11-03T09:11:00+07:00,Huỳnh Thị Giang,"2,030,000",Bank transfer,Completed
+SO-26-004170,2026-11-03T10:09:00+07:00,Đỗ Hữu Nga,"1,260,000",COD,Completed
+SO-26-004786,2026-11-03T15:19:00+07:00,Vũ Thanh Giang,"4,025,000",COD,Completed
+SO-26-006263,2026-11-03T17:38:00+07:00,Trần Thị Yến,"840,000",Bank transfer,Completed
+SO-26-005304,2026-11-03T17:52:00+07:00,Huỳnh Hữu An,"170,000",Bank transfer,Completed
+SO-26-005066,2026-11-03T20:20:00+07:00,Nguyễn Minh Quân,"645,000",Bank transfer,Completed
+SO-26-004947,2026-11-03T20:59:00+07:00,Võ Ngọc Nga,"1,265,000",Bank transfer,Completed
+SO-26-004492,2026-11-04T08:06:00+07:00,Lê Hữu An,"275,000",Bank transfer,Completed
+SO-26-006060,2026-11-04T08:17:00+07:00,Phạm Văn Yến,"2,745,000",Bank transfer,Completed
+SO-26-004618,2026-11-04T08:35:00+07:00,Huỳnh Kim Phúc,"245,000",Bank transfer,Completed
+SO-26-005241,2026-11-04T09:18:00+07:00,Trần Ngọc Yến,"3,530,000",Bank transfer,Completed
+SO-26-004716,2026-11-04T10:36:00+07:00,Trần Thanh Tuấn,"1,235,000",Bank transfer,Completed
+SO-26-004744,2026-11-04T12:21:00+07:00,Trần Quốc Quân,"865,000",COD,Completed
+SO-26-004401,2026-11-04T13:08:00+07:00,Võ Thanh Thảo,"1,865,000",COD,Completed
+SO-26-004583,2026-11-04T13:12:00+07:00,Huỳnh Hữu Hùng,"2,670,000",Bank transfer,Completed
+SO-26-004366,2026-11-04T14:36:00+07:00,Trần Thanh An,"3,665,000",Bank transfer,Completed
+SO-26-004471,2026-11-04T17:50:00+07:00,Phan Quốc Nga,"230,000",Bank transfer,Completed
+SO-26-005836,2026-11-04T18:10:00+07:00,Đỗ Ngọc Thảo,"3,820,000",COD,Completed
+SO-26-005542,2026-11-04T18:49:00+07:00,Hoàng Ngọc Trang,"230,000",Bank transfer,Completed
+SO-26-004814,2026-11-04T20:37:00+07:00,Lê Thu Nga,"2,770,000",COD,Completed
+SO-26-004898,2026-11-04T21:27:00+07:00,Lê Thanh Tuấn,"2,850,000",Bank transfer,Completed
+SO-26-005346,2026-11-04T21:54:00+07:00,Lê Thanh Tâm,"290,000",Bank transfer,Completed
+SO-26-006172,2026-11-05T13:57:00+07:00,Đỗ Kim Mai,"2,685,000",Bank transfer,Completed
+SO-26-005080,2026-11-05T14:24:00+07:00,Vũ Ngọc Tâm,"3,360,000",Bank transfer,Completed
+SO-26-005262,2026-11-05T16:41:00+07:00,Trần Kim Linh,"2,510,000",COD,Completed
+SO-26-004415,2026-11-05T17:37:00+07:00,Nguyễn Thu Long,"185,000",Bank transfer,Completed
+SO-26-005738,2026-11-05T18:58:00+07:00,Phạm Thu Mai,"3,740,000",Bank transfer,Completed
+SO-26-005360,2026-11-05T21:05:00+07:00,Nguyễn Thanh Nam,"4,300,000",Bank transfer,Completed
+SO-26-005668,2026-11-05T21:30:00+07:00,Nguyễn Quốc Mai,"2,020,000",Bank transfer,Completed
+SO-26-005906,2026-11-05T21:50:00+07:00,Trần Kim Nga,"3,265,000",Bank transfer,Completed
+SO-26-005633,2026-11-06T09:28:00+07:00,Vũ Đức Khoa,"1,450,000",Bank transfer,Completed
+SO-26-004674,2026-11-06T11:11:00+07:00,Võ Hữu Châu,"3,700,000",Bank transfer,Completed
+SO-26-004499,2026-11-06T13:54:00+07:00,Lê Ngọc Sơn,"3,000,000",Bank transfer,Completed
+SO-26-004646,2026-11-06T14:19:00+07:00,Đỗ Quốc Hiếu,"3,925,000",Bank transfer,Completed
+SO-26-005185,2026-11-06T14:54:00+07:00,Đặng Kim Vy,"4,010,000",Bank transfer,Completed
+SO-26-004317,2026-11-06T15:38:00+07:00,Nguyễn Văn Quân,"1,235,000",Bank transfer,Completed
+SO-26-004982,2026-11-06T19:47:00+07:00,Bùi Kim Quân,"2,770,000",Bank transfer,Completed
+SO-26-005829,2026-11-06T21:06:00+07:00,Đặng Văn Dũng,"3,630,000",Bank transfer,Completed
+SO-26-005731,2026-11-06T21:26:00+07:00,Nguyễn Thị Dũng,"1,095,000",Bank transfer,Completed
+SO-26-004408,2026-11-07T08:19:00+07:00,Vũ Hữu Tuấn,"2,440,000",Bank transfer,Completed
+SO-26-004359,2026-11-07T08:32:00+07:00,Hoàng Văn Bình,"3,655,000",Bank transfer,Completed
+SO-26-005843,2026-11-07T09:34:00+07:00,Nguyễn Kim Lan,"3,715,000",Bank transfer,Completed
+SO-26-004436,2026-11-07T09:40:00+07:00,Lê Đức Hiếu,"3,560,000",Bank transfer,Completed
+SO-26-004296,2026-11-07T10:38:00+07:00,Phan Thị Linh,"560,000",Bank transfer,Completed
+SO-26-006151,2026-11-07T10:39:00+07:00,Phạm Minh Khoa,"315,000",Bank transfer,Completed
+SO-26-005227,2026-11-07T10:55:00+07:00,Đỗ Văn Lan,"2,005,000",Bank transfer,Completed
+SO-26-004660,2026-11-07T12:54:00+07:00,Đỗ Ngọc Nhung,"825,000",Bank transfer,Completed
+SO-26-004891,2026-11-07T13:17:00+07:00,Lê Quốc Thảo,"2,490,000",Bank transfer,Completed
+SO-26-005248,2026-11-07T14:51:00+07:00,Bùi Kim Khoa,"4,310,000",Bank transfer,Completed
+SO-26-005521,2026-11-07T14:52:00+07:00,Hoàng Thanh Tuấn,"2,835,000",Bank transfer,Completed
+SO-26-006109,2026-11-07T16:31:00+07:00,Lê Thanh Tuấn,"2,380,000",Bank transfer,Completed
+SO-26-005206,2026-11-07T17:00:00+07:00,Nguyễn Minh Hà,"2,425,000",Bank transfer,Completed
+SO-26-004184,2026-11-07T17:13:00+07:00,Bùi Kim An,"2,110,000",Bank transfer,Completed
+SO-26-006130,2026-11-07T17:35:00+07:00,Phan Văn Vy,"1,775,000",Bank transfer,Completed
+SO-26-005451,2026-11-07T18:47:00+07:00,Nguyễn Quốc Trang,"285,000",Bank transfer,Completed
+SO-26-005430,2026-11-07T20:15:00+07:00,Đỗ Thị Hiếu,"120,000",Bank transfer,Completed
+SO-26-004667,2026-11-07T21:06:00+07:00,Phạm Thị Hùng,"4,345,000",Bank transfer,Completed
+SO-26-006116,2026-11-07T21:22:00+07:00,Võ Quốc Bình,"1,530,000",Bank transfer,Completed
+SO-26-004562,2026-11-08T08:28:00+07:00,Hoàng Đức Trang,"265,000",Bank transfer,Completed
+SO-26-005108,2026-11-08T08:35:00+07:00,Võ Thị Lan,"1,295,000",Bank transfer,Completed
+SO-26-005073,2026-11-08T08:53:00+07:00,Hoàng Hữu Linh,"110,000",Bank transfer,Completed
+SO-26-005003,2026-11-08T09:06:00+07:00,Vũ Thị Lan,"1,135,000",Bank transfer,Completed
+SO-26-005787,2026-11-08T10:18:00+07:00,Lê Minh Sơn,"2,730,000",Bank transfer,Completed
+SO-26-004688,2026-11-08T11:19:00+07:00,Lê Kim Quân,"1,565,000",Bank transfer,Completed
+SO-26-004709,2026-11-08T11:52:00+07:00,Hoàng Minh Hòa,"3,095,000",Bank transfer,Completed
+SO-26-005577,2026-11-08T14:29:00+07:00,Phan Kim Hải,"2,650,000",Bank transfer,Completed
+SO-26-005920,2026-11-08T15:25:00+07:00,Võ Thanh Nhung,"2,870,000",Bank transfer,Completed
+SO-26-004639,2026-11-08T15:34:00+07:00,Hoàng Kim Nga,"3,080,000",Bank transfer,Completed
+SO-26-006018,2026-11-08T15:36:00+07:00,Vũ Minh Hà,"4,010,000",Bank transfer,Completed
+SO-26-005661,2026-11-08T15:49:00+07:00,Lê Quốc Hiếu,"335,000",COD,Completed
+SO-26-006312,2026-11-08T16:18:00+07:00,Lê Quốc Hà,"660,000",Bank transfer,Completed
+SO-26-005745,2026-11-08T16:47:00+07:00,Bùi Đức An,"3,970,000",Bank transfer,Completed
+SO-26-005675,2026-11-08T17:29:00+07:00,Huỳnh Thu Tuấn,"1,220,000",Bank transfer,Completed
+SO-26-004821,2026-11-08T17:39:00+07:00,Đặng Kim Lan,"2,995,000",Bank transfer,Cancelled
+SO-26-005178,2026-11-08T18:27:00+07:00,Lê Thu Lan,"1,980,000",Bank transfer,Completed
+SO-26-004163,2026-11-08T18:45:00+07:00,Võ Minh Yến,"2,125,000",Bank transfer,Completed
+SO-26-005255,2026-11-08T21:43:00+07:00,Phạm Thị Linh,"3,965,000",Bank transfer,Completed
+SO-26-004191,2026-11-09T08:45:00+07:00,Phạm Thị Bình,"1,745,000",COD,Completed
+SO-26-006207,2026-11-09T09:59:00+07:00,Hoàng Kim Lan,"4,445,000",Bank transfer,Completed
+SO-26-006088,2026-11-09T10:51:00+07:00,Hoàng Văn Khoa,"1,550,000",Bank transfer,Completed
+SO-26-006053,2026-11-09T10:55:00+07:00,Đỗ Thị Long,"2,245,000",Bank transfer,Completed
+SO-26-004506,2026-11-09T11:05:00+07:00,Võ Thị Hùng,"245,000",Bank transfer,Completed
+SO-26-005059,2026-11-09T11:09:00+07:00,Vũ Văn Nam,"2,800,000",Bank transfer,Completed
+SO-26-005710,2026-11-09T11:57:00+07:00,Lê Quốc Giang,"380,000",Bank transfer,Completed
+SO-26-005395,2026-11-09T13:56:00+07:00,Vũ Hữu Hà,"2,260,000",Bank transfer,Completed
+SO-26-005990,2026-11-09T14:13:00+07:00,Đặng Thị Sơn,"3,755,000",Bank transfer,Completed
+SO-26-005976,2026-11-09T14:30:00+07:00,Võ Ngọc Hà,"1,585,000",COD,Completed
+SO-26-004289,2026-11-09T14:39:00+07:00,Đỗ Minh Hiếu,"650,000",COD,Completed
+SO-26-005948,2026-11-09T17:49:00+07:00,Võ Thị Lan,"3,965,000",COD,Completed
+SO-26-005969,2026-11-09T18:18:00+07:00,Huỳnh Quốc Nam,"2,840,000",Bank transfer,Cancelled
+SO-26-005101,2026-11-09T19:24:00+07:00,Vũ Thu Mai,"1,195,000",Bank transfer,Completed
+SO-26-005584,2026-11-09T19:50:00+07:00,Lê Quốc Trang,"430,000",Bank transfer,Cancelled
+SO-26-004275,2026-11-09T20:45:00+07:00,Phạm Quốc Sơn,"2,070,000",Bank transfer,Completed
+SO-26-005801,2026-11-10T08:15:00+07:00,Võ Văn Tuấn,"2,130,000",Bank transfer,Completed
+SO-26-005031,2026-11-10T10:13:00+07:00,Phan Thu Quân,"1,535,000",Bank transfer,Completed
+SO-26-005199,2026-11-10T10:30:00+07:00,Đặng Kim Tâm,"3,000,000",COD,Completed
+SO-26-004625,2026-11-10T10:38:00+07:00,Phạm Văn Phúc,"765,000",Bank transfer,Completed
+SO-26-005297,2026-11-10T11:04:00+07:00,Hoàng Quốc Quân,"1,420,000",COD,Completed
+SO-26-004730,2026-11-10T11:13:00+07:00,Trần Quốc Yến,"3,845,000",Bank transfer,Completed
+SO-26-004331,2026-11-10T11:54:00+07:00,Phan Thị Tuấn,"4,060,000",Bank transfer,Completed
+SO-26-004940,2026-11-10T13:52:00+07:00,Huỳnh Minh Dũng,"445,000",Bank transfer,Completed
+SO-26-005997,2026-11-10T14:10:00+07:00,Bùi Thanh Hiếu,"270,000",Bank transfer,Completed
+SO-26-004590,2026-11-10T15:59:00+07:00,Đỗ Minh Tâm,"335,000",Bank transfer,Completed
+SO-26-005808,2026-11-10T16:05:00+07:00,Trần Quốc Nga,"3,305,000",Bank transfer,Completed
+SO-26-004478,2026-11-10T16:22:00+07:00,Lê Kim Tuấn,"1,175,000",Bank transfer,Completed
+SO-26-004765,2026-11-10T16:32:00+07:00,Vũ Ngọc Trang,"255,000",Bank transfer,Completed
+SO-26-004555,2026-11-10T17:09:00+07:00,Đặng Minh An,"3,260,000",Bank transfer,Completed
+SO-26-005038,2026-11-10T18:26:00+07:00,Phạm Đức Hà,"1,920,000",Bank transfer,Completed
+SO-26-004114,2026-11-10T20:24:00+07:00,Hoàng Quốc Mai,"3,425,000",Bank transfer,Completed
+SO-26-005437,2026-11-10T20:43:00+07:00,Đỗ Thanh Hà,"110,000",COD,Completed
+SO-26-005052,2026-11-10T21:57:00+07:00,Lê Quốc Sơn,"4,035,000",Bank transfer,Completed
+SO-26-005724,2026-11-11T08:42:00+07:00,Vũ Ngọc Quân,"1,965,000",Bank transfer,Completed
+SO-26-005122,2026-11-11T09:11:00+07:00,Bùi Đức Vy,"1,920,000",COD,Completed
+SO-26-005045,2026-11-11T09:41:00+07:00,Huỳnh Thanh Hùng,"4,140,000",Bank transfer,Completed
+SO-26-005850,2026-11-11T09:57:00+07:00,Lê Đức Quân,"190,000",Bank transfer,Completed
+SO-26-004149,2026-11-11T10:09:00+07:00,Vũ Ngọc Hòa,"120,000",Bank transfer,Completed
+SO-26-004905,2026-11-11T10:12:00+07:00,Đỗ Hữu Mai,"3,035,000",Bank transfer,Cancelled
+SO-26-005794,2026-11-11T10:25:00+07:00,Vũ Minh Giang,"1,405,000",Bank transfer,Completed
+SO-26-005927,2026-11-11T10:28:00+07:00,Trần Hữu Linh,"2,400,000",Bank transfer,Completed
+SO-26-005290,2026-11-11T11:06:00+07:00,Trần Quốc Nhung,"2,205,000",Bank transfer,Completed
+SO-26-005570,2026-11-11T11:52:00+07:00,Vũ Thu An,"575,000",Bank transfer,Completed
+SO-26-004772,2026-11-11T11:54:00+07:00,Lê Minh Tuấn,"3,805,000",Bank transfer,Completed
+SO-26-004380,2026-11-11T13:24:00+07:00,Lê Quốc Dũng,"4,330,000",Bank transfer,Completed
+SO-26-005983,2026-11-11T19:10:00+07:00,Trần Thu Tuấn,"1,075,000",Bank transfer,Completed
+SO-26-005556,2026-11-11T19:12:00+07:00,Huỳnh Quốc Nga,"1,965,000",Bank transfer,Completed
+SO-26-004611,2026-11-11T19:16:00+07:00,Võ Quốc Nga,"1,490,000",Bank transfer,Completed
+SO-26-006032,2026-11-11T20:10:00+07:00,Hoàng Ngọc Hùng,"1,405,000",Bank transfer,Completed
+SO-26-004261,2026-11-11T21:14:00+07:00,Lê Kim Hòa,"865,000",Bank transfer,Completed
+SO-26-006305,2026-11-11T21:32:00+07:00,Đỗ Kim Nga,"1,215,000",Bank transfer,Completed
+SO-26-005311,2026-11-12T08:30:00+07:00,Phan Văn Nam,"490,000",Bank transfer,Completed
+SO-26-004121,2026-11-12T08:46:00+07:00,Nguyễn Thu Yến,"4,465,000",COD,Completed
+SO-26-006249,2026-11-12T09:03:00+07:00,Bùi Ngọc Tuấn,"4,350,000",Bank transfer,Completed
+SO-26-006200,2026-11-12T09:07:00+07:00,Vũ Minh Hiếu,"45,000",Bank transfer,Completed
+SO-26-004177,2026-11-12T10:47:00+07:00,Hoàng Đức Khoa,"2,105,000",Bank transfer,Completed
+SO-26-004793,2026-11-12T13:19:00+07:00,Đỗ Kim Bình,"1,365,000",Bank transfer,Completed
+SO-26-004485,2026-11-12T13:43:00+07:00,Đỗ Văn Bình,"755,000",Bank transfer,Completed
+SO-26-005759,2026-11-12T13:54:00+07:00,Hoàng Thị Tuấn,"1,170,000",Bank transfer,Completed
+SO-26-005647,2026-11-12T15:38:00+07:00,Bùi Quốc Nga,"3,170,000",COD,Completed
+SO-26-004233,2026-11-12T16:38:00+07:00,Huỳnh Thị Hiếu,"3,670,000",Bank transfer,Completed
+SO-26-006004,2026-11-12T18:36:00+07:00,Đỗ Thanh Hà,"3,000,000",Bank transfer,Completed
+SO-26-004429,2026-11-12T20:59:00+07:00,Huỳnh Đức Dũng,"2,980,000",Bank transfer,Completed
+SO-26-005234,2026-11-12T21:38:00+07:00,Huỳnh Thanh Mai,"580,000",Bank transfer,Completed
+SO-26-004212,2026-11-12T21:49:00+07:00,Vũ Kim Giang,"2,875,000",Bank transfer,Completed
+SO-26-004695,2026-11-13T08:40:00+07:00,Phan Kim Châu,"1,635,000",Bank transfer,Completed
+SO-26-006256,2026-11-13T10:14:00+07:00,Võ Quốc Châu,"210,000",Bank transfer,Completed
+SO-26-004310,2026-11-13T10:54:00+07:00,Nguyễn Thu Nam,"2,685,000",Bank transfer,Completed
+SO-26-006039,2026-11-13T11:57:00+07:00,Bùi Kim Vy,"4,345,000",Bank transfer,Completed
+SO-26-005409,2026-11-13T12:51:00+07:00,Phan Thu Long,"1,765,000",Bank transfer,Completed
+SO-26-005703,2026-11-13T13:29:00+07:00,Nguyễn Ngọc Lan,"1,495,000",Bank transfer,Completed
+SO-26-004219,2026-11-13T14:31:00+07:00,Nguyễn Thị Thảo,"2,135,000",COD,Completed
+SO-26-005955,2026-11-13T16:09:00+07:00,Vũ Ngọc Hải,"2,220,000",Bank transfer,Completed
+SO-26-005143,2026-11-13T16:16:00+07:00,Bùi Ngọc Nhung,"2,985,000",Bank transfer,Completed
+SO-26-004352,2026-11-13T16:24:00+07:00,Vũ Thanh Mai,"465,000",Bank transfer,Completed
+SO-26-004961,2026-11-13T17:27:00+07:00,Đặng Văn Vy,"1,555,000",COD,Completed
+SO-26-005332,2026-11-13T17:29:00+07:00,Phan Thị Nhung,"1,535,000",Bank transfer,Completed
+SO-26-005563,2026-11-13T19:30:00+07:00,Đặng Văn Châu,"180,000",Bank transfer,Completed
+SO-26-004632,2026-11-13T21:55:00+07:00,Nguyễn Quốc Long,"2,480,000",Bank transfer,Completed
+SO-26-005815,2026-11-14T08:00:00+07:00,Đặng Kim Tâm,"1,555,000",Bank transfer,Completed
+SO-26-004576,2026-11-14T09:29:00+07:00,Phạm Thu Châu,"3,410,000",Bank transfer,Completed
+SO-26-006221,2026-11-14T11:08:00+07:00,Bùi Minh Hải,"1,490,000",COD,Completed
+SO-26-006137,2026-11-14T11:29:00+07:00,Lê Thu Phúc,"2,960,000",Bank transfer,Completed
+SO-26-004387,2026-11-14T12:08:00+07:00,Trần Kim Tâm,"665,000",Bank transfer,Completed
+SO-26-005115,2026-11-14T12:23:00+07:00,Hoàng Ngọc Bình,"4,145,000",Bank transfer,Completed
+SO-26-004527,2026-11-14T13:35:00+07:00,Phan Văn Nga,"1,055,000",Bank transfer,Completed
+SO-26-004205,2026-11-14T13:42:00+07:00,Hoàng Văn Yến,"1,665,000",Bank transfer,Completed
+SO-26-004107,2026-11-14T14:37:00+07:00,Trần Thị Long,"3,385,000",Bank transfer,Cancelled
+SO-26-005458,2026-11-14T14:37:00+07:00,Phạm Văn Linh,"4,460,000",Bank transfer,Completed
+SO-26-004254,2026-11-14T15:23:00+07:00,Đặng Thanh An,"3,885,000",COD,Completed
+SO-26-006333,2026-11-14T15:44:00+07:00,Trần Kim Hòa,"915,000",Bank transfer,Completed
+SO-26-005192,2026-11-14T16:14:00+07:00,Vũ Thị Linh,"3,695,000",Bank transfer,Completed
+SO-26-005276,2026-11-14T16:35:00+07:00,Huỳnh Kim Hòa,"310,000",Bank transfer,Completed
+SO-26-006319,2026-11-14T17:04:00+07:00,Võ Thu Lan,"1,220,000",Bank transfer,Completed
+SO-26-004681,2026-11-14T17:05:00+07:00,Bùi Thu Tâm,"290,000",Bank transfer,Completed
+SO-26-005626,2026-11-14T19:07:00+07:00,Huỳnh Kim An,"2,095,000",Bank transfer,Completed
+SO-26-005962,2026-11-14T19:49:00+07:00,Đỗ Quốc Tâm,"2,280,000",Bank transfer,Completed
+SO-26-004345,2026-11-14T19:55:00+07:00,Võ Quốc Nhung,"2,965,000",Bank transfer,Completed
+SO-26-004142,2026-11-14T20:21:00+07:00,Bùi Đức Hòa,"1,625,000",Bank transfer,Completed
+SO-26-004877,2026-11-14T20:22:00+07:00,Nguyễn Thị Hòa,"1,210,000",Bank transfer,Completed
+SO-26-004751,2026-11-14T20:30:00+07:00,Hoàng Văn Hải,"250,000",Bank transfer,Completed
+SO-26-005535,2026-11-14T21:01:00+07:00,Phạm Quốc Dũng,"355,000",Bank transfer,Completed
+SO-26-004422,2026-11-14T21:27:00+07:00,Nguyễn Hữu Yến,"1,935,000",COD,Completed
+SO-26-006081,2026-11-14T21:29:00+07:00,Đỗ Hữu An,"2,445,000",Bank transfer,Completed
+SO-26-006326,2026-11-15T09:15:00+07:00,Phan Văn Lan,"2,495,000",COD,Completed
+SO-26-006179,2026-11-15T12:52:00+07:00,Hoàng Thanh Hải,"1,630,000",Bank transfer,Completed
+SO-26-005766,2026-11-15T13:40:00+07:00,Võ Quốc Châu,"3,970,000",COD,Completed
+SO-26-006228,2026-11-15T15:29:00+07:00,Trần Minh Sơn,"3,990,000",COD,Completed
+SO-26-004156,2026-11-15T15:59:00+07:00,Võ Thanh Trang,"1,000,000",Bank transfer,Completed
+SO-26-005864,2026-11-15T16:12:00+07:00,Huỳnh Quốc Hải,"1,775,000",Bank transfer,Completed
+SO-26-004807,2026-11-15T16:51:00+07:00,Vũ Hữu Hà,"1,710,000",Bank transfer,Completed
+SO-26-004247,2026-11-15T18:25:00+07:00,Võ Thị Tâm,"655,000",Bank transfer,Completed
+SO-26-006291,2026-11-15T20:12:00+07:00,Nguyễn Thu Phúc,"790,000",Bank transfer,Completed
+SO-26-004373,2026-11-15T20:52:00+07:00,Đặng Thanh Vy,"3,415,000",COD,Completed
+SO-26-006046,2026-11-15T21:51:00+07:00,Bùi Thu Khoa,"2,700,000",Bank transfer,Completed
+SO-26-005171,2026-11-16T08:14:00+07:00,Trần Hữu Long,"310,000",COD,Completed
+SO-26-005605,2026-11-16T08:16:00+07:00,Nguyễn Kim Tuấn,"3,125,000",COD,Completed
+SO-26-006095,2026-11-16T10:05:00+07:00,Phạm Hữu Long,"1,280,000",Bank transfer,Completed
+SO-26-005654,2026-11-16T10:26:00+07:00,Nguyễn Hữu Quân,"3,900,000",Bank transfer,Completed
+SO-26-004324,2026-11-16T10:52:00+07:00,Phan Hữu Giang,"2,200,000",Bank transfer,Completed
+SO-26-004996,2026-11-16T11:37:00+07:00,Đặng Thị Hiếu,"4,280,000",COD,Completed
+SO-26-004800,2026-11-16T11:40:00+07:00,Bùi Văn Hiếu,"2,515,000",Bank transfer,Completed
+SO-26-005444,2026-11-16T12:30:00+07:00,Đỗ Ngọc Vy,"3,975,000",Bank transfer,Completed
+SO-26-005402,2026-11-16T14:47:00+07:00,Bùi Đức Long,"3,260,000",Bank transfer,Cancelled
+SO-26-006165,2026-11-16T15:11:00+07:00,Lê Văn Quân,"1,070,000",Bank transfer,Completed
+SO-26-005549,2026-11-16T16:52:00+07:00,Bùi Quốc Hải,"4,200,000",Bank transfer,Completed
+SO-26-004758,2026-11-16T17:10:00+07:00,Võ Ngọc Long,"1,750,000",Bank transfer,Completed
+SO-26-004268,2026-11-16T17:16:00+07:00,Bùi Thanh Lan,"3,045,000",COD,Completed
+SO-26-004835,2026-11-16T18:04:00+07:00,Đỗ Ngọc Mai,"4,260,000",Bank transfer,Completed
+SO-26-004702,2026-11-16T19:00:00+07:00,Bùi Hữu Sơn,"4,155,000",Bank transfer,Cancelled
+SO-26-005514,2026-11-16T19:57:00+07:00,Huỳnh Kim Tuấn,"3,395,000",Bank transfer,Completed
+SO-26-004541,2026-11-16T20:26:00+07:00,Đỗ Văn Nam,"1,135,000",Bank transfer,Completed
+SO-26-004968,2026-11-17T10:22:00+07:00,Trần Đức Hòa,"3,415,000",Bank transfer,Completed
+SO-26-005374,2026-11-17T10:48:00+07:00,Hoàng Kim Nam,"2,500,000",Bank transfer,Completed
+SO-26-005612,2026-11-17T11:47:00+07:00,Bùi Minh Lan,"1,290,000",Bank transfer,Completed
+SO-26-004737,2026-11-17T13:09:00+07:00,Hoàng Ngọc Vy,"1,975,000",Bank transfer,Completed
+SO-26-005857,2026-11-17T13:35:00+07:00,Võ Ngọc Hòa,"1,210,000",Bank transfer,Completed
+SO-26-005017,2026-11-17T14:31:00+07:00,Trần Văn Sơn,"2,285,000",COD,Completed
+SO-26-005416,2026-11-17T16:58:00+07:00,Trần Kim Tuấn,"1,545,000",Bank transfer,Completed
+SO-26-005941,2026-11-17T17:38:00+07:00,Hoàng Văn Hải,"1,660,000",Bank transfer,Completed
+SO-26-005136,2026-11-17T19:31:00+07:00,Phạm Ngọc Châu,"1,160,000",Bank transfer,Completed
+SO-26-005325,2026-11-17T19:51:00+07:00,Nguyễn Đức Dũng,"2,065,000",Bank transfer,Completed
+SO-26-006214,2026-11-17T21:07:00+07:00,Trần Hữu Linh,"4,485,000",Bank transfer,Completed
+SO-26-005381,2026-11-17T21:33:00+07:00,Vũ Đức Vy,"4,475,000",COD,Completed
+SO-26-005094,2026-11-18T08:34:00+07:00,Nguyễn Kim Tâm,"2,610,000",Bank transfer,Completed
+SO-26-005129,2026-11-18T10:35:00+07:00,Nguyễn Thu Dũng,"1,630,000",COD,Completed
+SO-26-004933,2026-11-18T10:59:00+07:00,Đỗ Văn Trang,"2,735,000",Bank transfer,Completed
+SO-26-006102,2026-11-18T11:15:00+07:00,Hoàng Văn Dũng,"435,000",COD,Completed
+SO-26-005339,2026-11-18T11:53:00+07:00,Lê Đức Hùng,"2,370,000",Bank transfer,Completed
+SO-26-005640,2026-11-18T13:23:00+07:00,Bùi Minh Yến,"1,065,000",Bank transfer,Completed
+SO-26-005507,2026-11-18T15:09:00+07:00,Lê Kim Nga,"335,000",Bank transfer,Completed
+SO-26-006186,2026-11-18T16:49:00+07:00,Võ Kim Nga,"2,625,000",Bank transfer,Completed
+SO-26-006242,2026-11-18T17:42:00+07:00,Đặng Ngọc Hà,"2,855,000",Bank transfer,Completed
+SO-26-004828,2026-11-18T18:44:00+07:00,Lê Hữu Hiếu,"690,000",COD,Completed
+SO-26-006123,2026-11-18T21:41:00+07:00,Võ Thị Quân,"3,180,000",Bank transfer,Completed
+SO-26-006193,2026-11-19T08:33:00+07:00,Trần Thu Nhung,"1,830,000",Bank transfer,Completed
+SO-26-005024,2026-11-19T10:21:00+07:00,Phan Đức Hà,"710,000",COD,Completed
+SO-26-004464,2026-11-19T10:46:00+07:00,Phạm Thị Tuấn,"2,440,000",COD,Completed
+SO-26-005598,2026-11-19T11:11:00+07:00,Hoàng Thanh Bình,"2,965,000",Bank transfer,Completed
+SO-26-005367,2026-11-19T12:12:00+07:00,Vũ Đức An,"1,285,000",Bank transfer,Completed
+SO-26-005528,2026-11-19T13:16:00+07:00,Huỳnh Thị Giang,"2,800,000",Bank transfer,Completed
+SO-26-005934,2026-11-19T13:27:00+07:00,Trần Quốc Tuấn,"145,000",COD,Completed
+SO-26-004919,2026-11-19T13:51:00+07:00,Võ Quốc Phúc,"4,175,000",Bank transfer,Completed
+SO-26-006158,2026-11-19T16:59:00+07:00,Vũ Ngọc Quân,"4,040,000",Bank transfer,Completed
+SO-26-004849,2026-11-19T17:01:00+07:00,Nguyễn Quốc Vy,"4,010,000",Bank transfer,Completed
+SO-26-005885,2026-11-19T18:14:00+07:00,Trần Minh Nam,"1,745,000",Bank transfer,Completed
+SO-26-005682,2026-11-19T18:22:00+07:00,Bùi Văn Linh,"2,635,000",Bank transfer,Completed
+SO-26-005493,2026-11-19T21:11:00+07:00,Võ Ngọc Nga,"970,000",Bank transfer,Completed
+SO-26-005150,2026-11-19T21:12:00+07:00,Huỳnh Thanh Nhung,"1,115,000",Bank transfer,Completed
+SO-26-005010,2026-11-20T08:15:00+07:00,Phạm Hữu Nam,"845,000",Bank transfer,Completed
+SO-26-006011,2026-11-20T08:21:00+07:00,Lê Văn Nga,"1,995,000",Bank transfer,Completed
+SO-26-004870,2026-11-20T08:38:00+07:00,Đặng Văn Châu,"3,975,000",Bank transfer,Completed
+SO-26-005486,2026-11-20T08:40:00+07:00,Trần Thị Linh,"1,485,000",Bank transfer,Completed
+SO-26-006074,2026-11-20T09:15:00+07:00,Đỗ Thanh Hùng,"3,065,000",Bank transfer,Completed
+SO-26-004128,2026-11-20T12:00:00+07:00,Vũ Kim Dũng,"3,800,000",Bank transfer,Completed
+SO-26-004443,2026-11-20T12:50:00+07:00,Đặng Thanh Sơn,"345,000",Bank transfer,Completed
+SO-26-004548,2026-11-20T14:00:00+07:00,Đặng Thu An,"310,000",Bank transfer,Completed
+SO-26-004513,2026-11-20T14:47:00+07:00,Đỗ Thị Hải,"3,825,000",Bank transfer,Completed
+SO-26-006067,2026-11-20T15:12:00+07:00,Phạm Quốc Dũng,"3,830,000",Bank transfer,Completed
+SO-26-005353,2026-11-20T15:57:00+07:00,Hoàng Ngọc Nga,"4,430,000",Bank transfer,Completed
+SO-26-006235,2026-11-20T16:24:00+07:00,Trần Thị Bình,"1,275,000",Bank transfer,Completed
+SO-26-004912,2026-11-20T18:25:00+07:00,Trần Ngọc Khoa,"3,280,000",Bank transfer,Completed
+SO-26-004100,2026-11-20T19:10:00+07:00,Võ Thị Nhung,"4,410,000",Bank transfer,Completed
+SO-26-004457,2026-11-20T19:31:00+07:00,Bùi Minh Khoa,"1,065,000",COD,Completed
+SO-26-005220,2026-11-20T19:37:00+07:00,Hoàng Đức Dũng,"2,805,000",Bank transfer,Completed
+SO-26-004856,2026-11-20T19:46:00+07:00,Phạm Minh Vy,"1,850,000",COD,Completed
+SO-26-005878,2026-11-20T20:07:00+07:00,Nguyễn Kim Trang,"2,650,000",Bank transfer,Completed
+SO-26-005472,2026-11-20T20:20:00+07:00,Phạm Văn Quân,"3,380,000",COD,Completed
+SO-26-005619,2026-11-21T08:31:00+07:00,Bùi Thu Bình,"2,930,000",COD,Completed
+SO-26-004338,2026-11-21T09:22:00+07:00,Trần Hữu Giang,"3,360,000",COD,Completed
+SO-26-005087,2026-11-21T09:33:00+07:00,Phạm Đức Phúc,"3,490,000",Bank transfer,Completed
+SO-26-004842,2026-11-21T10:04:00+07:00,Phan Ngọc Hòa,"3,400,000",COD,Completed
+SO-26-004394,2026-11-21T11:26:00+07:00,Huỳnh Kim Sơn,"860,000",Bank transfer,Completed
+SO-26-005696,2026-11-21T14:01:00+07:00,Đỗ Quốc Nga,"4,265,000",Bank transfer,Cancelled
+SO-26-005689,2026-11-21T14:23:00+07:00,Võ Đức Hà,"2,500,000",COD,Completed
+SO-26-004534,2026-11-21T15:09:00+07:00,Võ Thu Yến,"4,495,000",Bank transfer,Cancelled
+SO-26-005164,2026-11-21T15:25:00+07:00,Bùi Minh Thảo,"3,845,000",Bank transfer,Completed
+SO-26-005913,2026-11-21T15:50:00+07:00,Trần Văn Quân,"435,000",Bank transfer,Cancelled
+SO-26-005892,2026-11-21T17:25:00+07:00,Huỳnh Thị Hùng,"2,005,000",Bank transfer,Completed
+SO-26-004282,2026-11-21T18:59:00+07:00,Hoàng Ngọc Bình,"1,400,000",COD,Completed
+SO-26-005465,2026-11-21T19:29:00+07:00,Lê Quốc Nam,"3,355,000",Bank transfer,Completed
+SO-26-005423,2026-11-21T19:43:00+07:00,Đặng Hữu Dũng,"2,015,000",Bank transfer,Completed
+SO-26-006298,2026-11-21T20:31:00+07:00,Bùi Quốc Nga,"3,455,000",Bank transfer,Completed
+SO-26-004520,2026-11-21T21:15:00+07:00,Trần Hữu Khoa,"735,000",COD,Completed
+SO-26-004926,2026-11-22T08:57:00+07:00,Phan Thu An,"4,350,000",Bank transfer,Cancelled
+SO-26-005318,2026-11-22T10:55:00+07:00,Nguyễn Minh Nam,"2,345,000",COD,Completed
+SO-26-006277,2026-11-22T11:04:00+07:00,Huỳnh Thị Phúc,"3,425,000",Bank transfer,Completed
+SO-26-004954,2026-11-22T11:59:00+07:00,Đỗ Hữu Nhung,"2,600,000",Bank transfer,Completed
+SO-26-005283,2026-11-22T12:26:00+07:00,Võ Hữu Linh,"1,890,000",Bank transfer,Completed
+SO-26-004975,2026-11-22T13:01:00+07:00,Đặng Hữu Nam,"3,975,000",COD,Completed
+SO-26-004135,2026-11-22T13:29:00+07:00,Huỳnh Kim Sơn,"2,190,000",Bank transfer,Completed
+SO-26-005388,2026-11-22T14:00:00+07:00,Bùi Văn Sơn,"2,315,000",Bank transfer,Completed
+SO-26-004597,2026-11-22T14:06:00+07:00,Phan Ngọc Tuấn,"920,000",Bank transfer,Completed
+SO-26-004863,2026-11-22T14:40:00+07:00,Vũ Hữu Linh,"2,670,000",Bank transfer,Completed
+SO-26-005717,2026-11-22T15:10:00+07:00,Võ Đức Sơn,"70,000",Bank transfer,Completed
+SO-26-005213,2026-11-22T15:46:00+07:00,Đặng Thanh Nhung,"3,175,000",Bank transfer,Completed
+SO-26-004226,2026-11-22T16:35:00+07:00,Lê Thị Khoa,"1,005,000",Bank transfer,Completed
+SO-26-005157,2026-11-22T18:27:00+07:00,Phạm Hữu Thảo,"1,195,000",Bank transfer,Completed
+SO-26-004569,2026-11-22T19:23:00+07:00,Trần Thanh An,"2,865,000",Bank transfer,Completed
+SO-26-006284,2026-11-22T20:07:00+07:00,Võ Minh Thảo,"4,035,000",Bank transfer,Completed
+SO-26-005780,2026-11-22T20:12:00+07:00,Lê Thanh Nhung,"825,000",COD,Completed
+SO-26-006025,2026-11-22T20:13:00+07:00,Phan Minh Hùng,"1,430,000",COD,Completed
+SO-26-005269,2026-11-22T20:37:00+07:00,Lê Ngọc Phúc,"3,645,000",Bank transfer,Completed
+SO-26-004303,2026-11-22T20:45:00+07:00,Phạm Thu Sơn,"4,495,000",Bank transfer,Completed
+SO-26-005773,2026-11-22T20:47:00+07:00,Phạm Quốc Bình,"4,405,000",Bank transfer,Completed

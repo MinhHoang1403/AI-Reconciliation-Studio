@@ -115,8 +115,12 @@ class ReconConfig:
     # Khung chờ tiền về (ngày làm việc). Mặc định 0 (không chờ); suggest_config bật
     # DEFAULT_SETTLE_DAYS khi dữ liệu cho thấy bên B ghi sau bên A (có độ trễ tiền về).
     settle_days: int = 0
-    # Lựa chọn của người dùng cho ca mơ hồ: [{"left": [số dòng A], "right": [số dòng B]}].
+    # Cặp người dùng chọn (ca mơ hồ, ghép tay): [{"left": [số dòng A], "right": [số dòng B]}].
+    # Áp dụng trước mọi vòng khớp.
     forced: list[dict[str, list[int]]] = field(default_factory=list)
+    # Cặp người dùng đã gỡ ghép: không vòng tự động nào được ghép bất kỳ dòng A nào trong
+    # "left" với bất kỳ dòng B nào trong "right" nữa (cùng dạng với forced).
+    forbidden: list[dict[str, list[int]]] = field(default_factory=list)
 
     def to_json(self) -> dict[str, Any]:
         data = asdict(self)
@@ -183,6 +187,16 @@ def money_dong(value: Decimal | None) -> str:
 
 def _reason(code: str, text: str, **extra: Any) -> dict[str, Any]:
     return {"code": code, "text": text, **extra}
+
+
+def _blocked(config: ReconConfig) -> set[tuple[int, int]]:
+    """Các cặp (dòng A, dòng B) người dùng đã gỡ ghép, các vòng tự động phải tránh."""
+    return {
+        (a, b)
+        for item in config.forbidden
+        for a in item.get("left", [])
+        for b in item.get("right", [])
+    }
 
 
 def _within(a: Decimal | None, b: Decimal | None, tolerance: Decimal) -> bool:
@@ -688,7 +702,7 @@ def _single(kind: str, row: Row, side: str, reasons: list[dict[str, Any]], revie
 
 
 def _pair_same_key(
-    lefts: list[Row], rights: list[Row], config: ReconConfig
+    lefts: list[Row], rights: list[Row], config: ReconConfig, blocked: set[tuple[int, int]]
 ) -> list[tuple[Row, Row]]:
     """Ghép các dòng cùng một mã: cặp tốt nhất trước (đúng tiền, gần ngày, dòng sớm).
 
@@ -698,13 +712,14 @@ def _pair_same_key(
     bình phương số dòng.
     """
     if len(lefts) == 1 and len(rights) == 1:
-        return [(lefts[0], rights[0])]
+        only = (lefts[0], rights[0])
+        return [] if (only[0].ref, only[1].ref) in blocked else [only]
     paired: list[tuple[Row, Row]] = []
     used_left: set[int] = set()
     used_right: set[int] = set()
     if len(lefts) * len(rights) <= MAX_SAME_KEY_PAIRS:
         ranked = sorted(
-            ((a, b) for a in lefts for b in rights),
+            ((a, b) for a in lefts for b in rights if (a.ref, b.ref) not in blocked),
             key=lambda pair: (
                 not _within(pair[0].amount, pair[1].amount, config.tolerance),
                 _days_apart(pair[0].day, pair[1].day) or 0,
@@ -732,7 +747,7 @@ def _pair_same_key(
             rest_left.append(a)
     rest_right = [b for b in sorted(rights, key=lambda row: row.ref) if b.ref not in used_right]
     paired += list(zip(rest_left, rest_right, strict=False))
-    return paired
+    return [(a, b) for a, b in paired if (a.ref, b.ref) not in blocked]
 
 
 def _key_round(
@@ -742,6 +757,7 @@ def _key_round(
     results: list[Result] = []
     used_left: set[int] = set()
     used_right: set[int] = set()
+    blocked = _blocked(config)
     by_key_left: dict[str, list[Row]] = defaultdict(list)
     for row in left:
         for key in row.keys:
@@ -759,6 +775,7 @@ def _key_round(
         members = [
             a for key in keys for a in by_key_left[key]
             if a.ref not in used_left and not (config.group_left and a.cancelled)
+            and (a.ref, row.ref) not in blocked
         ]
         members = list({a.ref: a for a in members}.values())
         if not members:
@@ -773,7 +790,9 @@ def _key_round(
         rights = by_key_right[key]
         if not lefts:
             continue
-        paired = _pair_same_key(lefts, rights, config)
+        paired = _pair_same_key(lefts, rights, config, blocked)
+        if not paired:
+            continue  # mọi cặp cùng mã đều đã bị gỡ: để các vòng sau (hoặc người dùng) xử lý
         paired_left = {a.ref for a, _ in paired}
         paired_right = {b.ref for _, b in paired}
         for a, b in paired:
@@ -889,6 +908,7 @@ def _score_round(
     sorted_amounts = sorted(by_amount)
     window = timedelta(days=config.date_window_days)
     skipped: dict[tuple[str, int], str] = {}  # (bên, số dòng) → lý do không tự ghép
+    blocked = _blocked(config)
 
     def nearby(a: Row, amount: Decimal) -> list[Row]:
         days, dated, undated = buckets[amount]
@@ -909,6 +929,8 @@ def _score_round(
             if amount > a.amount + config.tolerance:
                 break
             for b in nearby(a, amount):
+                if (a.ref, b.ref) in blocked:
+                    continue
                 score = _pair_score(a, b, config)
                 if score is not None and score >= config.min_score:
                     found.append((b.ref, score))
@@ -1064,6 +1086,7 @@ def _sum_round(
     used_left: set[int] = set()
     used_right: set[int] = set()
     window = timedelta(days=config.date_window_days)
+    blocked = _blocked(config)
 
     for one, many, one_side in ((right, left, "B"), (left, right, "A")):
         used_one = used_right if one_side == "B" else used_left
@@ -1091,6 +1114,8 @@ def _sum_round(
                 for row in dated[bisect.bisect_left(days, low) : bisect.bisect_right(days, high)]
                 if row.ref not in used_many and row.amount is not None
                 and row.amount < target.amount
+                and ((row.ref, target.ref) if one_side == "B" else (target.ref, row.ref))
+                not in blocked
             ]
             if len(pool) < 2 or len(pool) > MAX_SUBSET_CANDIDATES:
                 continue

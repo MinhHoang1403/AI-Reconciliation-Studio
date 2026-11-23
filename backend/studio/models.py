@@ -296,7 +296,8 @@ class ReconChain(Base):
 
 
 class ReconChoice(Base):
-    """Lựa chọn của người dùng cho một ca mơ hồ; áp dụng ở mọi lần chạy sau của cùng cặp bảng."""
+    """Lựa chọn của người dùng (chọn ca mơ hồ, ghép tay, gỡ ghép); áp dụng ở mọi lần chạy sau
+    của cùng cặp bảng."""
 
     __tablename__ = "recon_choices"
 
@@ -309,6 +310,9 @@ class ReconChoice(Base):
     )
     left_refs: Mapped[list[Any]] = mapped_column()
     right_refs: Mapped[list[Any]] = mapped_column()
+    # MATCH: ghép các dòng này với nhau (chọn ca mơ hồ, ghép tay); UNMATCH: không được tự ghép
+    # các dòng này với nhau nữa (gỡ ghép).
+    action: Mapped[str] = mapped_column(String(16), default="MATCH", server_default="MATCH")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

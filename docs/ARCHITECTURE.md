@@ -143,6 +143,8 @@ Mỗi kết quả thuộc một loại:
 
 **Xử lý ngoại lệ.** Mỗi kết quả không khớp là một ngoại lệ có trạng thái `OPEN` → `EXPLAINED` / `RESOLVED`, lý do do engine sinh ra và ghi chú tùy chọn. Trạng thái tự đổi theo thao tác của người dùng. Đây là năng lực cốt lõi của phần mềm đối soát: ngoại lệ được chỉ ra, theo dõi tới khi xử lý xong ([iofm][iofm]).
 
+**Ghép tay và gỡ ghép.** Người dùng ghép được một dòng "chỉ có ở một bên" với một hoặc vài dòng chưa ghép của bên kia (hệ thống xếp dòng gần số tiền, gần ngày nhất lên đầu), và gỡ được một cặp hệ thống đã ghép sai. Cả hai là lựa chọn được lưu (`recon_choices`, loại `MATCH` / `UNMATCH`): cặp ghép tay được áp dụng trước mọi vòng khớp; cặp đã gỡ thì không vòng tự động nào được ghép lại. Sau mỗi lựa chọn hệ thống chạy lại cặp (hoặc cả chuỗi) và kiểm chứng; mọi lần ghép, gỡ đều vào nhật ký kiểm toán. Đây là thao tác cơ bản của phần mềm đối soát ngân hàng (Oracle Cash Management: manual reconciliation, unreconcile).
+
 Mỗi kết quả lưu **điểm và lý do** (trường nào khớp, lệch bao nhiêu). Gemini dùng lý do này để giải thích bằng lời vì sao thiếu, lệch hay thừa, nhưng không được tự đổi kết quả.
 
 Đối soát luôn làm **hai bộ một lần** (A ↔ B). Ba bên của miền bán hàng chạy thành chuỗi: đơn hàng ↔ thanh toán, rồi thanh toán ↔ sao kê.
@@ -189,7 +191,7 @@ Gemini có **gọi công cụ** (function calling): model không tự chạy hà
 | `cell_corrections`, `row_decisions`, `ai_cell_suggestions` | Ô người dùng sửa, quyết định giữ/loại dòng, gợi ý sửa của AI **(đã có)** |
 | `ai_calls` | Nhật ký mỗi lần gọi AI: mục đích, kết quả, token, thời gian (không lưu nội dung) **(đã có)** |
 | `recon_runs`, `match_results` | Kỳ, cấu hình, phiên bản bộ sạch đã dùng, trạng thái, kết quả kiểm chứng, các dòng chờ mang từ kỳ trước; từng kết quả kèm loại, điểm, lý do, các dòng, số tiền, trạng thái ngoại lệ, ghi chú **(đã có)** |
-| `recon_chains`, `recon_choices` | Một lần đối soát cả chuỗi của một kỳ (các bảng, kỳ, trạng thái; các lần chạy trỏ về chuỗi); cặp người dùng đã chọn cho ca mơ hồ, áp dụng ở mọi lần chạy sau **(đã có)** |
+| `recon_chains`, `recon_choices` | Một lần đối soát cả chuỗi của một kỳ (các bảng, kỳ, trạng thái; các lần chạy trỏ về chuỗi); lựa chọn của người dùng (chọn ca mơ hồ, ghép tay: `MATCH`; gỡ ghép: `UNMATCH`), áp dụng ở mọi lần chạy sau **(đã có)** |
 | `audit_log` | Nhật ký kiểm toán: mọi thay đổi của người dùng (ai, lúc nào, đối tượng, trước/sau) **(đã có)** |
 | `chat_threads`, `chat_messages` | Hội thoại và các lần gọi công cụ |
 
@@ -220,7 +222,7 @@ Mỗi bước của luồng dữ liệu (mục 4) nằm ở đúng một nhóm f
 | Nhật ký kiểm toán | `audit.py` | `recon_api.py` (`/audit`) | `pages/HistoryPage` | các bài có kiểm `audit_log` |
 | Khung | `main.py`, `config.py`, `database.py`, `models.py`, `migrate.py` + `migrations/` | `/api/health`, `/api/ready`, `/api/status` | `App.tsx`, `navigation.ts`, `OverviewPage` | `test_status_api`, `test_migrations` |
 
-Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foundation_review.py`. E2E: `frontend/e2e/` (`data`, `recon`, `chain`, `shell`).
+Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foundation_review.py`. Ghép tay, gỡ ghép: `recon_api.py` (`/match`, `/unmatch`, `/match-candidates`), `MatchPicker`, `test_manual_match.py`. Kiểm mù đối soát: `tools/make_blind_fixtures.py` → `tests/fixtures/blind/`, đo ở `test_blind.py`. E2E: `frontend/e2e/` (`data`, `recon`, `chain`, `shell`).
 
 ## 9. Ngoài phạm vi demo
 

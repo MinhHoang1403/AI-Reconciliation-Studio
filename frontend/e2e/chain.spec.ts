@@ -62,7 +62,22 @@ test("đối soát cả chuỗi của một kỳ, chọn cặp cho ca mơ hồ",
       timeout: 60_000,
     });
     // Đơn không được chọn trở thành "Chỉ có ở A".
-    await expect(page.locator(".recon-group").filter({ hasText: "Chỉ có ở A" })).toContainText("HD000119");
+    const onlyA = page.locator(".recon-group").filter({ hasText: "Chỉ có ở A" });
+    await expect(onlyA).toContainText("HD000119");
+
+    // Ghép tay: đơn HD000142 (cổng thanh toán không có giao dịch) ghép với một dòng chưa ghép.
+    const lonely = onlyA.locator(".result").filter({ hasText: "HD000142" });
+    await lonely.getByRole("button", { name: "Ghép tay" }).click();
+    const picker = lonely.locator(".match-picker");
+    await picker.getByRole("checkbox").first().check();
+    await picker.getByRole("button", { name: /^Ghép 1 dòng/ }).click();
+    const manual = page.locator(".result").filter({ hasText: "HD000142" }).filter({ hasText: "Bạn đã chọn cặp này" });
+    await expect(manual).toBeVisible({ timeout: 60_000 });
+
+    // Gỡ ghép lại qua hộp xác nhận: đơn trở về "Chỉ có ở A".
+    await manual.locator(".result__actions").getByRole("button", { name: "Gỡ ghép" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Gỡ ghép" }).click();
+    await expect(onlyA.locator(".result").filter({ hasText: "HD000142" })).toBeVisible({ timeout: 60_000 });
 
     // Cặp sàn TMĐT ↔ sao kê: các đơn cuối kỳ nằm trong tab "Chờ tiền về".
     await page.locator(".chain__pair").filter({ hasText: "TK san" }).click();

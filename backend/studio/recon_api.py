@@ -753,6 +753,13 @@ def choose_candidate(
         {"candidates": pairs},
         {"left_refs": wanted[0], "right_refs": wanted[1]},
     )
+    return _rerun(session, run, background)
+
+
+def _rerun(session: Session, run: ReconRun, background: BackgroundTasks) -> dict[str, Any]:
+    """Sau một quyết định của người dùng (chọn ca mơ hồ, ghép tay, gỡ ghép): chạy lại cả chuỗi
+    (nếu lần chạy thuộc chuỗi) hoặc cặp bảng, để kết quả và kiểm chứng phản ánh quyết định.
+    Trả về mã chuỗi hoặc mã lần chạy mới để giao diện tải."""
     if run.chain_id:
         chain = session.get(ReconChain, run.chain_id)
         assert chain is not None
@@ -766,6 +773,188 @@ def choose_candidate(
     session.commit()
     background.add_task(recon_service.execute_run, new_run.id)
     return {"chain_id": None, "run_id": str(new_run.id)}
+
+
+# ---------------------------------------------------------------- ghép tay, gỡ ghép
+
+# Dòng "chưa được ghép" của mỗi bên: chỉ những dòng này mới ghép tay được.
+UNMATCHED_LEFT: tuple[str, ...] = ("ONLY_IN_A", "PENDING_SETTLEMENT")
+UNMATCHED_RIGHT: tuple[str, ...] = ("ONLY_IN_B",)
+# Kết quả đã ghép (một cặp hoặc một nhóm): những kết quả này gỡ ghép được.
+PAIRED = ("MATCHED", "MANY_TO_ONE", "ONE_TO_MANY", "AMOUNT_MISMATCH")
+MAX_MATCH_CANDIDATES = 30
+
+
+class ManualMatch(BaseModel):
+    left_refs: list[int] = Field(min_length=1, max_length=20)
+    right_refs: list[int] = Field(min_length=1, max_length=20)
+
+
+def _results_of_kinds(session: Session, run: ReconRun, kinds: tuple[str, ...]) -> list[MatchResult]:
+    return list(
+        session.scalars(
+            select(MatchResult)
+            .where(MatchResult.run_id == run.id, MatchResult.kind.in_(kinds))
+            .order_by(MatchResult.position)
+        )
+    )
+
+
+def _day(row: dict[str, Any]) -> datetime | None:
+    value = row.get("date")
+    return datetime.fromisoformat(value[:10]) if value else None
+
+
+@router.get("/recon/results/{result_id}/match-candidates")
+def match_candidates(result_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
+    """Dòng chưa ghép ở bên kia để ghép tay với một dòng "chỉ có ở một bên": gần số tiền nhất
+    trước, rồi gần ngày nhất. Hệ thống chỉ gợi ý thứ tự; người dùng quyết định."""
+    item = session.get(MatchResult, result_id)
+    if item is None:
+        raise fail(404, "RESULT_NOT_FOUND", "Không tìm thấy kết quả.")
+    run = _run(session, item.run_id)
+    if item.kind in UNMATCHED_LEFT and item.left_refs:
+        side, other_kinds = "B", UNMATCHED_RIGHT
+    elif item.kind in UNMATCHED_RIGHT:
+        side, other_kinds = "A", UNMATCHED_LEFT
+    else:
+        raise fail(422, "NOT_UNMATCHED", "Chỉ ghép tay được dòng chưa được ghép.")
+    others = [
+        other
+        for other in _results_of_kinds(session, run, other_kinds)
+        if (other.left_refs if side == "A" else other.right_refs)
+    ]
+    views = _result_views(session, run, [item, *others])
+    target = (views[0]["left"] if side == "B" else views[0]["right"])[0]
+    target_amount = Decimal(target["amount"]) if target.get("amount") else None
+    target_day = _day(target)
+
+    def row_of(view: dict[str, Any]) -> dict[str, Any]:
+        rows: list[dict[str, Any]] = view["right"] if side == "B" else view["left"]
+        return rows[0]
+
+    def closeness(view: dict[str, Any]) -> tuple[Decimal, int, int]:
+        row = row_of(view)
+        amount = Decimal(row["amount"]) if row.get("amount") else None
+        gap = (
+            abs(amount - target_amount)
+            if amount is not None and target_amount is not None
+            else Decimal("Infinity")
+        )
+        day = _day(row)
+        days = abs((day - target_day).days) if day and target_day else 10**6
+        return gap, days, row["row_ref"]
+
+    ranked = sorted(views[1:], key=closeness)[:MAX_MATCH_CANDIDATES]
+    return {
+        "side": side,
+        "target": target,
+        "candidates": [
+            {
+                "result_id": view["id"],
+                "row": row_of(view),
+                "amount_gap": str(closeness(view)[0]) if target_amount is not None else None,
+            }
+            for view in ranked
+        ],
+    }
+
+
+@router.post("/recon/runs/{run_id}/match", status_code=202)
+def manual_match(
+    run_id: uuid.UUID, choice: ManualMatch, session: SessionDep, background: BackgroundTasks
+) -> dict[str, Any]:
+    """Ghép tay các dòng chưa ghép của hai bên (một cặp hoặc một nhóm). Lựa chọn được lưu và
+    áp dụng ở mọi lần chạy sau; lệch tiền thì kết quả vẫn là ngoại lệ "lệch tiền" để xử lý."""
+    run = _run(session, run_id)
+    if run.status != "READY":
+        raise fail(409, "RUN_NOT_READY", "Lần đối soát chưa chạy xong.")
+    free_left = {
+        ref for item in _results_of_kinds(session, run, UNMATCHED_LEFT) for ref in item.left_refs
+    }
+    free_right = {
+        ref for item in _results_of_kinds(session, run, UNMATCHED_RIGHT) for ref in item.right_refs
+    }
+    left_refs, right_refs = sorted(set(choice.left_refs)), sorted(set(choice.right_refs))
+    if not set(left_refs) <= free_left or not set(right_refs) <= free_right:
+        raise fail(422, "NOT_UNMATCHED", "Chỉ ghép tay được các dòng chưa được ghép.")
+    # Ghép tay lại đúng các dòng từng gỡ ghép thì bỏ lệnh cấm cũ của chúng.
+    for old in session.scalars(
+        select(ReconChoice).where(
+            ReconChoice.left_table_id == run.left_table_id,
+            ReconChoice.right_table_id == run.right_table_id,
+            ReconChoice.action == "UNMATCH",
+        )
+    ):
+        if set(old.left_refs) & set(left_refs) and set(old.right_refs) & set(right_refs):
+            session.delete(old)
+    session.add(
+        ReconChoice(
+            id=uuid.uuid4(),
+            left_table_id=run.left_table_id,
+            right_table_id=run.right_table_id,
+            left_refs=left_refs,
+            right_refs=right_refs,
+            action="MATCH",
+        )
+    )
+    audit.record(
+        session,
+        "MANUAL_MATCH",
+        "RECON_RUN",
+        run.id,
+        recon_service.run_label(session, run),
+        f"Ghép tay A{', A'.join(map(str, left_refs))} ↔ B{', B'.join(map(str, right_refs))}.",
+        None,
+        {"left_refs": left_refs, "right_refs": right_refs},
+    )
+    return _rerun(session, run, background)
+
+
+@router.post("/recon/results/{result_id}/unmatch", status_code=202)
+def unmatch(
+    result_id: uuid.UUID, session: SessionDep, background: BackgroundTasks
+) -> dict[str, Any]:
+    """Gỡ một cặp (hoặc nhóm) đã ghép: các dòng trở về "chưa ghép" và không vòng tự động nào
+    được ghép chúng với nhau nữa. Người dùng có thể ghép tay lại theo cách đúng."""
+    item = session.get(MatchResult, result_id)
+    if item is None:
+        raise fail(404, "RESULT_NOT_FOUND", "Không tìm thấy kết quả.")
+    run = _run(session, item.run_id)
+    if item.kind not in PAIRED or not item.left_refs or not item.right_refs:
+        raise fail(422, "NOT_PAIRED", "Chỉ gỡ được kết quả đã ghép giữa hai bên.")
+    left_refs, right_refs = sorted(item.left_refs), sorted(item.right_refs)
+    # Cặp do người dùng chọn trước đây (ca mơ hồ, ghép tay) nằm trong kết quả này: bỏ lựa chọn.
+    for old in session.scalars(
+        select(ReconChoice).where(
+            ReconChoice.left_table_id == run.left_table_id,
+            ReconChoice.right_table_id == run.right_table_id,
+            ReconChoice.action == "MATCH",
+        )
+    ):
+        if set(old.left_refs) <= set(left_refs) and set(old.right_refs) <= set(right_refs):
+            session.delete(old)
+    session.add(
+        ReconChoice(
+            id=uuid.uuid4(),
+            left_table_id=run.left_table_id,
+            right_table_id=run.right_table_id,
+            left_refs=left_refs,
+            right_refs=right_refs,
+            action="UNMATCH",
+        )
+    )
+    audit.record(
+        session,
+        "RESULT_UNMATCHED",
+        "RECON_RUN",
+        run.id,
+        recon_service.run_label(session, run),
+        f"Gỡ ghép {_result_label(item)}.",
+        {"kind": item.kind, "left_refs": left_refs, "right_refs": right_refs},
+        None,
+    )
+    return _rerun(session, run, background)
 
 
 # ---------------------------------------------------------------- nhật ký kiểm toán

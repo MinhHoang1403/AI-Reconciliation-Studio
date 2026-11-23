@@ -3,11 +3,13 @@ import {
   ArrowLeftRight,
   Check,
   History,
+  Link2,
   MessageSquareText,
   Route,
   RotateCcw,
   ShieldCheck,
   Sparkles,
+  Unlink,
 } from "lucide-react";
 
 import {
@@ -18,24 +20,28 @@ import {
   getRun,
   saveNote,
   traceRow,
+  unmatchResult,
   verifyRun,
   type ReconKind,
   type ReconResult,
   type ReconRun,
+  type Rerun,
   type ResultGroup,
   type ResultRow,
   type TraceStep,
 } from "../api";
 import { formatCount, formatMoney } from "../format";
 import { sealChecks } from "../verification";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { MatchPicker } from "./MatchPicker";
 import { VerificationSeal } from "./VerificationSeal";
 
 // Kết quả một lần đối soát. Mở ra là việc cần làm (ngoại lệ đang mở, gom theo loại, mỗi nhóm
 // một nút chính); khớp, chờ tiền về, ngoài phạm vi, đã xử lý nằm ở các tab thu gọn. Cột phải là
 // con dấu kiểm chứng: bốn vòng ứng với bốn nhóm phép kiểm độc lập của backend.
 
-/** Sau khi chọn ứng viên cho ca mơ hồ, hệ thống chạy lại: trả về lần chạy hoặc chuỗi mới. */
-export type Rerun = { chain_id: string | null; run_id: string | null };
+/** Sau một quyết định của người dùng hệ thống chạy lại: trả về lần chạy hoặc chuỗi mới. */
+export type { Rerun };
 
 type Props = {
   run: ReconRun;
@@ -354,6 +360,15 @@ export function ResultItem({ item, context }: { item: ReconResult; context: Item
   const [explainError, setExplainError] = useState<string | null>(null);
   const [steps, setSteps] = useState<TraceStep[] | null>(null);
   const [choosing, setChoosing] = useState(false);
+  const [matching, setMatching] = useState(false);
+  const [unmatching, setUnmatching] = useState<"ask" | "saving" | null>(null);
+  // Dòng chưa ghép (không phải dòng mang từ kỳ trước) thì ghép tay được; cặp đã ghép thì gỡ được.
+  const canMatch =
+    (item.kind === "ONLY_IN_B" || ((item.kind === "ONLY_IN_A" || item.kind === "PENDING_SETTLEMENT") && item.left.some((row) => !row.carried)));
+  const canUnmatch =
+    ["MATCHED", "MANY_TO_ONE", "ONE_TO_MANY", "AMOUNT_MISMATCH"].includes(item.kind) &&
+    item.left.some((row) => !row.carried) &&
+    item.right.length > 0;
   const reasons = item.reasons.filter(
     (reason) => !["AMOUNT_EQUAL", "DATE", "KEY", "CANDIDATES"].includes(reason.code),
   );
@@ -393,6 +408,16 @@ export function ResultItem({ item, context }: { item: ReconResult; context: Item
     }
   }
 
+  async function unmatch() {
+    setUnmatching("saving");
+    try {
+      onRerun?.(await unmatchResult(item.id));
+    } catch (reason) {
+      setExplainError(message(reason, "Không gỡ ghép được."));
+      setUnmatching(null);
+    }
+  }
+
   const describe = (side: ResultRow[], refs: number[]) =>
     refs
       .map((ref) => {
@@ -428,6 +453,20 @@ export function ResultItem({ item, context }: { item: ReconResult; context: Item
           {choosing && <p className="candidates__busy">Đang lưu lựa chọn và đối soát lại…</p>}
         </fieldset>
       )}
+
+      {matching && (
+        <MatchPicker runId={run.id} item={item} onDone={(target) => onRerun?.(target)} onCancel={() => setMatching(false)} />
+      )}
+      <ConfirmDialog
+        open={unmatching !== null}
+        title="Gỡ ghép kết quả này?"
+        message="Các dòng sẽ trở về “chưa ghép” và hệ thống sẽ không tự ghép chúng với nhau nữa. Bạn có thể ghép tay lại cho đúng."
+        confirmLabel="Gỡ ghép"
+        busy={unmatching === "saving"}
+        busyLabel="Đang gỡ và đối soát lại…"
+        onConfirm={() => void unmatch()}
+        onCancel={() => setUnmatching(null)}
+      />
 
       {item.note && !noting && (
         <p className="result__note">
@@ -499,6 +538,16 @@ export function ResultItem({ item, context }: { item: ReconResult; context: Item
         {chainId && firstLeft && !steps && (
           <button className="button button--text" type="button" onClick={() => void trace()}>
             <Route aria-hidden="true" size={15} /> Đường đi
+          </button>
+        )}
+        {canMatch && !matching && onRerun && (
+          <button className="button button--text" type="button" disabled={busy} onClick={() => setMatching(true)}>
+            <Link2 aria-hidden="true" size={15} /> Ghép tay
+          </button>
+        )}
+        {canUnmatch && onRerun && (
+          <button className="button button--text" type="button" disabled={busy} onClick={() => setUnmatching("ask")}>
+            <Unlink aria-hidden="true" size={15} /> Gỡ ghép
           </button>
         )}
         {item.exception_status && (

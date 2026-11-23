@@ -15,6 +15,8 @@ Giai đoạn 0 (khung), 1 (đọc dữ liệu), 2 (ánh xạ cột có Gemini, L
 
 Đáp án đối soát nằm trong `tests/fixtures/sales/dap-an.csv`: 4 quan hệ × 2 kỳ (kỳ 2 có hậu tố ` (kỳ 2)`); `tests/test_reconciliation.py` (cặp 1:1) và `tests/test_phase5.py` (chuỗi, nhóm, mơ hồ, chờ tiền về) đo trên đó. Tệp kỳ 2 có hậu tố `-ky-2`.
 
+Bộ **kiểm mù** đối soát (`tests/fixtures/blind/`, sinh bằng `tools/make_blind_fixtures.py`, đo ở `tests/test_blind.py`): thiết kế độc lập với bộ mẫu; **không chỉnh quy tắc engine theo bộ này**. Lần đo đầu: precision 100%, recall 96,65%.
+
 Lỗi cài sẵn cho bước làm sạch: `tests/fixtures/sales/loi-cai-san.csv` (dòng 222–230 của tệp đơn hàng cửa hàng). E2E gọi Gemini thật nên mỗi bài trong `data.spec.ts` được tối đa 120 giây.
 
 Đo độ chính xác ánh xạ: `uv run --locked python tools/evaluate_mapping.py` (chỉ quy tắc, miễn phí); thêm `--with-ai` để gọi Gemini thật (tốn phí, cần nạp khóa từ `.env` vào biến môi trường). Langfuse tự host ở <http://127.0.0.1:3000> (bộ container `langfuse` riêng); khóa trong `.env`.
