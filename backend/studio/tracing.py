@@ -49,12 +49,23 @@ def ai_generation(
     name: str, model: str, payload: Any, metadata: dict[str, Any]
 ) -> Iterator[Observation]:
     """Bao quanh một lần gọi AI; trả về đối tượng để ghi kết quả, token và lỗi."""
+    with observation(name, "generation", payload, metadata, model=model) as traced:
+        yield traced
+
+
+@contextmanager
+def observation(
+    name: str, as_type: str, payload: Any, metadata: dict[str, Any], **extra: Any
+) -> Iterator[Observation]:
+    """Một bước trong Langfuse (lượt chat của Assistant là "agent", mỗi công cụ là "tool",
+    mỗi lần gọi Gemini là "generation"). Bước mở bên trong bước khác tự nằm dưới bước đó,
+    nên một lượt chat là một trace gồm các lần gọi Gemini và các công cụ đã chạy."""
     if not langfuse_configured():
         yield _NoTrace()
         return
     try:
         manager = _client().start_as_current_observation(
-            name=name, as_type="generation", model=model, input=payload, metadata=metadata
+            name=name, as_type=as_type, input=payload, metadata=metadata, **extra
         )
         observation = manager.__enter__()
     except Exception:

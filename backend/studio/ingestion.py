@@ -12,7 +12,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from studio import database, mapping_service, reading, storage
-from studio.models import Dataset, DatasetTable, ReconChain, ReconRun
+from studio.models import ChatMessage, Dataset, DatasetTable, ReconChain, ReconRun
 from studio.profiling import profile_table
 
 logger = logging.getLogger(__name__)
@@ -141,4 +141,8 @@ def recover_interrupted() -> None:
         for model in (ReconRun, ReconChain):
             session.execute(update(model).where(model.status == "RUNNING")
                             .values(status="FAILED", error_message=RECON_INTERRUPTED_MESSAGE))
+        # Câu trả lời của Assistant đang soạn dở không chạy tiếp được.
+        session.execute(update(ChatMessage).where(ChatMessage.status == "RUNNING")
+                        .values(status="FAILED", text="Câu trả lời bị gián đoạn do hệ thống "
+                                "khởi động lại. Hãy hỏi lại."))
         session.commit()

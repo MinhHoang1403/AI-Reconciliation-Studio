@@ -497,3 +497,37 @@ export const unmatchResult = (resultId: string) => sendJson<Rerun>(`/api/recon/r
 
 export const getAudit = (offset: number, limit: number, signal?: AbortSignal) =>
   getJson<AuditPage>(`/api/audit?offset=${offset}&limit=${limit}`, signal);
+
+// ---------------------------------------------------------------- AI Assistant (Giai đoạn 6)
+
+export type ChatStep = { label: string; status: "RUNNING" | "DONE" | "FAILED" };
+export type ChatAction = {
+  id: string;
+  title: string;
+  detail: string;
+  status: "PENDING" | "DONE" | "CANCELLED" | "FAILED";
+  result: string | null;
+};
+export type ChatLink = { label: string; path: string };
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  status: "RUNNING" | "DONE" | "FAILED";
+  attachments: { dataset_id: string; name: string }[];
+  steps: ChatStep[];
+  actions: ChatAction[];
+  links: ChatLink[];
+  created_at: string | null;
+};
+export type ChatThreadSummary = { id: string; title: string; running: boolean; updated_at: string | null };
+export type ChatThread = ChatThreadSummary & { messages: ChatMessage[] };
+
+export const listThreads = (signal?: AbortSignal) => getJson<ChatThreadSummary[]>("/api/assistant/threads", signal);
+export const createThread = () => sendJson<ChatThread>("/api/assistant/threads", "POST", {});
+export const getThread = (id: string, signal?: AbortSignal) => getJson<ChatThread>(`/api/assistant/threads/${id}`, signal);
+export const deleteThread = (id: string) => sendJson<undefined>(`/api/assistant/threads/${id}`, "DELETE");
+export const sendChat = (id: string, text: string, datasetIds: string[]) =>
+  sendJson<ChatThread>(`/api/assistant/threads/${id}/messages`, "POST", { text, dataset_ids: datasetIds });
+export const decideAction = (messageId: string, actionId: string, decision: "CONFIRM" | "CANCEL") =>
+  sendJson<ChatThread>(`/api/assistant/messages/${messageId}/actions/${actionId}`, "POST", { decision });

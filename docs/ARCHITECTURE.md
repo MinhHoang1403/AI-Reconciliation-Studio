@@ -193,7 +193,7 @@ Gemini có **gọi công cụ** (function calling): model không tự chạy hà
 | `recon_runs`, `match_results` | Kỳ, cấu hình, phiên bản bộ sạch đã dùng, trạng thái, kết quả kiểm chứng, các dòng chờ mang từ kỳ trước; từng kết quả kèm loại, điểm, lý do, các dòng, số tiền, trạng thái ngoại lệ, ghi chú **(đã có)** |
 | `recon_chains`, `recon_choices` | Một lần đối soát cả chuỗi của một kỳ (các bảng, kỳ, trạng thái; các lần chạy trỏ về chuỗi); lựa chọn của người dùng (chọn ca mơ hồ, ghép tay: `MATCH`; gỡ ghép: `UNMATCH`), áp dụng ở mọi lần chạy sau **(đã có)** |
 | `audit_log` | Nhật ký kiểm toán: mọi thay đổi của người dùng (ai, lúc nào, đối tượng, trước/sau) **(đã có)** |
-| `chat_threads`, `chat_messages` | Hội thoại và các lần gọi công cụ |
+| `chat_threads`, `chat_messages` | Hội thoại; mỗi câu trả lời của Assistant lưu các bước (công cụ, tham số, trạng thái), thẻ xác nhận và nút dẫn trang **(đã có)** |
 
 Tác vụ nền chạy bằng FastAPI BackgroundTasks; trạng thái nằm ngay trên các bảng trên, chưa cần bảng `jobs` riêng ([R5](../RULES.md)).
 
@@ -219,10 +219,11 @@ Mỗi bước của luồng dữ liệu (mục 4) nằm ở đúng một nhóm f
 | Kỳ, chuỗi ba bên, lưu kết quả | `recon_service.py` (kỳ, cặp nối được, hai lượt của chuỗi, dòng chờ kỳ trước, lựa chọn của người dùng) | `recon_api.py` | `ChainView` | `test_phase5` |
 | 9. Kiểm chứng | `recon_verification.py` (độc lập với engine) | `recon_api.py` (`/verify`) | `VerificationSeal` | `test_reconciliation`, `test_phase5` |
 | AI giải thích | `gemini_client.py` (timeout, thử lại, bảng `ai_calls`), `tracing.py` (Langfuse), `recon_ai.py` | (trong các API trên) | nút "Giải thích" | `test_mapping`, `test_recon_review_fixes` |
+| AI Assistant | `assistant.py` (vòng gọi công cụ, tối đa 8 bước), `assistant_tools.py` (24 công cụ: 9 đọc, 4 xử lý, 11 thay đổi qua thẻ xác nhận), `gemini_client.generate_with_tools` | `assistant_api.py` | `pages/AssistantPage`, `ChatMessageView` | `test_assistant`; đo Gemini thật: `tools/evaluate_assistant.py` |
 | Nhật ký kiểm toán | `audit.py` | `recon_api.py` (`/audit`) | `pages/HistoryPage` | các bài có kiểm `audit_log` |
 | Khung | `main.py`, `config.py`, `database.py`, `models.py`, `migrate.py` + `migrations/` | `/api/health`, `/api/ready`, `/api/status` | `App.tsx`, `navigation.ts`, `OverviewPage` | `test_status_api`, `test_migrations` |
 
-Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foundation_review.py`. Ghép tay, gỡ ghép: `recon_api.py` (`/match`, `/unmatch`, `/match-candidates`), `MatchPicker`, `test_manual_match.py`. Kiểm mù đối soát: `tools/make_blind_fixtures.py` → `tests/fixtures/blind/`, đo ở `test_blind.py`. E2E: `frontend/e2e/` (`data`, `recon`, `chain`, `shell`).
+Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foundation_review.py`. Ghép tay, gỡ ghép: `recon_api.py` (`/match`, `/unmatch`, `/match-candidates`), `MatchPicker`, `test_manual_match.py`. Kiểm mù đối soát: `tools/make_blind_fixtures.py` → `tests/fixtures/blind/`, đo ở `test_blind.py`. E2E: `frontend/e2e/` (`data`, `recon`, `chain`, `assistant`, `shell`).
 
 ## 9. Ngoài phạm vi demo
 

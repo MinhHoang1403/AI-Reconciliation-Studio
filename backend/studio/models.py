@@ -361,3 +361,48 @@ class AuditLog(Base):
     summary: Mapped[str] = mapped_column(Text)
     before: Mapped[dict[str, Any] | None] = mapped_column(nullable=True)
     after: Mapped[dict[str, Any] | None] = mapped_column(nullable=True)
+
+
+class ChatThread(Base):
+    """Một cuộc trò chuyện với AI Assistant."""
+
+    __tablename__ = "chat_threads"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    messages: Mapped[list["ChatMessage"]] = relationship(
+        back_populates="thread",
+        cascade="all, delete-orphan",
+        order_by="ChatMessage.position",
+    )
+
+
+class ChatMessage(Base):
+    """Một tin nhắn: của người dùng, hoặc câu trả lời của Assistant kèm các bước đã làm.
+
+    Câu trả lời của Assistant có `steps` (từng công cụ đã chạy, để giao diện hiện "đang làm
+    gì"), `actions` (thẻ xác nhận cho thao tác thay đổi, chỉ chạy khi người dùng bấm) và
+    `links` (nút dẫn sang trang Dữ liệu / Đối soát).
+    """
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    thread_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("chat_threads.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    # "user" hoặc "assistant".
+    role: Mapped[str] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(Text, default="")
+    # RUNNING (Assistant đang làm), DONE, FAILED.
+    status: Mapped[str] = mapped_column(String(16), default="DONE")
+    # Tệp người dùng đính kèm: [{"dataset_id", "name"}].
+    attachments: Mapped[list[Any]] = mapped_column(default=list)
+    steps: Mapped[list[Any]] = mapped_column(default=list)
+    actions: Mapped[list[Any]] = mapped_column(default=list)
+    links: Mapped[list[Any]] = mapped_column(default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    thread: Mapped[ChatThread] = relationship(back_populates="messages")
