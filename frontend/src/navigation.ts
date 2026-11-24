@@ -6,8 +6,8 @@ import { BarChart3, Database, GitCompareArrows, History, LayoutDashboard, Messag
 export type Route = { path: string; label: string; icon: LucideIcon };
 
 export const ROUTES: readonly Route[] = [
-  { path: "/", label: "Tổng quan", icon: LayoutDashboard },
-  { path: "/assistant", label: "Assistant", icon: MessagesSquare },
+  { path: "/", label: "Dashboard", icon: LayoutDashboard },
+  { path: "/assistant", label: "AI Assistant", icon: MessagesSquare },
   { path: "/du-lieu", label: "Dữ liệu", icon: Database },
   { path: "/doi-soat", label: "Đối soát", icon: GitCompareArrows },
   { path: "/bao-cao", label: "Báo cáo", icon: BarChart3 },

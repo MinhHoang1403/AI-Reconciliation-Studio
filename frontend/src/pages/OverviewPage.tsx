@@ -88,7 +88,7 @@ export function OverviewPage() {
   return (
     <div className="overview">
       <header className="page__header">
-        <h1>Tổng quan</h1>
+        <h1>Dashboard</h1>
         <p>Đối soát bán hàng: đơn hàng, thanh toán và sao kê ngân hàng.</p>
       </header>
 

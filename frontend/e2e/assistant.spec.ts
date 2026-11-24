@@ -20,7 +20,7 @@ test("hỏi Assistant một câu chỉ đọc, xem các bước và câu trả l
     await expect(page.getByRole("heading", { name: "Bắt đầu từ dữ liệu của bạn" })).toBeVisible();
     await expect(page.getByRole("list", { name: "Câu hỏi gợi ý" }).getByRole("button")).toHaveCount(4);
 
-    const input = page.getByLabel("Câu hỏi cho Assistant");
+    const input = page.getByLabel("Câu hỏi cho AI Assistant");
     await input.fill("Tôi đã tải những tệp nào lên rồi?");
     await input.press("Enter");
 
@@ -33,6 +33,24 @@ test("hỏi Assistant một câu chỉ đọc, xem các bước và câu trả l
 
     const width = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(width).toBeLessThanOrEqual(0);
+    // Ô nhập nằm trong màn hình (không bị cắt ở đáy).
+    const composer = await page.locator(".chat-composer").boundingBox();
+    const viewport = page.viewportSize();
+    if (composer && viewport && viewport.width > 760) {
+      expect(composer.y + composer.height).toBeLessThanOrEqual(viewport.height);
+    }
+
+    // Máy tính: thu gọn cột cuộc trò chuyện cho khung chat rộng hơn, nhớ sau khi tải lại.
+    const toggle = page.getByRole("button", { name: "Thu gọn danh sách cuộc trò chuyện" });
+    if (await toggle.isVisible()) {
+      const before = (await page.locator(".chat").boundingBox())?.width ?? 0;
+      await toggle.click();
+      await expect(page.getByRole("button", { name: "Mở danh sách cuộc trò chuyện" })).toBeVisible();
+      await expect.poll(async () => (await page.locator(".chat").boundingBox())?.width ?? 0).toBeGreaterThan(before + 150);
+      await page.reload();
+      await page.getByRole("button", { name: "Mở danh sách cuộc trò chuyện" }).click();
+      await expect(page.getByRole("button", { name: "Thu gọn danh sách cuộc trò chuyện" })).toBeVisible();
+    }
 
     // Xóa cuộc trò chuyện vừa tạo qua hộp xác nhận.
     const created = (await threads(request)).find((item) => !before.has(item.id));

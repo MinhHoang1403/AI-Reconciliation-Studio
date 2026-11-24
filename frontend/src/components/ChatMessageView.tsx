@@ -60,7 +60,7 @@ export function RichText({ text }: { text: string }) {
 
 function Steps({ steps }: { steps: ChatStep[] }) {
   return (
-    <ol className="chat-steps" aria-label="Các bước Assistant đã làm">
+    <ol className="chat-steps" aria-label="Các bước AI Assistant đã làm">
       {steps.map((step, index) => (
         <li key={index} data-status={step.status}>
           {step.status === "RUNNING" ? (
@@ -140,7 +140,7 @@ export function ChatMessageView({ message, busy, onDecide }: Props) {
   const thinking = message.status === "RUNNING" && !message.steps.some((step) => step.status === "RUNNING");
   return (
     <li className="chat-message" data-role="assistant" data-status={message.status} aria-busy={message.status === "RUNNING"}>
-      <span className="chat-message__who">Assistant</span>
+      <span className="chat-message__who">AI Assistant</span>
       {message.steps.length > 0 && <Steps steps={message.steps} />}
       {thinking && (
         <p className="chat-message__thinking">

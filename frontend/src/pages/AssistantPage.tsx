@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
-import { FileSpreadsheet, MessageSquarePlus, Paperclip, SendHorizontal, Trash2, Upload, X } from "lucide-react";
+import {
+  FileSpreadsheet,
+  MessageSquarePlus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Paperclip,
+  SendHorizontal,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 
 import {
   createThread,
@@ -26,6 +36,7 @@ import { formatCount, formatDateTime } from "../format";
 
 const POLL_MS = 1000;
 const LAST_THREAD = "assistant.thread";
+const THREADS_COLLAPSED = "assistant.threads-collapsed";
 const ACCEPT = ".csv,.xlsx";
 const SUGGESTIONS = [
   "Còn ca nào cần tôi xử lý?",
@@ -47,6 +58,22 @@ function remember(id: string | null) {
   }
 }
 
+function stored(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function store(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Trình duyệt chặn lưu trữ: chỉ mất việc nhớ lựa chọn giữa các lần mở trang.
+  }
+}
+
 function recalled(): string | null {
   try {
     return window.localStorage.getItem(LAST_THREAD);
@@ -61,6 +88,8 @@ export function AssistantPage() {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<Attachment[]>([]);
   const [dragging, setDragging] = useState(false);
+  // Cột cuộc trò chuyện thu gọn được để khung chat rộng hơn; nhớ lựa chọn trong trình duyệt.
+  const [collapsed, setCollapsed] = useState(() => stored(THREADS_COLLAPSED) === "1");
   const [sending, setSending] = useState(false);
   const [deciding, setDeciding] = useState(false);
   const [removing, setRemoving] = useState<ChatThreadSummary | null>(null);
@@ -258,26 +287,57 @@ export function AssistantPage() {
   return (
     <div className="assistant">
       <header className="page__header">
-        <h1>Assistant</h1>
+        <h1>AI Assistant</h1>
         <p>Hỏi bằng tiếng Việt: kiểm tra dữ liệu, chạy đối soát, giải thích ca lệch. Mọi thay đổi đều chờ bạn bấm đồng ý.</p>
       </header>
 
-      <div className="assistant__layout">
+      <div className="assistant__layout" data-threads={collapsed ? "collapsed" : "expanded"}>
         <nav className="chat-threads" aria-label="Các cuộc trò chuyện">
-          <button className="button button--quiet chat-threads__new" type="button" onClick={startNew}>
-            <MessageSquarePlus aria-hidden="true" size={17} /> Cuộc trò chuyện mới
-          </button>
+          <div className="chat-threads__head">
+            <button
+              className="button button--quiet chat-threads__new"
+              type="button"
+              onClick={startNew}
+              aria-label="Cuộc trò chuyện mới"
+              title={collapsed ? "Cuộc trò chuyện mới" : undefined}
+            >
+              <MessageSquarePlus aria-hidden="true" size={17} />
+              <span className="chat-threads__label">Cuộc trò chuyện mới</span>
+            </button>
+            <button
+              className="icon-button chat-threads__toggle"
+              type="button"
+              aria-controls="chat-thread-list"
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? "Mở danh sách cuộc trò chuyện" : "Thu gọn danh sách cuộc trò chuyện"}
+              title={collapsed ? "Mở danh sách cuộc trò chuyện" : "Thu gọn danh sách cuộc trò chuyện"}
+              onClick={() => {
+                setCollapsed((value) => {
+                  store(THREADS_COLLAPSED, value ? "0" : "1");
+                  return !value;
+                });
+              }}
+            >
+              {collapsed ? (
+                <PanelLeftOpen aria-hidden="true" size={18} strokeWidth={1.8} />
+              ) : (
+                <PanelLeftClose aria-hidden="true" size={18} strokeWidth={1.8} />
+              )}
+            </button>
+          </div>
           <details className="chat-threads__fold">
             <summary>Các cuộc trò chuyện trước ({formatCount(threads?.length ?? 0)})</summary>
             {threadList}
           </details>
-          <div className="chat-threads__wide">{threadList}</div>
+          <div className="chat-threads__wide" id="chat-thread-list">
+            {threadList}
+          </div>
         </nav>
 
         <section
           className="chat"
           data-dragging={dragging || undefined}
-          aria-label="Trò chuyện với Assistant"
+          aria-label="Trò chuyện với AI Assistant"
           onDragOver={(event) => {
             if (!event.dataTransfer.types.includes("Files")) return;
             event.preventDefault();
@@ -363,14 +423,14 @@ export function AssistantPage() {
                   event.target.value = "";
                 }}
               />
-              <label className="visually-hidden" htmlFor="chat-input">Câu hỏi cho Assistant</label>
+              <label className="visually-hidden" htmlFor="chat-input">Câu hỏi cho AI Assistant</label>
               <textarea
                 id="chat-input"
                 ref={inputRef}
                 rows={1}
                 value={text}
                 maxLength={4000}
-                placeholder={thread?.running ? "Assistant đang trả lời…" : "Hỏi Assistant về dữ liệu, đối soát…"}
+                placeholder={thread?.running ? "AI Assistant đang trả lời…" : "Hỏi AI Assistant về dữ liệu, đối soát…"}
                 onChange={(event) => setText(event.target.value)}
                 onKeyDown={onKey}
               />

@@ -214,8 +214,9 @@ Thẻ `<dialog>` gốc, bo 12px, nền mờ ink 35%; nút Hủy (phụ) và nút
 
 - **Ghép tay:** nút chữ "Ghép tay" ở dòng chỉ có ở một bên mở khối nền `ground` viền mảnh ngay trong kết quả: danh sách dòng chưa ghép bên kia (ô tích, mã đậm, số tiền căn phải chữ số thẳng cột, dòng gốc · ngày · "đúng số tiền"/"lệch Xđ"), dòng tổng đã chọn cập nhật trực tiếp, một nút chính "Ghép N dòng". **Gỡ ghép:** nút chữ "Gỡ ghép" ở kết quả đã ghép, luôn qua hộp xác nhận (nút đỏ "Gỡ ghép") vì hệ thống sẽ không tự ghép lại các dòng đó.
 
-### Trang Assistant
-- **Bố cục:** danh sách cuộc trò chuyện 260px bên trái (mục đang mở là ô trắng chữ blue-ink, nút xóa hiện khi rê chuột), khung chat là panel trắng cao bằng màn hình. Dưới 1100px danh sách thu gọn thành `<details>` phía trên; trên điện thoại trang tự cuộn, ô nhập dính ngay trên thanh tab.
+### Trang AI Assistant
+- **Tên trang:** "AI Assistant" (trang đầu là "Dashboard"). Thanh tab điện thoại dưới 400px dùng chữ 11px cho 6 nhãn.
+- **Bố cục:** danh sách cuộc trò chuyện 260px bên trái (mục đang mở là ô trắng chữ blue-ink, nút xóa hiện khi rê chuột), khung chat là panel trắng; phần đầu trang và khung chat cùng nằm gọn trong màn hình (trang rộng tối đa 1600px). Nút biểu tượng thu gọn/mở rộng cạnh nút "Cuộc trò chuyện mới": thu gọn thì cột còn 48px với hai nút biểu tượng, khung chat rộng ra; lựa chọn được nhớ trong trình duyệt. Dưới 1100px danh sách thu gọn thành `<details>` phía trên; trên điện thoại trang tự cuộn, ô nhập dính ngay trên thanh tab.
 - **Màn hình đầu:** không để ô chat trống trơn: tiêu đề "Bắt đầu từ dữ liệu của bạn", một câu tình trạng dữ liệu hiện có, bốn câu hỏi gợi ý là nút phụ.
 - **Tin nhắn:** người dùng là khối blue-tint bên phải (bo 12px, góc dưới phải 4px), tệp đính kèm là chip nhỏ; Assistant chiếm cả hàng (tối đa 72ch), nhãn "Assistant" chữ blue-ink 13px. Các bước nằm trong khối nền `ground`: đang chạy chấm tím tờ 50.000đ nhịp sáng nhẹ, xong dấu tích xanh lá, lỗi dấu x cam đỏ. Câu trả lời hiển thị đoạn văn, gạch đầu dòng, đậm; *nghiêng* thành chữ blue-ink, `mã` thành chip nền ground.
 - **Thẻ xác nhận:** panel trắng viền xanh dương khi đang chờ, tiêu đề, mô tả, nút chính "Đồng ý" và nút phụ "Bỏ qua"; xử lý xong thì thay nút bằng một dòng kết quả (xanh lá: đã thực hiện; cam đỏ: lỗi).

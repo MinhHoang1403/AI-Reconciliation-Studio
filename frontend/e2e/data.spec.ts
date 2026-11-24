@@ -118,7 +118,7 @@ test("tệp sai định dạng bị từ chối với thông báo rõ ràng", as
   await expect(page.getByText(/Chỉ nhận tệp CSV hoặc Excel/)).toBeVisible();
 });
 
-test("Tổng quan đánh dấu bước Đọc tệp đã xong khi có dữ liệu", async ({ page, request }) => {
+test("Dashboard đánh dấu bước Đọc tệp đã xong khi có dữ liệu", async ({ page, request }) => {
   const name = "giao-dich-cong-thanh-toan.csv";
   const before = await existingNames(request);
   try {

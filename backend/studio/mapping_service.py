@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from studio import database
 from studio.cleaning_ai import refresh_clean_data
-from studio.gemini_client import AiUnavailable, generate_json
+from studio.gemini_client import BACKGROUND_ATTEMPTS, AiUnavailable, generate_json
 from studio.mapping_rules import normalize_name, score_columns, top_candidates
 from studio.masking import mask_sample
 from studio.models import ColumnMapping, DatasetTable, MappingMemory
@@ -357,11 +357,12 @@ def _suggest_mapping(table_id: uuid.UUID, use_memory: bool) -> None:
             payload=payload,
             response_schema=response_schema(),
             table_id=table_id_value,
+            attempts=BACKGROUND_ATTEMPTS,
         )
         ai_kind, ai_choices = parse_ai_reply(reply.data, names)
     except AiUnavailable as error:
         ai_state, ai_message = error.code, error.message
-        if error.code != "NOT_CONFIGURED":
+        if error.code not in ("NOT_CONFIGURED", "QUOTA_DAY", "QUOTA_MINUTE"):
             ai_message += " Đã dùng gợi ý theo quy tắc."
     except ValidationError:
         ai_state, ai_message = (

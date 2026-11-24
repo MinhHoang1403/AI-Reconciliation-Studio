@@ -2,9 +2,9 @@ import { expect, test } from "@playwright/test";
 
 // Kiểm khung ứng dụng trên dịch vụ thật: điều hướng, trạng thái hệ thống, trang chưa có chức năng.
 
-test("Tổng quan hiển thị bước tiếp theo, quy trình và trạng thái hệ thống", async ({ page }) => {
+test("Dashboard hiển thị bước tiếp theo, quy trình và trạng thái hệ thống", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: "Tổng quan" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
   // Nội dung phụ thuộc container đã có dữ liệu hay chưa, nên chấp nhận cả hai trạng thái.
   await expect(
     page.getByRole("heading", {
@@ -24,7 +24,7 @@ test("Điều hướng tới từng trang và giữ đúng trang khi tải lại
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
   for (const [label, path] of [
-    ["Assistant", "/assistant"],
+    ["AI Assistant", "/assistant"],
     ["Dữ liệu", "/du-lieu"],
     ["Đối soát", "/doi-soat"],
     ["Báo cáo", "/bao-cao"],

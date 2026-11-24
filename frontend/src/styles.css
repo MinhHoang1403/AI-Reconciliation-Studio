@@ -1051,3 +1051,45 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
   .chat-empty__suggestions { grid-template-columns: 1fr; }
   .chat-message__bubble { max-width: 90%; }
 }
+
+/* ---------- Trang AI Assistant: chiều cao theo khung nhìn, cột cuộc trò chuyện thu gọn được ---------- */
+
+/* Phần đầu trang và khung chat cùng nằm gọn trong màn hình; ô nhập không bị cắt ở đáy dù
+   phần mô tả xuống dòng (trước đây chiều cao tính cứng nên ô nhập tràn khỏi màn hình). */
+@media (min-width: 761px) {
+  /* Trang chat được rộng hơn giới hạn chung 1280px để khung chat to khi thu gọn danh sách. */
+  .page:has(> .assistant) { padding-bottom: 24px; max-width: 1600px; }
+  .assistant { display: flex; flex-direction: column; height: calc(100dvh - 64px); min-height: 600px; }
+  .assistant .page__header { flex: none; margin-bottom: 20px; }
+  .assistant__layout { flex: 1; min-height: 0; height: auto; }
+}
+
+.chat-threads__head { display: flex; align-items: center; gap: 4px; }
+.chat-threads__head .chat-threads__new { flex: 1; min-width: 0; padding: 0 12px; gap: 8px; white-space: nowrap; }
+.chat-threads__toggle { width: 40px; height: 40px; }
+
+@media (min-width: 1101px) {
+  .assistant__layout { transition: grid-template-columns 220ms var(--ease-out); }
+  /* Thu gọn: cột còn 48px với hai nút biểu tượng (mở danh sách, cuộc trò chuyện mới). */
+  .assistant__layout[data-threads="collapsed"] { grid-template-columns: 48px minmax(0, 1fr); }
+  .assistant__layout[data-threads="collapsed"] .chat-threads__head { flex-direction: column; gap: 8px; }
+  .assistant__layout[data-threads="collapsed"] .chat-threads__new { flex: none; width: 44px; padding: 0; justify-content: center; }
+  .assistant__layout[data-threads="collapsed"] .chat-threads__label { display: none; }
+  .assistant__layout[data-threads="collapsed"] .chat-threads__wide { display: none; }
+}
+
+@media (max-width: 1100px) {
+  /* Màn hình vừa và điện thoại đã có danh sách thu gọn dạng mục mở rộng; không cần nút. */
+  .chat-threads__toggle { display: none; }
+  .chat-threads__head { flex: 1 1 240px; }
+  .assistant__layout { grid-template-rows: auto minmax(0, 1fr); }
+}
+
+@media (max-width: 760px) {
+  .chat-threads__head { flex: 1 1 100%; }
+}
+
+@media (max-width: 400px) {
+  /* Điện thoại hẹp: 6 nhãn thanh tab (có "AI Assistant", "Dashboard") cần thêm khoảng thở. */
+  .rail__link, .shell[data-rail="collapsed"] .rail__link { font-size: 11px; letter-spacing: -0.01em; }
+}

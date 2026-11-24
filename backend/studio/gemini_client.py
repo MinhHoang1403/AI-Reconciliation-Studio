@@ -10,6 +10,7 @@ không thử lại. Không bao giờ gọi Gemini lúc khởi động hay kiểm
 
 import json
 import logging
+import re
 import threading
 import time
 import uuid
@@ -78,9 +79,14 @@ RETRY_MAX_DELAY = 8.0
 # khóa. Các lần gọi vượt quá sẽ xếp hàng chờ, không bị bỏ.
 MAX_CONCURRENT_CALLS = 2
 _slots = threading.BoundedSemaphore(MAX_CONCURRENT_CALLS)
+# Gợi ý chạy nền (ánh xạ cột, gợi ý sửa ô) đã có phương án thay thế khi AI lỗi (gợi ý theo quy
+# tắc, ô vẫn chờ người dùng sửa), nên chỉ thử 2 lần để khi Gemini quá tải người dùng không phải
+# chờ lâu. Assistant và giải thích (người dùng đang chờ, không có phương án thay) dùng
+# settings.gemini_attempts.
+BACKGROUND_ATTEMPTS = 2
 
 
-def _client() -> Any:
+def _client(attempts: int) -> Any:
     """Client Gemini có giới hạn thời gian chờ và thử lại giãn cách cho lỗi tạm thời."""
     from google import genai
     from google.genai import types
@@ -90,7 +96,7 @@ def _client() -> Any:
         http_options=types.HttpOptions(
             timeout=settings.gemini_timeout_seconds * 1000,
             retry_options=types.HttpRetryOptions(
-                attempts=settings.gemini_attempts,
+                attempts=attempts,
                 initial_delay=RETRY_INITIAL_DELAY,
                 max_delay=RETRY_MAX_DELAY,
                 exp_base=2.0,
@@ -114,12 +120,45 @@ def _error_code(error: Exception) -> str:
     return type(error).__name__
 
 
+def explain_error(error: Exception, code: str) -> tuple[str, str]:
+    """Mã và câu tiếng Việt dễ hiểu cho người dùng từ lỗi của Gemini.
+
+    Lỗi 429 có hai loại: hết hạn mức trong ngày (gói miễn phí giới hạn số yêu cầu mỗi ngày;
+    phải chờ sang ngày hoặc dùng khóa trả phí) và vượt giới hạn mỗi phút (chờ ít phút)."""
+    from google.genai import errors
+
+    if isinstance(error, errors.ClientError) and error.code == 429:
+        text = str(getattr(error, "message", "") or error)
+        if re.search(r"per ?day|PerDay", text, re.IGNORECASE):
+            wait = re.search(r"retry in (?:(\d+)h)?(?:(\d+)m)?", text)
+            hours = int(wait.group(1) or 0) if wait else 0
+            minutes = int(wait.group(2) or 0) if wait else 0
+            later = (
+                f" Có thể dùng lại sau khoảng {hours} giờ {minutes} phút."
+                if hours or minutes
+                else " Có thể dùng lại vào ngày mai."
+            )
+            return (
+                "QUOTA_DAY",
+                "Khóa Gemini đã dùng hết số yêu cầu được phép trong ngày (giới hạn của gói "
+                f"miễn phí).{later} Muốn dùng tiếp ngay thì cần khóa có trả phí.",
+            )
+        return (
+            "QUOTA_MINUTE",
+            "Gemini đang giới hạn số yêu cầu mỗi phút của khóa này; hãy thử lại sau ít phút.",
+        )
+    if code.startswith("SERVER_"):
+        return "FAILED", f"Máy chủ Gemini đang quá tải ({code}); hãy thử lại sau ít phút."
+    return "FAILED", f"Gemini không trả lời được ({code})."
+
+
 def _generate(
     purpose: str,
     trace_input: Any,
     table_id: uuid.UUID | None,
     request: Any,
     read: Any,
+    attempts: int | None = None,
 ) -> Any:
     """Một lần gọi Gemini dùng chung: thử lại (trong SDK), ghi token, trace và lỗi.
 
@@ -128,13 +167,14 @@ def _generate(
     báo đúng lỗi cho người dùng (R11: không giấu lỗi)."""
     if not gemini_configured():
         raise AiUnavailable("NOT_CONFIGURED", "Chưa có khóa GEMINI_API_KEY trong .env.")
-    started = time.perf_counter()
-    with ai_generation(
+    # Xếp hàng trước, rồi mới bắt đầu đo: thời gian ghi vào ai_calls và Langfuse là thời gian
+    # gọi Gemini thật (kể cả các lần thử lại), không gồm lúc chờ lượt.
+    with _slots, ai_generation(
         purpose, settings.gemini_model, trace_input, {"table_id": str(table_id)}
     ) as trace:
+        started = time.perf_counter()
         try:
-            with _slots:  # xếp hàng nếu đã có đủ lần gọi đang chạy
-                response = request(_client())
+            response = request(_client(attempts or settings.gemini_attempts))
             usage = response.usage_metadata
             input_tokens = (usage.prompt_token_count or 0) if usage else 0
             output_tokens = (usage.candidates_token_count or 0) if usage else 0
@@ -144,7 +184,7 @@ def _generate(
             logger.warning("Gọi Gemini (%s) thất bại: %s", purpose, code)
             trace.update(level="ERROR", status_message=code)
             _record_call(purpose, table_id, "FAILED", started, error_code=code)
-            raise AiUnavailable("FAILED", f"Gemini không trả lời được ({code}).") from error
+            raise AiUnavailable(*explain_error(error, code)) from error
         trace.update(output=traced, usage_details={"input": input_tokens, "output": output_tokens})
         _record_call(purpose, table_id, "OK", started, input_tokens, output_tokens)
         return result
@@ -157,6 +197,7 @@ def generate_json(
     payload: dict[str, Any],
     response_schema: dict[str, Any],
     table_id: uuid.UUID | None = None,
+    attempts: int | None = None,
 ) -> AiReply:
     """Gửi `payload` (đã che) cho Gemini và nhận về JSON đúng `response_schema`."""
     from google.genai import types
@@ -188,6 +229,7 @@ def generate_json(
             model=settings.gemini_model, contents=contents, config=config
         ),
         read,
+        attempts,
     )
     return reply
 

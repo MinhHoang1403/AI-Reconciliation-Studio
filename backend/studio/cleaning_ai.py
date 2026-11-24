@@ -14,7 +14,7 @@ from sqlalchemy import delete, select
 
 from studio import database
 from studio.cleaning import build_clean_version, latest_version, parse_user_value
-from studio.gemini_client import AiUnavailable, generate_json
+from studio.gemini_client import BACKGROUND_ATTEMPTS, AiUnavailable, generate_json
 from studio.masking import mask_sample
 from studio.models import AiCellSuggestion, DatasetTable
 from studio.sales_fields import FIELDS_BY_KEY
@@ -134,6 +134,7 @@ def _ask_ai_and_save(
             payload={"cells": cells},
             response_schema=response_schema(),
             table_id=table_id,
+            attempts=BACKGROUND_ATTEMPTS,
         )
         parsed = _Reply.model_validate(reply.data)
     except (AiUnavailable, ValidationError) as error:

@@ -127,7 +127,7 @@ def test_rate_limit_is_retried_then_reported(fake: Any) -> None:
     with pytest.raises(AiUnavailable) as caught:
         ask()
     assert len(server.times) == settings.gemini_attempts == 4
-    assert "CLIENT_429" in caught.value.message
+    assert caught.value.code == "QUOTA_MINUTE" and "mỗi phút" in caught.value.message
     assert last_call().status == "FAILED" and last_call().error_code == "CLIENT_429"
 
 
@@ -159,3 +159,33 @@ def test_parallel_calls_queue_instead_of_flooding(fake: Any) -> None:
         thread.join()
     assert len(server.times) == 4
     assert server.peak == gemini_client.MAX_CONCURRENT_CALLS == 2
+
+
+def test_background_suggestions_give_up_sooner(fake: Any) -> None:
+    # Gợi ý ánh xạ/sửa ô có phương án thay thế theo quy tắc: chỉ thử 2 lần khi Gemini quá tải.
+    server = fake([503, 503, 503, 503])
+    with pytest.raises(AiUnavailable):
+        gemini_client.generate_json(
+            purpose="kiem-thu-thu-lai",
+            system_instruction="x",
+            payload={"a": 1},
+            response_schema={"type": "object"},
+            attempts=gemini_client.BACKGROUND_ATTEMPTS,
+        )
+    assert len(server.times) == gemini_client.BACKGROUND_ATTEMPTS == 2
+
+
+def test_daily_quota_is_explained_in_plain_vietnamese() -> None:
+    from google.genai import errors
+
+    daily = errors.ClientError(
+        429,
+        {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": (
+            "Quota exceeded: Generate content requests per day limit exceeded on Free Tier. "
+            "Please retry in 17h15m21.1s."
+        )}},
+    )
+    code, text = gemini_client.explain_error(daily, "CLIENT_429")
+    assert code == "QUOTA_DAY" and "17 giờ 15 phút" in text and "trả phí" in text
+    busy = errors.ServerError(503, {"error": {"code": 503, "message": "overloaded"}})
+    assert gemini_client.explain_error(busy, "SERVER_503")[1].startswith("Máy chủ Gemini")

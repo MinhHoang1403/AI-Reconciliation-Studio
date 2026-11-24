@@ -44,7 +44,7 @@ def _ask(purpose: str, payload: dict[str, Any]) -> dict[str, Any]:
     except AiUnavailable as error:
         message = (
             error.message
-            if error.code == "NOT_CONFIGURED"
+            if error.code in ("NOT_CONFIGURED", "QUOTA_DAY", "QUOTA_MINUTE")
             else "Gemini chưa trả lời được, hãy thử lại sau. Lý do của hệ thống vẫn đúng."
         )
         raise fail(503, f"AI_{error.code}", message) from error

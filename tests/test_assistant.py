@@ -271,3 +271,40 @@ def test_sample_prompts_use_real_tools_and_parameters() -> None:
             assert name in TOOLS_BY_NAME, item["id"]
     categories = {item["category"] for item in prompts}
     assert {"mơ hồ", "lệnh cài trong dữ liệu", "thay đổi", "nhiều bước"} <= categories
+
+
+def test_cards_name_codes_and_amounts_not_only_row_numbers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Hỏi gỡ HD000123 mà thẻ chỉ ghi "A dòng 26" thì không ai nhận ra Assistant chọn nhầm.
+    pos = upload(FIXTURES / "don-hang-cua-hang.csv")["tables"][0]["id"]
+    gateway = upload(FIXTURES / "giao-dich-cong-thanh-toan.csv")["tables"][0]["id"]
+    run = client.post(
+        "/api/recon/runs", json={"left_table_id": pos, "right_table_id": gateway}
+    ).json()
+    page = client.get(
+        f"/api/recon/runs/{run['id']}/results", params={"group": "matched", "limit": 1}
+    ).json()
+    target = page["items"][0]
+    code = target["left"][0]["key"]
+    use(monkeypatch, [call("unmatch_result", result_id=target["id"]), ModelTurn("Chờ bạn.", [])])
+    card = ask(f"Gỡ cặp {code}")["messages"][-1]["actions"][0]
+    assert code in card["detail"] and "đ (dòng" in card["detail"]
+
+
+def test_exceptions_can_be_found_by_order_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    # "Gỡ cặp HD000123": cặp đã khớp không nằm trong danh sách ngoại lệ, phải tìm theo mã.
+    pos = upload(FIXTURES / "don-hang-cua-hang.csv")["tables"][0]["id"]
+    gateway = upload(FIXTURES / "giao-dich-cong-thanh-toan.csv")["tables"][0]["id"]
+    run = client.post(
+        "/api/recon/runs", json={"left_table_id": pos, "right_table_id": gateway}
+    ).json()
+    fake = use(
+        monkeypatch,
+        [call("list_exceptions", run_id=run["id"], code="hd000123"), ModelTurn("Xong.", [])],
+    )
+    ask("Tìm cặp HD000123")
+    items = fake.tool_results()[0]["response"]["items"]
+    assert items and all(
+        any(row.get("key") == "HD000123" for row in item["A"] + item["B"]) for item in items
+    )

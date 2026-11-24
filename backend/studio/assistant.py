@@ -46,9 +46,12 @@ Quy tắc bắt buộc:
    Chỉ đề xuất thay đổi khi người dùng yêu cầu rõ; sau đó nói rõ là đang chờ họ xác nhận.
 4. Cần mã bảng, mã lần chạy (run_id), mã kết quả (result_id) thì gọi công cụ đọc để tìm,
    đừng hỏi người dùng mã kỹ thuật. Bảng được gọi theo nhãn, ví dụ "don-hang-cua-hang".
-5. Câu mơ hồ hoặc thiếu thông tin: hỏi lại một câu ngắn kèm 2–3 gợi ý cụ thể.
-6. Không có công cụ xóa dữ liệu: nếu được yêu cầu xóa, nói người dùng tự xóa ở trang Dữ liệu.
-7. Trả lời tiếng Việt có dấu, ngắn gọn, dễ hiểu; liệt kê bằng gạch đầu dòng; không đưa mã
+5. Người dùng yêu cầu đối soát (một kỳ, cả chuỗi, hai bảng) thì chạy công cụ đối soát, kể cả
+   khi kỳ đó đã được đối soát trước đây: chạy lại an toàn và lấy dữ liệu mới nhất. Chỉ hỏi
+   "xem kết quả" thì dùng công cụ đọc.
+6. Câu mơ hồ hoặc thiếu thông tin: hỏi lại một câu ngắn kèm 2–3 gợi ý cụ thể.
+7. Không có công cụ xóa dữ liệu: nếu được yêu cầu xóa, nói người dùng tự xóa ở trang Dữ liệu.
+8. Trả lời tiếng Việt có dấu, ngắn gọn, dễ hiểu; liệt kê bằng gạch đầu dòng; không đưa mã
    kỹ thuật (chuỗi uuid) vào câu trả lời."""
 
 STATUS_TEXT = {

@@ -15,6 +15,7 @@ ngày, số tiền, danh mục, số đếm và lý do của engine; chữ tự 
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Literal
 
 import polars as pl
@@ -26,10 +27,20 @@ from sqlalchemy.orm import Session
 from studio import audit, cleaning_api, mapping_api, mapping_service, recon_api, recon_service
 from studio.cleaning import latest_version, parse_user_value, source_cell
 from studio.masking import mask_sample
-from studio.models import AuditLog, Dataset, DatasetTable, MatchResult, ReconChain, ReconRun
+from studio.models import (
+    AuditLog,
+    CleanVersion,
+    Dataset,
+    DatasetTable,
+    MatchResult,
+    ReconChain,
+    ReconRun,
+)
 from studio.profiling import TableProfile
 from studio.reading import ROW_REF
+from studio.reconciliation import ReconConfig
 from studio.sales_fields import FIELDS_BY_KEY, TABLE_KIND_LABELS
+from studio.value_parsers import money_vi
 
 type ToolKind = Literal["READ", "PROCESS", "CHANGE"]
 MAX_ITEMS = 20
@@ -391,16 +402,79 @@ class ExceptionsArgs(ScopeArgs):
             "MANY_TO_ONE",
         ]
         | None
-    ) = Field(default=None, description="Lọc theo loại kết quả.")
+    ) = Field(
+        default=None,
+        description=(
+            "Lọc theo loại kết quả. Nghĩa từng loại: "
+            "AMOUNT_MISMATCH = ghép được nhưng lệch tiền; "
+            "ONLY_IN_A = chỉ có ở bên A (đơn hàng) mà không thấy ở bên B, đã quá hạn chờ tiền "
+            "về, tức đơn chưa thấy tiền về; "
+            "ONLY_IN_B = chỉ có ở bên B (tiền về) mà không rõ của đơn nào; "
+            "PENDING_SETTLEMENT = chưa thấy tiền về nhưng CHƯA quá hạn chờ (còn trong T+3 ngày "
+            "làm việc), không phải lỗi; "
+            "AMBIGUOUS = nhiều ứng viên ngang nhau, hệ thống không tự chọn, cần người dùng chọn; "
+            "DUPLICATE = mã trùng, dòng thừa có thể là thu hai lần; "
+            "NEEDS_CLEANING = dòng còn lỗi ở bước làm sạch; "
+            "MATCHED = khớp 1:1; MANY_TO_ONE = nhiều đơn ghép với một khoản tiền."
+        ),
+    )
+    code: str | None = Field(
+        default=None,
+        max_length=60,
+        description="Tìm kết quả (mọi loại, kể cả đã khớp) có dòng mang mã này, ví dụ mã đơn "
+        "HD000123 hoặc mã giao dịch; dùng khi người dùng nhắc tới một mã cụ thể.",
+    )
     limit: int = Field(default=10, ge=1, le=MAX_ITEMS)
 
 
+def _refs_with_code(
+    session: Session, version_id: Any, column: str | None, code: str, text: bool
+) -> set[int]:
+    """Số dòng của bộ sạch có mã này: đúng bằng ở cột mã, hoặc nằm trong nội dung chữ."""
+    version = session.get(CleanVersion, version_id) if version_id else None
+    if version is None or not column:
+        return set()
+    frame = pl.scan_parquet(version.parquet_path)
+    if column not in frame.collect_schema().names():
+        return set()
+    values = pl.col(column).cast(pl.String).str.to_uppercase()
+    matched = values.str.contains(code, literal=True) if text else values == code
+    return set(frame.filter(matched).select(ROW_REF).collect()[ROW_REF].to_list())
+
+
+def _results_with_code(session: Session, run: ReconRun, code: str) -> list[MatchResult]:
+    """Mọi kết quả của một cặp có dòng mang mã `code` (bên A theo cột mã; bên B theo cột mã,
+    hoặc theo nội dung chuyển khoản khi mã được tách từ nội dung)."""
+    config = ReconConfig.from_json(run.config)
+    wanted = code.strip().upper()
+    left = _refs_with_code(session, run.left_version_id, config.key_left, wanted, text=False)
+    right = _refs_with_code(session, run.right_version_id, config.key_right, wanted, text=False)
+    if config.extract:
+        right |= _refs_with_code(
+            session, run.right_version_id, config.extract.get("source"), wanted, text=True
+        )
+    if not left and not right:
+        return []
+    return [
+        item
+        for item in session.scalars(
+            select(MatchResult).where(MatchResult.run_id == run.id).order_by(MatchResult.position)
+        )
+        if set(item.left_refs) & left or set(item.right_refs) & right
+    ]
+
+
 def list_exceptions(session: Session, args: ExceptionsArgs) -> dict[str, Any]:
-    """Ngoại lệ đang mở (hoặc kết quả theo loại) của các cặp trong phạm vi."""
+    """Ngoại lệ đang mở (hoặc kết quả theo loại, hoặc kết quả chứa một mã) của các cặp."""
     runs = _runs_in_scope(session, args.run_id, args.chain_id)
     found: list[dict[str, Any]] = []
     total = 0
     for run in runs:
+        if args.code:
+            hits = _results_with_code(session, run, args.code)
+            total += len(hits)
+            _append_views(session, run, hits[: max(args.limit - len(found), 0)], found)
+            continue
         condition = MatchResult.run_id == run.id
         if args.kind:
             condition = condition & (MatchResult.kind == args.kind)
@@ -415,24 +489,32 @@ def list_exceptions(session: Session, args: ExceptionsArgs) -> dict[str, Any]:
                 .limit(max(args.limit - len(found), 0))
             )
         )
-        for view in recon_api._result_views(session, run, items):
-            found.append(
-                {
-                    "result_id": view["id"],
-                    "run_id": str(run.id),
-                    "pair": recon_service.run_label(session, run),
-                    "kind": view["kind"],
-                    "kind_label": view["kind_label"],
-                    "status": view["exception_status"],
-                    "reasons": [reason["text"] for reason in view["reasons"]],
-                    "candidates": [
-                        pair for reason in view["reasons"] for pair in reason.get("pairs", [])
-                    ],
-                    "A": _safe_rows(view["left"]),
-                    "B": _safe_rows(view["right"]),
-                }
-            )
+        _append_views(session, run, items, found)
     return {"total": total, "shown": len(found), "items": found, "_link": RECON_LINK}
+
+
+def _append_views(
+    session: Session, run: ReconRun, items: list[MatchResult], found: list[dict[str, Any]]
+) -> None:
+    if not items:
+        return
+    for view in recon_api._result_views(session, run, items):
+        found.append(
+            {
+                "result_id": view["id"],
+                "run_id": str(run.id),
+                "pair": recon_service.run_label(session, run),
+                "kind": view["kind"],
+                "kind_label": view["kind_label"],
+                "status": view["exception_status"],
+                "reasons": [reason["text"] for reason in view["reasons"]],
+                "candidates": [
+                    pair for reason in view["reasons"] for pair in reason.get("pairs", [])
+                ],
+                "A": _safe_rows(view["left"]),
+                "B": _safe_rows(view["right"]),
+            }
+        )
 
 
 class TraceArgs(TableArgs):
@@ -760,11 +842,52 @@ def _candidate_pair(
     return item, sorted(wanted[0]["left"]), sorted(wanted[0]["right"])
 
 
+def _rows_text(rows: list[dict[str, Any]]) -> str:
+    """Các dòng của một bên, đọc được bằng mắt: mã · số tiền (dòng gốc).
+
+    Thẻ xác nhận phải cho người dùng nhận ra ngay nếu Assistant chọn nhầm dòng (ví dụ hỏi
+    HD000123 mà thẻ là HD000125), nên ghi mã và số tiền, không chỉ số dòng."""
+    parts = []
+    for row in rows:
+        amount = row.get("amount")
+        money = money_vi(Decimal(str(amount)), "đ") if amount is not None else "không rõ số tiền"
+        parts.append(f"{row.get('key') or 'không mã'} · {money} (dòng {row['row_ref']})")
+    return "; ".join(parts) or "không có dòng"
+
+
+def _result_rows(
+    session: Session, item: MatchResult
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    run = session.get(ReconRun, item.run_id)
+    if run is None:
+        raise ToolError("Không tìm thấy lần đối soát của kết quả này.")
+    view = recon_api._result_views(session, run, [item])[0]
+    return view["left"], view["right"]
+
+
+def _free_rows(
+    session: Session, run: ReconRun, left_refs: list[int], right_refs: list[int]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Giá trị của các dòng chưa ghép được chọn (đọc qua kết quả "chỉ có ở một bên")."""
+    items = [
+        item
+        for item in session.scalars(select(MatchResult).where(MatchResult.run_id == run.id))
+        if set(item.left_refs) & set(left_refs) or set(item.right_refs) & set(right_refs)
+    ]
+    views = recon_api._result_views(session, run, items)
+    left = [row for view in views for row in view["left"] if row["row_ref"] in left_refs]
+    right = [row for view in views for row in view["right"] if row["row_ref"] in right_refs]
+    return left, right
+
+
 def _candidate_propose(session: Session, args: CandidateArgs) -> Proposal:
-    _, left, right = _candidate_pair(session, args)
+    item, left, right = _candidate_pair(session, args)
+    rows_a, rows_b = _result_rows(session, item)
+    chosen_a = [row for row in rows_a if row["row_ref"] in left]
+    chosen_b = [row for row in rows_b if row["row_ref"] in right]
     return Proposal(
         "Chọn cặp cho ca mơ hồ",
-        f"Ghép A dòng {', '.join(map(str, left))} với B dòng {', '.join(map(str, right))}; "
+        f"Ghép A: {_rows_text(chosen_a)} với B: {_rows_text(chosen_b)}; "
         "hệ thống sẽ đối soát lại.",
         RECON_LINK,
     )
@@ -797,10 +920,11 @@ def _match_propose(session: Session, args: MatchArgs) -> Proposal:
             free["B"].update(item.right_refs)
     if not set(args.left_refs) <= free["A"] or not set(args.right_refs) <= free["B"]:
         raise ToolError("Chỉ ghép tay được các dòng chưa được ghép (chỉ có ở A/B, chờ tiền về).")
+    rows_a, rows_b = _free_rows(session, run, args.left_refs, args.right_refs)
     return Proposal(
         "Ghép tay",
-        f"{recon_service.run_label(session, run)}: A dòng {', '.join(map(str, args.left_refs))}"
-        f" ↔ B dòng {', '.join(map(str, args.right_refs))}; hệ thống sẽ đối soát lại.",
+        f"{recon_service.run_label(session, run)}. A: {_rows_text(rows_a)} ↔ B: "
+        f"{_rows_text(rows_b)}; hệ thống sẽ đối soát lại.",
         RECON_LINK,
     )
 
@@ -824,10 +948,11 @@ def _unmatch_propose(session: Session, args: ResultArgs) -> Proposal:
     item = _result(session, args.result_id)
     if item.kind not in PAIRED_KINDS or not item.left_refs or not item.right_refs:
         raise ToolError("Chỉ gỡ được kết quả đã ghép giữa hai bên.")
+    rows_a, rows_b = _result_rows(session, item)
     return Proposal(
         "Gỡ ghép",
-        f"Gỡ A dòng {', '.join(map(str, item.left_refs))} khỏi B dòng "
-        f"{', '.join(map(str, item.right_refs))}; hệ thống sẽ không tự ghép lại chúng.",
+        f"Gỡ A: {_rows_text([row for row in rows_a if not row.get('carried')])} khỏi B: "
+        f"{_rows_text(rows_b)}; hệ thống sẽ không tự ghép lại chúng.",
         RECON_LINK,
     )
 
@@ -892,9 +1017,11 @@ class NoteArgs(ResultArgs):
 
 def _note_propose(session: Session, args: NoteArgs) -> Proposal:
     item = _result(session, args.result_id)
+    rows_a, rows_b = _result_rows(session, item)
     return Proposal(
         "Ghi chú cho ngoại lệ",
-        f"{recon_api.KIND_LABELS.get(item.kind, item.kind)}: “{args.note}”.",
+        f"{recon_api.KIND_LABELS.get(item.kind, item.kind)} (A: {_rows_text(rows_a)}; "
+        f"B: {_rows_text(rows_b)}): “{args.note}”.",
         RECON_LINK,
     )
 
@@ -1001,7 +1128,9 @@ TOOLS: list[Tool] = [
         "reconcile_period",
         "PROCESS",
         "Đối soát cả chuỗi",
-        "Đối soát cả chuỗi của một kỳ (đơn hàng ↔ cổng ↔ sao kê) và chờ xong.",
+        "Đối soát cả chuỗi của một kỳ (đơn hàng ↔ cổng ↔ sao kê) và chờ xong. Chạy lại "
+        "kỳ đã đối soát là an toàn (kết quả tái lập, ghi chú và lựa chọn của người dùng được "
+        "giữ).",
         PeriodArgs,
         run=reconcile_period,
     ),
@@ -1009,7 +1138,7 @@ TOOLS: list[Tool] = [
         "reconcile_pair",
         "PROCESS",
         "Đối soát hai bảng",
-        "Đối soát riêng hai bảng do người dùng chỉ định và chờ xong.",
+        "Đối soát riêng hai bảng do người dùng chỉ định và chờ xong (chạy lại là an toàn).",
         PairArgs,
         run=reconcile_pair,
     ),
