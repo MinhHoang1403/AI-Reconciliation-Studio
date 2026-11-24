@@ -189,7 +189,7 @@ Gemini có **gọi công cụ** (function calling): model không tự chạy hà
 | `column_mappings`, `mapping_memory` | Ánh xạ từng cột kèm điểm, nguồn, trạng thái; ánh xạ đã xác nhận nhớ theo cấu trúc tệp **(đã có)** |
 | `clean_versions` | Các phiên bản bộ dữ liệu sạch (Parquet), nhật ký sửa tự động và danh sách vấn đề **(đã có)** |
 | `cell_corrections`, `row_decisions`, `ai_cell_suggestions` | Ô người dùng sửa, quyết định giữ/loại dòng, gợi ý sửa của AI **(đã có)** |
-| `ai_calls` | Nhật ký mỗi lần gọi AI: mục đích, kết quả, token, thời gian (không lưu nội dung) **(đã có)** |
+| `ai_calls` | Nhật ký mỗi lần gọi AI: mục đích, kết quả, mã lỗi (ví dụ `CLIENT_429`, `SERVER_503`), token, thời gian (không lưu nội dung) **(đã có)** |
 | `recon_runs`, `match_results` | Kỳ, cấu hình, phiên bản bộ sạch đã dùng, trạng thái, kết quả kiểm chứng, các dòng chờ mang từ kỳ trước; từng kết quả kèm loại, điểm, lý do, các dòng, số tiền, trạng thái ngoại lệ, ghi chú **(đã có)** |
 | `recon_chains`, `recon_choices` | Một lần đối soát cả chuỗi của một kỳ (các bảng, kỳ, trạng thái; các lần chạy trỏ về chuỗi); lựa chọn của người dùng (chọn ca mơ hồ, ghép tay: `MATCH`; gỡ ghép: `UNMATCH`), áp dụng ở mọi lần chạy sau **(đã có)** |
 | `audit_log` | Nhật ký kiểm toán: mọi thay đổi của người dùng (ai, lúc nào, đối tượng, trước/sau) **(đã có)** |

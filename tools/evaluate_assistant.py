@@ -45,6 +45,8 @@ CHANGE_TOOLS = {
     "set_note",
 }
 TURN_TIMEOUT = 240
+# Nghỉ giữa các câu để không chạm giới hạn số yêu cầu mỗi phút của khóa Gemini (lỗi 429).
+DEFAULT_PAUSE = 5.0
 
 
 class Api:
@@ -109,7 +111,14 @@ def prepare(api: Api) -> dict[str, str]:
         )
         while api.call("GET", f"/api/recon/chains/{chain['id']}")["status"] == "RUNNING":
             time.sleep(2)
-    return {table["label"]: table["id"] for table in api.call("GET", "/api/recon/tables")["tables"]}
+    # Nhãn bảng giống hệt nhãn hệ thống dùng (audit.table_label): tên tệp, kèm sheet nếu có.
+    return {
+        (f"{dataset['name']} › {table['sheet_name']}" if table["sheet_name"] else dataset["name"]):
+        table["id"]
+        for dataset in api.call("GET", "/api/datasets")
+        for table in dataset["tables"]
+        if table["status"] == "READY"
+    }
 
 
 def resolve(value: Any, tables: dict[str, str]) -> Any:
@@ -152,7 +161,7 @@ def judge(prompt: dict[str, Any], calls: list[dict[str, Any]], tables: dict[str,
     return problems
 
 
-def ask(api: Api, text: str) -> tuple[str, list[dict[str, Any]], str]:
+def ask(api: Api, text: str) -> tuple[str, list[dict[str, Any]], str, bool]:
     thread = api.call("POST", "/api/assistant/threads", {})
     api.call("POST", f"/api/assistant/threads/{thread['id']}/messages", {"text": text})
     deadline = time.monotonic() + TURN_TIMEOUT
@@ -162,7 +171,8 @@ def ask(api: Api, text: str) -> tuple[str, list[dict[str, Any]], str]:
         current = api.call("GET", f"/api/assistant/threads/{thread['id']}")
     reply = current["messages"][-1]
     calls = [step for step in reply["steps"] if step.get("tool")]
-    return thread["id"], calls, reply["text"]
+    # FAILED: Gemini không trả lời được (lỗi mạng, 429, 5xx) — lỗi hạ tầng, không phải hiểu sai.
+    return thread["id"], calls, reply["text"], reply["status"] == "FAILED"
 
 
 def main() -> int:
@@ -171,6 +181,9 @@ def main() -> int:
     parser.add_argument("--only", help="Chỉ chạy các câu này, ví dụ 6,25")
     parser.add_argument("--keep", action="store_true", help="Giữ lại các cuộc trò chuyện đo")
     parser.add_argument("--out", type=Path, help="Ghi kết quả chi tiết ra tệp JSON")
+    parser.add_argument(
+        "--pause", type=float, default=DEFAULT_PAUSE, help="Số giây nghỉ giữa các câu"
+    )
     options = parser.parse_args()
 
     api = Api(options.base)
@@ -186,11 +199,17 @@ def main() -> int:
 
     report = []
     passed = 0
-    for prompt in prompts:
-        thread_id, calls, text = ask(api, prompt["text"])
+    infra = 0
+    for index, prompt in enumerate(prompts):
+        if index:
+            time.sleep(options.pause)
+        thread_id, calls, text, failed = ask(api, prompt["text"])
         problems = judge(prompt, calls, tables)
+        if failed:
+            infra += 1
+            problems = [f"Gemini không trả lời được: {text}"]
         passed += not problems
-        mark = "ĐẠT " if not problems else "SAI "
+        mark = "ĐẠT " if not problems else ("LỖI " if failed else "SAI ")
         print(f"{mark}#{prompt['id']:>2} [{prompt['category']}] {prompt['text']}")
         print(f"      gọi: {[call['tool'] for call in calls] or 'không gọi công cụ'}")
         for problem in problems:
@@ -199,6 +218,7 @@ def main() -> int:
             {
                 "id": prompt["id"],
                 "passed": not problems,
+                "gemini_failed": failed,
                 "problems": problems,
                 "calls": calls,
                 "answer": text,
@@ -209,6 +229,11 @@ def main() -> int:
 
     share = passed / max(len(prompts), 1)
     print(f"\nĐạt {passed}/{len(prompts)} câu ({share:.0%}); mốc Giai đoạn 6 là ≥ 90%.")
+    if infra:
+        print(
+            f"{infra} câu hỏng vì Gemini không trả lời được (mạng, 429, 5xx), không phải vì hiểu "
+            "sai; chạy lại các câu đó bằng --only khi Gemini ổn định."
+        )
     if options.out:
         options.out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if share >= 0.9 else 1

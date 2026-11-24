@@ -20,10 +20,11 @@ class Settings(BaseSettings):
     # Khóa Gemini nằm trong `.env`, không bao giờ trả ra API hay ghi log (RULES R14).
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.5-flash-lite"
-    # Mỗi lần gọi Gemini: chờ tối đa bao lâu, trả lời tối đa bao nhiêu token, thử lại mấy lần.
+    # Mỗi lần gọi Gemini: chờ tối đa bao lâu, trả lời tối đa bao nhiêu token, và tổng số lần
+    # gửi (lần đầu + thử lại giãn cách 1 giây, 2 giây… khi gặp lỗi 408/429/5xx).
     gemini_timeout_seconds: int = Field(default=45, ge=5, le=300)
     gemini_max_output_tokens: int = Field(default=4096, ge=256, le=32768)
-    gemini_attempts: int = Field(default=2, ge=1, le=3)
+    gemini_attempts: int = Field(default=4, ge=1, le=6)
 
     # Langfuse ghi dấu vết từng lần gọi AI. Thiếu khóa thì không ghi, phần còn lại vẫn chạy.
     langfuse_public_key: str = ""

@@ -361,6 +361,8 @@ def _suggest_mapping(table_id: uuid.UUID, use_memory: bool) -> None:
         ai_kind, ai_choices = parse_ai_reply(reply.data, names)
     except AiUnavailable as error:
         ai_state, ai_message = error.code, error.message
+        if error.code != "NOT_CONFIGURED":
+            ai_message += " Đã dùng gợi ý theo quy tắc."
     except ValidationError:
         ai_state, ai_message = (
             "FAILED",

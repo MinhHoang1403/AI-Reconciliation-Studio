@@ -1,12 +1,16 @@
-"""Gọi Gemini và bắt câu trả lời theo khuôn JSON cố định (structured output).
+"""Gọi Gemini: câu trả lời theo khuôn JSON (structured output) hoặc gọi công cụ (Assistant).
 
-Mỗi lần gọi: kiểm cấu hình, giới hạn thời gian chờ và số token, thử lại hữu hạn,
-ghi số token vào DB (bảng ai_calls) và trace vào Langfuse.
-Không bao giờ gọi Gemini lúc khởi động hay kiểm tra sức khỏe hệ thống (RULES R11).
+Mỗi lần gọi: kiểm cấu hình, giới hạn thời gian chờ và số token, ghi số token vào DB (bảng
+ai_calls) và trace vào Langfuse. Lỗi tạm thời của Gemini (408, 429 quá giới hạn tốc độ, 5xx
+máy chủ quá tải) được thử lại bằng cơ chế sẵn có của SDK google-genai (`HttpRetryOptions`):
+chờ tăng dần theo cấp số nhân có ngẫu nhiên hóa, đúng khuyến nghị của Google cho lỗi 429/503
+(https://ai.google.dev/gemini-api/docs/troubleshooting). Lỗi 4xx khác (sai khóa, sai model)
+không thử lại. Không bao giờ gọi Gemini lúc khởi động hay kiểm tra sức khỏe (RULES R11).
 """
 
 import json
 import logging
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -65,6 +69,87 @@ def _record_call(
         session.commit()
 
 
+# Mã HTTP được thử lại: hết thời gian chờ, quá giới hạn tốc độ, lỗi máy chủ Gemini.
+RETRY_STATUS_CODES = (408, 429, 500, 502, 503, 504)
+RETRY_INITIAL_DELAY = 1.0  # giây chờ trước lần thử lại đầu tiên, sau đó nhân đôi
+RETRY_MAX_DELAY = 8.0
+# Số lần gọi Gemini chạy cùng lúc. Tải nhiều tệp một lúc làm mỗi bảng tự gọi gợi ý ánh xạ và
+# gợi ý sửa ô song song; gửi dồn như vậy dễ chạm giới hạn số yêu cầu mỗi phút (lỗi 429) của
+# khóa. Các lần gọi vượt quá sẽ xếp hàng chờ, không bị bỏ.
+MAX_CONCURRENT_CALLS = 2
+_slots = threading.BoundedSemaphore(MAX_CONCURRENT_CALLS)
+
+
+def _client() -> Any:
+    """Client Gemini có giới hạn thời gian chờ và thử lại giãn cách cho lỗi tạm thời."""
+    from google import genai
+    from google.genai import types
+
+    return genai.Client(
+        api_key=settings.gemini_api_key.get_secret_value(),
+        http_options=types.HttpOptions(
+            timeout=settings.gemini_timeout_seconds * 1000,
+            retry_options=types.HttpRetryOptions(
+                attempts=settings.gemini_attempts,
+                initial_delay=RETRY_INITIAL_DELAY,
+                max_delay=RETRY_MAX_DELAY,
+                exp_base=2.0,
+                jitter=1.0,
+                http_status_codes=list(RETRY_STATUS_CODES),
+            ),
+        ),
+    )
+
+
+def _error_code(error: Exception) -> str:
+    """Mã lỗi ngắn để ghi vào ai_calls và Langfuse (không chứa nội dung hay khóa)."""
+    from google.genai import errors
+
+    if isinstance(error, errors.ClientError):
+        return f"CLIENT_{error.code}"
+    if isinstance(error, errors.ServerError):
+        return f"SERVER_{error.code}"
+    if isinstance(error, json.JSONDecodeError):
+        return "INVALID_JSON"
+    return type(error).__name__
+
+
+def _generate(
+    purpose: str,
+    trace_input: Any,
+    table_id: uuid.UUID | None,
+    request: Any,
+    read: Any,
+) -> Any:
+    """Một lần gọi Gemini dùng chung: thử lại (trong SDK), ghi token, trace và lỗi.
+
+    `request(client)` gửi yêu cầu; `read(response)` đọc câu trả lời thành kết quả và trả về
+    (kết quả, phần ghi vào Langfuse). Lỗi nào cũng thành `AiUnavailable` để tính năng gọi
+    báo đúng lỗi cho người dùng (R11: không giấu lỗi)."""
+    if not gemini_configured():
+        raise AiUnavailable("NOT_CONFIGURED", "Chưa có khóa GEMINI_API_KEY trong .env.")
+    started = time.perf_counter()
+    with ai_generation(
+        purpose, settings.gemini_model, trace_input, {"table_id": str(table_id)}
+    ) as trace:
+        try:
+            with _slots:  # xếp hàng nếu đã có đủ lần gọi đang chạy
+                response = request(_client())
+            usage = response.usage_metadata
+            input_tokens = (usage.prompt_token_count or 0) if usage else 0
+            output_tokens = (usage.candidates_token_count or 0) if usage else 0
+            result, traced = read(response)
+        except Exception as error:
+            code = _error_code(error)
+            logger.warning("Gọi Gemini (%s) thất bại: %s", purpose, code)
+            trace.update(level="ERROR", status_message=code)
+            _record_call(purpose, table_id, "FAILED", started, error_code=code)
+            raise AiUnavailable("FAILED", f"Gemini không trả lời được ({code}).") from error
+        trace.update(output=traced, usage_details={"input": input_tokens, "output": output_tokens})
+        _record_call(purpose, table_id, "OK", started, input_tokens, output_tokens)
+        return result
+
+
 def generate_json(
     *,
     purpose: str,
@@ -74,16 +159,8 @@ def generate_json(
     table_id: uuid.UUID | None = None,
 ) -> AiReply:
     """Gửi `payload` (đã che) cho Gemini và nhận về JSON đúng `response_schema`."""
-    if not gemini_configured():
-        raise AiUnavailable("NOT_CONFIGURED", "Chưa có khóa GEMINI_API_KEY trong .env.")
+    from google.genai import types
 
-    from google import genai
-    from google.genai import errors, types
-
-    client = genai.Client(
-        api_key=settings.gemini_api_key.get_secret_value(),
-        http_options=types.HttpOptions(timeout=settings.gemini_timeout_seconds * 1000),
-    )
     config = types.GenerateContentConfig(
         system_instruction=system_instruction,
         temperature=0,
@@ -92,38 +169,27 @@ def generate_json(
         response_json_schema=response_schema,
     )
     contents = json.dumps(payload, ensure_ascii=False)
-    started = time.perf_counter()
-    last_error = "FAILED"
-    with ai_generation(
-        purpose, settings.gemini_model, payload, {"table_id": str(table_id)}
-    ) as trace:
-        for attempt in range(1, settings.gemini_attempts + 1):
-            try:
-                response = client.models.generate_content(
-                    model=settings.gemini_model, contents=contents, config=config
-                )
-                usage = response.usage_metadata
-                input_tokens = (usage.prompt_token_count or 0) if usage else 0
-                output_tokens = (usage.candidates_token_count or 0) if usage else 0
-                data = json.loads(response.text or "")
-                trace.update(
-                    output=data, usage_details={"input": input_tokens, "output": output_tokens}
-                )
-                _record_call(purpose, table_id, "OK", started, input_tokens, output_tokens)
-                return AiReply(data=data, input_tokens=input_tokens, output_tokens=output_tokens)
-            except errors.ClientError as error:  # lỗi 4xx: sai khóa, sai model… thử lại vô ích
-                last_error = f"CLIENT_{error.code}"
-                break
-            except json.JSONDecodeError:
-                last_error = "INVALID_JSON"
-            except Exception as error:  # lỗi mạng, hết thời gian chờ, lỗi 5xx: thử lại
-                last_error = type(error).__name__
-            logger.warning("Gọi Gemini lần %s thất bại: %s", attempt, last_error)
-        trace.update(level="ERROR", status_message=last_error)
-    _record_call(purpose, table_id, "FAILED", started, error_code=last_error)
-    raise AiUnavailable(
-        "FAILED", f"Gemini không trả lời được ({last_error}); đã dùng gợi ý theo quy tắc."
+
+    def read(response: Any) -> tuple[AiReply, Any]:
+        data = json.loads(response.text or "")
+        usage = response.usage_metadata
+        reply = AiReply(
+            data=data,
+            input_tokens=(usage.prompt_token_count or 0) if usage else 0,
+            output_tokens=(usage.candidates_token_count or 0) if usage else 0,
+        )
+        return reply, data
+
+    reply: AiReply = _generate(
+        purpose,
+        payload,
+        table_id,
+        lambda client: client.models.generate_content(
+            model=settings.gemini_model, contents=contents, config=config
+        ),
+        read,
     )
+    return reply
 
 
 # ---------------------------------------------------------------- gọi có công cụ (Assistant)
@@ -184,16 +250,8 @@ def generate_with_tools(
 ) -> ModelTurn:
     """Gửi hội thoại cho Gemini kèm danh sách công cụ; Gemini chỉ trả tên công cụ và tham số,
     không tự chạy gì (tắt tự gọi hàm của SDK). Backend kiểm tham số rồi mới chạy công cụ."""
-    if not gemini_configured():
-        raise AiUnavailable("NOT_CONFIGURED", "Chưa có khóa GEMINI_API_KEY trong .env.")
+    from google.genai import types
 
-    from google import genai
-    from google.genai import errors, types
-
-    client = genai.Client(
-        api_key=settings.gemini_api_key.get_secret_value(),
-        http_options=types.HttpOptions(timeout=settings.gemini_timeout_seconds * 1000),
-    )
     config = types.GenerateContentConfig(
         system_instruction=system_instruction,
         temperature=0,
@@ -212,41 +270,28 @@ def generate_with_tools(
         ],
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
-    contents = _to_contents(conversation)
+    contents = _to_contents(conversation) if gemini_configured() else []
     # Langfuse nhận hội thoại trung tính (câu chat, kết quả công cụ đã rút gọn và che).
-    traced = [
-        {key: value for key, value in entry.items() if key != "raw"} for entry in conversation
-    ]
-    started = time.perf_counter()
-    last_error = "FAILED"
-    with ai_generation(purpose, settings.gemini_model, traced, {}) as trace:
-        for attempt in range(1, settings.gemini_attempts + 1):
-            try:
-                response = client.models.generate_content(
-                    model=settings.gemini_model, contents=contents, config=config
-                )
-                usage = response.usage_metadata
-                input_tokens = (usage.prompt_token_count or 0) if usage else 0
-                output_tokens = (usage.candidates_token_count or 0) if usage else 0
-                content = response.candidates[0].content if response.candidates else None
-                parts = (content.parts or []) if content else []
-                text = "".join(part.text for part in parts if part.text and not part.thought)
-                calls = [
-                    ToolCall(name=call.name or "", args=dict(call.args or {}))
-                    for call in response.function_calls or []
-                ]
-                trace.update(
-                    output={"text": text, "calls": [call.__dict__ for call in calls]},
-                    usage_details={"input": input_tokens, "output": output_tokens},
-                )
-                _record_call(purpose, None, "OK", started, input_tokens, output_tokens)
-                return ModelTurn(text=text.strip(), calls=calls, raw=content)
-            except errors.ClientError as error:  # lỗi 4xx: thử lại vô ích
-                last_error = f"CLIENT_{error.code}"
-                break
-            except Exception as error:  # lỗi mạng, hết thời gian chờ, lỗi 5xx: thử lại
-                last_error = type(error).__name__
-            logger.warning("Gọi Gemini (Assistant) lần %s thất bại: %s", attempt, last_error)
-        trace.update(level="ERROR", status_message=last_error)
-    _record_call(purpose, None, "FAILED", started, error_code=last_error)
-    raise AiUnavailable("FAILED", f"Gemini không trả lời được ({last_error}). Hãy thử lại.")
+    traced = [{key: val for key, val in entry.items() if key != "raw"} for entry in conversation]
+
+    def read(response: Any) -> tuple[ModelTurn, Any]:
+        content = response.candidates[0].content if response.candidates else None
+        parts = (content.parts or []) if content else []
+        text = "".join(part.text for part in parts if part.text and not part.thought)
+        calls = [
+            ToolCall(name=call.name or "", args=dict(call.args or {}))
+            for call in response.function_calls or []
+        ]
+        turn = ModelTurn(text=text.strip(), calls=calls, raw=content)
+        return turn, {"text": turn.text, "calls": [call.__dict__ for call in calls]}
+
+    turn: ModelTurn = _generate(
+        purpose,
+        traced,
+        None,
+        lambda client: client.models.generate_content(
+            model=settings.gemini_model, contents=contents, config=config
+        ),
+        read,
+    )
+    return turn
