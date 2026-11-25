@@ -98,7 +98,20 @@ Thêm chức năng nhưng không thêm thao tác và không làm rối màn hìn
 ## Giai đoạn 7 — Báo cáo
 
 - KPI, biểu đồ theo loại/ngày/nguồn, xuất CSV và XLSX, nhận xét do Gemini viết từ số liệu của engine.
-- **Xong khi:** mọi con số trong báo cáo khớp với kết quả engine trên bộ mẫu; hai định dạng xuất có cùng nội dung.
+
+**Cách làm (Owner chốt 25/11/2026, `DECISIONS.md`):**
+
+1. **Phạm vi:** báo cáo theo một kỳ (mở ra là kỳ mới nhất, chọn được kỳ khác) kèm một khối nhỏ so sánh các kỳ (tỷ lệ khớp, tổng lệch, số ca cần xử lý).
+2. **Người đọc chính là chủ cửa hàng:** phần đầu trả lời "tiền đã về đủ chưa, thiếu bao nhiêu, cần xử lý gì trước" bằng lời ít thuật ngữ; chi tiết theo từng cặp thu gọn bên dưới.
+3. **Số liệu do code tính** (module báo cáo đọc kết quả đã lưu, không gọi lại engine): tỷ lệ khớp theo số dòng và theo tiền, tổng lệch, số ca cần xử lý theo loại, chờ tiền về, top ngoại lệ.
+4. **Biểu đồ** (skill dataviz): theo loại kết quả, theo ngày, theo nguồn (từng cặp/kênh), tuổi ngoại lệ còn mở (0–3, 4–7, trên 7 ngày).
+5. **Xuất:** XLSX nhiều sheet (Tóm tắt KPI, Cần xử lý, Toàn bộ kết quả kèm lý do và dòng gốc); CSV cho toàn bộ kết quả, cùng nội dung sheet tương ứng.
+6. **Kiểm chứng:** kỳ chưa qua kiểm chứng vẫn xem được kèm cảnh báo đỏ, nhưng không xuất tệp và không viết nhận xét AI.
+7. **Nhận xét AI:** chỉ khi bấm nút "Viết nhận xét bằng AI"; lưu lại, kỳ chạy lại thì báo nhận xét đã cũ. Mọi con số trong nhận xét phải lấy nguyên từ KPI do code tính (kiểm bằng code trước khi hiện).
+8. **Assistant:** thêm công cụ đọc KPI của kỳ và nút dẫn sang trang Báo cáo; xuất tệp vẫn bấm trên trang.
+9. **Dashboard:** thêm 3–4 số chính của kỳ mới nhất (tỷ lệ khớp theo tiền, số ca cần xử lý, tổng lệch, trạng thái kiểm chứng), bấm vào sang trang Báo cáo.
+
+- **Xong khi:** mọi con số trong báo cáo khớp với kết quả engine trên bộ mẫu (có test); hai định dạng xuất có cùng nội dung (có test); kỳ chưa kiểm chứng không xuất được; nhận xét AI không có con số nào ngoài KPI.
 
 ## Cách làm mỗi giai đoạn
 
