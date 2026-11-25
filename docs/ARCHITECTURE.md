@@ -59,6 +59,7 @@ flowchart LR
 ### 4.1 Đọc tệp và hồ sơ cột
 
 - Đọc CSV và XLSX (chọn sheet, phát hiện dòng tiêu đề), **mục tiêu ≥ 100.000 dòng mỗi tệp**. Docs/PDF để sau.
+- CSV nhận bảng mã UTF-8 (có/không BOM), UTF-16 có BOM (Excel "Unicode Text") và Windows-1258 (Excel "CSV" trên Windows tiếng Việt, ghi theo bảng mã ANSI của hệ thống); chữ đọc từ Windows-1258 được gộp dấu về dạng NFC ([Python codecs][py-codecs], [Unicode NFC][unicode-nfc]). Bảng mã khác (TCVN3/VNI) báo lỗi kèm cách lưu lại thành "CSV UTF-8".
 - Tệp gốc lưu nguyên bản kèm mã SHA-256 (dấu vân tay để chứng minh tệp không bị đổi). Mỗi dòng có `row_ref` trỏ về số dòng trong tệp gốc.
 - **Hồ sơ cột** (column profile): kiểu dữ liệu quan sát được, tỷ lệ trống, số giá trị khác nhau, vài giá trị mẫu, mẫu định dạng (giống mã, ngày, tiền, số điện thoại).
 
@@ -227,7 +228,7 @@ Mỗi bước của luồng dữ liệu (mục 4) nằm ở đúng một nhóm f
 | 10. Báo cáo, KPI, xuất tệp | `reporting.py` (số liệu từ kết quả đã lưu), `report_export.py` (XLSX/CSV), `report_ai.py` (nhận xét AI có kiểm số) | `report_api.py` (`/api/reports`) | `pages/ReportsPage`, `ReportCharts`, khối số chính trên `OverviewPage` | `test_reports` |
 | Khung | `main.py`, `config.py`, `database.py`, `models.py`, `migrate.py` + `migrations/` | `/api/health`, `/api/ready`, `/api/status` | `App.tsx`, `navigation.ts`, `OverviewPage` | `test_status_api`, `test_migrations` |
 
-Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foundation_review.py`. Ghép tay, gỡ ghép: `recon_api.py` (`/match`, `/unmatch`, `/match-candidates`), `MatchPicker`, `test_manual_match.py`. Kiểm mù đối soát: `tools/make_blind_fixtures.py` → `tests/fixtures/blind/`, đo ở `test_blind.py`. E2E: `frontend/e2e/` (`data`, `recon`, `chain`, `assistant`, `shell`).
+Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foundation_review.py`. Ghép tay, gỡ ghép: `recon_api.py` (`/match`, `/unmatch`, `/match-candidates`), `MatchPicker`, `test_manual_match.py`. Kiểm mù đối soát: `tools/make_blind_fixtures.py` → `tests/fixtures/blind/`, đo ở `test_blind.py`. Đo tốc độ trọn luồng ở quy mô lớn: `tools/measure_scale.py` (cơ sở dữ liệu tạm, không gọi Gemini). E2E: `frontend/e2e/` (`data`, `recon`, `chain`, `assistant`, `shell`).
 
 ## 9. Ngoài phạm vi demo
 
@@ -274,3 +275,6 @@ Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foun
 [iofm]: https://www.iofm.com/ap/organizational-structure/choosing-the-right-automated-bank-account-reconciliation-software-a-guide-for-treasury-and-finance-leaders
 [highradius]: https://www.highradius.com/product/automated-account-reconciliation-software/
 [owasp-csv]: https://owasp.org/www-community/attacks/CSV_Injection
+[py-codecs]: https://docs.python.org/3/library/codecs.html#standard-encodings
+[unicode-nfc]: https://unicode.org/reports/tr15/
+[sqlalchemy-bulk]: https://docs.sqlalchemy.org/en/20/orm/queryguide/dml.html#orm-bulk-insert-statements

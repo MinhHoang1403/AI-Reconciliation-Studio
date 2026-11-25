@@ -68,7 +68,7 @@ export function UploadZone({ onUploaded }: Props) {
         <FileUp aria-hidden="true" size={28} strokeWidth={1.6} />
         <div>
           <h2 id={`${inputId}-title`}>Tải tệp dữ liệu</h2>
-          <p>Kéo thả tệp vào đây hoặc chọn từ máy. CSV (UTF-8) hoặc Excel .xlsx, tối đa 50 MB mỗi tệp.</p>
+          <p>Kéo thả tệp vào đây hoặc chọn từ máy. CSV hoặc Excel .xlsx, tối đa 50 MB mỗi tệp.</p>
         </div>
         <label className="button button--primary" htmlFor={inputId}>
           Chọn tệp

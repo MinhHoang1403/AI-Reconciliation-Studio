@@ -19,6 +19,8 @@ Bộ **kiểm mù** đối soát (`tests/fixtures/blind/`, sinh bằng `tools/ma
 
 Lỗi cài sẵn cho bước làm sạch: `tests/fixtures/sales/loi-cai-san.csv` (dòng 222–230 của tệp đơn hàng cửa hàng). E2E gọi Gemini thật nên mỗi bài trong `data.spec.ts` được tối đa 120 giây.
 
+Đo tốc độ trọn luồng ở 100.000 đơn: `uv run --locked python tools/measure_scale.py` (SQLite tạm, không đụng app, không tốn phí; khoảng 3 phút). Số đo trên PostgreSQL thật ghi ở `docs/DECISIONS.md` 25/11/2026.
+
 Đo độ chính xác ánh xạ: `uv run --locked python tools/evaluate_mapping.py` (chỉ quy tắc, miễn phí); thêm `--with-ai` để gọi Gemini thật (tốn phí, cần nạp khóa từ `.env` vào biến môi trường). Langfuse tự host ở <http://127.0.0.1:3000> (bộ container `langfuse` riêng); khóa trong `.env`.
 
 Bộ dữ liệu mẫu có đáp án ở `tests/fixtures/sales/`, sinh lại bằng `uv run --locked python tools/make_sales_fixtures.py` (kết quả luôn giống hệt).

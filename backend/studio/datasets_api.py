@@ -169,13 +169,14 @@ def upload_dataset(
     if upload.size_bytes == 0:
         upload.temp_path.unlink(missing_ok=True)
         raise fail(422, "EMPTY_FILE", "Tệp trống.")
-    # CSV phải là UTF-8: kiểm ngay để báo lỗi tức thì, không lưu tệp sai bảng mã.
+    # CSV phải đọc được bảng mã (UTF-8, UTF-16, Windows-1258): kiểm ngay để báo lỗi tức thì,
+    # không lưu tệp không đọc được.
     if extension == "csv":
         try:
-            reading.decode_utf8(upload.temp_path.read_bytes())
+            reading.decode_text(upload.temp_path.read_bytes())
         except reading.ReadError as error:
             upload.temp_path.unlink(missing_ok=True)
-            raise fail(422, "NOT_UTF8", str(error)) from error
+            raise fail(422, "UNSUPPORTED_ENCODING", str(error)) from error
 
     existing = session.scalar(select(Dataset).where(Dataset.sha256 == upload.sha256))
     if existing is not None:

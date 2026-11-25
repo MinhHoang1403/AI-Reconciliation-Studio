@@ -7,8 +7,10 @@ Nguyên tắc:
   về sau truy ngược được về đúng dòng gốc.
 """
 
+import codecs
 import csv
 import io
+import unicodedata
 from dataclasses import dataclass
 
 import fastexcel
@@ -48,14 +50,40 @@ class ReadTable:
 # ---------------------------------------------------------------- đọc tệp
 
 
-def decode_utf8(content: bytes) -> str:
-    """Giải mã UTF-8 (có hoặc không có BOM); bảng mã khác thì báo lỗi rõ ràng."""
+# Bảng mã được nhận cho CSV, thử theo thứ tự. Excel trên Windows tiếng Việt lưu "CSV (Comma
+# delimited)" theo bảng mã ANSI của hệ thống, tức Windows-1258 (code page 1258), không phải
+# UTF-8; lưu "Unicode Text" thì ra UTF-16 có BOM. Windows-1258 ghi dấu tiếng Việt bằng ký tự
+# tổ hợp rời (chữ + dấu), nên phải gộp về dạng dựng sẵn NFC để "Bình" đọc từ tệp này giống hệt
+# "Bình" gõ bình thường (so khớp tên, mã, tên cột).
+# Ký tự điều khiển được phép trong CSV: tab, xuống dòng.
+ALLOWED_CONTROLS = frozenset(("\t", "\r", "\n"))
+
+
+def decode_text(content: bytes) -> tuple[str, str]:
+    """Giải mã nội dung CSV, trả về (chữ, nhãn bảng mã). Không đọc được thì báo lỗi rõ ràng.
+
+    Thứ tự: BOM UTF-16 → UTF-8 (có hoặc không BOM) → Windows-1258. Windows-1258 nhận gần như
+    mọi byte nên đứng cuối; tệp có byte không thuộc bảng mã này (0x81, 0x8A…) hoặc giải ra ký
+    tự điều khiển lạ (dấu hiệu tệp nhị phân) thì bị từ chối thay vì đọc ra chữ rác."""
+    if content.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        try:
+            return content.decode("utf-16"), "utf-16"
+        except UnicodeDecodeError:
+            pass
     try:
-        return content.decode("utf-8-sig")
-    except UnicodeDecodeError as error:
-        raise ReadError(
-            "Tệp CSV không dùng bảng mã UTF-8. Hãy lưu lại tệp ở dạng 'CSV UTF-8' rồi tải lên lại."
-        ) from error
+        return content.decode("utf-8-sig"), "utf-8"
+    except UnicodeDecodeError:
+        pass
+    try:
+        text = unicodedata.normalize("NFC", content.decode("cp1258"))
+    except UnicodeDecodeError:
+        text = ""
+    if text and not any(ord(char) < 32 and char not in ALLOWED_CONTROLS for char in text):
+        return text, "cp1258"
+    raise ReadError(
+        "Không đọc được bảng mã của tệp CSV (hệ thống nhận UTF-8, UTF-16 và Windows-1258). "
+        "Hãy mở tệp bằng Excel, chọn Lưu thành 'CSV UTF-8' rồi tải lên lại."
+    )
 
 
 def detect_delimiter(text: str) -> str:
@@ -68,7 +96,7 @@ def detect_delimiter(text: str) -> str:
 
 
 def read_csv(content: bytes) -> RawSheet:
-    text = decode_utf8(content)
+    text, _ = decode_text(content)
     if not text.strip():
         raise ReadError("Tệp CSV trống.")
     frame = pl.read_csv(

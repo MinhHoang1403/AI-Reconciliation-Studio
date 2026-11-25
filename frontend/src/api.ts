@@ -615,3 +615,12 @@ export const writeReportComment = (chainId: string) =>
   sendJson<{ text: string; created_at: string; stale: boolean }>(`/api/reports/${chainId}/comment`, "POST");
 export const reportExportUrl = (chainId: string, format: "xlsx" | "csv") =>
   `/api/reports/${chainId}/export.${format}`;
+
+/** Tải tệp xuất về dạng blob (để giao diện hiện "đang tạo tệp" trong lúc chờ và báo lỗi rõ
+ *  ràng, thay vì một liên kết im lặng hàng chục giây với kỳ lớn). */
+export async function downloadReport(chainId: string, format: "xlsx" | "csv"): Promise<{ blob: Blob; name: string }> {
+  const reply = await fetch(reportExportUrl(chainId, format));
+  if (!reply.ok) throw await errorFrom(reply);
+  const match = /filename="([^"]+)"/.exec(reply.headers.get("Content-Disposition") ?? "");
+  return { blob: await reply.blob(), name: match?.[1] ?? `bao-cao-doi-soat.${format}` };
+}

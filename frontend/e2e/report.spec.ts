@@ -28,16 +28,15 @@ test("báo cáo kỳ mới nhất: số chính, biểu đồ, bảng dữ liệu
   await byDay.getByText("Xem dạng bảng").click();
   await expect(byDay.getByRole("table")).toBeVisible();
 
-  // Kỳ đã kiểm chứng: hai nút tải trả đúng tệp; chưa kiểm chứng: nút tải bị khóa.
+  // Kỳ đã kiểm chứng: bấm nút thì trình duyệt tải đúng tệp; chưa kiểm chứng: nút bị khóa.
   if (latest.verified) {
-    const excel = page.getByRole("link", { name: /Tải Excel/ });
-    const csv = page.getByRole("link", { name: "Tải CSV" });
-    await expect(excel).toBeVisible();
-    const xlsx = await request.get((await excel.getAttribute("href")) ?? "");
-    expect(xlsx.status()).toBe(200);
-    expect(xlsx.headers()["content-type"]).toContain("spreadsheetml");
-    const text = await (await request.get((await csv.getAttribute("href")) ?? "")).text();
-    expect(text.split("\n")[0]).toContain("Cặp đối soát");
+    for (const [name, extension] of [[/Tải Excel/, ".xlsx"], [/Tải CSV/, ".csv"]] as const) {
+      const waiting = page.waitForEvent("download");
+      await page.getByRole("button", { name }).click();
+      const download = await waiting;
+      const file = download.suggestedFilename();
+      expect(file.startsWith("bao-cao-doi-soat_") && file.endsWith(extension)).toBe(true);
+    }
   } else {
     await expect(page.getByRole("button", { name: /Tải Excel/ })).toBeDisabled();
   }

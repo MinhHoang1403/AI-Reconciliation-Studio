@@ -30,8 +30,8 @@ def _chain(session: Session, chain_id: uuid.UUID) -> ReconChain:
     return chain
 
 
-def _verified_report(session: Session, chain_id: uuid.UUID) -> dict[str, Any]:
-    report = reporting.build_report(session, _chain(session, chain_id))
+def _verified_report(session: Session, chain_id: uuid.UUID, full: bool = False) -> dict[str, Any]:
+    report = reporting.build_report(session, _chain(session, chain_id), full)
     if not report["verified"]:
         raise fail(
             409,
@@ -82,7 +82,7 @@ def _filename(report: dict[str, Any], extension: str) -> str:
 
 @router.get("/{chain_id}/export.xlsx")
 def export_xlsx(chain_id: uuid.UUID, session: SessionDep) -> Response:
-    report = _verified_report(session, chain_id)
+    report = _verified_report(session, chain_id, full=True)
     return Response(
         report_export.to_xlsx(report),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -92,7 +92,7 @@ def export_xlsx(chain_id: uuid.UUID, session: SessionDep) -> Response:
 
 @router.get("/{chain_id}/export.csv")
 def export_csv(chain_id: uuid.UUID, session: SessionDep) -> Response:
-    report = _verified_report(session, chain_id)
+    report = _verified_report(session, chain_id, full=True)
     return Response(
         report_export.to_csv(report),
         media_type="text/csv; charset=utf-8",

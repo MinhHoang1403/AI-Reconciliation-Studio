@@ -28,7 +28,7 @@ Làm trước giai đoạn 1 và mở rộng dần, nằm trong `tests/fixtures/
 
 ## Giai đoạn 1 — Đọc dữ liệu
 
-- Tải CSV/XLSX tối đa 50 MB (UTF-8); Excel nhiều sheet thì mỗi sheet một bảng; tự đoán dòng tiêu đề, người dùng chỉnh được; lưu tệp gốc + SHA-256, tải trùng thì nhận ra; đọc bằng Polars thành Parquet, mọi ô dạng chữ, mỗi dòng có `row_ref`; hồ sơ cột; xóa bộ dữ liệu có xác nhận.
+- Tải CSV/XLSX tối đa 50 MB (CSV: UTF-8, UTF-16, Windows-1258); Excel nhiều sheet thì mỗi sheet một bảng; tự đoán dòng tiêu đề, người dùng chỉnh được; lưu tệp gốc + SHA-256, tải trùng thì nhận ra; đọc bằng Polars thành Parquet, mọi ô dạng chữ, mỗi dòng có `row_ref`; hồ sơ cột; xóa bộ dữ liệu có xác nhận.
 - Giao diện: kéo-thả tải tệp, danh sách bộ dữ liệu, xem trước dòng có phân trang, hồ sơ cột.
 - **Xong khi:** đọc đúng mọi tệp mẫu (đủ dòng, giữ số 0 đầu mã, đủ sheet, `row_ref` đúng); tệp 100.000 dòng đọc được và đo thời gian thật để ghi vào báo cáo; tải trùng không lưu thêm bản; test backend và E2E (máy tính, điện thoại) đạt.
 

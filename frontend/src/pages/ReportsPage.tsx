@@ -5,7 +5,7 @@ import {
   ApiError,
   getReport,
   listReports,
-  reportExportUrl,
+  downloadReport,
   writeReportComment,
   type ReconKind,
   type Report,
@@ -205,6 +205,14 @@ function ReportBody({ report, periods, onReload }: { report: Report; periods: Re
               <dd>{percent(kpis.match_rate_rows)}</dd>
             </div>
           </dl>
+          {/* Số tiền cộng qua mọi cặp: một khoản đi qua nhiều bước (đơn → cổng → ngân hàng) được
+              đếm ở mỗi cặp nó có mặt, nên không phải tổng tiền thực nhận. Nói rõ để chủ cửa
+              hàng không đọc nhầm. */}
+          <p className="report-answer__note">
+            Cách tính: cộng {formatCount(report.pairs.length)} cặp đối soát của kỳ. Một khoản tiền đi qua nhiều
+            bước (đơn hàng → cổng thanh toán → ngân hàng) được tính ở mỗi cặp nó có mặt, nên số tiền cần đối
+            chiếu không phải tổng tiền thực nhận. Số của từng cặp ở biểu đồ "Theo cặp đối soát".
+          </p>
         </section>
 
         <TopExceptions report={report} />
@@ -431,6 +439,29 @@ function Comparison({ periods, current }: { periods: ReportPeriod[]; current: st
 
 function VerifiedExport({ report }: { report: Report }) {
   const rings = mergeSealChecks(report.pairs.map((pair) => ({ name: pair.label, verification: pair.verification })));
+  const [busy, setBusy] = useState<"xlsx" | "csv" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Tạo tệp ở kỳ lớn mất tới khoảng một phút (100.000 đơn: Excel gần 50 giây), nên nút hiện
+  // trạng thái chờ và khóa lại để không bấm tạo nhiều lần; xong thì trình duyệt tự tải về.
+  async function download(format: "xlsx" | "csv") {
+    setBusy(format);
+    setError(null);
+    try {
+      const { blob, name } = await downloadReport(report.chain_id, format);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "Không tạo được tệp, hãy thử lại.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className="verification" aria-labelledby="report-verify">
       <h2 id="report-verify">Kiểm chứng và tải về</h2>
@@ -441,22 +472,33 @@ function VerifiedExport({ report }: { report: Report }) {
           : "Có cặp chưa đạt kiểm chứng; chỉ xuất được sau khi kiểm chứng đạt."}
       </p>
       <div className="report-export">
-        {report.verified ? (
-          <>
-            <a className="button button--primary" href={reportExportUrl(report.chain_id, "xlsx")} download>
-              <FileSpreadsheet aria-hidden="true" size={18} /> Tải Excel (3 sheet)
-            </a>
-            <a className="button button--quiet" href={reportExportUrl(report.chain_id, "csv")} download>
-              <FileDown aria-hidden="true" size={18} /> Tải CSV
-            </a>
-          </>
-        ) : (
-          <button type="button" className="button button--primary" disabled>
-            <FileSpreadsheet aria-hidden="true" size={18} /> Tải Excel (3 sheet)
+        <button
+          type="button"
+          className="button button--primary"
+          disabled={!report.verified || busy !== null}
+          onClick={() => void download("xlsx")}
+        >
+          <FileSpreadsheet aria-hidden="true" size={18} />
+          {busy === "xlsx" ? "Đang tạo tệp Excel…" : "Tải Excel (3 sheet)"}
+        </button>
+        {report.verified && (
+          <button
+            type="button"
+            className="button button--quiet"
+            disabled={busy !== null}
+            onClick={() => void download("csv")}
+          >
+            <FileDown aria-hidden="true" size={18} />
+            {busy === "csv" ? "Đang tạo tệp CSV…" : "Tải CSV"}
           </button>
         )}
       </div>
-      <p className="report-export__note">Excel gồm Tóm tắt, Cần xử lý và Toàn bộ kết quả kèm lý do, dòng gốc; CSV là Toàn bộ kết quả.</p>
+      {error && <p className="notice notice--error" role="alert">{error}</p>}
+      <p className="report-export__note" aria-live="polite">
+        {busy
+          ? "Kỳ nhiều dòng có thể mất tới khoảng một phút; tệp tự tải về khi xong."
+          : "Excel gồm Tóm tắt, Cần xử lý và Toàn bộ kết quả kèm lý do, dòng gốc; CSV là Toàn bộ kết quả."}
+      </p>
     </section>
   );
 }

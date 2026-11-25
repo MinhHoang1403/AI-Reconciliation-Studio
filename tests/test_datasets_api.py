@@ -93,11 +93,11 @@ def test_same_file_uploaded_twice_is_recognised_as_duplicate() -> None:
     assert len(client.get("/api/datasets").json()) == 1
 
 
-def test_rejects_unsupported_too_large_and_non_utf8_files(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rejects_unsupported_too_large_and_unreadable(monkeypatch: pytest.MonkeyPatch) -> None:
     assert upload("bang.xls", b"abc").json()["detail"]["code"] == "UNSUPPORTED_FORMAT"
     assert upload("trong.csv", b"").json()["detail"]["code"] == "EMPTY_FILE"
-    bad = upload("cu.csv", "Mã,Tên\n1,Bình".encode("cp1252"))
-    assert bad.status_code == 422 and bad.json()["detail"]["code"] == "NOT_UTF8"
+    bad = upload("cu.csv", b"Ma,Ten\n1,\x81\x8d")  # byte không thuộc bảng mã nào được nhận
+    assert bad.status_code == 422 and bad.json()["detail"]["code"] == "UNSUPPORTED_ENCODING"
     monkeypatch.setattr(settings, "max_upload_bytes", 10)
     big = upload("lon.csv", b"a,b\n" * 10)
     assert big.status_code == 413 and "MB" in big.json()["detail"]["message"]

@@ -21,13 +21,14 @@ import json
 import uuid
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from studio import recon_api, recon_service
-from studio.models import MatchResult, ReconChain, ReconRun
+from studio.models import CleanVersion, MatchResult, ReconChain, ReconRun
+from studio.reconciliation import ReconConfig
 
 MATCHED_KINDS = ("MATCHED", "MANY_TO_ONE", "ONE_TO_MANY")
 # Nhóm tuổi ngoại lệ còn mở (số ngày từ ngày giao dịch tới ngày cuối kỳ).
@@ -45,7 +46,7 @@ def _rate(part: Decimal | int, whole: Decimal | int) -> float | None:
     return round(float(part) * 100 / float(whole), 1) if whole else None
 
 
-def _status_group(item: MatchResult) -> str:
+def _status_group(item: Any) -> str:
     """Nhóm cho biểu đồ theo ngày: đã khớp, chờ tiền về, cần xử lý, đã xử lý, ngoài phạm vi."""
     if item.kind == "OUT_OF_SCOPE":
         return "out_of_scope"
@@ -66,31 +67,111 @@ def _result_day(view: dict[str, Any]) -> date | None:
     return None
 
 
-def _result_amount(item: MatchResult) -> Decimal:
+def _result_amount(item: Any) -> Decimal:
     """Số tiền liên quan của một kết quả (để xếp ngoại lệ lớn nhất): lệch tiền lấy phần lệch."""
     if item.kind == "AMOUNT_MISMATCH":
         return abs(_money(item.amount_left) - _money(item.amount_right))
     return max(_money(item.amount_left), _money(item.amount_right))
 
 
-def _results(session: Session, run: ReconRun) -> list[MatchResult]:
-    return list(
-        session.scalars(
-            select(MatchResult).where(MatchResult.run_id == run.id).order_by(MatchResult.position)
+# Đọc kết quả theo CỘT, không nạp cả đối tượng ORM: cột lý do (JSON lớn) chỉ đọc cho các ca
+# cần hiện lý do. Đo ở 10.000 đơn (24.092 kết quả): nạp cả đối tượng mất 1,6 giây, chỉ các cột
+# đếm mất 0,15 giây; ở 100.000 đơn chênh lệch này thành hàng chục giây mỗi lần mở trang.
+COUNT_COLUMNS = (
+    MatchResult.kind,
+    MatchResult.exception_status,
+    MatchResult.amount_left,
+    MatchResult.amount_right,
+)
+LIGHT_COLUMNS = (
+    MatchResult.id,
+    *COUNT_COLUMNS,
+    MatchResult.left_refs,
+    MatchResult.right_refs,
+    MatchResult.carried_left,
+)
+TEXT_BATCH = 500  # số kết quả mỗi lần đọc lý do (giới hạn kích thước câu IN của SQL)
+
+
+def _rows(
+    session: Session, run: ReconRun, columns: tuple[Any, ...], in_scope_only: bool = False
+) -> list[Any]:
+    query = select(*columns).where(MatchResult.run_id == run.id)
+    if in_scope_only:
+        query = query.where(MatchResult.kind != "OUT_OF_SCOPE")
+    return list(session.execute(query.order_by(MatchResult.position)).all())
+
+
+def _texts(session: Session, ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[list[Any], Any]]:
+    """Lý do và ghi chú của đúng các kết quả cần hiện."""
+    found: dict[uuid.UUID, tuple[list[Any], Any]] = {}
+    for start in range(0, len(ids), TEXT_BATCH):
+        query = select(MatchResult.id, MatchResult.reasons, MatchResult.note).where(
+            MatchResult.id.in_(ids[start : start + TEXT_BATCH])
         )
+        for result_id, reasons, note in session.execute(query):
+            found[result_id] = (reasons, note)
+    return found
+
+
+def _views(session: Session, run: ReconRun, rows: list[Any]) -> list[dict[str, Any]]:
+    """Mã, ngày, số tiền của các dòng hai bên mỗi kết quả, đọc đúng phiên bản sạch đã dùng (như
+    danh sách kết quả của trang Đối soát, nhưng không dựng phần lý do, điểm)."""
+    config = ReconConfig.from_json(run.config)
+    left = recon_api._details(
+        session.get(CleanVersion, run.left_version_id),
+        {ref for row in rows for ref in row.left_refs},
+        config.key_left,
+        config.date_left,
+        config.amount_left,
+        (),
     )
+    right = recon_api._details(
+        session.get(CleanVersion, run.right_version_id),
+        {ref for row in rows for ref in row.right_refs},
+        config.key_right,
+        config.date_right,
+        config.amount_right,
+        (),
+    )
+    carried = recon_api._carried_details(session, cast(Any, rows), config, ())
+    return [
+        {
+            "left": [left.get(ref, {"row_ref": ref}) for ref in row.left_refs]
+            + [
+                carried.get((item["table_id"], item["row_ref"]), {"row_ref": item["row_ref"]})
+                | {"carried": True}
+                for item in row.carried_left or []
+            ],
+            "right": [right.get(ref, {"row_ref": ref}) for ref in row.right_refs],
+        }
+        for row in rows
+    ]
 
 
-def pair_report(session: Session, run: ReconRun) -> dict[str, Any]:
-    """Số liệu của một cặp bảng, kèm từng kết quả đã đọc ngày, mã (dùng cho biểu đồ, tệp xuất)."""
-    items = _results(session, run)
-    views = {view["id"]: view for view in recon_api._result_views(session, run, items)}
+def pair_report(session: Session, run: ReconRun, full: bool = False) -> dict[str, Any]:
+    """Số liệu của một cặp bảng, kèm từng kết quả đã đọc ngày, mã (dùng cho biểu đồ, tệp xuất).
+
+    `full`: đọc lý do, ghi chú của MỌI kết quả (tệp xuất); không thì chỉ của ca đang mở, và
+    kết quả ngoài phạm vi (khoảng 60% ở bộ mẫu) chỉ được đếm, không đọc dòng gốc: trang Báo
+    cáo không vẽ chúng theo ngày và chúng không bao giờ là ca cần xử lý."""
+    if full:
+        # Tệp xuất cần lý do của mọi kết quả: đọc chung một truy vấn (đọc theo lô từng 500 mã
+        # thì ở 100.000 đơn thành gần 500 truy vấn).
+        rows = _rows(session, run, (*LIGHT_COLUMNS, MatchResult.reasons, MatchResult.note))
+        counted = rows
+        texts = {row.id: (row.reasons, row.note) for row in rows}
+    else:
+        counted = _rows(session, run, COUNT_COLUMNS)
+        rows = _rows(session, run, LIGHT_COLUMNS, in_scope_only=True)
+        texts = _texts(session, [row.id for row in rows if row.exception_status == "OPEN"])
+    views = _views(session, run, rows)
     open_by_kind: dict[str, dict[str, Any]] = {}
-    for item in items:
-        if item.exception_status == "OPEN":
-            slot = open_by_kind.setdefault(item.kind, {"count": 0, "amount": ZERO})
+    for row in rows:
+        if row.exception_status == "OPEN":
+            slot = open_by_kind.setdefault(row.kind, {"count": 0, "amount": ZERO})
             slot["count"] += 1
-            slot["amount"] += _result_amount(item)
+            slot["amount"] += _result_amount(row)
     view = recon_api.run_view(session, run)
     return {
         "run_id": str(run.id),
@@ -100,18 +181,26 @@ def pair_report(session: Session, run: ReconRun) -> dict[str, Any]:
         "verified": bool((run.verification or {}).get("passed")),
         # Các phép kiểm của từng cặp để giao diện vẽ con dấu gộp như trang Đối soát.
         "verification": run.verification,
-        **_pair_numbers(run, items),
+        **_pair_numbers(run, counted),
         "open_by_kind": open_by_kind,
         "counts": (run.summary or {}).get("counts", {}),
-        "_items": [(item, views[str(item.id)]) for item in items],
+        "_counted": counted,
+        "_items": [
+            (row, views[index], texts.get(row.id, ([], None))) for index, row in enumerate(rows)
+        ],
     }
 
 
 def _exception_row(
-    pair: dict[str, Any], item: MatchResult, view: dict[str, Any], period_end: date | None
+    pair: dict[str, Any],
+    item: Any,
+    view: dict[str, Any],
+    text: tuple[list[Any], Any],
+    period_end: date | None,
 ) -> dict[str, Any]:
     day = _result_day(view)
     keys = [str(row["key"]) for row in view["left"] + view["right"] if row.get("key")]
+    reasons, note = text
     return {
         "result_id": str(item.id),
         "pair": pair["label"],
@@ -124,8 +213,8 @@ def _exception_row(
         "amount_left": None if item.amount_left is None else str(item.amount_left),
         "amount_right": None if item.amount_right is None else str(item.amount_right),
         "amount": str(_result_amount(item)),
-        "reason": "; ".join(reason["text"] for reason in item.reasons),
-        "note": item.note,
+        "reason": "; ".join(reason["text"] for reason in reasons),
+        "note": note,
         # Dòng mang sang từ kỳ trước thuộc bảng của kỳ trước: tách riêng để số dòng không bị
         # hiểu nhầm là dòng của bảng kỳ này.
         "left_rows": [row["row_ref"] for row in view["left"] if not row.get("carried")],
@@ -177,7 +266,12 @@ def headline_only(session: Session, chain: ReconChain) -> dict[str, Any]:
     """Số chính của một kỳ, chỉ đọc tóm tắt và trạng thái ngoại lệ (nhẹ, dùng cho so sánh các
     kỳ, Dashboard và Assistant)."""
     runs = chain_runs(session, chain)
-    pairs = [_pair_numbers(run, _results(session, run)) for run in runs if run.status == "READY"]
+    # Chỉ đọc các cột để đếm, cộng (Dashboard, so sánh các kỳ, Assistant mở nhanh).
+    pairs = [
+        _pair_numbers(run, _rows(session, run, COUNT_COLUMNS))
+        for run in runs
+        if run.status == "READY"
+    ]
     return {
         "chain_id": str(chain.id),
         "label": chain.label,
@@ -188,7 +282,7 @@ def headline_only(session: Session, chain: ReconChain) -> dict[str, Any]:
     }
 
 
-def _pair_numbers(run: ReconRun, items: list[MatchResult]) -> dict[str, Any]:
+def _pair_numbers(run: ReconRun, items: list[Any]) -> dict[str, Any]:
     """Số liệu của một cặp: phần đếm và tiền lấy từ tóm tắt engine lưu lúc chạy; trạng thái
     ngoại lệ đọc trực tiếp vì người dùng đổi được sau khi chạy."""
     summary = run.summary or {}
@@ -223,10 +317,13 @@ def _pair_numbers(run: ReconRun, items: list[MatchResult]) -> dict[str, Any]:
     }
 
 
-def build_report(session: Session, chain: ReconChain) -> dict[str, Any]:
-    """Báo cáo đầy đủ của một kỳ: số chính, từng cặp, biểu đồ, ngoại lệ (kèm dữ liệu xuất)."""
+def build_report(session: Session, chain: ReconChain, full: bool = False) -> dict[str, Any]:
+    """Báo cáo của một kỳ: số chính, từng cặp, biểu đồ, ngoại lệ đang mở.
+
+    `full=True` (tệp xuất) có thêm "results": mọi kết quả kèm lý do và dòng gốc; trang Báo cáo
+    không cần phần này nên không đọc lý do của hàng chục nghìn kết quả đã khớp."""
     runs = chain_runs(session, chain)
-    pairs = [pair_report(session, run) for run in runs if run.status == "READY"]
+    pairs = [pair_report(session, run, full) for run in runs if run.status == "READY"]
     period_end = chain.period_end
     exceptions: list[dict[str, Any]] = []
     all_rows: list[dict[str, Any]] = []
@@ -236,17 +333,24 @@ def build_report(session: Session, chain: ReconChain) -> dict[str, Any]:
         label: {"count": 0, "amount": ZERO} for label, _, _ in AGE_BUCKETS
     }
     for pair in pairs:
-        for item, view in pair["_items"]:
-            row = _exception_row(pair, item, view, period_end)
-            all_rows.append(row)
-            group = _status_group(item)
-            slot = by_kind.setdefault(item.kind, {"count": 0, "amount": ZERO})
+        for counted in pair["_counted"]:
+            slot = by_kind.setdefault(counted.kind, {"count": 0, "amount": ZERO})
             slot["count"] += 1
-            slot["amount"] += _result_amount(item)
-            if row["date"] and group != "out_of_scope":
-                day = by_day.setdefault(row["date"], {})
+            slot["amount"] += _result_amount(counted)
+        for item, view, text in pair["_items"]:
+            group = _status_group(item)
+            result_day = _result_day(view)
+            if result_day and group != "out_of_scope":
+                day = by_day.setdefault(result_day.isoformat(), {})
                 day[group] = day.get(group, 0) + 1
-            if item.exception_status == "OPEN":
+            row = (
+                _exception_row(pair, item, view, text, period_end)
+                if full or item.exception_status == "OPEN"
+                else None
+            )
+            if full and row is not None:
+                all_rows.append(row)
+            if row is not None and item.exception_status == "OPEN":
                 exceptions.append(row)
                 age = row["age_days"]
                 for label, low, high in AGE_BUCKETS:
@@ -262,7 +366,7 @@ def build_report(session: Session, chain: ReconChain) -> dict[str, Any]:
         "created_at": chain.created_at.isoformat() if chain.created_at else None,
         "verified": chain_verified(chain, runs),
         "kpis": _headline(pairs),
-        "pairs": [{k: v for k, v in pair.items() if k != "_items"} for pair in pairs],
+        "pairs": [{k: v for k, v in pair.items() if not k.startswith("_")} for pair in pairs],
         "by_kind": [
             {"kind": kind, "label": recon_api.KIND_LABELS.get(kind, kind), **value}
             for kind, value in by_kind.items()

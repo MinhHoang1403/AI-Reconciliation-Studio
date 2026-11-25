@@ -286,14 +286,21 @@ def run_view(session: Session, run: ReconRun) -> dict[str, Any]:
 
 
 def _details(
-    version: CleanVersion | None, refs: set[int], key: str | None, day: str | None, amount: str
+    version: CleanVersion | None,
+    refs: set[int],
+    key: str | None,
+    day: str | None,
+    amount: str,
+    extra: tuple[str, ...] = DETAIL_FIELDS,
 ) -> dict[int, dict[str, Any]]:
-    """Giá trị đã chuẩn hóa của các dòng cần hiển thị (đọc đúng phiên bản sạch đã dùng)."""
+    """Giá trị đã chuẩn hóa của các dòng cần hiển thị (đọc đúng phiên bản sạch đã dùng).
+
+    `extra`: các cột thêm ngoài mã, ngày, số tiền; báo cáo chỉ cần mã và ngày nên truyền ()."""
     if version is None or not refs:
         return {}
     frame = pl.scan_parquet(version.parquet_path).filter(pl.col(ROW_REF).is_in(sorted(refs)))
     names = frame.collect_schema().names()
-    wanted = {"key": key, "date": day, "amount": amount} | {name: name for name in DETAIL_FIELDS}
+    wanted = {"key": key, "date": day, "amount": amount} | {name: name for name in extra}
     columns = {label: name for label, name in wanted.items() if name and name in names}
     rows = frame.select(ROW_REF, *set(columns.values())).collect()
     details = {}
@@ -495,7 +502,10 @@ def _result_views(
 
 
 def _carried_details(
-    session: Session, items: list[MatchResult], config: ReconConfig
+    session: Session,
+    items: list[MatchResult],
+    config: ReconConfig,
+    extra: tuple[str, ...] = DETAIL_FIELDS,
 ) -> dict[tuple[str, int], dict[str, Any]]:
     """Giá trị của các dòng chờ từ kỳ trước (đọc từ phiên bản sạch của bảng kỳ trước)."""
     by_version: dict[str, set[int]] = {}
@@ -509,7 +519,9 @@ def _carried_details(
     for version_id, refs in by_version.items():
         version = session.get(CleanVersion, uuid.UUID(version_id))
         table = session.get(DatasetTable, uuid.UUID(tables[version_id]))
-        details = _details(version, refs, config.key_left, config.date_left, config.amount_left)
+        details = _details(
+            version, refs, config.key_left, config.date_left, config.amount_left, extra
+        )
         for ref, detail in details.items():
             found[(tables[version_id], ref)] = detail | {
                 "table_label": audit.table_label(table) if table else None

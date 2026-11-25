@@ -21,7 +21,7 @@ from itertools import combinations
 from typing import Any
 
 import polars as pl
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from studio import audit, database
@@ -259,12 +259,24 @@ def _period(
     return (min(days), max(days)) if days else (None, None)
 
 
-def result_rows(session: Session, run_id: uuid.UUID) -> list[MatchResult]:
-    return list(
-        session.scalars(
-            select(MatchResult).where(MatchResult.run_id == run_id).order_by(MatchResult.position)
+def result_rows(
+    session: Session,
+    run_id: uuid.UUID,
+    *,
+    kinds: tuple[str, ...] | None = None,
+    decided_only: bool = False,
+) -> list[MatchResult]:
+    """Kết quả của một lần chạy. Lọc ngay trong SQL (theo loại, hoặc chỉ ca người dùng đã ghi
+    chú/xử lý) để không nạp hàng trăm nghìn kết quả khi chỉ cần vài chục."""
+    query = select(MatchResult).where(MatchResult.run_id == run_id)
+    if kinds is not None:
+        query = query.where(MatchResult.kind.in_(kinds))
+    if decided_only:
+        query = query.where(
+            MatchResult.note.is_not(None)
+            | MatchResult.exception_status.in_(("EXPLAINED", "RESOLVED"))
         )
-    )
+    return list(session.scalars(query.order_by(MatchResult.position)))
 
 
 # ---------------------------------------------------------------- dòng chờ, lựa chọn
@@ -309,9 +321,7 @@ def pending_from_previous(
     if earlier:
         run = max(earlier, key=lambda item: (item[0], item[1]))[2]
         rows: list[dict[str, Any]] = []
-        for item in result_rows(session, run.id):
-            if item.kind != "PENDING_SETTLEMENT":
-                continue
+        for item in result_rows(session, run.id, kinds=("PENDING_SETTLEMENT",)):
             rows += [
                 {"table_id": str(run.left_table_id), "version_id": str(run.left_version_id),
                  "row_ref": ref}
@@ -431,35 +441,40 @@ def persist(
     """Lưu kết quả, mang trạng thái ngoại lệ của lần trước sang, rồi kiểm chứng."""
     carried = _previous_decisions(session, run)
     now = datetime.now(UTC)
+    values = []
     for position, item in enumerate(results):
         earlier = carried.get(
             result_key(item.kind, item.left_refs, item.right_refs, item.amount_left,
                        item.amount_right)
         )
-        session.add(
-            MatchResult(
-                id=uuid.uuid4(),
-                run_id=run.id,
-                position=position,
-                kind=item.kind,
-                left_refs=item.left_refs,
-                right_refs=item.right_refs,
-                score=item.score,
-                reasons=item.reasons,
-                amount_left=item.amount_left,
-                amount_right=item.amount_right,
-                exception_status=(
+        values.append(
+            {
+                "id": uuid.uuid4(),
+                "run_id": run.id,
+                "position": position,
+                "kind": item.kind,
+                "left_refs": item.left_refs,
+                "right_refs": item.right_refs,
+                "score": item.score,
+                "reasons": item.reasons,
+                "amount_left": item.amount_left,
+                "amount_right": item.amount_right,
+                "exception_status": (
                     None
                     if not item.needs_review
                     else earlier.exception_status
                     if earlier and earlier.exception_status
                     else "OPEN"
                 ),
-                note=earlier.note if earlier else None,
-                updated_at=earlier.updated_at if earlier else now,
-                carried_left=item.carried_left or None,
-            )
+                "note": earlier.note if earlier else None,
+                "updated_at": earlier.updated_at if earlier else now,
+                "carried_left": item.carried_left or None,
+            }
         )
+    # Ghi một lượt (ORM bulk INSERT của SQLAlchemy 2) thay vì tạo từng đối tượng: ở 100.000 đơn
+    # chuỗi có khoảng 240.000 kết quả, tạo từng đối tượng chiếm phần lớn thời gian đối soát.
+    if values:
+        session.execute(insert(MatchResult), values)
     run.summary = summarize(results)
     run.period_start, run.period_end = period
     session.flush()
@@ -475,16 +490,31 @@ def verify_run(session: Session, run: ReconRun) -> dict[str, Any]:
     right_version = session.get(CleanVersion, run.right_version_id)
     if left_version is None or right_version is None:
         return {"passed": False, "checks": [], "error": "Không còn bộ sạch đã dùng."}
+    # Đọc đúng các cột cần kiểm từ cơ sở dữ liệu (không nạp đối tượng ORM, không đọc lý do).
+    query = (
+        select(
+            MatchResult.kind,
+            MatchResult.left_refs,
+            MatchResult.right_refs,
+            MatchResult.carried_left,
+            MatchResult.amount_left,
+            MatchResult.amount_right,
+        )
+        .where(MatchResult.run_id == run.id)
+        .order_by(MatchResult.position)
+    )
     rows = [
         {
-            "kind": item.kind,
-            "left_refs": item.left_refs,
-            "right_refs": item.right_refs,
-            "carried_left": item.carried_left or [],
-            "amount_left": item.amount_left,
-            "amount_right": item.amount_right,
+            "kind": kind,
+            "left_refs": left_refs,
+            "right_refs": right_refs,
+            "carried_left": carried_left or [],
+            "amount_left": amount_left,
+            "amount_right": amount_right,
         }
-        for item in result_rows(session, run.id)
+        for kind, left_refs, right_refs, carried_left, amount_left, amount_right in session.execute(
+            query
+        )
     ]
     return verify(
         clean_frame(left_version),
@@ -534,8 +564,7 @@ def _previous_decisions(session: Session, run: ReconRun) -> dict[ResultKey, Matc
         result_key(
             item.kind, item.left_refs, item.right_refs, item.amount_left, item.amount_right
         ): item
-        for item in result_rows(session, previous.id)
-        if item.note or item.exception_status in ("EXPLAINED", "RESOLVED")
+        for item in result_rows(session, previous.id, decided_only=True)
     }
 
 

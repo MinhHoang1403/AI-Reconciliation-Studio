@@ -1140,6 +1140,7 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .report-figures dt { font-size: 13px; color: var(--ink-soft); }
 .report-figures dd { font-size: 18px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .report-figures > div[data-zero] dd { color: var(--ink-soft); font-weight: 500; }
+.report-answer__note { font-size: 13px; color: var(--ink-soft); max-width: 75ch; }
 
 /* Cần xử lý trước: 5 ca lớn nhất, số tiền thẳng cột bên phải. */
 .report-top { display: grid; gap: 10px; }
