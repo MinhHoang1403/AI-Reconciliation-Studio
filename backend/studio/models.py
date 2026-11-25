@@ -293,6 +293,9 @@ class ReconChain(Base):
     period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Nhận xét AI của báo cáo kỳ này (chỉ viết khi người dùng bấm): {"text", "fingerprint",
+    # "created_at"}; fingerprint khác số liệu hiện tại thì báo nhận xét đã cũ.
+    report_comment: Mapped[dict[str, Any] | None] = mapped_column(nullable=True)
 
 
 class ReconChoice(Base):

@@ -20,6 +20,7 @@ dependencies = [
     { name = "scipy" },
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "xlsxwriter" },
 ]
 
 [package.dev-dependencies]
@@ -28,7 +29,6 @@ dev = [
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
-    { name = "xlsxwriter" },
 ]
 
 [package.metadata]
@@ -46,6 +46,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "sqlalchemy" },
     { name = "uvicorn", extras = ["standard"] },
+    { name = "xlsxwriter", specifier = ">=3.3.3" },
 ]
 
 [package.metadata.requires-dev]
@@ -54,7 +55,6 @@ dev = [
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
-    { name = "xlsxwriter", specifier = ">=3.3.3" },
 ]
 
 [[package]]

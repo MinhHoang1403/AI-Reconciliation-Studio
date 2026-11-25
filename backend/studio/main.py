@@ -14,6 +14,7 @@ from studio.config import settings
 from studio.datasets_api import router as datasets_router
 from studio.mapping_api import router as mapping_router
 from studio.recon_api import router as recon_router
+from studio.report_api import router as report_router
 from studio.tracing import langfuse_configured
 
 
@@ -33,6 +34,7 @@ app.include_router(mapping_router)
 app.include_router(cleaning_router)
 app.include_router(recon_router)
 app.include_router(assistant_router)
+app.include_router(report_router)
 
 # Trạng thái cấu hình của một provider. Chỉ kiểm cấu hình cục bộ, không gọi ra ngoài
 # (RULES R11: không tự gọi API trả phí khi kiểm tra sức khỏe hệ thống).

@@ -17,6 +17,7 @@ dependencies = [
   "langfuse>=5.2.0",
   "rapidfuzz>=3.14.6",
   "scipy>=1.18.1",
+  "xlsxwriter>=3.3.3",
 ]
 
 [dependency-groups]
@@ -25,7 +26,6 @@ dev = [
     "ruff",
     "mypy",
     "httpx",
-    "xlsxwriter>=3.3.3",
 ]
 
 [tool.uv]
