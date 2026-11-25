@@ -167,26 +167,35 @@ def _latest_chain(session: Session) -> ReconChain | None:
     )
 
 
+def _latest_pair_run(session: Session) -> ReconRun | None:
+    """Lần đối soát hai bảng (ngoài chuỗi) mới nhất đã chạy xong."""
+    return session.scalar(
+        select(ReconRun)
+        .where(ReconRun.status == "READY", ReconRun.chain_id.is_(None))
+        .order_by(ReconRun.created_at.desc())
+        .limit(1)
+    )
+
+
 def _runs_in_scope(session: Session, run_id: str | None, chain_id: str | None) -> list[ReconRun]:
-    """Các lần chạy cần xem: lần chạy được chỉ định, chuỗi được chỉ định, hoặc chuỗi mới nhất
-    (không có chuỗi thì lần chạy hai bảng mới nhất)."""
+    """Các lần chạy cần xem: lần chạy được chỉ định, chuỗi được chỉ định, hoặc lần đối soát mới
+    nhất (chuỗi hay hai bảng, cái nào chạy sau thì lấy cái đó)."""
     if run_id:
         return [_run(session, run_id)]
     chain = (
         session.get(ReconChain, _uuid(chain_id, "chuỗi")) if chain_id else _latest_chain(session)
     )
+    if not chain_id:
+        pair = _latest_pair_run(session)
+        if pair is not None and (chain is None or pair.created_at > chain.created_at):
+            return [pair]
     if chain is not None:
         runs = list(session.scalars(select(ReconRun).where(ReconRun.chain_id == chain.id)))
         if runs:
             return sorted(runs, key=lambda run: recon_service.chain_order(session, run))
         if chain_id:
             raise ToolError("Chuỗi này không còn cặp nào (dữ liệu đã bị xóa hoặc đọc lại).")
-    latest = session.scalar(
-        select(ReconRun).where(ReconRun.status == "READY").order_by(ReconRun.created_at.desc())
-    )
-    if latest is None:
-        raise ToolError("Chưa có lần đối soát nào; hãy đối soát trước (reconcile_period).")
-    return [latest]
+    raise ToolError("Chưa có lần đối soát nào; hãy đối soát trước (reconcile_period).")
 
 
 def _run_summary(session: Session, run: ReconRun) -> dict[str, Any]:

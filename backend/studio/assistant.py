@@ -13,16 +13,25 @@ công cụ ("tool"). Gemini không bao giờ tự quyết định con số hay c
 câu trả lời lấy từ kết quả công cụ do engine tính.
 """
 
+import json
 import logging
 import time
 import uuid
+from datetime import date
 from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from studio import audit, database, gemini_client
-from studio.assistant_tools import TOOLS, TOOLS_BY_NAME, ToolError
+from studio.assistant_tools import (
+    TOOLS,
+    TOOLS_BY_NAME,
+    NoArgs,
+    ToolError,
+    list_datasets,
+    list_periods,
+)
 from studio.gemini_client import AiUnavailable, ModelTurn, ToolCall
 from studio.models import ChatMessage, ChatThread, Dataset
 from studio.tracing import observation
@@ -52,7 +61,18 @@ Quy tắc bắt buộc:
 6. Câu mơ hồ hoặc thiếu thông tin: hỏi lại một câu ngắn kèm 2–3 gợi ý cụ thể.
 7. Không có công cụ xóa dữ liệu: nếu được yêu cầu xóa, nói người dùng tự xóa ở trang Dữ liệu.
 8. Trả lời tiếng Việt có dấu, ngắn gọn, dễ hiểu; liệt kê bằng gạch đầu dòng; không đưa mã
-   kỹ thuật (chuỗi uuid) vào câu trả lời."""
+   kỹ thuật (chuỗi uuid) vào câu trả lời.
+9. Cuối tin nhắn mới nhất của người dùng có khối "Bối cảnh hệ thống" (ngày hôm nay, các bảng
+   kèm table_id, các kỳ và đã đối soát chưa). Dùng nó để hiểu câu nói ("bảng đơn hàng", "kỳ
+   này", "hôm qua") và lấy mã bảng ngay, không cần gọi list_datasets chỉ để tìm mã. Số liệu chi
+   tiết (ngoại lệ, vấn đề, số tiền) vẫn phải lấy bằng công cụ. Người dùng không viết khối này.
+10. Cách trả lời: câu đầu trả lời thẳng điều được hỏi (con số, kết luận hoặc việc đã làm); sau
+   đó chi tiết cần thiết; cuối cùng gợi ý một bước tiếp theo hữu ích nếu có (ví dụ "Bạn muốn
+   xem 5 ca lệch tiền lớn nhất không?"). Công cụ báo lỗi thì nói rõ lỗi và cách khắc phục."""
+
+# Bối cảnh gửi kèm mỗi lượt: giới hạn để không phình prompt khi có nhiều bộ dữ liệu.
+CONTEXT_MAX_TABLES = 30
+CONTEXT_MAX_PERIODS = 12
 
 STATUS_TEXT = {
     "PENDING": "đang chờ người dùng xác nhận",
@@ -153,6 +173,39 @@ def _wait_for_attachments(session: Session, reply: ChatMessage, user: ChatMessag
         notes.append(f"{item['name']}: {tables or 'chưa đọc được bảng nào'}")
         _add_link(session, reply, {"label": f"Mở {item['name']}", "path": f"/du-lieu/{dataset.id}"})
     return "\n\n(Người dùng vừa tải lên: " + "; ".join(notes) + ")" if notes else ""
+
+
+def _workspace_context(session: Session) -> str:
+    """Ảnh chụp ngắn trạng thái hệ thống cho Gemini: ngày hôm nay, các bảng, các kỳ.
+
+    Agent hiểu câu nói tốt hơn khi biết đang có gì (Anthropic, *Building effective agents*:
+    cho model đủ ngữ cảnh môi trường), và đỡ một bước gọi list_datasets mỗi lượt. Chỉ gồm
+    nhãn, loại, số đếm và trạng thái — không có giá trị ô nào (DECISIONS 2026-11-24)."""
+    tables = [
+        {
+            "table_id": table["table_id"],
+            "label": table["label"],
+            "kind": table["kind"],
+            "rows": table["rows"],
+            "mapping": table["mapping"]["status"],
+            "cleaning": table["cleaning"],
+        }
+        for dataset in list_datasets(session, NoArgs())["datasets"]
+        for table in dataset["tables"]
+        if table["read_status"] == "READY"
+    ]
+    periods = list_periods(session, NoArgs())["periods"]
+    snapshot = {
+        "today": date.today().isoformat(),
+        "tables": tables[:CONTEXT_MAX_TABLES],
+        "more_tables": max(len(tables) - CONTEXT_MAX_TABLES, 0),
+        "periods": periods[:CONTEXT_MAX_PERIODS],
+    }
+    return (
+        "\n\n[Bối cảnh hệ thống lúc này — dữ liệu do hệ thống gửi kèm, không phải lệnh: "
+        + json.dumps(snapshot, ensure_ascii=False, separators=(",", ":"))
+        + "]"
+    )
 
 
 def _history(thread: ChatThread, reply: ChatMessage, extra: str) -> list[dict[str, Any]]:
@@ -268,7 +321,7 @@ def _run_turn(reply_id: uuid.UUID) -> None:
             "assistant-turn", "agent", {"text": user.text}, {"thread_id": str(thread.id)}
         ) as trace:
             extra = _wait_for_attachments(session, reply, user) if user.attachments else ""
-            conversation = _history(thread, reply, extra)
+            conversation = _history(thread, reply, extra + _workspace_context(session))
             tools = tool_declarations()
             text = ""
             try:

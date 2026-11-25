@@ -1,5 +1,6 @@
 """API của AI Assistant: hội thoại, gửi câu chat, đồng ý hoặc bỏ qua thẻ xác nhận."""
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
@@ -16,6 +17,7 @@ from studio.datasets_api import fail
 from studio.models import ChatMessage, ChatThread, Dataset
 
 router = APIRouter(prefix="/api/assistant")
+logger = logging.getLogger(__name__)
 SessionDep = Annotated[Session, Depends(get_session)]
 TITLE_LENGTH = 60
 
@@ -167,8 +169,12 @@ def decide_card(
     session: SessionDep,
     background: BackgroundTasks,
 ) -> dict[str, Any]:
-    """Người dùng bấm "Đồng ý" (chạy đúng hàm API của nút trên giao diện) hoặc "Bỏ qua"."""
-    message = session.get(ChatMessage, message_id)
+    """Người dùng bấm "Đồng ý" (chạy đúng hàm API của nút trên giao diện) hoặc "Bỏ qua".
+
+    Khóa dòng tin nhắn khi đọc (SELECT … FOR UPDATE): bấm hai lần liền hoặc mở hai tab thì yêu
+    cầu sau phải chờ yêu cầu trước xong và thấy thẻ đã xử lý, thao tác không bao giờ chạy hai
+    lần."""
+    message = session.get(ChatMessage, message_id, with_for_update=True)
     if message is None:
         raise fail(404, "MESSAGE_NOT_FOUND", "Không tìm thấy tin nhắn.")
     cards = [dict(card) for card in message.actions]
@@ -190,7 +196,13 @@ def decide_card(
         except (ToolError, ValidationError) as error:
             session.rollback()
             card["status"], card["result"] = "FAILED", str(error)
-    message = session.get(ChatMessage, message_id)
+        except Exception:
+            # Lỗi bất ngờ: báo rõ trên thẻ thay vì để thẻ kẹt ở "đang chờ" với lỗi 500.
+            logger.exception("Lỗi khi chạy thẻ xác nhận %s", card["tool"])
+            session.rollback()
+            card["status"] = "FAILED"
+            card["result"] = "Lỗi hệ thống khi thực hiện; dữ liệu chưa bị thay đổi. Hãy thử lại."
+    message = session.get(ChatMessage, message_id, with_for_update=True)
     assert message is not None
     message.actions = cards
     message.thread.updated_at = datetime.now(UTC)

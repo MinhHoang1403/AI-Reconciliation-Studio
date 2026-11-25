@@ -46,6 +46,8 @@ test("hỏi Assistant một câu chỉ đọc, xem các bước và câu trả l
       const before = (await page.locator(".chat").boundingBox())?.width ?? 0;
       await toggle.click();
       await expect(page.getByRole("button", { name: "Mở danh sách cuộc trò chuyện" })).toBeVisible();
+      // Thu gọn là ẩn hẳn cả cột, kể cả nút "Cuộc trò chuyện mới".
+      await expect(page.getByRole("button", { name: "Cuộc trò chuyện mới" })).toBeHidden();
       await expect.poll(async () => (await page.locator(".chat").boundingBox())?.width ?? 0).toBeGreaterThan(before + 150);
       await page.reload();
       await page.getByRole("button", { name: "Mở danh sách cuộc trò chuyện" }).click();

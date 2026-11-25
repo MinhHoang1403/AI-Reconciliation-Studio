@@ -131,7 +131,9 @@ export function AssistantPage() {
     return () => controller.abort();
   }, []);
 
-  // Câu trả lời đang soạn: hỏi lại mỗi giây để hiện từng bước.
+  // Câu trả lời đang soạn: hỏi lại mỗi giây để hiện từng bước. Một lần hỏi lỗi (mạng chập
+  // chờn, backend khởi động lại) thì vẫn hỏi lại lần sau, không đứng hình ở "đang suy nghĩ".
+  const [pollMiss, setPollMiss] = useState(0);
   useEffect(() => {
     if (!thread?.running) return;
     const timer = window.setTimeout(() => {
@@ -140,10 +142,10 @@ export function AssistantPage() {
           setThread(next);
           if (!next.running) refreshList();
         })
-        .catch(() => undefined);
+        .catch(() => setPollMiss((value) => value + 1));
     }, POLL_MS);
     return () => window.clearTimeout(timer);
-  }, [thread, refreshList]);
+  }, [thread, pollMiss, refreshList]);
 
   // Cuộn xuống tin mới nhất khi có thay đổi.
   const lastMessage = thread?.messages.at(-1);
@@ -292,44 +294,20 @@ export function AssistantPage() {
       </header>
 
       <div className="assistant__layout" data-threads={collapsed ? "collapsed" : "expanded"}>
-        <nav className="chat-threads" aria-label="Các cuộc trò chuyện">
+        {/* Khi thu gọn, cả cột (kể cả nút "Cuộc trò chuyện mới") ẩn hẳn; visibility trong CSS
+            đưa cột ra khỏi thứ tự phím Tab sau khi hiệu ứng đóng chạy xong. */}
+        <nav className="chat-threads" id="chat-threads" aria-label="Các cuộc trò chuyện">
           <div className="chat-threads__head">
-            <button
-              className="button button--quiet chat-threads__new"
-              type="button"
-              onClick={startNew}
-              aria-label="Cuộc trò chuyện mới"
-              title={collapsed ? "Cuộc trò chuyện mới" : undefined}
-            >
+            <button className="button button--quiet chat-threads__new" type="button" onClick={startNew}>
               <MessageSquarePlus aria-hidden="true" size={17} />
-              <span className="chat-threads__label">Cuộc trò chuyện mới</span>
-            </button>
-            <button
-              className="icon-button chat-threads__toggle"
-              type="button"
-              aria-controls="chat-thread-list"
-              aria-expanded={!collapsed}
-              aria-label={collapsed ? "Mở danh sách cuộc trò chuyện" : "Thu gọn danh sách cuộc trò chuyện"}
-              title={collapsed ? "Mở danh sách cuộc trò chuyện" : "Thu gọn danh sách cuộc trò chuyện"}
-              onClick={() => {
-                setCollapsed((value) => {
-                  store(THREADS_COLLAPSED, value ? "0" : "1");
-                  return !value;
-                });
-              }}
-            >
-              {collapsed ? (
-                <PanelLeftOpen aria-hidden="true" size={18} strokeWidth={1.8} />
-              ) : (
-                <PanelLeftClose aria-hidden="true" size={18} strokeWidth={1.8} />
-              )}
+              Cuộc trò chuyện mới
             </button>
           </div>
           <details className="chat-threads__fold">
             <summary>Các cuộc trò chuyện trước ({formatCount(threads?.length ?? 0)})</summary>
             {threadList}
           </details>
-          <div className="chat-threads__wide" id="chat-thread-list">
+          <div className="chat-threads__wide">
             {threadList}
           </div>
         </nav>
@@ -348,6 +326,31 @@ export function AssistantPage() {
           }}
           onDrop={onDrop}
         >
+          {/* Thanh đầu khung chat (chỉ trên màn hình rộng): nút ẩn/hiện danh sách và tên cuộc
+              trò chuyện đang mở. Nút nằm cố định một chỗ dù cột đang mở hay đóng. */}
+          <div className="chat__bar">
+            <button
+              className="icon-button chat__toggle"
+              type="button"
+              aria-controls="chat-threads"
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? "Mở danh sách cuộc trò chuyện" : "Thu gọn danh sách cuộc trò chuyện"}
+              title={collapsed ? "Mở danh sách cuộc trò chuyện" : "Thu gọn danh sách cuộc trò chuyện"}
+              onClick={() => {
+                setCollapsed((value) => {
+                  store(THREADS_COLLAPSED, value ? "0" : "1");
+                  return !value;
+                });
+              }}
+            >
+              {collapsed ? (
+                <PanelLeftOpen aria-hidden="true" size={18} strokeWidth={1.8} />
+              ) : (
+                <PanelLeftClose aria-hidden="true" size={18} strokeWidth={1.8} />
+              )}
+            </button>
+            <span className="chat__title">{thread?.title || "Cuộc trò chuyện mới"}</span>
+          </div>
           <div className="chat__scroll">
             {!thread || thread.messages.length === 0 ? (
               <div className="chat-empty">

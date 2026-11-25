@@ -1064,23 +1064,46 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
   .assistant__layout { flex: 1; min-height: 0; height: auto; }
 }
 
-.chat-threads__head { display: flex; align-items: center; gap: 4px; }
+.chat-threads__head { display: flex; }
 .chat-threads__head .chat-threads__new { flex: 1; min-width: 0; padding: 0 12px; gap: 8px; white-space: nowrap; }
-.chat-threads__toggle { width: 40px; height: 40px; }
+
+/* Thanh đầu khung chat: nút ẩn/hiện danh sách (nhỏ, trầm) và tên cuộc trò chuyện. */
+.chat__bar { display: none; }
 
 @media (min-width: 1101px) {
-  .assistant__layout { transition: grid-template-columns 220ms var(--ease-out); }
-  /* Thu gọn: cột còn 48px với hai nút biểu tượng (mở danh sách, cuộc trò chuyện mới). */
-  .assistant__layout[data-threads="collapsed"] { grid-template-columns: 48px minmax(0, 1fr); }
-  .assistant__layout[data-threads="collapsed"] .chat-threads__head { flex-direction: column; gap: 8px; }
-  .assistant__layout[data-threads="collapsed"] .chat-threads__new { flex: none; width: 44px; padding: 0; justify-content: center; }
-  .assistant__layout[data-threads="collapsed"] .chat-threads__label { display: none; }
-  .assistant__layout[data-threads="collapsed"] .chat-threads__wide { display: none; }
+  .chat { grid-template-rows: auto minmax(0, 1fr) auto; }
+  .chat__bar {
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+    padding: 6px 16px 6px 8px; border-bottom: 1px solid var(--line-soft);
+  }
+  .chat__toggle { width: 36px; height: 36px; color: var(--ink-soft); }
+  .chat__toggle:hover { color: var(--primary-ink); }
+  .chat__title {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 14px; font-weight: 500; color: var(--ink-soft);
+  }
+
+  /* Đóng/mở mượt: chỉ độ rộng cột (260px ↔ 0) và khoảng cách chuyển động; nội dung cột giữ
+     nguyên 260px trong vùng bị cắt nên chữ không xuống dòng lại từng khung hình, rồi mờ dần.
+     Trước đây cột co về 48px kèm đổi bố cục nút giữa chừng nên trông khựng. */
+  .assistant__layout {
+    transition: grid-template-columns 280ms var(--ease-out), column-gap 280ms var(--ease-out);
+  }
+  .chat-threads {
+    overflow: hidden;
+    transition: opacity 200ms var(--ease-out) 60ms, visibility 0s;
+  }
+  .chat-threads__head { width: 260px; flex: none; }
+  .chat-threads__wide { width: 260px; flex: 1 1 auto; padding: 0 2px 2px 0; }
+  .assistant__layout[data-threads="collapsed"] { grid-template-columns: 0px minmax(0, 1fr); column-gap: 0; }
+  .assistant__layout[data-threads="collapsed"] .chat-threads {
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity 140ms var(--ease-out), visibility 0s 280ms;
+  }
 }
 
 @media (max-width: 1100px) {
   /* Màn hình vừa và điện thoại đã có danh sách thu gọn dạng mục mở rộng; không cần nút. */
-  .chat-threads__toggle { display: none; }
   .chat-threads__head { flex: 1 1 240px; }
   .assistant__layout { grid-template-rows: auto minmax(0, 1fr); }
 }

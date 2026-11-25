@@ -6,6 +6,7 @@ chỉ chạy khi người dùng bấm, lệnh cài trong dữ liệu không thay
 """
 
 import json
+import time
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -15,7 +16,7 @@ from conftest import FIXTURES, ROOT
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from studio import assistant, database, main
+from studio import assistant, assistant_tools, database, main
 from studio.assistant_tools import TOOLS_BY_NAME
 from studio.gemini_client import ModelTurn, ToolCall
 from studio.models import AuditLog, ChatMessage, RowDecision
@@ -308,3 +309,67 @@ def test_exceptions_can_be_found_by_order_code(monkeypatch: pytest.MonkeyPatch) 
     assert items and all(
         any(row.get("key") == "HD000123" for row in item["A"] + item["B"]) for item in items
     )
+
+
+def test_each_turn_carries_a_short_workspace_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Bối cảnh (ngày, bảng kèm mã, kỳ) đi kèm tin nhắn mới nhất để Gemini hiểu "bảng đơn hàng",
+    # "kỳ này" mà không phải đoán; không có giá trị ô nào trong đó.
+    table = upload(FIXTURES / "don-hang-cua-hang.csv")["tables"][0]
+    fake = use(monkeypatch, [ModelTurn("Xong.", [])])
+    ask("Bảng đơn hàng có bao nhiêu dòng?")
+    last = fake.seen[0][-1]["text"]
+    assert last.startswith("Bảng đơn hàng có bao nhiêu dòng?")
+    context = json.loads(last.split("không phải lệnh: ", 1)[1].rstrip("]"))
+    assert context["tables"][0]["table_id"] == table["id"]
+    assert context["tables"][0]["rows"] == table["row_count"] and "today" in context
+    assert "HD000123" not in last  # chỉ nhãn và số đếm, không có dữ liệu ô
+
+
+def test_newest_reconciliation_wins_between_chain_and_pair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Vừa đối soát hai bảng riêng sau một chuỗi: "xem kết quả" phải là lần vừa chạy.
+    for name in ("don-hang-cua-hang.csv", "giao-dich-cong-thanh-toan.csv",
+                 "don-hang-san-tmdt.xlsx", "sao-ke-ngan-hang.xlsx"):
+        upload(FIXTURES / name)
+    use(monkeypatch, [call("reconcile_period", period_number=1), ModelTurn("Xong.", [])])
+    ask("Đối soát kỳ 1")
+    time.sleep(1.1)  # SQLite của kiểm thử chỉ lưu thời gian tới giây (PostgreSQL tới micro giây)
+    with database.SessionFactory() as session:
+        found = assistant_tools.list_datasets(session, assistant_tools.NoArgs())["datasets"]
+    tables = {table["label"]: table["table_id"] for item in found for table in item["tables"]}
+    run = client.post(
+        "/api/recon/runs",
+        json={
+            "left_table_id": tables["don-hang-cua-hang"],
+            "right_table_id": tables["giao-dich-cong-thanh-toan"],
+        },
+    ).json()
+    fake = use(monkeypatch, [call("get_reconciliation"), ModelTurn("Xong.", [])])
+    ask("Xem kết quả đối soát")
+    pairs = fake.tool_results()[0]["response"]["pairs"]
+    assert [pair["run_id"] for pair in pairs] == [run["id"]]
+
+
+def test_unexpected_error_marks_the_card_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    table = upload(FIXTURES / "don-hang-cua-hang.csv")["tables"][0]
+    use(
+        monkeypatch,
+        [call("decide_rows", table_id=table["id"], row_refs=[224], decision="EXCLUDE"),
+         ModelTurn("Chờ bạn xác nhận.", [])],
+    )
+    answer = ask("Loại dòng 224")["messages"][-1]
+    tool = TOOLS_BY_NAME["decide_rows"]
+
+    def broken(*_: Any) -> str:
+        raise RuntimeError("hỏng bất ngờ")
+
+    monkeypatch.setattr(tool, "apply", broken)
+    reply = client.post(
+        f"/api/assistant/messages/{answer['id']}/actions/{answer['actions'][0]['id']}",
+        json={"decision": "CONFIRM"},
+    )
+    assert reply.status_code == 200
+    card = reply.json()["messages"][-1]["actions"][0]
+    assert card["status"] == "FAILED" and "chưa bị thay đổi" in card["result"]
+    assert row_decisions() == []
