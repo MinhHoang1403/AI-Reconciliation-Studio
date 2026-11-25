@@ -194,6 +194,7 @@ def test_money_and_rate_are_written_the_vietnamese_way() -> None:
     assert report_ai.money_text("1250000.00") == "1.250.000 đ"
     assert report_ai.money_text(Decimal("-20000")) == "-20.000 đ"
     assert report_ai.rate_text(96.5) == "96,5%"
+    assert report_ai.rate_text(91.0) == "91%"  # giống cách trang Báo cáo hiển thị
     assert report_ai.unknown_numbers("Khớp 96,5%, HD000123", {"a": "96,5%", "b": "HD000123"}) == []
 
 
