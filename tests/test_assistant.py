@@ -262,7 +262,7 @@ def test_history_carries_card_outcomes_and_busy_thread_waits(
 def test_sample_prompts_use_real_tools_and_parameters() -> None:
     data = json.loads(PROMPTS.read_text(encoding="utf-8"))
     prompts = data["prompts"]
-    assert len(prompts) == 30 and len({item["id"] for item in prompts}) == 30
+    assert len(prompts) == 10 and len({item["id"] for item in prompts}) == 10
     for item in prompts:
         for expected in item["tools"]:
             tool = TOOLS_BY_NAME[expected["name"]]

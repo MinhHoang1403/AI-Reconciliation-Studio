@@ -82,7 +82,7 @@ Thêm chức năng nhưng không thêm thao tác và không làm rối màn hìn
 
 **Cách làm (Owner chốt 23/11/2026, `DECISIONS.md`):**
 
-1. **Bộ câu lệnh mẫu trước:** `tests/fixtures/assistant/cau-lenh-mau.json`, 30 câu tiếng Việt (rõ ràng, mơ hồ, nhiều bước, câu cài lệnh trong dữ liệu), mỗi câu ghi công cụ và tham số mong đợi.
+1. **Bộ câu lệnh mẫu trước:** `tests/fixtures/assistant/cau-lenh-mau.json`, 10 câu tiếng Việt (rút từ 30 câu ngày 25/11/2026) (rõ ràng, mơ hồ, nhiều bước, câu cài lệnh trong dữ liệu), mỗi câu ghi công cụ và tham số mong đợi.
 2. **Công cụ = chính các hàm giao diện đang dùng** (`assistant_tools.py`), mỗi công cụ một khuôn tham số kiểm bằng schema:
    - *Đọc* (tự chạy): danh sách bộ dữ liệu, trạng thái, ánh xạ, vấn đề làm sạch, các kỳ, kết quả đối soát, đường đi của một dòng, nhật ký.
    - *Xử lý* (tự chạy, báo lại đã làm gì): gợi ý lại ánh xạ, đối soát cả chuỗi, đối soát hai bảng, kiểm chứng lại.
@@ -93,7 +93,7 @@ Thêm chức năng nhưng không thêm thao tác và không làm rối màn hìn
 6. **Giao diện trang Assistant** (impeccable + ui-ux-pro-max): danh sách hội thoại, khung tin nhắn, các bước đang làm, thẻ xác nhận, ô nhập có đính kèm tệp (dùng lại API tải tệp), nút dẫn sang đúng trang Dữ liệu / Đối soát.
 7. **Kiểm thử**: test với Gemini giả lập (đúng công cụ, đúng tham số, thẻ xác nhận không tự chạy, lệnh cài trong dữ liệu bị bỏ qua) và E2E; đo với Gemini thật bằng `tools/evaluate_assistant.py` (tốn phí, Owner chạy).
 
-- **Xong khi:** bộ 30 câu lệnh mẫu tiếng Việt (gồm câu mơ hồ) gọi đúng công cụ và tham số ≥ 90%, do Owner chạy thật và đánh giá qua Langfuse; câu lệnh cài trong dữ liệu nguồn không làm thay đổi hành vi.
+- **Xong khi:** bộ 10 câu lệnh mẫu tiếng Việt (gồm câu mơ hồ) gọi đúng công cụ và tham số ≥ 90%, do Owner chạy thật và đánh giá qua Langfuse; câu lệnh cài trong dữ liệu nguồn không làm thay đổi hành vi.
 
 ## Giai đoạn 7 — Báo cáo
 

@@ -1,6 +1,6 @@
 """Đo AI Assistant với Gemini THẬT trên app đang chạy (tốn phí, Owner chạy).
 
-Chạy bộ 30 câu lệnh mẫu (tests/fixtures/assistant/cau-lenh-mau.json), mỗi câu trong một cuộc
+Chạy bộ 10 câu lệnh mẫu (tests/fixtures/assistant/cau-lenh-mau.json), mỗi câu trong một cuộc
 trò chuyện mới, rồi so công cụ và tham số Assistant đã gọi với đáp án. Thẻ xác nhận không bao
 giờ được bấm, nên dữ liệu không bị thay đổi. Mỗi lượt cũng có trace trên Langfuse để xem lại.
 

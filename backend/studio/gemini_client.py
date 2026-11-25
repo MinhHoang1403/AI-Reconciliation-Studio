@@ -53,12 +53,13 @@ def _record_call(
     input_tokens: int = 0,
     output_tokens: int = 0,
     error_code: str | None = None,
+    model: str | None = None,
 ) -> None:
     with database.SessionFactory() as session:
         session.add(
             AiCall(
                 purpose=purpose,
-                model=settings.gemini_model,
+                model=model or settings.gemini_model,
                 table_id=table_id,
                 status=status,
                 input_tokens=input_tokens,
@@ -169,9 +170,12 @@ def _generate(
         raise AiUnavailable("NOT_CONFIGURED", "Chưa có khóa GEMINI_API_KEY trong .env.")
     # Xếp hàng trước, rồi mới bắt đầu đo: thời gian ghi vào ai_calls và Langfuse là thời gian
     # gọi Gemini thật (kể cả các lần thử lại), không gồm lúc chờ lượt.
-    with _slots, ai_generation(
-        purpose, settings.gemini_model, trace_input, {"table_id": str(table_id)}
-    ) as trace:
+    with (
+        _slots,
+        ai_generation(
+            purpose, settings.gemini_model, trace_input, {"table_id": str(table_id)}
+        ) as trace,
+    ):
         started = time.perf_counter()
         try:
             response = request(_client(attempts or settings.gemini_attempts))
