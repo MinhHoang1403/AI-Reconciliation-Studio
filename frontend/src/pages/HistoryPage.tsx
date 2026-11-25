@@ -14,6 +14,7 @@ const OBJECT_LABELS: Record<string, string> = {
   DATASET: "Bộ dữ liệu",
   TABLE: "Bảng",
   RECON_RUN: "Đối soát",
+  RECON_CHAIN: "Đối soát cả chuỗi",
 };
 
 export function HistoryPage() {
@@ -82,7 +83,8 @@ export function HistoryPage() {
                 <div className="history__body">
                   <p className="history__summary">{entry.summary}</p>
                   <p className="history__meta">
-                    {OBJECT_LABELS[entry.object_type] ?? entry.object_type}: {entry.object_label} · {entry.actor}
+                    {/* Loại chưa có tên tiếng Việt thì ghi chung, không lộ mã kỹ thuật cho người dùng. */}
+                    {OBJECT_LABELS[entry.object_type] ?? "Đối tượng"}: {entry.object_label} · {entry.actor}
                   </p>
                   {(entry.before || entry.after) && (
                     <details className="history__change">

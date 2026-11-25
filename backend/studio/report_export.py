@@ -15,6 +15,8 @@ from typing import Any
 
 import xlsxwriter
 
+from studio import report_ai
+
 STATUS_LABELS = {"OPEN": "Cần xử lý", "EXPLAINED": "Đã giải thích", "RESOLVED": "Đã xử lý"}
 RESULT_HEADERS = (
     "Cặp đối soát",
@@ -42,6 +44,15 @@ def _amount(value: str | None) -> Decimal | None:
     return None if value is None else Decimal(value)
 
 
+def _left_rows(item: dict[str, Any]) -> str:
+    """Dòng bên A; dòng chờ mang sang từ kỳ trước ghi riêng (thuộc bảng của kỳ trước)."""
+    text = ", ".join(str(ref) for ref in item["left_rows"])
+    if item.get("carried_rows"):
+        carried = "kỳ trước: " + ", ".join(str(ref) for ref in item["carried_rows"])
+        text = f"{text}; {carried}" if text else carried
+    return text
+
+
 def _row(item: dict[str, Any]) -> list[Any]:
     return [
         item["pair"],
@@ -52,7 +63,7 @@ def _row(item: dict[str, Any]) -> list[Any]:
         _amount(item["amount_left"]),
         _amount(item["amount_right"]),
         _amount(item["amount"]),
-        ", ".join(str(ref) for ref in item["left_rows"]),
+        _left_rows(item),
         ", ".join(str(ref) for ref in item["right_rows"]),
         item["reason"],
         item["note"] or "",
@@ -70,7 +81,8 @@ def exception_table(report: dict[str, Any]) -> list[list[Any]]:
 
 def summary_table(report: dict[str, Any]) -> list[list[Any]]:
     kpis = report["kpis"]
-    rate = "{}%".format
+    # Tỷ lệ viết như trên trang Báo cáo (91,3%); không có gì cần đối chiếu thì "chưa có".
+    rate = report_ai.rate_text
     rows: list[list[Any]] = [
         ["Kỳ đối soát", report["label"]],
         ["Đã qua kiểm chứng", "Có" if report["verified"] else "Không"],

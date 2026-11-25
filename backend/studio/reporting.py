@@ -126,7 +126,10 @@ def _exception_row(
         "amount": str(_result_amount(item)),
         "reason": "; ".join(reason["text"] for reason in item.reasons),
         "note": item.note,
-        "left_rows": [row["row_ref"] for row in view["left"]],
+        # Dòng mang sang từ kỳ trước thuộc bảng của kỳ trước: tách riêng để số dòng không bị
+        # hiểu nhầm là dòng của bảng kỳ này.
+        "left_rows": [row["row_ref"] for row in view["left"] if not row.get("carried")],
+        "carried_rows": [row["row_ref"] for row in view["left"] if row.get("carried")],
         "right_rows": [row["row_ref"] for row in view["right"]],
     }
 

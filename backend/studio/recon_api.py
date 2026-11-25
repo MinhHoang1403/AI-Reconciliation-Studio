@@ -670,13 +670,24 @@ def recon_periods(session: SessionDep) -> list[dict[str, Any]]:
     return result
 
 
+def _period_label(session: Session, tables: list[DatasetTable]) -> str:
+    """Tên chuỗi khi người gọi không đặt tên: tên kỳ hệ thống nhận ra cho đúng bộ bảng này
+    (ví dụ "Kỳ 01/10 – 14/10/2026"); không khớp kỳ nào thì ghép tên các bảng. Tên này hiện ở
+    trang Đối soát, Báo cáo và Lịch sử, nên không để dãy tên bảng dài khi đã biết kỳ."""
+    wanted = {str(table.id) for table in tables}
+    for period in recon_service.detect_periods(recon_service.ready_tables(session)):
+        if set(period["table_ids"]) == wanted:
+            return str(period["label"])
+    return " · ".join(audit.table_label(table) for table in tables)
+
+
 @router.post("/recon/chains", status_code=202)
 def start_chain(
     request: ChainRequest, session: SessionDep, background: BackgroundTasks
 ) -> dict[str, Any]:
     """Đối soát cả chuỗi của một kỳ: mọi cặp nối được (đơn hàng ↔ cổng ↔ sao kê)."""
     tables = [_table(session, table_id) for table_id in dict.fromkeys(request.table_ids)]
-    label = request.label or " · ".join(audit.table_label(table) for table in tables)
+    label = request.label or _period_label(session, tables)
     try:
         chain = recon_service.create_chain(session, tables, label)
     except ValueError as error:

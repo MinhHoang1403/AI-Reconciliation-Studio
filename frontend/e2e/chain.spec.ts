@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
+import { horizontalOverflow } from "./layout";
+
 // Kiểm luồng đối soát theo kỳ trên dịch vụ thật: bốn tệp kỳ 1 → một nút chạy cả chuỗi →
 // "Tất cả cần xử lý" gộp ngoại lệ của các cặp → chọn cặp đúng cho ca mơ hồ → xem chờ tiền về.
 // Chỉ xóa đúng bộ dữ liệu do bài này tạo; tệp mẫu đã có sẵn thì bỏ qua để không đụng dữ liệu
@@ -84,7 +86,7 @@ test("đối soát cả chuỗi của một kỳ, chọn cặp cho ca mơ hồ",
     await page.getByRole("button", { name: /^Chờ tiền về/ }).click();
     await expect(page.getByText(/Kỳ sau sẽ tự ghép lại/).first()).toBeVisible();
 
-    const width = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    const width = await horizontalOverflow(page);
     expect(width).toBeLessThanOrEqual(0);
   } finally {
     for (const dataset of await datasets(request)) {

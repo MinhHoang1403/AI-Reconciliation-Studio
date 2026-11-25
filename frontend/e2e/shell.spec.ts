@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { horizontalOverflow } from "./layout";
+
 // Kiểm khung ứng dụng trên dịch vụ thật: điều hướng, trạng thái hệ thống, trang chưa có chức năng.
 
 test("Dashboard hiển thị bước tiếp theo, quy trình và trạng thái hệ thống", async ({ page }) => {
@@ -65,10 +67,12 @@ test("Nút ở bước tiếp theo dẫn tới trang Dữ liệu", async ({ page
   await expect(page).toHaveURL("/du-lieu");
 });
 
-test("Trang không bị cuộn ngang", async ({ page }) => {
-  await page.goto("/");
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(overflow).toBeLessThanOrEqual(0);
+test("Không trang nào bị cuộn ngang hay bị thu nhỏ", async ({ page }) => {
+  for (const path of ["/", "/assistant", "/du-lieu", "/doi-soat", "/bao-cao", "/lich-su"]) {
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+    expect(await horizontalOverflow(page), path).toBeLessThanOrEqual(0);
+  }
 });
 
 test("API trạng thái không trả khóa bí mật", async ({ request }) => {

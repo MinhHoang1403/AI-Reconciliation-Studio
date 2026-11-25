@@ -575,6 +575,7 @@ export type ReportException = {
   amount: string;
   reason: string;
   left_rows: number[];
+  carried_rows: number[]; // dòng chờ mang sang từ kỳ trước (thuộc bảng kỳ trước)
   right_rows: number[];
 };
 

@@ -279,6 +279,7 @@ function TopExceptions({ report }: { report: Report }) {
 function rowsText(item: ReportException): string {
   const parts = [];
   if (item.left_rows.length) parts.push(`dòng A ${item.left_rows.join(", ")}`);
+  if (item.carried_rows.length) parts.push(`dòng kỳ trước ${item.carried_rows.join(", ")}`);
   if (item.right_rows.length) parts.push(`dòng B ${item.right_rows.join(", ")}`);
   return `Không có mã (${parts.join("; ")})`;
 }

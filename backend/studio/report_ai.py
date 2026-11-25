@@ -12,6 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from studio import recon_api
 from studio.datasets_api import fail
 from studio.gemini_client import AiUnavailable, generate_json
 
@@ -73,6 +74,9 @@ def facts(report: dict[str, Any]) -> dict[str, Any]:
         "thieu_tien_ve": money_text(kpis["missing_amount"]),
         "tien_ve_chua_ro_nguon": money_text(kpis["unknown_amount"]),
         "cho_tien_ve": f"{kpis['pending_count']} dòng, {money_text(kpis['pending_amount'])}",
+        # Số ca đang mở theo từng loại (cộng mọi cặp), để khi được hỏi "gồm những gì" AI đọc
+        # đúng số engine đếm thay vì tự chia (đo thật 25/11/2026 từng ghi sai 4 ca chưa sạch).
+        "ca_can_xu_ly_theo_loai": _open_by_kind(report),
         "theo_cap": [
             {
                 "cap": pair["label"],
@@ -97,11 +101,31 @@ def facts(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _open_by_kind(report: dict[str, Any]) -> list[dict[str, str]]:
+    totals: dict[str, dict[str, Any]] = {}
+    for pair in report["pairs"]:
+        for kind, value in pair["open_by_kind"].items():
+            slot = totals.setdefault(kind, {"count": 0, "amount": Decimal("0")})
+            slot["count"] += value["count"]
+            slot["amount"] += Decimal(str(value["amount"]))
+    return [
+        {
+            "loai": recon_api.KIND_LABELS.get(kind, kind),
+            "y_nghia": KIND_MEANINGS.get(kind, ""),
+            "so_ca": str(value["count"]),
+            "so_tien_lien_quan": money_text(value["amount"]),
+        }
+        for kind, value in sorted(totals.items(), key=lambda item: -item[1]["count"])
+    ]
+
+
 def _rows_text(item: dict[str, Any]) -> str:
     """Ca không có mã (ví dụ dòng sao kê không ghi mã đơn): gọi theo số dòng gốc."""
     parts = []
     if item["left_rows"]:
         parts.append("dòng A " + ", ".join(str(ref) for ref in item["left_rows"]))
+    if item.get("carried_rows"):
+        parts.append("dòng kỳ trước " + ", ".join(str(ref) for ref in item["carried_rows"]))
     if item["right_rows"]:
         parts.append("dòng B " + ", ".join(str(ref) for ref in item["right_rows"]))
     return "không có mã (" + "; ".join(parts) + ")"

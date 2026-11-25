@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { horizontalOverflow } from "./layout";
+
 // Kiểm trang Báo cáo trên dịch vụ thật, chỉ ĐỌC (không đối soát, không bấm nhận xét AI nên
 // không tốn phí, không đổi dữ liệu). Cần sẵn ít nhất một kỳ đã đối soát cả chuỗi; chưa có thì
 // bỏ qua (bài chain.spec.ts tạo được kỳ đó trên máy trống).
@@ -48,6 +50,6 @@ test("báo cáo kỳ mới nhất: số chính, biểu đồ, bảng dữ liệu
   await expect(page).toHaveURL(/\/bao-cao$/);
 
   // Không cuộn ngang ở bất kỳ khổ màn hình nào.
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(overflow).toBeLessThanOrEqual(1);
+  const overflow = await horizontalOverflow(page);
+  expect(overflow).toBeLessThanOrEqual(0);
 });

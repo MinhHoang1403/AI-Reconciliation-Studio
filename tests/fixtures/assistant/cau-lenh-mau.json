@@ -38,7 +38,8 @@
       "tools": [],
       "any_of": [
         "get_reconciliation",
-        "list_exceptions"
+        "list_exceptions",
+        "get_report"
       ],
       "forbid_change": true,
       "covers": "mơ hồ: câu hỏi chung, không được đề xuất thay đổi"

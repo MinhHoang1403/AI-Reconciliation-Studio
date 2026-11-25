@@ -139,6 +139,11 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 
 /* ---------- Tổng quan ---------- */
 .overview { display: grid; gap: 28px; }
+/* Lưới cấp trang: cột không được giãn theo nội dung không xuống dòng (ví dụ thanh chọn kỳ có
+   nhiều nút). Cột tự giãn (auto) làm trang Đối soát rộng 466px trên màn 375px, trình duyệt thu
+   nhỏ cả trang và cắt chữ; minmax(0, 1fr) giữ cột bằng màn hình, thanh chọn tự cuộn ngang. */
+.overview, .data-page, .dataset-page, .recon, .history, .report,
+.period-panel { grid-template-columns: minmax(0, 1fr); }
 
 .next-step {
   display: flex; align-items: center; justify-content: space-between; gap: 24px;

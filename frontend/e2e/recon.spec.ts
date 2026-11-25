@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
+import { horizontalOverflow } from "./layout";
+
 // Kiểm luồng Đối soát trên dịch vụ thật: hai tệp mẫu → chạy đối soát → ngoại lệ → ghi chú →
 // nhật ký kiểm toán. Như data.spec.ts, chỉ xóa đúng bộ dữ liệu do bài này tạo; tệp mẫu đã có
 // sẵn từ trước thì bỏ qua để không đụng dữ liệu của người dùng.
@@ -62,7 +64,7 @@ test("đối soát đơn cửa hàng với cổng thanh toán, ghi chú ngoại 
     await expect(page.getByText(/Ghi chú cho Lệch tiền/).first()).toBeVisible();
     await expect(page.getByText(/Chạy đối soát\./).first()).toBeVisible();
 
-    const width = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    const width = await horizontalOverflow(page);
     expect(width).toBeLessThanOrEqual(0);
   } finally {
     for (const dataset of await datasets(request)) {

@@ -69,6 +69,8 @@ def period1() -> dict[str, Any]:
 
 def test_every_number_matches_the_engine_results(period1: dict[str, Any]) -> None:
     assert period1["verified"] and len(period1["pairs"]) == 4
+    # Chuỗi tạo không kèm tên lấy tên kỳ, không phải dãy tên bảng.
+    assert period1["label"].startswith("Kỳ ") and "›" not in period1["label"]
     totals: dict[str, Decimal] = {}
     for pair in period1["pairs"]:
         want = expected_pair(pair["run_id"])
@@ -208,5 +210,32 @@ def test_assistant_reads_the_same_report_numbers(period1: dict[str, Any]) -> Non
     assert result["ty_le_khop_theo_tien"] == report_ai.rate_text(
         period1["kpis"]["match_rate_amount"]
     )
+    # Số ca theo loại do engine đếm, cộng lại đúng tổng số ca cần xử lý.
+    by_kind = result["ca_can_xu_ly_theo_loai"]
+    assert sum(int(item["so_ca"]) for item in by_kind) == period1["kpis"]["open_count"]
+    assert {"Dữ liệu chưa sạch", "Lệch tiền"} <= {item["loai"] for item in by_kind}
     text = repr(result)
     assert "Nguyen" not in text and "NGUYEN" not in text  # không có tên khách
+
+
+def test_period2_numbers_include_rows_carried_from_period1() -> None:
+    # Kỳ 2 nhận dòng chờ tiền về của kỳ 1: số liệu vẫn phải khớp kết quả engine, dòng mang
+    # sang ghi riêng "kỳ trước" trong tệp xuất.
+    upload_all(PERIOD1 + PERIOD2)
+    run_period(0)
+    chain = run_period(1)
+    report = client.get(f"/api/reports/{chain['id']}").json()
+    for pair in report["pairs"]:
+        want = expected_pair(pair["run_id"])
+        assert pair["rows_in_scope"] == want["rows_in_scope"], pair["label"]
+        assert money(pair["amount_matched"]) == want["amount_matched"], pair["label"]
+    text = client.get(f"/api/reports/{chain['id']}/export.csv").content.decode("utf-8-sig")
+    assert "kỳ trước: " in text
+    summary = pl.read_excel(
+        io.BytesIO(client.get(f"/api/reports/{chain['id']}/export.xlsx").content),
+        sheet_name="Tóm tắt",
+        has_header=False,
+        infer_schema_length=0,
+    )
+    cells = [str(value) for row in summary.iter_rows() for value in row if value is not None]
+    assert not any("None" in cell or "." in cell and cell.endswith("%") for cell in cells)

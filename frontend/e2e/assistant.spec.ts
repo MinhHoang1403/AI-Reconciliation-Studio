@@ -1,5 +1,7 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
+import { horizontalOverflow } from "./layout";
+
 // Kiểm trang Assistant trên dịch vụ thật: màn hình đầu có gợi ý (không phải ô chat trống),
 // gửi một câu hỏi chỉ đọc (gọi Gemini thật một lần), thấy các bước và câu trả lời, rồi xóa
 // cuộc trò chuyện qua hộp xác nhận. Chỉ xóa đúng cuộc trò chuyện do bài này tạo.
@@ -33,7 +35,7 @@ test("hỏi Assistant một câu chỉ đọc, xem các bước và câu trả l
     await expect(answer.locator(".chat-steps li").first()).toBeVisible();
     await expect(answer.locator(".chat-text, .chat-message__error")).toBeVisible();
 
-    const width = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    const width = await horizontalOverflow(page);
     expect(width).toBeLessThanOrEqual(0);
     // Ô nhập nằm trong màn hình (không bị cắt ở đáy).
     const composer = await page.locator(".chat-composer").boundingBox();
