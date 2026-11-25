@@ -11,7 +11,7 @@ Trả lời và báo cáo cho Owner bằng tiếng Việt.
 
 ## Trạng thái (23/11/2026)
 
-Giai đoạn 0 (khung), 1 (đọc dữ liệu), 2 (ánh xạ cột có Gemini, Langfuse), 3 (chuẩn hóa, làm sạch), 4 (đối soát 1:1, kiểm chứng, ngoại lệ, nhật ký kiểm toán), 5 (tách mã từ nội dung, khớp nhóm, ca mơ hồ, chuỗi ba bên, chờ tiền về) đã xong. 6 (AI Assistant; đo thật 27/30 câu) đã xong; chưa đo lại được bản sửa tìm theo mã vì khóa Gemini gói miễn phí giới hạn 500 yêu cầu/ngày (mỗi lượt đo 30 câu tốn khoảng 150 yêu cầu). Đo lại: `uv run --locked python tools/evaluate_assistant.py` (tốn phí, app phải đang chạy; mốc ≥ 90%). Việc tiếp theo: Giai đoạn 7 — báo cáo (`docs/PLAN.md`).
+Giai đoạn 0 (khung), 1 (đọc dữ liệu), 2 (ánh xạ cột có Gemini, Langfuse), 3 (chuẩn hóa, làm sạch), 4 (đối soát 1:1, kiểm chứng, ngoại lệ, nhật ký kiểm toán), 5 (tách mã từ nội dung, khớp nhóm, ca mơ hồ, chuỗi ba bên, chờ tiền về) đã xong. 6 (AI Assistant; đo thật 27/30 câu) đã xong; chưa đo lại được bản sửa tìm theo mã vì khóa Gemini gói miễn phí giới hạn 500 yêu cầu/ngày (mỗi lượt đo 30 câu tốn khoảng 150 yêu cầu, chưa kể các lần gợi ý ánh xạ khi tải tệp mẫu). Hạn mức làm mới lúc nửa đêm giờ Thái Bình Dương, tức **15:00 giờ Việt Nam**: chạy đo sau mốc này. Đo lại: `uv run --locked python tools/evaluate_assistant.py` (tốn phí, app phải đang chạy; mốc ≥ 90%). Việc tiếp theo: Giai đoạn 7 — báo cáo (`docs/PLAN.md`).
 
 Đáp án đối soát nằm trong `tests/fixtures/sales/dap-an.csv`: 4 quan hệ × 2 kỳ (kỳ 2 có hậu tố ` (kỳ 2)`); `tests/test_reconciliation.py` (cặp 1:1) và `tests/test_phase5.py` (chuỗi, nhóm, mơ hồ, chờ tiền về) đo trên đó. Tệp kỳ 2 có hậu tố `-ky-2`.
 
