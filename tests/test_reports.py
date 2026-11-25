@@ -195,3 +195,17 @@ def test_money_and_rate_are_written_the_vietnamese_way() -> None:
     assert report_ai.money_text(Decimal("-20000")) == "-20.000 đ"
     assert report_ai.rate_text(96.5) == "96,5%"
     assert report_ai.unknown_numbers("Khớp 96,5%, HD000123", {"a": "96,5%", "b": "HD000123"}) == []
+
+
+def test_assistant_reads_the_same_report_numbers(period1: dict[str, Any]) -> None:
+    from studio import assistant_tools
+
+    with database.SessionFactory() as session:
+        result = assistant_tools.get_report(session, assistant_tools.ReportArgs())
+    assert result["verified"] is True and result["_link"]["path"] == "/bao-cao"
+    assert result["so_ca_can_xu_ly"] == str(period1["kpis"]["open_count"])
+    assert result["ty_le_khop_theo_tien"] == report_ai.rate_text(
+        period1["kpis"]["match_rate_amount"]
+    )
+    text = repr(result)
+    assert "Nguyen" not in text and "NGUYEN" not in text  # không có tên khách

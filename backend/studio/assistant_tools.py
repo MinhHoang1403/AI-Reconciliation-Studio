@@ -24,7 +24,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from studio import audit, cleaning_api, mapping_api, mapping_service, recon_api, recon_service
+from studio import (
+    audit,
+    cleaning_api,
+    mapping_api,
+    mapping_service,
+    recon_api,
+    recon_service,
+    report_ai,
+    reporting,
+)
 from studio.cleaning import latest_version, parse_user_value, source_cell
 from studio.masking import mask_sample
 from studio.models import (
@@ -135,6 +144,7 @@ def _data_link(table: DatasetTable) -> dict[str, str]:
 
 
 RECON_LINK = {"label": "Mở trang Đối soát", "path": "/doi-soat"}
+REPORT_LINK = {"label": "Mở trang Báo cáo", "path": "/bao-cao"}
 
 
 def _open_issue_counts(table: DatasetTable) -> dict[str, int]:
@@ -588,6 +598,42 @@ def suggest_mapping_again(session: Session, args: TableArgs) -> dict[str, Any]:
     mapping_service.suggest_for_table(table.id, False)  # chờ xong trong lượt
     session.expire_all()
     return get_table_mapping(session, TableArgs(table_id=str(table.id)))
+
+
+class ReportArgs(BaseModel):
+    period_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="Số thứ tự kỳ (1 là kỳ sớm nhất), từ list_periods; bỏ trống = kỳ mới nhất "
+        "đã đối soát.",
+    )
+
+
+def get_report(session: Session, args: ReportArgs) -> dict[str, Any]:
+    """Số liệu báo cáo của một kỳ, đã định dạng kiểu Việt Nam (cùng bộ số AI dùng để viết nhận
+    xét): chỉ mã, loại, số tiền, số đếm; không tên khách hay nội dung chuyển khoản."""
+    periods = recon_api.recon_periods(session)
+    if args.period_number is None:
+        done = [period for period in periods if period["chain_id"]]
+        if not done:
+            raise ToolError("Chưa có kỳ nào được đối soát; hãy đối soát trước (reconcile_period).")
+        period = done[-1]
+    elif args.period_number > len(periods):
+        raise ToolError(f"Chỉ có {len(periods)} kỳ; hãy gọi list_periods.")
+    else:
+        period = periods[args.period_number - 1]
+    chain = session.get(ReconChain, uuid.UUID(period["chain_id"])) if period["chain_id"] else None
+    if chain is None or chain.status != "READY":
+        raise ToolError("Kỳ này chưa đối soát xong; hãy đối soát trước (reconcile_period).")
+    report = reporting.build_report(session, chain)
+    return {
+        "verified": report["verified"],
+        "note": None
+        if report["verified"]
+        else "Kỳ chưa qua kiểm chứng: số liệu chỉ để xem, chưa xuất tệp được.",
+        **report_ai.facts(report),
+        "_link": REPORT_LINK,
+    }
 
 
 class PeriodArgs(BaseModel):
@@ -1099,6 +1145,17 @@ TOOLS: list[Tool] = [
         "đang mở theo loại, chờ tiền về, kiểm chứng; kèm run_id từng cặp.",
         ScopeArgs,
         run=get_reconciliation,
+    ),
+    Tool(
+        "get_report",
+        "READ",
+        "Xem báo cáo của kỳ",
+        "Số chính của báo cáo một kỳ: tỷ lệ khớp theo tiền và theo dòng, số ca cần xử lý, tổng "
+        "lệch, thiếu tiền về, tiền về chưa rõ nguồn, chờ tiền về, từng cặp, các ngoại lệ lớn "
+        "nhất, tuổi ngoại lệ, đã kiểm chứng chưa. Dùng khi hỏi tỷ lệ khớp, KPI, báo cáo, tổng "
+        "quan một kỳ.",
+        ReportArgs,
+        run=get_report,
     ),
     Tool(
         "list_exceptions",

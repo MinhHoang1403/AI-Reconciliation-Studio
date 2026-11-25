@@ -56,8 +56,8 @@ export function SystemStatusPanel() {
           <div>
             <dt>Phiên bản</dt>
             <dd className="status__mono">
+              {/* Chỉ mã phiên bản; trạng thái mã nguồn chưa commit là việc của người lập trình. */}
               {load.status.revision.slice(0, 7)}
-              {load.status.revision.endsWith("-dirty") && " · có thay đổi chưa commit"}
             </dd>
           </div>
         </dl>

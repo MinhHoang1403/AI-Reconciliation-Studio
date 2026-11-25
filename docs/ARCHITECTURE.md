@@ -191,7 +191,7 @@ Gemini có **gọi công cụ** (function calling): model không tự chạy hà
 | `cell_corrections`, `row_decisions`, `ai_cell_suggestions` | Ô người dùng sửa, quyết định giữ/loại dòng, gợi ý sửa của AI **(đã có)** |
 | `ai_calls` | Nhật ký mỗi lần gọi AI: mục đích, kết quả, mã lỗi (ví dụ `CLIENT_429`, `SERVER_503`), token, thời gian (không lưu nội dung) **(đã có)** |
 | `recon_runs`, `match_results` | Kỳ, cấu hình, phiên bản bộ sạch đã dùng, trạng thái, kết quả kiểm chứng, các dòng chờ mang từ kỳ trước; từng kết quả kèm loại, điểm, lý do, các dòng, số tiền, trạng thái ngoại lệ, ghi chú **(đã có)** |
-| `recon_chains`, `recon_choices` | Một lần đối soát cả chuỗi của một kỳ (các bảng, kỳ, trạng thái; các lần chạy trỏ về chuỗi); lựa chọn của người dùng (chọn ca mơ hồ, ghép tay: `MATCH`; gỡ ghép: `UNMATCH`), áp dụng ở mọi lần chạy sau **(đã có)** |
+| `recon_chains`, `recon_choices` | Một lần đối soát cả chuỗi của một kỳ (các bảng, kỳ, trạng thái, nhận xét AI của báo cáo; các lần chạy trỏ về chuỗi); lựa chọn của người dùng (chọn ca mơ hồ, ghép tay: `MATCH`; gỡ ghép: `UNMATCH`), áp dụng ở mọi lần chạy sau **(đã có)** |
 | `audit_log` | Nhật ký kiểm toán: mọi thay đổi của người dùng (ai, lúc nào, đối tượng, trước/sau) **(đã có)** |
 | `chat_threads`, `chat_messages` | Hội thoại; mỗi câu trả lời của Assistant lưu các bước (công cụ, tham số, trạng thái), thẻ xác nhận và nút dẫn trang **(đã có)** |
 
@@ -201,10 +201,13 @@ Demo chỉ có **một người dùng**, không làm đăng nhập. Chỉ mở c
 
 ## 8. Báo cáo
 
-- **KPI:** tỷ lệ khớp theo số dòng và theo giá trị tiền, tổng lệch, số ca cần xử lý, top ngoại lệ.
-- **Biểu đồ:** theo loại kết quả, theo ngày, theo nguồn (vẽ ở frontend, theo skill dataviz).
-- **Xuất:** CSV và XLSX. PDF để sau nếu cần.
-- **Nhận xét AI:** Gemini viết tóm tắt từ KPI do engine tính; mọi con số trong lời nhận xét lấy nguyên từ engine.
+Báo cáo lập theo **một kỳ** (lần đối soát chuỗi mới nhất của kỳ), kèm khối so sánh các kỳ. Module `reporting.py` chỉ **đọc** kết quả engine đã lưu (`recon_runs.summary`, `match_results`) và dòng gốc của đúng phiên bản sạch đã dùng; không chạy lại engine. Người đọc chính là chủ cửa hàng: phần đầu trả lời "tiền đã về đủ chưa, thiếu bao nhiêu, cần xử lý gì trước".
+
+- **KPI:** tỷ lệ khớp theo số dòng và theo số tiền (phần khớp đúng hoặc ghép nhóm đúng tổng trên phần cần đối chiếu, tức bên A trừ dòng ngoài phạm vi; cả kỳ là bình quân có trọng số của các cặp), số ca cần xử lý, tổng lệch (tổng |A − B| của ca lệch tiền), thiếu tiền về (chỉ có ở A), tiền về chưa rõ nguồn (chỉ có ở B), chờ tiền về, 5 ngoại lệ lớn nhất.
+- **Biểu đồ** (vẽ bằng HTML/CSS ở frontend theo skill dataviz, mỗi biểu đồ có bảng dữ liệu): theo ngày (cột chồng đã khớp / chờ tiền về / ngoại lệ), theo cặp đối soát, theo loại kết quả, tuổi ngoại lệ còn mở (0–3, 4–7, trên 7 ngày, tính tới **ngày cuối kỳ** để báo cáo một kỳ luôn cho cùng kết quả).
+- **Xuất:** XLSX 3 sheet (Tóm tắt, Cần xử lý, Toàn bộ kết quả kèm lý do và dòng gốc) và CSV (Toàn bộ kết quả, UTF-8 có BOM); hai định dạng dựng từ cùng một bảng. Ô chữ bắt đầu bằng `= + - @` được thêm dấu `'` để Excel không chạy như công thức (CSV Injection, [OWASP][owasp-csv]). PDF để sau nếu cần.
+- **Kiểm chứng:** kỳ chưa đạt kiểm chứng vẫn xem được kèm cảnh báo nhưng không xuất tệp, không viết nhận xét AI (mục 5.3).
+- **Nhận xét AI:** chỉ khi người dùng bấm. Gemini chỉ nhận các con số đã định dạng sẵn; code kiểm mọi con số trong lời nhận xét phải có nguyên văn trong số liệu đó, có số lạ thì bỏ cả lời nhận xét. Lời nhận xét lưu kèm dấu vân tay số liệu; số liệu đổi (chạy lại, xử lý ngoại lệ) thì báo đã cũ.
 
 ## 8b. Bản đồ mã nguồn
 
@@ -219,8 +222,9 @@ Mỗi bước của luồng dữ liệu (mục 4) nằm ở đúng một nhóm f
 | Kỳ, chuỗi ba bên, lưu kết quả | `recon_service.py` (kỳ, cặp nối được, hai lượt của chuỗi, dòng chờ kỳ trước, lựa chọn của người dùng) | `recon_api.py` | `ChainView` | `test_phase5` |
 | 9. Kiểm chứng | `recon_verification.py` (độc lập với engine) | `recon_api.py` (`/verify`) | `VerificationSeal` | `test_reconciliation`, `test_phase5` |
 | AI giải thích | `gemini_client.py` (timeout, thử lại, bảng `ai_calls`), `tracing.py` (Langfuse), `recon_ai.py` | (trong các API trên) | nút "Giải thích" | `test_mapping`, `test_recon_review_fixes` |
-| AI Assistant | `assistant.py` (vòng gọi công cụ, tối đa 8 bước), `assistant_tools.py` (24 công cụ: 9 đọc, 4 xử lý, 11 thay đổi qua thẻ xác nhận), `gemini_client.generate_with_tools` | `assistant_api.py` | `pages/AssistantPage`, `ChatMessageView` | `test_assistant`; đo Gemini thật: `tools/evaluate_assistant.py` |
+| AI Assistant | `assistant.py` (vòng gọi công cụ, tối đa 8 bước), `assistant_tools.py` (25 công cụ: 10 đọc gồm `get_report`, 4 xử lý, 11 thay đổi qua thẻ xác nhận), `gemini_client.generate_with_tools` | `assistant_api.py` | `pages/AssistantPage`, `ChatMessageView` | `test_assistant`; đo Gemini thật: `tools/evaluate_assistant.py` |
 | Nhật ký kiểm toán | `audit.py` | `recon_api.py` (`/audit`) | `pages/HistoryPage` | các bài có kiểm `audit_log` |
+| 10. Báo cáo, KPI, xuất tệp | `reporting.py` (số liệu từ kết quả đã lưu), `report_export.py` (XLSX/CSV), `report_ai.py` (nhận xét AI có kiểm số) | `report_api.py` (`/api/reports`) | `pages/ReportsPage`, `ReportCharts`, khối số chính trên `OverviewPage` | `test_reports` |
 | Khung | `main.py`, `config.py`, `database.py`, `models.py`, `migrate.py` + `migrations/` | `/api/health`, `/api/ready`, `/api/status` | `App.tsx`, `navigation.ts`, `OverviewPage` | `test_status_api`, `test_migrations` |
 
 Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foundation_review.py`. Ghép tay, gỡ ghép: `recon_api.py` (`/match`, `/unmatch`, `/match-candidates`), `MatchPicker`, `test_manual_match.py`. Kiểm mù đối soát: `tools/make_blind_fixtures.py` → `tests/fixtures/blind/`, đo ở `test_blind.py`. E2E: `frontend/e2e/` (`data`, `recon`, `chain`, `assistant`, `shell`).
@@ -269,3 +273,4 @@ Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foun
 [lumen]: https://courses.lumenlearning.com/suny-ecc-finaccounting/chapter/preparing-a-bank-reconciliation/
 [iofm]: https://www.iofm.com/ap/organizational-structure/choosing-the-right-automated-bank-account-reconciliation-software-a-guide-for-treasury-and-finance-leaders
 [highradius]: https://www.highradius.com/product/automated-account-reconciliation-software/
+[owasp-csv]: https://owasp.org/www-community/attacks/CSV_Injection

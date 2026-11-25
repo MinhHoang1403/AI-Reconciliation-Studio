@@ -24,3 +24,20 @@ export function sealChecks(verification: Verification | null | undefined): SealR
     };
   });
 }
+
+/** Gộp con dấu của nhiều cặp: hỏng nếu một cặp hỏng, chưa kiểm nếu một cặp chưa kiểm. */
+export function mergeSealChecks(pairs: { name: string; verification: Verification | null | undefined }[]): SealRing[] {
+  const perPair = pairs.map((pair) => sealChecks(pair.verification));
+  const first = perPair[0] ?? sealChecks(null);
+  return first.map((ring, index) => {
+    const states = perPair.map((rings) => rings[index]?.state ?? "pending");
+    const failed = perPair.flatMap((rings, pairIndex) =>
+      rings[index]?.state === "failed" ? [`${pairs[pairIndex]?.name ?? "?"}: ${rings[index]?.detail ?? ""}`] : [],
+    );
+    return {
+      label: ring.label,
+      state: failed.length ? "failed" : states.every((state) => state === "passed") ? "passed" : "pending",
+      detail: failed.join("; "),
+    };
+  });
+}

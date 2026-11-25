@@ -3,7 +3,7 @@ import { ArrowRight, ShieldAlert, ShieldCheck } from "lucide-react";
 
 import { getChain, getResults, type ReconChain, type ReconKind, type ReconResult, type ReconRun } from "../api";
 import { formatCount } from "../format";
-import { sealChecks, type SealRing } from "../verification";
+import { mergeSealChecks, type SealRing } from "../verification";
 import { ReconRunView, TodoGroups, formatDay, message, type ItemContext, type Rerun } from "./ReconRunView";
 import { VerificationSeal } from "./VerificationSeal";
 
@@ -42,21 +42,11 @@ async function loadTodoPage(runs: ReconRun[], current: Todo | null, signal?: Abo
   return { items, totals };
 }
 
-/** Gộp con dấu của nhiều cặp: hỏng nếu một cặp hỏng, chưa kiểm nếu một cặp chưa kiểm. */
+/** Gộp con dấu của các cặp trong chuỗi (một vòng chỉ đạt khi đạt ở mọi cặp). */
 function mergedRings(runs: ReconRun[]): SealRing[] {
-  const perRun = runs.map((run) => sealChecks(run.status === "READY" ? run.verification : null));
-  const first = perRun[0] ?? sealChecks(null);
-  return first.map((ring, index) => {
-    const states = perRun.map((rings) => rings[index]?.state ?? "pending");
-    const failed = perRun.flatMap((rings, runIndex) =>
-      rings[index]?.state === "failed" ? [`${pairName(runs[runIndex])}: ${rings[index]?.detail ?? ""}`] : [],
-    );
-    return {
-      label: ring.label,
-      state: failed.length ? "failed" : states.every((state) => state === "passed") ? "passed" : "pending",
-      detail: failed.join("; "),
-    };
-  });
+  return mergeSealChecks(
+    runs.map((run) => ({ name: pairName(run), verification: run.status === "READY" ? run.verification : null })),
+  );
 }
 
 export function ChainView({ chain, onChain, onRerun }: Props) {

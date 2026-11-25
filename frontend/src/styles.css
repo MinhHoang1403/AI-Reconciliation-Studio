@@ -214,21 +214,6 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .status__note { color: var(--ink-soft); }
 .status__note--bad { color: var(--attention); }
 
-/* ---------- Trang đang xây dựng ---------- */
-.planned__body {
-  display: flex; gap: 20px; align-items: flex-start;
-  padding: 28px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line-soft);
-  max-width: 760px;
-}
-.planned__body svg { color: var(--primary); flex-shrink: 0; margin-top: 2px; }
-.planned__body p { color: var(--ink-soft); margin: 6px 0 10px; }
-.planned__body ul { display: grid; gap: 8px; }
-.planned__body li { padding-left: 18px; position: relative; }
-.planned__body li::before {
-  content: ""; position: absolute; left: 0; top: 0.65em; width: 7px; height: 7px;
-  border-radius: 50%; background: var(--primary);
-}
-
 /* ---------- Điện thoại: thanh điều hướng xuống đáy ---------- */
 @media (max-width: 860px) {
   .overview__grid { grid-template-columns: 1fr; }
@@ -259,7 +244,6 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
   .pipeline__step { grid-template-columns: 32px 1fr; }
   .pipeline__index { width: 32px; height: 32px; }
   .pipeline__state { grid-column: 2; justify-self: start; }
-  .planned__body { flex-direction: column; padding: 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1115,4 +1099,179 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 @media (max-width: 400px) {
   /* Điện thoại hẹp: 6 nhãn thanh tab (có "AI Assistant", "Dashboard") cần thêm khoảng thở. */
   .rail__link, .shell[data-rail="collapsed"] .rail__link { font-size: 11px; letter-spacing: -0.01em; }
+}
+
+/* ================= Trang Báo cáo (Giai đoạn 7) ================= */
+
+/* Hai cột như Tổng quan/Đối soát: nội dung chính và cột 340px cho con dấu, tải về, nhận xét AI. */
+.report { display: grid; gap: 20px; }
+.report .page__header { margin-bottom: 8px; }
+.report__periods { justify-self: start; }
+.report__grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; }
+.report__main { display: grid; gap: 20px; min-width: 0; }
+.report__side { display: grid; gap: 20px; position: sticky; top: 24px; }
+.report__skeleton {
+  height: 320px; border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--surface) 0%, var(--primary-tint) 50%, var(--surface) 100%) 0 0 / 200% 100%;
+  animation: report-shimmer 1.4s linear infinite;
+}
+@keyframes report-shimmer { to { background-position: -200% 0; } }
+
+.report-answer, .report-top, .report-chart, .report-compare, .report__side > section {
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 24px;
+}
+
+/* Câu trả lời cho chủ cửa hàng: tiền đã về khớp bao nhiêu, rồi các khoản cần chú ý. */
+.report-answer { display: grid; gap: 14px; }
+.report-answer__period { font-size: 14px; font-weight: 500; color: var(--ink-soft); }
+.report-answer h2 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; text-wrap: balance; }
+.report-answer__lead { color: var(--ink-soft); max-width: 70ch; }
+.report-figures {
+  display: grid; grid-template-columns: repeat(5, auto); justify-content: space-between;
+  border-top: 1px solid var(--line-soft); padding-top: 16px; margin-top: 4px;
+}
+.report-figures > div { display: grid; gap: 4px; padding: 0 16px; border-left: 1px solid var(--line-soft); min-width: 0; }
+.report-figures > div:first-child { padding-left: 0; border-left: 0; }
+.report-figures dt { font-size: 13px; color: var(--ink-soft); }
+.report-figures dd { font-size: 18px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.report-figures > div[data-zero] dd { color: var(--ink-soft); font-weight: 500; }
+
+/* Cần xử lý trước: 5 ca lớn nhất, số tiền thẳng cột bên phải. */
+.report-top { display: grid; gap: 10px; }
+.report-top__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.report-top__head .button { min-height: 38px; padding: 0 14px; }
+.report-top__note, .report-top__empty { font-size: 14px; color: var(--ink-soft); }
+.report-top__list li {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 0; border-top: 1px solid var(--line-soft);
+}
+.report-top__what { display: grid; gap: 2px; min-width: 0; }
+.report-top__kind { font-size: 13px; font-weight: 600; color: var(--attention); }
+.report-top__what b { overflow-wrap: anywhere; }
+.report-top__meta { font-size: 13px; color: var(--ink-soft); }
+.report-top__amount { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Biểu đồ: lưới hai cột, biểu đồ theo ngày chiếm cả hàng. */
+/* Mỗi biểu đồ chiếm cả hàng (nhãn cặp đối soát dài, chia đôi thì gãy nhiều dòng); danh sách
+   thanh chia cột để không kéo dài trang: mặc định 2 cột; cặp đối soát và tuổi ngoại lệ
+   1 cột vì nhãn dài hoặc ít hàng. */
+.report__charts { display: grid; gap: 20px; }
+.bar-list { grid-template-columns: repeat(var(--bar-columns, 2), minmax(0, 1fr)); column-gap: 32px; }
+.report-chart { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.report-chart__head p { font-size: 14px; color: var(--ink-soft); margin-top: 2px; }
+.report-chart__empty { font-size: 14px; color: var(--ink-soft); }
+.report-chart__table summary {
+  cursor: pointer; font-size: 14px; font-weight: 500; color: var(--primary-ink); width: fit-content;
+}
+.report-chart__table[open] summary { margin-bottom: 10px; }
+.report-chart__table { overflow-x: auto; }
+
+/* Thanh ngang: nhãn trên, thanh 12px bo 4px ở đầu dữ liệu, giá trị ngay sau đầu thanh. */
+.bar-list { display: grid; gap: 12px; }
+.bar-list li { display: grid; gap: 4px; }
+.bar-list__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.bar-list__label { font-size: 14px; color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
+.bar-list__track { display: block; height: 12px; border-radius: 0 4px 4px 0; background: var(--ground); }
+.bar-list__bar { display: block; height: 12px; border-radius: 0 4px 4px 0; }
+.bar-list__value { font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+[data-tone="matched"].bar-list__bar, .day-chart__stack [data-tone="matched"] { background: var(--matched); }
+[data-tone="pending"].bar-list__bar, .day-chart__stack [data-tone="pending"] { background: var(--primary); }
+[data-tone="attention"].bar-list__bar, .day-chart__stack [data-tone="attention"] { background: var(--attention); }
+[data-tone="scope"].bar-list__bar { background: var(--primary-tint-strong); }
+
+/* Cột chồng theo ngày: trục trái số tròn, lưới mảnh, cột tối đa 24px, khe 2px giữa các đoạn. */
+.day-chart { display: grid; gap: 12px; }
+.day-chart__legend { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 14px; color: var(--ink-soft); }
+.day-chart__legend span { display: inline-flex; align-items: center; gap: 6px; }
+.day-chart__legend span::before { content: ""; width: 10px; height: 10px; border-radius: 3px; }
+.day-chart__legend [data-tone="matched"]::before { background: var(--matched); }
+.day-chart__legend [data-tone="pending"]::before { background: var(--primary); }
+.day-chart__legend [data-tone="attention"]::before { background: var(--attention); }
+.day-chart__plot { position: relative; height: 220px; margin: 0 0 24px 40px; }
+.day-chart__axis span, .day-chart__grid span { position: absolute; left: 0; right: 0; }
+.day-chart__axis span {
+  left: -40px; width: 32px; text-align: right; transform: translateY(50%);
+  font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums;
+}
+.day-chart__grid span { height: 1px; background: var(--line-soft); }
+.day-chart__columns { position: absolute; inset: 0; display: flex; }
+.day-chart__columns li { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.day-chart__hit {
+  flex: 1; display: flex; align-items: flex-end; justify-content: center;
+  border: 0; padding: 0 2px; background: transparent; cursor: default; border-radius: 4px;
+}
+.day-chart__hit:hover, .day-chart__hit[aria-pressed="true"] { background: rgb(42 111 201 / 0.06); }
+.day-chart__stack {
+  width: min(24px, 70%); display: flex; flex-direction: column-reverse; gap: 2px;
+  border-radius: 4px 4px 0 0; overflow: hidden;
+}
+.day-chart__stack span { min-height: 2px; flex-basis: 0; }
+.day-chart__tick {
+  position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 6px;
+  font-size: 12px; color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.day-chart__tip {
+  position: absolute; top: 0; transform: translateX(-50%); z-index: 2; pointer-events: none;
+  display: grid; gap: 2px; min-width: 150px; padding: 10px 12px; border-radius: var(--radius-small);
+  background: var(--surface); border: 1px solid var(--line); font-size: 13px; color: var(--ink-soft);
+  box-shadow: 0 6px 18px rgb(20 35 58 / 0.12);
+}
+.day-chart__tip b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.day-chart__tip span { display: flex; align-items: center; gap: 6px; }
+.day-chart__tip span[data-tone]::before { content: ""; width: 8px; height: 8px; border-radius: 2px; }
+.day-chart__tip [data-tone="matched"]::before { background: var(--matched); }
+.day-chart__tip [data-tone="pending"]::before { background: var(--primary); }
+.day-chart__tip [data-tone="attention"]::before { background: var(--attention); }
+.day-chart__tip-note { font-size: 12px; }
+
+/* Bảng số liệu (dạng bảng của biểu đồ, so sánh các kỳ). */
+.report-table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.report-table th { text-align: left; font-weight: 600; color: var(--ink-soft); background: var(--primary-tint); padding: 8px 10px; vertical-align: bottom; }
+.report-table td { padding: 8px 10px; border-top: 1px solid var(--line-soft); }
+/* Số không gãy dòng; cột chữ đầu tiên (kỳ, cặp, loại) được xuống dòng để bảng vừa khung. */
+.report-table td + td { white-space: nowrap; }
+.report-table td + td, .report-table th + th { text-align: right; }
+.report-table tr[aria-current="true"] td { font-weight: 600; color: var(--primary-ink); }
+.report-compare { display: grid; gap: 14px; }
+.report-compare__scroll { overflow-x: auto; }
+
+/* Cột phải: con dấu và nút tải, nhận xét AI. */
+.report-export { display: grid; gap: 10px; justify-self: stretch; }
+.report-export .button { justify-content: center; text-decoration: none; }
+.report-export__note { font-size: 13px; color: var(--ink-soft); }
+.report-comment { display: grid; gap: 12px; justify-items: start; }
+.report-comment__meta { font-size: 13px; color: var(--ink-soft); }
+.report-comment .button { min-height: 40px; padding: 0 14px; }
+
+@media (max-width: 1080px) {
+  .report__grid { grid-template-columns: 1fr; }
+  .report__side { position: static; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .report-figures { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 14px; }
+  .report-figures > div:nth-child(4) { padding-left: 0; border-left: 0; }
+}
+@media (max-width: 760px) {
+  .report-answer h2 { font-size: 22px; }
+  .report-answer, .report-top, .report-chart, .report-compare, .report__side > section { padding: 18px; }
+  .report-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-figures > div { padding: 0 0 0 14px; }
+  .report-figures > div:nth-child(odd) { padding-left: 0; border-left: 0; }
+  .report-figures > div:nth-child(4) { padding-left: 14px; border-left: 1px solid var(--line-soft); }
+  .day-chart__plot { height: 180px; }
+  .bar-list { grid-template-columns: 1fr; }
+  /* Nhãn dài (tên cặp) được cả bề ngang; giá trị xuống ngay dưới nhãn. */
+  .bar-list__head { display: grid; gap: 0; }
+}
+
+/* Dashboard: 4 số chính của kỳ mới nhất (cùng kiểu hàng số với trang Báo cáo). */
+.overview-kpis {
+  display: grid; gap: 4px; padding: 20px 24px;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--radius);
+}
+.overview-kpis__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.overview-kpis__head .button { min-height: 38px; padding: 0 14px; }
+.overview-kpis__figures { grid-template-columns: repeat(4, auto); }
+@media (max-width: 760px) {
+  .overview-kpis { padding: 18px; }
+  .overview-kpis__figures { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 14px; }
+  .overview-kpis__figures > div:nth-child(3) { padding-left: 0; border-left: 0; }
 }

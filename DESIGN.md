@@ -223,6 +223,14 @@ Thẻ `<dialog>` gốc, bo 12px, nền mờ ink 35%; nút Hủy (phụ) và nút
 - **Nút dẫn trang:** nút phụ nhỏ có mũi tên ("Mở trang Đối soát", "Mở <tên bảng>").
 - **Ô nhập:** nút đính kèm (biểu tượng kẹp giấy), ô chữ tự giãn tới 6 dòng (Enter gửi, Shift+Enter xuống dòng), nút chính "Gửi" (điện thoại: chỉ biểu tượng). Kéo tệp vào khung chat hiện lớp phủ viền đứt xanh dương.
 
+### Trang Báo cáo
+- **Bố cục:** hai cột như Đối soát: nội dung chính và cột phải 340px dính khi cuộn (con dấu gộp các cặp + nút "Tải Excel (3 sheet)" chính, "Tải CSV" phụ; khối "Nhận xét bằng AI"). Dưới 1080px cột phải xuống dưới. Segmented chọn kỳ chỉ hiện khi có từ hai kỳ.
+- **Câu trả lời đầu trang:** panel trắng, dòng kỳ chữ nhỏ ink-soft, tiêu đề 26px đậm "Đã khớp X% số tiền cần đối chiếu", một câu lời thường (đã khớp trên tổng, số ca cần xử lý, chờ tiền về không phải lỗi), thanh tỷ lệ tiền (đã khớp / chờ tiền về / chưa khớp) dùng lại kiểu thanh tỷ lệ của trang Đối soát, rồi một hàng số ngăn bằng đường kẻ mảnh (Cần xử lý, Thiếu tiền về, Tiền về chưa rõ nguồn, Tổng lệch tiền, Khớp theo số dòng); số bằng 0 chuyển ink-soft. Không dùng thẻ số liệu xếp lưới.
+- **Cần xử lý trước:** 5 ca lớn nhất, mỗi hàng: loại (chữ attention nhỏ), mã đậm (không có mã thì ghi số dòng gốc), cặp và số ngày tới cuối kỳ chữ nhỏ, số tiền căn phải.
+- **Biểu đồ:** mỗi biểu đồ một panel cả hàng, có tiêu đề, một câu giải thích và "Xem dạng bảng". Theo ngày: cột chồng ≤ 24px, khe 2px, đầu bo 4px, trục số tròn bên trái, lưới mảnh line-soft, khung số liệu khi rê chuột hoặc Tab tới cột. Thanh ngang: nhãn trái, giá trị phải trên cùng một hàng, thanh 12px trên rãnh nền ground bên dưới (điện thoại: giá trị xuống dưới nhãn); theo loại chia 2 cột, theo cặp và tuổi ngoại lệ 1 cột. Màu theo nghĩa: đã khớp matched, chờ tiền về blue-20k, ngoại lệ attention; chữ luôn màu mực.
+- **Nhận xét AI:** khối ai-note blue-tint, dòng chú thích thời điểm viết hoặc "số liệu đã đổi, hãy viết lại"; nút phụ có biểu tượng lấp lánh, khóa khi kỳ chưa kiểm chứng.
+- **Dashboard:** panel mảnh dưới dải bước tiếp theo: tên kỳ mới nhất, nút phụ "Xem báo cáo", hàng 4 số (khớp theo số tiền, cần xử lý, tổng lệch tiền, kiểm chứng).
+
 ### Trang Lịch sử
 Nhật ký kiểm toán gom theo ngày; mỗi mục một hàng: giờ (cột 84px), câu tóm tắt, đối tượng và người làm (chữ nhỏ), "Giá trị trước và sau" thu gọn.
 

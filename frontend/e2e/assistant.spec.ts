@@ -21,11 +21,13 @@ test("hỏi Assistant một câu chỉ đọc, xem các bước và câu trả l
     await expect(page.getByRole("list", { name: "Câu hỏi gợi ý" }).getByRole("button")).toHaveCount(4);
 
     const input = page.getByLabel("Câu hỏi cho AI Assistant");
-    await input.fill("Tôi đã tải những tệp nào lên rồi?");
+    // Câu phải tra công cụ (số ca cần xem); câu hỏi chỉ về danh sách tệp giờ được trả lời thẳng
+    // từ khối bối cảnh gửi kèm mỗi lượt nên có thể không có bước nào.
+    await input.fill("Còn bao nhiêu ca cần tôi xem?");
     await input.press("Enter");
 
     const answer = page.locator(".chat-message[data-role='assistant']").last();
-    await expect(page.locator(".chat-message[data-role='user']").last()).toContainText("Tôi đã tải những tệp nào");
+    await expect(page.locator(".chat-message[data-role='user']").last()).toContainText("Còn bao nhiêu ca cần tôi xem");
     // Câu trả lời xong (không còn "đang làm"), có ít nhất một bước đã chạy và có lời đáp.
     await expect(answer).toHaveAttribute("aria-busy", "false", { timeout: 120_000 });
     await expect(answer.locator(".chat-steps li").first()).toBeVisible();

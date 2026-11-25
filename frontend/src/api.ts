@@ -531,3 +531,86 @@ export const sendChat = (id: string, text: string, datasetIds: string[]) =>
   sendJson<ChatThread>(`/api/assistant/threads/${id}/messages`, "POST", { text, dataset_ids: datasetIds });
 export const decideAction = (messageId: string, actionId: string, decision: "CONFIRM" | "CANCEL") =>
   sendJson<ChatThread>(`/api/assistant/messages/${messageId}/actions/${actionId}`, "POST", { decision });
+
+// ---------------------------------------------------------------- báo cáo (Giai đoạn 7)
+
+/** Số chính của một kỳ hoặc một cặp; tiền là chuỗi số chính xác ("1250000.00"). */
+export type ReportKpis = {
+  rows_in_scope: number;
+  rows_matched: number;
+  amount_in_scope: string;
+  amount_matched: string;
+  match_rate_rows: number | null;
+  match_rate_amount: number | null;
+  mismatch_total: string;
+  missing_amount: string;
+  unknown_amount: string;
+  pending_count: number;
+  pending_amount: string;
+  open_count: number;
+  handled_count: number;
+};
+
+export type ReportPair = ReportKpis & {
+  run_id: string;
+  label: string;
+  left_label: string;
+  right_label: string;
+  verified: boolean;
+  verification: Verification | null;
+  open_by_kind: Record<string, { count: number; amount: string }>;
+};
+
+export type ReportException = {
+  result_id: string;
+  pair: string;
+  kind: ReconKind;
+  kind_label: string;
+  status: "OPEN" | "EXPLAINED" | "RESOLVED" | null;
+  codes: string[];
+  date: string | null;
+  age_days: number | null;
+  amount_left: string | null;
+  amount_right: string | null;
+  amount: string;
+  reason: string;
+  left_rows: number[];
+  right_rows: number[];
+};
+
+export type ReportDay = { date: string; matched?: number; pending?: number; todo?: number; handled?: number };
+
+export type Report = {
+  chain_id: string;
+  label: string;
+  period_start: string | null;
+  period_end: string | null;
+  created_at: string | null;
+  verified: boolean;
+  kpis: ReportKpis;
+  pairs: ReportPair[];
+  by_kind: { kind: ReconKind; label: string; count: number; amount: string }[];
+  by_day: ReportDay[];
+  aging: { label: string; count: number; amount: string }[];
+  top_exceptions: ReportException[];
+  exceptions: ReportException[];
+  comment: { text: string; created_at: string; stale: boolean } | null;
+};
+
+export type ReportPeriod = {
+  chain_id: string;
+  label: string;
+  period_start: string | null;
+  period_end: string | null;
+  verified: boolean;
+  kpis: ReportKpis | null;
+};
+
+export const listReports = (signal?: AbortSignal) =>
+  getJson<{ periods: ReportPeriod[] }>("/api/reports", signal);
+export const getReport = (chainId: string, signal?: AbortSignal) =>
+  getJson<Report>(`/api/reports/${chainId}`, signal);
+export const writeReportComment = (chainId: string) =>
+  sendJson<{ text: string; created_at: string; stale: boolean }>(`/api/reports/${chainId}/comment`, "POST");
+export const reportExportUrl = (chainId: string, format: "xlsx" | "csv") =>
+  `/api/reports/${chainId}/export.${format}`;

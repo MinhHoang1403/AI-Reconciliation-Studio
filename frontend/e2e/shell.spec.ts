@@ -12,7 +12,8 @@ test("Dashboard hiển thị bước tiếp theo, quy trình và trạng thái h
     }),
   ).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: "Đọc tệp" })).toContainText(/Đang chờ tệp|Đã đọc/);
-  await expect(page.getByRole("img", { name: "Chưa kiểm chứng" })).toBeVisible();
+  // Con dấu theo lần đối soát gần nhất của máy: chưa có thì "Chưa kiểm chứng".
+  await expect(page.getByRole("img", { name: /Chưa kiểm chứng|Kiểm chứng đạt|Kiểm chứng không đạt/ })).toBeVisible();
   await expect(page.getByText("Hoạt động")).toBeVisible();
   // Gemini chỉ hiện tên model viết hoa từng phần (hoặc báo thiếu khóa), không kèm chữ "Đã cấu hình".
   const status = page.getByRole("region", { name: "Trạng thái hệ thống" });

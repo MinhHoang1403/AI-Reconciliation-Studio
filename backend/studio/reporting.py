@@ -98,6 +98,8 @@ def pair_report(session: Session, run: ReconRun) -> dict[str, Any]:
         "left_label": view["left"]["label"] if view["left"] else "?",
         "right_label": view["right"]["label"] if view["right"] else "?",
         "verified": bool((run.verification or {}).get("passed")),
+        # Các phép kiểm của từng cặp để giao diện vẽ con dấu gộp như trang Đối soát.
+        "verification": run.verification,
         **_pair_numbers(run, items),
         "open_by_kind": open_by_kind,
         "counts": (run.summary or {}).get("counts", {}),

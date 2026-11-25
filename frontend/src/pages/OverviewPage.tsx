@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Check } from "lucide-react";
 
-import { listRuns, type ReconRun } from "../api";
+import { listReports, listRuns, type ReconRun, type ReportPeriod } from "../api";
 
+import { money, percent } from "../components/ReportCharts";
 import { SystemStatusPanel } from "../components/SystemStatusPanel";
 import { VerificationSeal } from "../components/VerificationSeal";
 import { formatCount } from "../format";
@@ -34,6 +35,15 @@ export function OverviewPage() {
     listRuns(1, controller.signal)
       .then((runs) => setRun(runs[0] ?? null))
       .catch(() => setRun(null));
+    return () => controller.abort();
+  }, []);
+  // Kỳ mới nhất đã đối soát cả chuỗi: 4 số chính của báo cáo, bấm vào sang trang Báo cáo.
+  const [latest, setLatest] = useState<ReportPeriod | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    listReports(controller.signal)
+      .then(({ periods }) => setLatest(periods.at(-1) ?? null))
+      .catch(() => setLatest(null));
     return () => controller.abort();
   }, []);
   const checks = sealChecks(run?.status === "READY" ? run.verification : null);
@@ -78,10 +88,15 @@ export function OverviewPage() {
       }
       if (cleaned) return { state: "current", label: "Sẵn sàng" };
     }
+    if (index === 5 && latest?.kpis) {
+      return latest.verified ? { state: "done", label: "Có báo cáo" } : { state: "current", label: "Chờ kiểm chứng" };
+    }
     return { state: "later", label: "Chưa tới" };
   });
   // Nút của dải bước tiếp theo dẫn tới Đối soát khi ánh xạ và làm sạch không còn việc chờ.
   const toRecon = hasData && pending === 0 && !(mapped && !cleanBusy && cleanOpen > 0) && (cleaned || run !== null);
+  // Đối soát xong, không còn ca cần xem và đã có báo cáo của kỳ: bước tiếp theo là xem báo cáo.
+  const toReport = toRecon && run?.status === "READY" && reconOpen === 0 && latest?.kpis != null;
   const stepState = (index: number): StepState => steps[index]?.state ?? "later";
   const stepLabel = (index: number): string => steps[index]?.label ?? "Chưa tới";
 
@@ -114,7 +129,7 @@ export function OverviewPage() {
               <h2 id="next-step-title">
                 {run.verification?.passed ? "Đối soát xong, kết quả đã kiểm chứng" : "Đối soát xong nhưng kiểm chứng chưa đạt"}
               </h2>
-              <p>Mọi ngoại lệ đã được xử lý. Bước tiếp theo là báo cáo, chức năng này đang được xây dựng.</p>
+              <p>Mọi ngoại lệ đã được xử lý. Xem báo cáo của kỳ và tải tệp kết quả.</p>
             </>
           ) : hasData ? (
             <>
@@ -134,12 +149,49 @@ export function OverviewPage() {
         <button
           className="button button--primary"
           type="button"
-          onClick={() => navigate(toRecon ? "/doi-soat" : "/du-lieu")}
+          onClick={() => navigate(toReport ? "/bao-cao" : toRecon ? "/doi-soat" : "/du-lieu")}
         >
-          {toRecon ? (reconOpen > 0 || run ? "Đến trang Đối soát" : "Chạy đối soát") : hasData ? "Xem dữ liệu" : "Đến trang Dữ liệu"}
+          {toReport
+            ? "Xem báo cáo"
+            : toRecon
+              ? reconOpen > 0 || run
+                ? "Đến trang Đối soát"
+                : "Chạy đối soát"
+              : hasData
+                ? "Xem dữ liệu"
+                : "Đến trang Dữ liệu"}
           <ArrowRight aria-hidden="true" size={18} />
         </button>
       </section>
+
+      {latest?.kpis && (
+        <section className="overview-kpis" aria-labelledby="overview-kpis">
+          <div className="overview-kpis__head">
+            <h2 id="overview-kpis">{latest.label}</h2>
+            <button type="button" className="button button--quiet" onClick={() => navigate("/bao-cao")}>
+              Xem báo cáo <ArrowRight aria-hidden="true" size={16} />
+            </button>
+          </div>
+          <dl className="report-figures overview-kpis__figures">
+            <div>
+              <dt>Khớp theo số tiền</dt>
+              <dd>{percent(latest.kpis.match_rate_amount)}</dd>
+            </div>
+            <div>
+              <dt>Cần xử lý</dt>
+              <dd>{formatCount(latest.kpis.open_count)} ca</dd>
+            </div>
+            <div>
+              <dt>Tổng lệch tiền</dt>
+              <dd>{money(latest.kpis.mismatch_total)}</dd>
+            </div>
+            <div>
+              <dt>Kiểm chứng</dt>
+              <dd>{latest.verified ? "Đạt" : "Chưa đạt"}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
 
       <div className="overview__grid">
         <section className="pipeline" aria-labelledby="pipeline-title">
