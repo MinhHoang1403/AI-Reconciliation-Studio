@@ -21,9 +21,8 @@ from typing import Any
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from studio import audit, database, gemini_client, nvidia_client
+from studio import audit, database, gemini_client
 from studio.assistant_tools import TOOLS, TOOLS_BY_NAME, ToolError
-from studio.config import settings
 from studio.gemini_client import AiUnavailable, ModelTurn, ToolCall
 from studio.models import ChatMessage, ChatThread, Dataset
 from studio.tracing import observation
@@ -64,11 +63,8 @@ STATUS_TEXT = {
 
 
 def ask_model(conversation: list[dict[str, Any]], tools: list[dict[str, Any]]) -> ModelTurn:
-    """Một lần gọi model (tách riêng để kiểm thử thay bằng câu trả lời giả lập).
-
-    `ASSISTANT_PROVIDER=nvidia` trong `.env` thì gọi model trên NVIDIA NIM để đo thử."""
-    client = nvidia_client if settings.assistant_provider == "nvidia" else gemini_client
-    return client.generate_with_tools(
+    """Một lần gọi Gemini (tách riêng để kiểm thử thay bằng câu trả lời giả lập)."""
+    return gemini_client.generate_with_tools(
         purpose="assistant",
         system_instruction=SYSTEM_INSTRUCTION,
         conversation=conversation,
