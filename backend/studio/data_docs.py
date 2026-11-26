@@ -20,6 +20,7 @@ Ghi tệp không bao giờ làm hỏng tính năng chính: lỗi ghi chỉ đư�
 
 import json
 import logging
+import os
 import re
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
@@ -252,6 +253,15 @@ def write_static(root: Path) -> list[Path]:
 # ---------------------------------------------------------------- phần chạy: nhật ký gọi Gemini
 
 
+def _write_atomic(path: Path, content: str) -> None:
+    """Ghi ra tệp tạm rồi đổi tên một lần: người mở tệp (hoặc tác vụ nền khác ghi cùng lúc)
+    không bao giờ thấy tệp dở dang. os.replace là thao tác nguyên tử trên cùng ổ đĩa."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}.tmp")
+    temp.write_text(content, encoding="utf-8")
+    os.replace(temp, path)
+
+
 def _runtime() -> Path | None:
     return settings.data_docs_dir
 
@@ -268,7 +278,7 @@ def write_ai_call(record: dict[str, Any]) -> Path | None:
         folder.mkdir(parents=True, exist_ok=True)
         name = f"{now.strftime('%H%M%S-%f')[:10]}_{purpose}_{uuid.uuid4().hex[:8]}.json"
         path = folder / name
-        path.write_text(_json({"time": now.isoformat(), **record}), encoding="utf-8")
+        _write_atomic(path, _json({"time": now.isoformat(), **record}))
         return path
     except Exception:
         logger.exception("Không ghi được nhật ký gọi Gemini ra data-docs")
@@ -391,7 +401,7 @@ def refresh_datasets(dataset_ids: set[uuid.UUID], removed: set[uuid.UUID]) -> No
                 if dataset is None or path is None:
                     continue
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(_json(dataset_catalog(session, dataset)), encoding="utf-8")
+                _write_atomic(path, _json(dataset_catalog(session, dataset)))
     except Exception:
         logger.exception("Không ghi được catalog động ra data-docs")
 
@@ -438,15 +448,20 @@ def _remember_changes(session: Session, *_: Any) -> None:
     if _runtime() is None:
         return
     pending = session.info.setdefault(_PENDING, {"changed": set(), "removed": set()})
-    with session.no_autoflush:
-        for item in [*session.new, *session.dirty]:
-            if isinstance(item, _TRACKED):
-                pending["changed"] |= _dataset_ids(session, item)
-        for item in session.deleted:
-            if isinstance(item, Dataset):
-                pending["removed"].add(item.id)
-            elif isinstance(item, _TRACKED):
-                pending["changed"] |= _dataset_ids(session, item)
+    # Chạy ngay trong bước ghi cơ sở dữ liệu của thao tác người dùng: lỗi ở đây (chỉ phục vụ
+    # tài liệu) không bao giờ được làm hỏng thao tác chính, nên bắt mọi lỗi và chỉ ghi log.
+    try:
+        with session.no_autoflush:
+            for item in [*session.new, *session.dirty]:
+                if isinstance(item, _TRACKED):
+                    pending["changed"] |= _dataset_ids(session, item)
+            for item in session.deleted:
+                if isinstance(item, Dataset):
+                    pending["removed"].add(item.id)
+                elif isinstance(item, _TRACKED):
+                    pending["changed"] |= _dataset_ids(session, item)
+    except Exception:
+        logger.exception("Không theo dõi được thay đổi cho catalog động")
 
 
 @event.listens_for(Session, "after_commit")

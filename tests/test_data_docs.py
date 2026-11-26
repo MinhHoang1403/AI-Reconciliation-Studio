@@ -158,3 +158,17 @@ def test_nothing_is_written_when_the_folder_is_not_configured(
     )
     assert data_docs.write_ai_call({"purpose": "x"}) is None
     assert list(tmp_path.iterdir()) == []
+
+
+def test_catalog_errors_never_break_the_user_action(
+    runtime: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*_: Any) -> set[Any]:
+        raise RuntimeError("hỏng khi theo dõi")
+
+    monkeypatch.setattr(data_docs, "_dataset_ids", broken)
+    content = (FIXTURES / "giao-dich-cong-thanh-toan.csv").read_bytes()
+    reply = client.post("/api/datasets", files={"file": ("cong.csv", content)})
+    assert reply.status_code == 202
+    dataset = client.get(f"/api/datasets/{reply.json()['dataset']['id']}").json()
+    assert dataset["status"] == "READY"
