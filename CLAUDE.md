@@ -21,6 +21,8 @@ Lỗi cài sẵn cho bước làm sạch: `tests/fixtures/sales/loi-cai-san.csv`
 
 Đo tốc độ trọn luồng ở 100.000 đơn: `uv run --locked python tools/measure_scale.py` (SQLite tạm, không đụng app, không tốn phí; khoảng 3 phút). Số đo trên PostgreSQL thật ghi ở `docs/DECISIONS.md` 25/11/2026.
 
+Thư mục `data-docs/` (xem `data-docs/README.md`): data model, data catalog, schema JSON (commit) và `runtime/` (Git bỏ qua) gồm mỗi lần gọi Gemini một tệp JSON và catalog động từng bộ dữ liệu. Sửa mô hình, cột chuẩn, khuôn JSON hay API thì chạy `uv run --locked python tools/export_data_docs.py` (`tests/test_data_docs.py` báo khi quên).
+
 Đo độ chính xác ánh xạ: `uv run --locked python tools/evaluate_mapping.py` (chỉ quy tắc, miễn phí); thêm `--with-ai` để gọi Gemini thật (tốn phí, cần nạp khóa từ `.env` vào biến môi trường). Langfuse tự host ở <http://127.0.0.1:3000> (bộ container `langfuse` riêng); khóa trong `.env`.
 
 Bộ dữ liệu mẫu có đáp án ở `tests/fixtures/sales/`, sinh lại bằng `uv run --locked python tools/make_sales_fixtures.py` (kết quả luôn giống hệt).

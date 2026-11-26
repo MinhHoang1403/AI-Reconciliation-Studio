@@ -24,7 +24,7 @@ class _Reply(BaseModel):
     text: str
 
 
-def _schema() -> dict[str, Any]:
+def response_schema() -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {"text": {"type": "string"}},
@@ -38,7 +38,7 @@ def _ask(purpose: str, payload: dict[str, Any]) -> dict[str, Any]:
             purpose=purpose,
             system_instruction=SYSTEM_INSTRUCTION,
             payload=payload,
-            response_schema=_schema(),
+            response_schema=response_schema(),
         )
         return {"text": _Reply.model_validate(reply.data).text.strip()}
     except AiUnavailable as error:

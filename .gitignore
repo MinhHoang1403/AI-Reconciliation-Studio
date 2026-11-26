@@ -34,3 +34,6 @@ Desktop.ini
 
 # Cấu hình editor cá nhân
 .vscode/
+
+# data-docs phần chạy: nhật ký gọi Gemini, catalog động (có mẫu dữ liệu đã che); backend ghi khi chạy
+data-docs/runtime/

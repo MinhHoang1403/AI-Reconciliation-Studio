@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import FastAPI, Response, status
 from pydantic import BaseModel
 
-from studio import database, ingestion
+from studio import data_docs, database, ingestion  # noqa: F401  (data_docs: đăng ký ghi catalog động)
 from studio.assistant_api import router as assistant_router
 from studio.cleaning_api import router as cleaning_router
 from studio.config import settings

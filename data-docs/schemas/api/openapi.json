@@ -1,0 +1,3384 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AI Reconciliation Studio",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/datasets": {
+      "get": {
+        "summary": "List Datasets",
+        "operationId": "list_datasets_api_datasets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DatasetSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Datasets Api Datasets Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Upload Dataset",
+        "operationId": "upload_dataset_api_datasets_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_dataset_api_datasets_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadReply"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/datasets/{dataset_id}": {
+      "get": {
+        "summary": "Get Dataset",
+        "operationId": "get_dataset_api_datasets__dataset_id__get",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dataset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Dataset",
+        "description": "Xóa hẳn bộ dữ liệu: tệp gốc, các bảng đã đọc, các bộ sạch và bản ghi trong DB.",
+        "operationId": "delete_dataset_api_datasets__dataset_id__delete",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dataset Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/rows": {
+      "get": {
+        "summary": "Table Rows",
+        "operationId": "table_rows_api_tables__table_id__rows_get",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowsPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/profile": {
+      "get": {
+        "summary": "Table Profile",
+        "operationId": "table_profile_api_tables__table_id__profile_get",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Table Profile Api Tables  Table Id  Profile Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/header-row": {
+      "put": {
+        "summary": "Choose Header Row",
+        "operationId": "choose_header_row_api_tables__table_id__header_row_put",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeaderChoice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/datasets/{dataset_id}/read": {
+      "post": {
+        "summary": "Reread Dataset",
+        "description": "Đọc lại toàn bộ tệp gốc, dùng khi lần đọc trước thất bại hoặc bị gián đoạn.",
+        "operationId": "reread_dataset_api_datasets__dataset_id__read_post",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dataset Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/mapping": {
+      "get": {
+        "summary": "Get Mapping",
+        "operationId": "get_mapping_api_tables__table_id__mapping_get",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableMappingView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/mapping/columns/{position}": {
+      "put": {
+        "summary": "Choose Field",
+        "description": "Người dùng chọn cột chuẩn cho một cột. Cột chuẩn đang gán cho cột khác thì cột kia\nđược bỏ gán và chuyển sang \"chờ xem\" để người dùng không bỏ sót.",
+        "operationId": "choose_field_api_tables__table_id__mapping_columns__position__put",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          },
+          {
+            "name": "position",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Position"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FieldChoice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableMappingView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/mapping/confirm": {
+      "post": {
+        "summary": "Confirm All",
+        "description": "Đồng ý mọi gợi ý đang chờ và ghi nhớ ánh xạ cho tệp cùng cấu trúc.",
+        "operationId": "confirm_all_api_tables__table_id__mapping_confirm_post",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableMappingView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/mapping/suggest": {
+      "post": {
+        "summary": "Suggest Again",
+        "description": "Gợi ý lại từ đầu (bỏ qua ánh xạ đã nhớ), ví dụ khi bạn muốn AI xem lại.",
+        "operationId": "suggest_again_api_tables__table_id__mapping_suggest_post",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableMappingView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/cleaning": {
+      "get": {
+        "summary": "Get Cleaning",
+        "operationId": "get_cleaning_api_tables__table_id__cleaning_get",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Cleaning Api Tables  Table Id  Cleaning Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/cleaning/cells": {
+      "post": {
+        "summary": "Fix Cell",
+        "description": "Người dùng nhập giá trị đúng cho một ô; giá trị phải đọc được theo kiểu cột chuẩn.",
+        "operationId": "fix_cell_api_tables__table_id__cleaning_cells_post",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CellFix"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Fix Cell Api Tables  Table Id  Cleaning Cells Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/cleaning/suggestions/accept": {
+      "post": {
+        "summary": "Accept Suggestion",
+        "description": "Đồng ý giá trị AI đề xuất cho một ô.",
+        "operationId": "accept_suggestion_api_tables__table_id__cleaning_suggestions_accept_post",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          },
+          {
+            "name": "row_ref",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Row Ref"
+            }
+          },
+          {
+            "name": "field_key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Field Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Accept Suggestion Api Tables  Table Id  Cleaning Suggestions Accept Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/cleaning/rows": {
+      "post": {
+        "summary": "Decide Rows",
+        "description": "Loại dòng khỏi bộ sạch, giữ dòng (ví dụ giao dịch lặp thật), hoặc bỏ quyết định cũ.",
+        "operationId": "decide_rows_api_tables__table_id__cleaning_rows_post",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowsDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Decide Rows Api Tables  Table Id  Cleaning Rows Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/cleaning/duplicates/accept": {
+      "post": {
+        "summary": "Accept Duplicate Suggestions",
+        "description": "Đồng ý mọi gợi ý dòng trùng: giữ dòng đầu của mỗi nhóm, loại các bản lặp.",
+        "operationId": "accept_duplicate_suggestions_api_tables__table_id__cleaning_duplicates_accept_post",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Accept Duplicate Suggestions Api Tables  Table Id  Cleaning Duplicates Accept Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/cleaning/date-order": {
+      "put": {
+        "summary": "Choose Date Order",
+        "description": "Đổi cách đọc cả cột ngày: ngày/tháng hoặc tháng/ngày.",
+        "operationId": "choose_date_order_api_tables__table_id__cleaning_date_order_put",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DateOrderChoice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Choose Date Order Api Tables  Table Id  Cleaning Date Order Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/cleaning/rebuild": {
+      "post": {
+        "summary": "Rebuild",
+        "description": "Dựng lại bộ dữ liệu sạch (ví dụ sau khi lần dựng trước bị gián đoạn).",
+        "operationId": "rebuild_api_tables__table_id__cleaning_rebuild_post",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Rebuild Api Tables  Table Id  Cleaning Rebuild Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tables/{table_id}/clean-rows": {
+      "get": {
+        "summary": "Clean Rows",
+        "description": "Xem trước bộ dữ liệu sạch (giá trị chuẩn, kèm số dòng gốc).",
+        "operationId": "clean_rows_api_tables__table_id__clean_rows_get",
+        "parameters": [
+          {
+            "name": "table_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Clean Rows Api Tables  Table Id  Clean Rows Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/tables": {
+      "get": {
+        "summary": "Recon Tables",
+        "description": "Các bảng đã có bộ sạch và cặp bảng nên đối soát.",
+        "operationId": "recon_tables_api_recon_tables_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Recon Tables Api Recon Tables Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/preview": {
+      "post": {
+        "summary": "Preview",
+        "description": "Cấu hình đối soát gợi ý cho một cặp bảng (chưa chạy).",
+        "operationId": "preview_api_recon_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Preview Api Recon Preview Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/preview/explain": {
+      "post": {
+        "summary": "Explain Preview",
+        "description": "Gemini diễn giải cấu hình bằng lời (chỉ khi người dùng bấm \"Giải thích\").",
+        "operationId": "explain_preview_api_recon_preview_explain_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Explain Preview Api Recon Preview Explain Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/runs": {
+      "post": {
+        "summary": "Start Run",
+        "operationId": "start_run_api_recon_runs_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Start Run Api Recon Runs Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Runs",
+        "operationId": "list_runs_api_recon_runs_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Runs Api Recon Runs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/runs/{run_id}": {
+      "get": {
+        "summary": "Get Run",
+        "operationId": "get_run_api_recon_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Run Api Recon Runs  Run Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/runs/{run_id}/results": {
+      "get": {
+        "summary": "Run Results",
+        "description": "Kết quả theo nhóm (cần xử lý, đã ghi chú, đã xử lý, khớp, ngoài phạm vi) kèm dòng.",
+        "operationId": "run_results_api_recon_runs__run_id__results_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "group",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "todo",
+                "explained",
+                "resolved",
+                "matched",
+                "pending",
+                "out_of_scope"
+              ],
+              "type": "string",
+              "default": "todo",
+              "title": "Group"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Run Results Api Recon Runs  Run Id  Results Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/runs/{run_id}/verify": {
+      "post": {
+        "summary": "Reverify",
+        "description": "Kiểm chứng lại từ kết quả đang lưu (bắt được kết quả bị sửa tay trong cơ sở dữ liệu).",
+        "operationId": "reverify_api_recon_runs__run_id__verify_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Reverify Api Recon Runs  Run Id  Verify Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/runs/{run_id}/actions": {
+      "post": {
+        "summary": "Act On Results",
+        "description": "Đánh dấu đã xử lý / mở lại một hoặc nhiều ngoại lệ (ví dụ \"Đồng ý tất cả\" của một loại).",
+        "operationId": "act_on_results_api_recon_runs__run_id__actions_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Act On Results Api Recon Runs  Run Id  Actions Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/results/{result_id}/note": {
+      "put": {
+        "summary": "Change Note",
+        "description": "Ghi chú tùy chọn; ngoại lệ đang mở có ghi chú thì tự thành \"đã giải thích\".",
+        "operationId": "change_note_api_recon_results__result_id__note_put",
+        "parameters": [
+          {
+            "name": "result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Result Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Change Note Api Recon Results  Result Id  Note Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/results/{result_id}/explain": {
+      "post": {
+        "summary": "Explain Result",
+        "description": "Gemini giải thích một ngoại lệ bằng lời từ lý do của engine (chỉ khi người dùng bấm).",
+        "operationId": "explain_result_api_recon_results__result_id__explain_post",
+        "parameters": [
+          {
+            "name": "result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Result Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Explain Result Api Recon Results  Result Id  Explain Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/periods": {
+      "get": {
+        "summary": "Recon Periods",
+        "description": "Các kỳ đối soát nhận ra từ các tệp sao kê, kèm lần chạy chuỗi gần nhất của mỗi kỳ.",
+        "operationId": "recon_periods_api_recon_periods_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Recon Periods Api Recon Periods Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/chains": {
+      "post": {
+        "summary": "Start Chain",
+        "description": "Đối soát cả chuỗi của một kỳ: mọi cặp nối được (đơn hàng ↔ cổng ↔ sao kê).",
+        "operationId": "start_chain_api_recon_chains_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Start Chain Api Recon Chains Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/chains/{chain_id}": {
+      "get": {
+        "summary": "Get Chain",
+        "operationId": "get_chain_api_recon_chains__chain_id__get",
+        "parameters": [
+          {
+            "name": "chain_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chain Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Chain Api Recon Chains  Chain Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/chains/{chain_id}/trace": {
+      "get": {
+        "summary": "Chain Trace",
+        "description": "Đường đi của một dòng qua các cặp trong chuỗi (đơn → giao dịch cổng → dòng sao kê).",
+        "operationId": "chain_trace_api_recon_chains__chain_id__trace_get",
+        "parameters": [
+          {
+            "name": "chain_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chain Id"
+            }
+          },
+          {
+            "name": "table_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Table Id"
+            }
+          },
+          {
+            "name": "row_ref",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Row Ref"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Chain Trace Api Recon Chains  Chain Id  Trace Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/runs/{run_id}/choose": {
+      "post": {
+        "summary": "Choose Candidate",
+        "description": "Người dùng chọn cặp đúng cho một ca mơ hồ. Lựa chọn được lưu (áp dụng ở mọi lần chạy\nsau) và cặp bảng (hoặc cả chuỗi) được chạy lại để kết quả và kiểm chứng cập nhật.",
+        "operationId": "choose_candidate_api_recon_runs__run_id__choose_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmbiguousChoice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Choose Candidate Api Recon Runs  Run Id  Choose Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/results/{result_id}/match-candidates": {
+      "get": {
+        "summary": "Match Candidates",
+        "description": "Dòng chưa ghép ở bên kia để ghép tay với một dòng \"chỉ có ở một bên\": gần số tiền nhất\ntrước, rồi gần ngày nhất. Hệ thống chỉ gợi ý thứ tự; người dùng quyết định.",
+        "operationId": "match_candidates_api_recon_results__result_id__match_candidates_get",
+        "parameters": [
+          {
+            "name": "result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Result Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Match Candidates Api Recon Results  Result Id  Match Candidates Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/runs/{run_id}/match": {
+      "post": {
+        "summary": "Manual Match",
+        "description": "Ghép tay các dòng chưa ghép của hai bên (một cặp hoặc một nhóm). Lựa chọn được lưu và\náp dụng ở mọi lần chạy sau; lệch tiền thì kết quả vẫn là ngoại lệ \"lệch tiền\" để xử lý.",
+        "operationId": "manual_match_api_recon_runs__run_id__match_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualMatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Manual Match Api Recon Runs  Run Id  Match Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recon/results/{result_id}/unmatch": {
+      "post": {
+        "summary": "Unmatch",
+        "description": "Gỡ một cặp (hoặc nhóm) đã ghép: các dòng trở về \"chưa ghép\" và không vòng tự động nào\nđược ghép chúng với nhau nữa. Người dùng có thể ghép tay lại theo cách đúng.",
+        "operationId": "unmatch_api_recon_results__result_id__unmatch_post",
+        "parameters": [
+          {
+            "name": "result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Result Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Unmatch Api Recon Results  Result Id  Unmatch Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audit": {
+      "get": {
+        "summary": "Audit Log",
+        "operationId": "audit_log_api_audit_get",
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Audit Log Api Audit Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/threads": {
+      "get": {
+        "summary": "List Threads",
+        "operationId": "list_threads_api_assistant_threads_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response List Threads Api Assistant Threads Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Thread",
+        "operationId": "create_thread_api_assistant_threads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewThread"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Create Thread Api Assistant Threads Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/threads/{thread_id}": {
+      "get": {
+        "summary": "Get Thread",
+        "operationId": "get_thread_api_assistant_threads__thread_id__get",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Thread Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Thread Api Assistant Threads  Thread Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Thread",
+        "description": "Xóa cuộc trò chuyện (chỉ hội thoại; dữ liệu và kết quả đối soát không bị đụng tới).",
+        "operationId": "delete_thread_api_assistant_threads__thread_id__delete",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Thread Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/threads/{thread_id}/messages": {
+      "post": {
+        "summary": "Send Message",
+        "description": "Lưu câu chat (kèm tệp đính kèm nếu có), tạo câu trả lời đang soạn và chạy nền.",
+        "operationId": "send_message_api_assistant_threads__thread_id__messages_post",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Thread Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewMessage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Send Message Api Assistant Threads  Thread Id  Messages Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/messages/{message_id}/actions/{action_id}": {
+      "post": {
+        "summary": "Decide Card",
+        "description": "Người dùng bấm \"Đồng ý\" (chạy đúng hàm API của nút trên giao diện) hoặc \"Bỏ qua\".\n\nKhóa dòng tin nhắn khi đọc (SELECT … FOR UPDATE): bấm hai lần liền hoặc mở hai tab thì yêu\ncầu sau phải chờ yêu cầu trước xong và thấy thẻ đã xử lý, thao tác không bao giờ chạy hai\nlần.",
+        "operationId": "decide_card_api_assistant_messages__message_id__actions__action_id__post",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "action_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Decide Card Api Assistant Messages  Message Id  Actions  Action Id  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports": {
+      "get": {
+        "summary": "List Reports",
+        "description": "Các kỳ đã đối soát kèm số chính (khối so sánh các kỳ, Dashboard).",
+        "operationId": "list_reports_api_reports_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response List Reports Api Reports Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{chain_id}": {
+      "get": {
+        "summary": "Get Report",
+        "operationId": "get_report_api_reports__chain_id__get",
+        "parameters": [
+          {
+            "name": "chain_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chain Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Report Api Reports  Chain Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{chain_id}/export.xlsx": {
+      "get": {
+        "summary": "Export Xlsx",
+        "operationId": "export_xlsx_api_reports__chain_id__export_xlsx_get",
+        "parameters": [
+          {
+            "name": "chain_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chain Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{chain_id}/export.csv": {
+      "get": {
+        "summary": "Export Csv",
+        "operationId": "export_csv_api_reports__chain_id__export_csv_get",
+        "parameters": [
+          {
+            "name": "chain_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chain Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{chain_id}/comment": {
+      "post": {
+        "summary": "Write Comment",
+        "description": "Gemini viết nhận xét từ số liệu đã tính; lưu lại cùng dấu vân tay số liệu.",
+        "operationId": "write_comment_api_reports__chain_id__comment_post",
+        "parameters": [
+          {
+            "name": "chain_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chain Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Write Comment Api Reports  Chain Id  Comment Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Health",
+        "description": "Backend còn sống hay không; Docker dùng để đánh dấu container healthy.",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReply"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "summary": "Ready",
+        "description": "Backend đã sẵn sàng phục vụ chưa: cần kết nối được PostgreSQL.",
+        "operationId": "ready_api_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReply"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "summary": "System Status",
+        "description": "Tóm tắt trạng thái hệ thống để giao diện hiển thị.",
+        "operationId": "system_status_api_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AmbiguousChoice": {
+        "properties": {
+          "result_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Result Id"
+          },
+          "left_refs": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Left Refs"
+          },
+          "right_refs": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Right Refs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "result_id",
+          "left_refs",
+          "right_refs"
+        ],
+        "title": "AmbiguousChoice"
+      },
+      "Body_upload_dataset_api_datasets_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_dataset_api_datasets_post"
+      },
+      "CandidateView": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "label",
+          "score"
+        ],
+        "title": "CandidateView"
+      },
+      "CardDecision": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "CONFIRM",
+              "CANCEL"
+            ],
+            "title": "Decision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "CardDecision"
+      },
+      "CellFix": {
+        "properties": {
+          "row_ref": {
+            "type": "integer",
+            "title": "Row Ref"
+          },
+          "field_key": {
+            "type": "string",
+            "title": "Field Key"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "row_ref",
+          "field_key",
+          "value"
+        ],
+        "title": "CellFix"
+      },
+      "ChainRequest": {
+        "properties": {
+          "table_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 2,
+            "title": "Table Ids"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_ids"
+        ],
+        "title": "ChainRequest"
+      },
+      "ColumnMappingView": {
+        "properties": {
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "column_name": {
+            "type": "string",
+            "title": "Column Name"
+          },
+          "field_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Key"
+          },
+          "field_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Label"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateView"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "column_name",
+          "field_key",
+          "field_label",
+          "confidence",
+          "status",
+          "source",
+          "reason",
+          "candidates"
+        ],
+        "title": "ColumnMappingView"
+      },
+      "DatasetSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "original_filename": {
+            "type": "string",
+            "title": "Original Filename"
+          },
+          "file_format": {
+            "type": "string",
+            "title": "File Format"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/TableSummary"
+            },
+            "type": "array",
+            "title": "Tables"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "original_filename",
+          "file_format",
+          "size_bytes",
+          "sha256",
+          "status",
+          "error_message",
+          "created_at",
+          "tables"
+        ],
+        "title": "DatasetSummary"
+      },
+      "DateOrderChoice": {
+        "properties": {
+          "field_key": {
+            "type": "string",
+            "title": "Field Key"
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "DMY",
+              "MDY"
+            ],
+            "title": "Order"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field_key",
+          "order"
+        ],
+        "title": "DateOrderChoice"
+      },
+      "FieldChoice": {
+        "properties": {
+          "field_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field_key"
+        ],
+        "title": "FieldChoice"
+      },
+      "FieldOption": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "type"
+        ],
+        "title": "FieldOption"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HeaderChoice": {
+        "properties": {
+          "header_row": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Header Row"
+          }
+        },
+        "type": "object",
+        "title": "HeaderChoice"
+      },
+      "HealthReply": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "HealthReply"
+      },
+      "ManualMatch": {
+        "properties": {
+          "left_refs": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Left Refs"
+          },
+          "right_refs": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Right Refs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "left_refs",
+          "right_refs"
+        ],
+        "title": "ManualMatch"
+      },
+      "NewMessage": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Text",
+            "default": ""
+          },
+          "dataset_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Dataset Ids"
+          }
+        },
+        "type": "object",
+        "title": "NewMessage"
+      },
+      "NewThread": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "title": "NewThread"
+      },
+      "NoteChange": {
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "note"
+        ],
+        "title": "NoteChange"
+      },
+      "PairChoice": {
+        "properties": {
+          "left_table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Left Table Id"
+          },
+          "right_table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Right Table Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "left_table_id",
+          "right_table_id"
+        ],
+        "title": "PairChoice"
+      },
+      "ProviderState": {
+        "type": "string",
+        "enum": [
+          "CONFIGURED",
+          "NEEDS_CONFIGURATION"
+        ]
+      },
+      "ProviderStatus": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProviderState"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "model",
+          "state"
+        ],
+        "title": "ProviderStatus"
+      },
+      "RowsDecision": {
+        "properties": {
+          "row_refs": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Row Refs"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "EXCLUDE",
+              "KEEP",
+              "UNDO"
+            ],
+            "title": "Decision"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Reason",
+            "default": "USER"
+          }
+        },
+        "type": "object",
+        "required": [
+          "row_refs",
+          "decision"
+        ],
+        "title": "RowsDecision"
+      },
+      "RowsPage": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "row_refs": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Row Refs"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "columns",
+          "row_refs",
+          "rows",
+          "offset",
+          "limit",
+          "total"
+        ],
+        "title": "RowsPage"
+      },
+      "RunAction": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "RESOLVE",
+              "REOPEN"
+            ],
+            "title": "Action"
+          },
+          "result_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "maxItems": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Ids"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "RunAction"
+      },
+      "RunRequest": {
+        "properties": {
+          "left_table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Left Table Id"
+          },
+          "right_table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Right Table Id"
+          },
+          "tolerance": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tolerance"
+          },
+          "date_window_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 60.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Window Days"
+          },
+          "excluded": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded"
+          }
+        },
+        "type": "object",
+        "required": [
+          "left_table_id",
+          "right_table_id"
+        ],
+        "title": "RunRequest"
+      },
+      "SystemStatus": {
+        "properties": {
+          "revision": {
+            "type": "string",
+            "title": "Revision"
+          },
+          "database": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Database"
+          },
+          "gemini": {
+            "$ref": "#/components/schemas/ProviderStatus"
+          },
+          "langfuse": {
+            "$ref": "#/components/schemas/ProviderStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "revision",
+          "database",
+          "gemini",
+          "langfuse"
+        ],
+        "title": "SystemStatus"
+      },
+      "TableMappingView": {
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Table Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "table_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Kind"
+          },
+          "table_kind_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Kind Label"
+          },
+          "ai_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai State"
+          },
+          "ai_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Message"
+          },
+          "pending_count": {
+            "type": "integer",
+            "title": "Pending Count"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnMappingView"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldOption"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_id",
+          "status",
+          "table_kind",
+          "table_kind_label",
+          "ai_state",
+          "ai_message",
+          "pending_count",
+          "columns",
+          "fields"
+        ],
+        "title": "TableMappingView"
+      },
+      "TableSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "sheet_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet Name"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "header_row": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Header Row"
+          },
+          "header_row_chosen_by_user": {
+            "type": "boolean",
+            "title": "Header Row Chosen By User"
+          },
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count"
+          },
+          "column_count": {
+            "type": "integer",
+            "title": "Column Count"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "mapping_status": {
+            "type": "string",
+            "title": "Mapping Status"
+          },
+          "table_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Kind"
+          },
+          "mapping_pending": {
+            "type": "integer",
+            "title": "Mapping Pending"
+          },
+          "clean_status": {
+            "type": "string",
+            "title": "Clean Status"
+          },
+          "clean_open": {
+            "type": "integer",
+            "title": "Clean Open"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sheet_name",
+          "position",
+          "status",
+          "header_row",
+          "header_row_chosen_by_user",
+          "row_count",
+          "column_count",
+          "error_message",
+          "mapping_status",
+          "table_kind",
+          "mapping_pending",
+          "clean_status",
+          "clean_open"
+        ],
+        "title": "TableSummary"
+      },
+      "UploadReply": {
+        "properties": {
+          "dataset": {
+            "$ref": "#/components/schemas/DatasetSummary"
+          },
+          "duplicate": {
+            "type": "boolean",
+            "title": "Duplicate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dataset",
+          "duplicate"
+        ],
+        "title": "UploadReply"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

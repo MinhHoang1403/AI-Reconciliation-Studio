@@ -1,0 +1,65 @@
+{
+  "description": "Loại bảng hệ thống nhận ra sau bước ánh xạ. 'required' là các nhóm cột bắt buộc: mỗi nhóm cần ít nhất một cột (backend/studio/cleaning.py). 'key_field' là cột mã mà mỗi dòng phải khác nhau.",
+  "kinds": [
+    {
+      "kind": "ORDERS_PLATFORM",
+      "label": "Đơn hàng sàn TMĐT",
+      "required": [
+        [
+          "order_id"
+        ],
+        [
+          "amount"
+        ]
+      ],
+      "key_field": "order_id"
+    },
+    {
+      "kind": "ORDERS_POS",
+      "label": "Đơn hàng cửa hàng",
+      "required": [
+        [
+          "order_id"
+        ],
+        [
+          "amount"
+        ]
+      ],
+      "key_field": "order_id"
+    },
+    {
+      "kind": "PAYMENT_GATEWAY",
+      "label": "Giao dịch cổng thanh toán",
+      "required": [
+        [
+          "amount"
+        ],
+        [
+          "payment_id",
+          "order_id"
+        ]
+      ],
+      "key_field": "payment_id"
+    },
+    {
+      "kind": "BANK_STATEMENT",
+      "label": "Sao kê ngân hàng",
+      "required": [
+        [
+          "transaction_date"
+        ],
+        [
+          "debit",
+          "credit"
+        ]
+      ],
+      "key_field": null
+    },
+    {
+      "kind": "UNKNOWN",
+      "label": "Chưa rõ loại",
+      "required": [],
+      "key_field": null
+    }
+  ]
+}

@@ -45,6 +45,23 @@ KIND_LABELS = {
     "NEEDS_CLEANING": "Dữ liệu chưa sạch",
     "OUT_OF_SCOPE": "Ngoài phạm vi",
 }
+# Ý nghĩa từng loại kết quả (docs/ARCHITECTURE.md mục 5.2); dùng cho data catalog.
+KIND_DESCRIPTIONS = {
+    "MATCHED": "Khớp hoàn toàn: cùng mã hoặc cùng điểm cao, số tiền trong sai số.",
+    "MANY_TO_ONE": "Ghép nhóm: nhiều dòng bên A cộng lại đúng bằng một dòng bên B.",
+    "ONE_TO_MANY": "Ghép nhóm: một dòng bên A bằng đúng tổng nhiều dòng bên B.",
+    "AMBIGUOUS": "Nhiều ứng viên ngang điểm; hệ thống không tự chọn, người dùng chọn.",
+    "PENDING_SETTLEMENT": "Chưa khớp nhưng còn trong khung chờ tiền về (T+3 ngày làm việc); "
+    "chênh lệch do thời điểm, kỳ sau tự khớp lại.",
+    "AMOUNT_MISMATCH": "Ghép được hai bên nhưng số tiền lệch ngoài sai số.",
+    "DUPLICATE": "Một bên có nhiều dòng giống hệt cùng trỏ một dòng bên kia.",
+    "ONLY_IN_A": "Chỉ có ở bên A, không tìm được dòng tương ứng bên B (thiếu).",
+    "ONLY_IN_B": "Chỉ có ở bên B, không tìm được dòng tương ứng bên A (thừa).",
+    "NEEDS_CLEANING": "Dòng còn vấn đề mức \"Hỏi\" ở bước làm sạch; không ghép, cần sửa rồi "
+    "chạy lại.",
+    "OUT_OF_SCOPE": "Dòng không thuộc phạm vi bên kia (tiền mặt, đơn hủy, tiền ra, đã ghép ở cặp "
+    "khác); người dùng đổi lại được.",
+}
 # Nhóm hiển thị: việc cần làm trước, phần đã xong thu gọn (nguyên tắc giao diện Giai đoạn 4–7).
 type ResultGroup = Literal[
     "todo", "explained", "resolved", "matched", "pending", "out_of_scope"

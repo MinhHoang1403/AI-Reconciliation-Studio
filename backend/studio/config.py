@@ -33,6 +33,9 @@ class Settings(BaseSettings):
 
     # Commit Git của source đã build image, để biết đang chạy bản nào.
     studio_revision: str = "unknown"
+    # Thư mục data-docs phần chạy (nhật ký gọi Gemini, catalog động). Không đặt thì không ghi
+    # tệp (mặc định khi chạy kiểm thử); container đặt /data/data-docs, gắn ra data-docs/runtime.
+    data_docs_dir: Path | None = None
 
 
 settings = Settings()

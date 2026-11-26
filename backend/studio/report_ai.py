@@ -141,6 +141,15 @@ def unknown_numbers(text: str, known: dict[str, Any]) -> list[str]:
     return sorted(number for number in _numbers(text) if number not in allowed)
 
 
+def response_schema() -> dict[str, Any]:
+    """Khuôn JSON bắt Gemini trả lời: chỉ một đoạn chữ."""
+    return {
+        "type": "object",
+        "properties": {"text": {"type": "string"}},
+        "required": ["text"],
+    }
+
+
 class _Reply(BaseModel):
     text: str
 
@@ -152,11 +161,7 @@ def write_comment(report: dict[str, Any]) -> str:
             purpose="nhan-xet-bao-cao",
             system_instruction=SYSTEM_INSTRUCTION,
             payload={"facts": known},
-            response_schema={
-                "type": "object",
-                "properties": {"text": {"type": "string"}},
-                "required": ["text"],
-            },
+            response_schema=response_schema(),
         )
         text = _Reply.model_validate(reply.data).text.strip()
     except AiUnavailable as error:
