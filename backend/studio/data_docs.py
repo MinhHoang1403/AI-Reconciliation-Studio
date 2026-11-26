@@ -406,6 +406,34 @@ def refresh_datasets(dataset_ids: set[uuid.UUID], removed: set[uuid.UUID]) -> No
         logger.exception("Không ghi được catalog động ra data-docs")
 
 
+def sync_catalogs() -> None:
+    """Đồng bộ toàn bộ catalog động với PostgreSQL: ghi lại catalog của mọi bộ dữ liệu đang có
+    và xóa tệp của bộ không còn. Gọi lúc backend khởi động, vì catalog chỉ được ghi theo sự kiện
+    sau mỗi lần commit; một lần ghi bị lỡ (backend tắt giữa chừng, lỗi đĩa) thì tệp sẽ lệch tới
+    khi bộ dữ liệu đổi lần sau."""
+    from studio import database
+
+    root = _runtime()
+    if root is None:
+        return
+    try:
+        with database.SessionFactory() as session:
+            existing = set(session.scalars(select(Dataset.id)))
+        folder = root / "catalog" / "datasets"
+        stale = set()
+        if folder.exists():
+            for path in folder.glob("*.json"):
+                try:
+                    dataset_id = uuid.UUID(path.stem)
+                except ValueError:
+                    continue
+                if dataset_id not in existing:
+                    stale.add(dataset_id)
+        refresh_datasets(existing, stale)
+    except Exception:
+        logger.exception("Không đồng bộ được catalog động lúc khởi động")
+
+
 # Các đối tượng mà khi đổi thì catalog của bộ dữ liệu chứa chúng phải ghi lại.
 _TRACKED = (
     Dataset,

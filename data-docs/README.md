@@ -39,5 +39,8 @@ Mục đích (`purpose`) của các lần gọi Gemini: `goi-y-anh-xa-cot` (ánh
 `giai-thich-cau-hinh-doi-soat`, `giai-thich-ngoai-le-doi-soat`, `assistant`, `nhan-xet-bao-cao`.
 Cùng lần gọi còn có trace trên Langfuse (<http://127.0.0.1:3000>).
 
+Mỗi lần backend khởi động, catalog động được đồng bộ lại với PostgreSQL (ghi lại tệp còn thiếu,
+xóa tệp của bộ dữ liệu không còn), nên không lệch kể cả khi một lần ghi từng bị lỡ.
+
 Xóa sạch dữ liệu app (`docker compose down -v`) **không** xóa `runtime/`; muốn dọn thì xóa tay
 thư mục này.

@@ -172,3 +172,16 @@ def test_catalog_errors_never_break_the_user_action(
     assert reply.status_code == 202
     dataset = client.get(f"/api/datasets/{reply.json()['dataset']['id']}").json()
     assert dataset["status"] == "READY"
+
+
+def test_startup_sync_restores_missing_and_removes_stale_catalogs(runtime: Path) -> None:
+    content = (FIXTURES / "giao-dich-cong-thanh-toan.csv").read_bytes()
+    dataset_id = client.post("/api/datasets", files={"file": ("cong.csv", content)}).json()[
+        "dataset"
+    ]["id"]
+    folder = runtime / "catalog" / "datasets"
+    (folder / f"{dataset_id}.json").unlink()  # một lần ghi bị lỡ
+    stale = folder / "00000000-0000-0000-0000-000000000001.json"  # bộ dữ liệu đã không còn
+    stale.write_text("{}", encoding="utf-8")
+    data_docs.sync_catalogs()
+    assert (folder / f"{dataset_id}.json").exists() and not stale.exists()
