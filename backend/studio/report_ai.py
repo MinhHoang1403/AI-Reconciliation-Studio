@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from studio import recon_api
+from studio import reporting
 from studio.datasets_api import fail
 from studio.gemini_client import AiUnavailable, generate_json
 
@@ -110,7 +110,7 @@ def _open_by_kind(report: dict[str, Any]) -> list[dict[str, str]]:
             slot["amount"] += Decimal(str(value["amount"]))
     return [
         {
-            "loai": recon_api.KIND_LABELS.get(kind, kind),
+            "loai": reporting.report_kind_label(kind),
             "y_nghia": KIND_MEANINGS.get(kind, ""),
             "so_ca": str(value["count"]),
             "so_tien_lien_quan": money_text(value["amount"]),
@@ -121,14 +121,7 @@ def _open_by_kind(report: dict[str, Any]) -> list[dict[str, str]]:
 
 def _rows_text(item: dict[str, Any]) -> str:
     """Ca không có mã (ví dụ dòng sao kê không ghi mã đơn): gọi theo số dòng gốc."""
-    parts = []
-    if item["left_rows"]:
-        parts.append("dòng A " + ", ".join(str(ref) for ref in item["left_rows"]))
-    if item.get("carried_rows"):
-        parts.append("dòng kỳ trước " + ", ".join(str(ref) for ref in item["carried_rows"]))
-    if item["right_rows"]:
-        parts.append("dòng B " + ", ".join(str(ref) for ref in item["right_rows"]))
-    return "không có mã (" + "; ".join(parts) + ")"
+    return "không có mã (" + reporting.rows_text(item) + ")"
 
 
 def _numbers(text: str) -> set[str]:

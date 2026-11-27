@@ -191,6 +191,29 @@ def pair_report(session: Session, run: ReconRun, full: bool = False) -> dict[str
     }
 
 
+# Báo cáo viết cho chủ cửa hàng: hai loại "chỉ có ở một bên" gọi theo nghĩa tiền, trùng với
+# tên ô số chính (thiếu tiền về, tiền về chưa rõ nguồn). Trong chuỗi bán hàng bên A luôn là
+# nơi ghi khoản phải thu (đơn hàng, giao dịch cổng), bên B là nơi tiền về (cổng, sao kê).
+REPORT_KIND_LABELS = {"ONLY_IN_A": "Thiếu tiền về", "ONLY_IN_B": "Tiền về chưa rõ nguồn"}
+
+
+def report_kind_label(kind: str) -> str:
+    return REPORT_KIND_LABELS.get(kind) or recon_api.KIND_LABELS.get(kind, kind)
+
+
+def rows_text(item: dict[str, Any]) -> str:
+    """Các dòng gốc của một ca, gọi theo tên bảng: "dòng 41 của sao-ke-ngan-hang › TK chinh"."""
+    refs = ", ".join
+    parts = []
+    if item["left_rows"]:
+        parts.append(f"dòng {refs(map(str, item['left_rows']))} của {item['left_label']}")
+    if item.get("carried_rows"):
+        parts.append(f"dòng {refs(map(str, item['carried_rows']))} của kỳ trước")
+    if item["right_rows"]:
+        parts.append(f"dòng {refs(map(str, item['right_rows']))} của {item['right_label']}")
+    return "; ".join(parts)
+
+
 def _exception_row(
     pair: dict[str, Any],
     item: Any,
@@ -205,8 +228,11 @@ def _exception_row(
         "result_id": str(item.id),
         "pair": pair["label"],
         "kind": item.kind,
-        "kind_label": recon_api.KIND_LABELS.get(item.kind, item.kind),
+        "kind_label": report_kind_label(item.kind),
         "status": item.exception_status,
+        # Tên hai bảng của cặp: ca không có mã được gọi "dòng 41 của <bảng>", không "dòng B 41".
+        "left_label": pair["left_label"],
+        "right_label": pair["right_label"],
         "codes": list(dict.fromkeys(keys)),
         "date": day.isoformat() if day else None,
         "age_days": max((period_end - day).days, 0) if day and period_end else None,
@@ -368,7 +394,7 @@ def build_report(session: Session, chain: ReconChain, full: bool = False) -> dic
         "kpis": _headline(pairs),
         "pairs": [{k: v for k, v in pair.items() if not k.startswith("_")} for pair in pairs],
         "by_kind": [
-            {"kind": kind, "label": recon_api.KIND_LABELS.get(kind, kind), **value}
+            {"kind": kind, "label": report_kind_label(kind), **value}
             for kind, value in by_kind.items()
         ],
         "by_day": [{"date": day, **groups} for day, groups in sorted(by_day.items())],

@@ -270,7 +270,7 @@ function TopExceptions({ report }: { report: Report }) {
                   <b>{item.codes.join(", ") || rowsText(item)}</b>
                   <span className="report-top__meta">
                     {item.pair}
-                    {item.age_days !== null && ` · ${formatCount(item.age_days)} ngày tới cuối kỳ`}
+                    {item.age_days !== null && ` · ${ageText(item.age_days)}`}
                   </span>
                 </div>
                 <span className="report-top__amount">{money(item.amount)}</span>
@@ -283,14 +283,18 @@ function TopExceptions({ report }: { report: Report }) {
   );
 }
 
-/** Ca không có mã (ví dụ dòng sao kê không ghi mã đơn): gọi theo số dòng gốc. */
+/** Ca không có mã (ví dụ dòng sao kê không ghi mã đơn): gọi theo số dòng gốc và tên bảng,
+ *  không theo "dòng A / dòng B" của engine. */
 function rowsText(item: ReportException): string {
   const parts = [];
-  if (item.left_rows.length) parts.push(`dòng A ${item.left_rows.join(", ")}`);
-  if (item.carried_rows.length) parts.push(`dòng kỳ trước ${item.carried_rows.join(", ")}`);
-  if (item.right_rows.length) parts.push(`dòng B ${item.right_rows.join(", ")}`);
+  if (item.left_rows.length) parts.push(`dòng ${item.left_rows.join(", ")} của ${item.left_label}`);
+  if (item.carried_rows.length) parts.push(`dòng ${item.carried_rows.join(", ")} của kỳ trước`);
+  if (item.right_rows.length) parts.push(`dòng ${item.right_rows.join(", ")} của ${item.right_label}`);
   return `Không có mã (${parts.join("; ")})`;
 }
+
+/** Tuổi của ca tính tới ngày cuối kỳ (cùng cách tính với biểu đồ tuổi ngoại lệ). */
+const ageText = (days: number) => (days === 0 ? "phát sinh ngày cuối kỳ" : `đã ${formatCount(days)} ngày tính tới cuối kỳ`);
 
 function PairsChart({ report }: { report: Report }) {
   const rows: BarRow[] = report.pairs.map((pair) => ({

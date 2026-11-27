@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 from test_phase5 import PERIOD1, PERIOD2, all_results, run_period, upload_all
 
-from studio import database, main, report_ai
+from studio import database, main, report_ai, reporting
 from studio.gemini_client import AiReply
 from studio.models import ReconRun
 
@@ -100,6 +100,15 @@ def test_every_number_matches_the_engine_results(period1: dict[str, Any]) -> Non
     # HD000123: cổng thu ít hơn đơn 20.000đ (đáp án) — lệch phải hiện đúng số.
     mismatch = next(item for item in period1["exceptions"] if "HD000123" in item["codes"])
     assert money(mismatch["amount"]) == Decimal("20000")
+    # Báo cáo gọi "chỉ có ở một bên" theo nghĩa tiền, trùng tên ô số chính; mỗi ca có tên hai
+    # bảng để ca không có mã được gọi "dòng 41 của <bảng>" thay vì "dòng B 41".
+    labels = {item["kind"]: item["kind_label"] for item in period1["exceptions"]}
+    assert labels.get("ONLY_IN_A", "Thiếu tiền về") == "Thiếu tiền về"
+    assert labels.get("ONLY_IN_B", "Tiền về chưa rõ nguồn") == "Tiền về chưa rõ nguồn"
+    assert not any(item["label"].startswith("Chỉ có ở") for item in period1["by_kind"])
+    assert all(item["left_label"] and item["right_label"] for item in period1["exceptions"])
+    no_code = {"left_rows": [], "right_rows": [41], "left_label": "x", "right_label": "sao kê"}
+    assert reporting.rows_text(no_code) == "dòng 41 của sao kê"
 
 
 def test_csv_and_xlsx_have_the_same_content(period1: dict[str, Any]) -> None:

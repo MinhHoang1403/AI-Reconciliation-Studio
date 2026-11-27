@@ -567,6 +567,8 @@ export type ReportException = {
   kind: ReconKind;
   kind_label: string;
   status: "OPEN" | "EXPLAINED" | "RESOLVED" | null;
+  left_label: string;
+  right_label: string;
   codes: string[];
   date: string | null;
   age_days: number | null;

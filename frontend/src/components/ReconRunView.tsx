@@ -372,7 +372,10 @@ export function ResultItem({ item, context }: { item: ReconResult; context: Item
   const reasons = item.reasons.filter(
     (reason) => !["AMOUNT_EQUAL", "DATE", "KEY", "CANDIDATES"].includes(reason.code),
   );
-  const shown = reasons.length ? reasons : item.reasons;
+  // "Không có dòng tương ứng ở bên B (mã …)" chỉ nhắc lại ô trống bên B và mã ngay phía trên
+  // thẻ, nên không in lại; các lý do khác giữ nguyên.
+  const repeatsEmptySide = (code: string) => code === "NO_MATCH";
+  const shown = (reasons.length ? reasons : item.reasons).filter((reason) => !repeatsEmptySide(reason.code));
   const candidates = item.reasons.find((reason) => reason.code === "CANDIDATES")?.pairs ?? [];
   const firstLeft = item.left.find((row) => !row.carried);
 
@@ -435,7 +438,7 @@ export function ResultItem({ item, context }: { item: ReconResult; context: Item
         <ArrowLeftRight className="result__link" aria-hidden="true" size={16} strokeWidth={1.8} />
         <Side label="B" rows={item.right} kind={item.kind} />
       </div>
-      <p className="result__reason">{shown.map((reason) => reason.text).join(" ")}</p>
+      {shown.length > 0 && <p className="result__reason">{shown.map((reason) => reason.text).join(" ")}</p>}
 
       {item.kind === "AMBIGUOUS" && candidates.length > 0 && (
         <fieldset className="candidates" disabled={busy || choosing}>

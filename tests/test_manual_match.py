@@ -141,7 +141,14 @@ def test_manual_match_then_unmatch_through_the_api() -> None:
     )
     assert paired["kind"] in ("MATCHED", "AMOUNT_MISMATCH")
     assert any(reason["code"] == "USER" for reason in paired["reasons"])
-    assert latest_audit("MANUAL_MATCH") is not None
+    # Nhật ký ghi mã đơn và tên bảng (không "A43 ↔ B74") để người đọc khỏi tra bên A, B.
+    logged = latest_audit("MANUAL_MATCH")
+    assert logged is not None
+    a_code, b_code = only_a["left"][0]["key"], only_b["right"][0].get("key")
+    assert f"{a_code} (don-hang-cua-hang)" in logged["summary"]
+    assert "(giao-dich-cong-thanh-toan)" in logged["summary"]
+    assert f"A{a_ref}" not in logged["summary"]
+    assert (b_code or f"dòng {b_ref}") in logged["summary"]
 
     # Gỡ chính cặp vừa ghép tay: hai dòng trở về chưa ghép và không tự ghép lại.
     third = client.post(f"/api/recon/results/{paired['id']}/unmatch").json()["run_id"]
@@ -152,7 +159,8 @@ def test_manual_match_then_unmatch_through_the_api() -> None:
     assert any(
         item["kind"] == "ONLY_IN_B" and item["right"][0]["row_ref"] == b_ref for item in after
     )
-    assert latest_audit("RESULT_UNMATCHED") is not None
+    unmatched = latest_audit("RESULT_UNMATCHED")
+    assert unmatched is not None and f"{a_code} (don-hang-cua-hang) ↔" in unmatched["summary"]
 
     # Gỡ một cặp khớp theo mã: cả hai dòng thành "chỉ có ở một bên", kiểm chứng vẫn đạt.
     target = next(item for item in after if item["kind"] == "MATCHED")

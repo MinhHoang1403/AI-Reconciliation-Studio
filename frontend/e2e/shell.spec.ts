@@ -61,10 +61,30 @@ test("Thu gọn và mở rộng thanh bên, nhớ trạng thái khi tải lại"
   await expect(nav.getByText("Dữ liệu", { exact: true })).toBeVisible();
 });
 
-test("Nút ở bước tiếp theo dẫn tới trang Dữ liệu", async ({ page }) => {
+test("Nút ở bước tiếp theo dẫn tới đúng trang của việc cần làm", async ({ page }) => {
+  // Môi trường duy nhất (R8) có thể đang có dữ liệu Owner thử: tùy tình trạng, bước tiếp theo
+  // là Dữ liệu, Đối soát hoặc Báo cáo; nút phải dẫn tới đúng trang nó ghi.
   await page.goto("/");
-  await page.getByRole("button", { name: /Đến trang Dữ liệu|Xem dữ liệu/ }).click();
-  await expect(page).toHaveURL("/du-lieu");
+  const button = page.locator(".next-step .button--primary");
+  await expect(button).toBeEnabled(); // hết "Đang tải dữ liệu…"
+  const label = (await button.textContent()) ?? "";
+  const target = /báo cáo/i.test(label) ? "/bao-cao" : /đối soát/i.test(label) ? "/doi-soat" : "/du-lieu";
+  await button.click();
+  await expect(page).toHaveURL(target);
+});
+
+test("Dashboard không nháy \"chưa có dữ liệu\" khi đang có dữ liệu", async ({ page, request }) => {
+  const datasets = (await (await request.get("/api/datasets")).json()) as unknown[];
+  test.skip(datasets.length === 0, "Hệ thống đang trống");
+  const seen: string[] = [];
+  await page.route("**/api/recon/runs?limit=1", async (route) => {
+    // Làm chậm lần đọc đối soát để chụp được trạng thái đang tải.
+    seen.push((await page.locator("#next-step-title").textContent().catch(() => "")) ?? "");
+    await route.continue();
+  });
+  await page.goto("/");
+  await expect(page.locator("#next-step-title")).not.toHaveText("Tải bộ dữ liệu đầu tiên");
+  expect(seen.join("|")).not.toContain("Tải bộ dữ liệu đầu tiên");
 });
 
 test("Không trang nào bị cuộn ngang hay bị thu nhỏ", async ({ page }) => {

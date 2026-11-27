@@ -348,9 +348,34 @@ def _group_filter(group: ResultGroup) -> Any:
     }[group]
 
 
-def _result_label(item: MatchResult) -> str:
-    refs = [f"A{ref}" for ref in item.left_refs] + [f"B{ref}" for ref in item.right_refs]
-    return f"{KIND_LABELS.get(item.kind, item.kind)} ({', '.join(refs)})"
+def _refs_text(session: Session, run: ReconRun, left_refs: list[int], right_refs: list[int]) -> str:
+    """Các dòng hai bên đọc được bằng mắt cho nhật ký kiểm toán: mã đơn và tên bảng, ví dụ
+    "HD000142 (don-hang-cua-hang) ↔ HD000950 (giao-dich-cong-thanh-toan)". Dòng không có mã
+    gọi theo số dòng gốc; dòng mang sang từ kỳ trước (số âm) ghi "dòng kỳ trước".
+    Trước đây ghi "A43, B74", người đọc phải tự tra bên A, B là bảng nào."""
+    config = ReconConfig.from_json(run.config)
+
+    def side(refs: list[int], version_id: Any, key: str | None, table_id: uuid.UUID) -> str:
+        if not refs:
+            return ""
+        found = _details(session.get(CleanVersion, version_id), set(refs), key, None, "", ())
+        names = [
+            "dòng kỳ trước" if ref < 0 else found.get(ref, {}).get("key") or f"dòng {ref}"
+            for ref in refs
+        ]
+        table = session.get(DatasetTable, table_id)
+        return f"{', '.join(names)} ({audit.table_label(table) if table else 'bảng đã xóa'})"
+
+    parts = [
+        side(left_refs, run.left_version_id, config.key_left, run.left_table_id),
+        side(right_refs, run.right_version_id, config.key_right, run.right_table_id),
+    ]
+    return " ↔ ".join(part for part in parts if part)
+
+
+def _result_label(session: Session, run: ReconRun, item: MatchResult) -> str:
+    sides = _refs_text(session, run, list(item.left_refs), list(item.right_refs))
+    return f"{KIND_LABELS.get(item.kind, item.kind)}: {sides}"
 
 
 # ---------------------------------------------------------------- chọn bảng, cấu hình
@@ -575,18 +600,19 @@ def act_on_results(run_id: uuid.UUID, action: RunAction, session: SessionDep) ->
     items = list(session.scalars(select(MatchResult).where(condition)))
     now = datetime.now(UTC)
     changed = []
+    changed_items: list[MatchResult] = []
     for item in items:
         before = item.exception_status
         after = "RESOLVED" if action.action == "RESOLVE" else ("EXPLAINED" if item.note else "OPEN")
         if before != after:
             item.exception_status, item.updated_at = after, now
-            changed.append(
-                {"id": str(item.id), "before": before, "after": after, "label": _result_label(item)}
-            )
+            changed.append({"id": str(item.id), "before": before, "after": after})
+            changed_items.append(item)
     if changed:
         verb = "Đánh dấu đã xử lý" if action.action == "RESOLVE" else "Mở lại"
+        # Chỉ đọc mã đơn khi ghi một kết quả; "Đồng ý tất cả" thì ghi số đếm, khỏi đọc tệp.
         target = (
-            changed[0]["label"]
+            _result_label(session, run, changed_items[0])
             if len(changed) == 1
             else f"{len(changed)} kết quả"
             + (f" loại {KIND_LABELS.get(action.kind, action.kind)}" if action.kind else "")
@@ -626,8 +652,8 @@ def change_note(result_id: uuid.UUID, change: NoteChange, session: SessionDep) -
         "RECON_RUN",
         run.id,
         recon_service.run_label(session, run),
-        f"Ghi chú cho {_result_label(item)}: “{note}”." if note else
-        f"Xóa ghi chú của {_result_label(item)}.",
+        f"Ghi chú cho {_result_label(session, run, item)}: “{note}”." if note else
+        f"Xóa ghi chú của {_result_label(session, run, item)}.",
         before,
         {"note": item.note, "status": item.exception_status},
     )
@@ -788,8 +814,7 @@ def choose_candidate(
         "RECON_RUN",
         run.id,
         recon_service.run_label(session, run),
-        f"Chọn cặp A{', A'.join(map(str, wanted[0]))} ↔ B{', B'.join(map(str, wanted[1]))} "
-        "cho ca mơ hồ.",
+        f"Chọn cặp {_refs_text(session, run, wanted[0], wanted[1])} cho ca mơ hồ.",
         {"candidates": pairs},
         {"left_refs": wanted[0], "right_refs": wanted[1]},
     )
@@ -944,7 +969,7 @@ def manual_match(
         "RECON_RUN",
         run.id,
         recon_service.run_label(session, run),
-        f"Ghép tay A{', A'.join(map(str, left_refs))} ↔ B{', B'.join(map(str, right_refs))}.",
+        f"Ghép tay {_refs_text(session, run, left_refs, right_refs)}.",
         None,
         {"left_refs": left_refs, "right_refs": right_refs},
     )
@@ -990,7 +1015,7 @@ def unmatch(
         "RECON_RUN",
         run.id,
         recon_service.run_label(session, run),
-        f"Gỡ ghép {_result_label(item)}.",
+        f"Gỡ ghép {_result_label(session, run, item)}.",
         {"kind": item.kind, "left_refs": left_refs, "right_refs": right_refs},
         None,
     )

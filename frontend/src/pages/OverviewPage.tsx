@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Check } from "lucide-react";
 
-import { listReports, listRuns, type ReconRun, type ReportPeriod } from "../api";
+import {
+  getChain,
+  listReports,
+  listRuns,
+  type ReconChain,
+  type ReconRun,
+  type ReportPeriod,
+  type Verification,
+} from "../api";
 
 import { money, percent } from "../components/ReportCharts";
 import { SystemStatusPanel } from "../components/SystemStatusPanel";
@@ -26,17 +34,53 @@ const PIPELINE = [
 
 type StepState = "done" | "current" | "later";
 
+/** Lần đối soát gần nhất rút gọn cho Dashboard: một cặp đứng riêng hoặc cả chuỗi của kỳ. */
+type LatestRecon = {
+  status: "RUNNING" | "READY" | "FAILED";
+  open: number;
+  verification: Verification | null;
+};
+
+const fromRun = (run: ReconRun): LatestRecon => ({
+  status: run.status,
+  open: run.exceptions.OPEN,
+  verification: run.verification,
+});
+
+/** Chuỗi: số ca mở của mọi cặp; con dấu lấy cặp đầu tiên có phép kiểm không đạt (nếu có). */
+function fromChain(chain: ReconChain): LatestRecon {
+  const shown = chain.runs.find((item) => item.verification && !item.verification.passed) ?? chain.runs[0];
+  return {
+    status: chain.status,
+    open: chain.exceptions.OPEN,
+    verification: shown?.verification ?? null,
+  };
+}
+
 export function OverviewPage() {
   const { state } = useDatasetList();
-  // Lần đối soát gần nhất: quyết định bước Đối soát và con dấu kiểm chứng.
-  const [run, setRun] = useState<ReconRun | null>(null);
+  // Lần đối soát gần nhất: quyết định bước Đối soát và con dấu kiểm chứng. Lần chạy thuộc một
+  // chuỗi thì lấy số ca và kiểm chứng của cả chuỗi (mọi cặp của kỳ), không chỉ cặp chạy sau
+  // cùng; trước đây tiêu đề ghi "3 ca" (một cặp) trong khi KPI của kỳ ghi 5.
+  const [recon, setRecon] = useState<LatestRecon | null | undefined>(undefined);
   useEffect(() => {
     const controller = new AbortController();
     listRuns(1, controller.signal)
-      .then((runs) => setRun(runs[0] ?? null))
-      .catch(() => setRun(null));
+      .then(async (runs) => {
+        const run = runs[0];
+        if (!run) return setRecon(null);
+        if (!run.chain_id) return setRecon(fromRun(run));
+        setRecon(fromChain(await getChain(run.chain_id, controller.signal)));
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setRecon(null);
+      });
     return () => controller.abort();
   }, []);
+  const run = recon ?? null;
+  // Đang chờ danh sách dữ liệu hoặc lần đối soát gần nhất: chưa được kết luận "chưa có dữ liệu"
+  // (trước đây trang nháy khối "Tải bộ dữ liệu đầu tiên" trong lúc tải).
+  const loading = state.kind === "loading" || recon === undefined;
   // Kỳ mới nhất đã đối soát cả chuỗi: 4 số chính của báo cáo, bấm vào sang trang Báo cáo.
   const [latest, setLatest] = useState<ReportPeriod | null>(null);
   useEffect(() => {
@@ -47,7 +91,7 @@ export function OverviewPage() {
     return () => controller.abort();
   }, []);
   const checks = sealChecks(run?.status === "READY" ? run.verification : null);
-  const reconOpen = run?.status === "READY" ? run.exceptions.OPEN : 0;
+  const reconOpen = run?.status === "READY" ? run.open : 0;
   const ready = state.kind === "ready" ? state.data.filter((dataset) => dataset.status === "READY") : [];
   const readyRows = ready.reduce(
     (sum, dataset) =>
@@ -108,8 +152,18 @@ export function OverviewPage() {
       </header>
 
       <section className="next-step" aria-labelledby="next-step-title">
-        <div>
-          {hasData && pending > 0 ? (
+        <div aria-busy={loading || undefined}>
+          {loading ? (
+            <>
+              <h2 id="next-step-title">Đang tải dữ liệu…</h2>
+              <p>Đang lấy tình trạng các bộ dữ liệu và lần đối soát gần nhất.</p>
+            </>
+          ) : state.kind === "error" ? (
+            <>
+              <h2 id="next-step-title">Chưa tải được tình trạng dữ liệu</h2>
+              <p>{state.message} Hãy tải lại trang.</p>
+            </>
+          ) : hasData && pending > 0 ? (
             <>
               <h2 id="next-step-title">Cần bạn xem {pending} cột ánh xạ</h2>
               <p>Hệ thống đã tự ánh xạ phần lớn các cột; chỉ còn vài cột chưa chắc chắn, chọn sẵn gợi ý tốt nhất.</p>
@@ -149,6 +203,7 @@ export function OverviewPage() {
         <button
           className="button button--primary"
           type="button"
+          disabled={loading}
           onClick={() => navigate(toReport ? "/bao-cao" : toRecon ? "/doi-soat" : "/du-lieu")}
         >
           {toReport
