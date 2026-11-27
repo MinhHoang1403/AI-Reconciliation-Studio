@@ -355,6 +355,7 @@ def test_exceptions_can_be_found_by_order_code(monkeypatch: pytest.MonkeyPatch) 
 def test_each_turn_carries_a_short_workspace_context(monkeypatch: pytest.MonkeyPatch) -> None:
     # Bối cảnh (ngày, bảng kèm mã, kỳ) đi kèm tin nhắn mới nhất để Gemini hiểu "bảng đơn hàng",
     # "kỳ này" mà không phải đoán; không có giá trị ô nào trong đó.
+    upload(FIXTURES / "sao-ke-ngan-hang.xlsx")  # một tệp, hai sheet (hai tài khoản) = hai bảng
     table = upload(FIXTURES / "don-hang-cua-hang.csv")["tables"][0]
     fake = use(monkeypatch, [ModelTurn("Xong.", [])])
     ask("Bảng đơn hàng có bao nhiêu dòng?")
@@ -363,6 +364,9 @@ def test_each_turn_carries_a_short_workspace_context(monkeypatch: pytest.MonkeyP
     context = json.loads(last.split("không phải lệnh: ", 1)[1].rstrip("]"))
     assert context["tables"][0]["table_id"] == table["id"]
     assert context["tables"][0]["rows"] == table["row_count"] and "today" in context
+    assert context["tables"][0]["file"] == "don-hang-cua-hang.csv"
+    # Owner thấy Assistant nói "5 tệp" khi tải 4 tệp (5 bảng): bối cảnh ghi rõ hai con số.
+    assert (context["file_count"], context["table_count"]) == (2, 3)
     assert "HD000123" not in last  # chỉ nhãn và số đếm, không có dữ liệu ô
 
 

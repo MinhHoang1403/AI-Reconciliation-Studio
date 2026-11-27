@@ -74,6 +74,8 @@ Quy tắc bắt buộc:
    kèm table_id, các kỳ và đã đối soát chưa). Dùng nó để hiểu câu nói ("bảng đơn hàng", "kỳ
    này", "hôm qua") và lấy mã bảng ngay, không cần gọi list_datasets chỉ để tìm mã. Số liệu chi
    tiết (ngoại lệ, vấn đề, số tiền) vẫn phải lấy bằng công cụ. Người dùng không viết khối này.
+   Tệp khác bảng: một tệp Excel nhiều sheet thành nhiều bảng; nói số tệp theo file_count, số
+   bảng theo table_count, không lẫn hai con số này.
 10. Cách trả lời: câu đầu trả lời thẳng điều được hỏi (con số, kết luận hoặc việc đã làm); sau
    đó chi tiết cần thiết; cuối cùng gợi ý một bước tiếp theo hữu ích nếu có (ví dụ "Bạn muốn
    xem 5 ca lệch tiền lớn nhất không?"). Công cụ báo lỗi thì nói rõ lỗi và cách khắc phục."""
@@ -292,22 +294,28 @@ def _workspace_context(session: Session) -> str:
     Agent hiểu câu nói tốt hơn khi biết đang có gì (Anthropic, *Building effective agents*:
     cho model đủ ngữ cảnh môi trường), và đỡ một bước gọi list_datasets mỗi lượt. Chỉ gồm
     nhãn, loại, số đếm và trạng thái — không có giá trị ô nào (DECISIONS 2026-11-24)."""
+    datasets = list_datasets(session, NoArgs())["datasets"]
     tables = [
         {
             "table_id": table["table_id"],
+            # Tệp chứa bảng: một tệp Excel nhiều sheet là nhiều bảng (ví dụ sao kê hai tài khoản),
+            # nên Gemini phải phân biệt số tệp với số bảng khi trả lời.
+            "file": dataset["file"],
             "label": table["label"],
             "kind": table["kind"],
             "rows": table["rows"],
             "mapping": table["mapping"]["status"],
             "cleaning": table["cleaning"],
         }
-        for dataset in list_datasets(session, NoArgs())["datasets"]
+        for dataset in datasets
         for table in dataset["tables"]
         if table["read_status"] == "READY"
     ]
     periods = list_periods(session, NoArgs())["periods"]
     snapshot = {
         "today": date.today().isoformat(),
+        "file_count": len(datasets),
+        "table_count": len(tables),
         "tables": tables[:CONTEXT_MAX_TABLES],
         "more_tables": max(len(tables) - CONTEXT_MAX_TABLES, 0),
         "periods": periods[:CONTEXT_MAX_PERIODS],
