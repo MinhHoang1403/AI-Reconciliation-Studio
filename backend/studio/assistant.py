@@ -15,6 +15,7 @@ câu trả lời lấy từ kết quả công cụ do engine tính.
 
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import date
@@ -23,7 +24,7 @@ from typing import Any
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from studio import audit, database, gemini_client
+from studio import audit, database, gemini_client, recon_api
 from studio.assistant_tools import (
     TOOLS,
     TOOLS_BY_NAME,
@@ -34,6 +35,8 @@ from studio.assistant_tools import (
 )
 from studio.gemini_client import AiUnavailable, ModelTurn, ToolCall
 from studio.models import ChatMessage, ChatThread, Dataset
+from studio.report_export import STATUS_LABELS as EXCEPTION_STATUS_LABELS
+from studio.sales_fields import TABLE_KIND_LABELS
 from studio.tracing import observation
 
 logger = logging.getLogger(__name__)
@@ -61,7 +64,9 @@ Quy tắc bắt buộc:
 6. Câu mơ hồ hoặc thiếu thông tin: hỏi lại một câu ngắn kèm 2–3 gợi ý cụ thể.
 7. Không có công cụ xóa dữ liệu: nếu được yêu cầu xóa, nói người dùng tự xóa ở trang Dữ liệu.
 8. Trả lời tiếng Việt có dấu, ngắn gọn, dễ hiểu; liệt kê bằng gạch đầu dòng; không đưa mã
-   kỹ thuật (chuỗi uuid) vào câu trả lời.
+   kỹ thuật vào câu trả lời: chuỗi uuid, tên công cụ, mã loại kết quả (AMBIGUOUS,
+   ONLY_IN_A…), mã trạng thái (OPEN, RESOLVED…), mã loại bảng (ORDERS_POS…). Gọi bằng nhãn
+   tiếng Việt, ví dụ "ca cần bạn chọn", "chỉ có ở bên đơn hàng", "đã xử lý".
 9. Cuối tin nhắn mới nhất của người dùng có khối "Bối cảnh hệ thống" (ngày hôm nay, các bảng
    kèm table_id, các kỳ và đã đối soát chưa). Dùng nó để hiểu câu nói ("bảng đơn hàng", "kỳ
    này", "hôm qua") và lấy mã bảng ngay, không cần gọi list_datasets chỉ để tìm mã. Số liệu chi
@@ -73,6 +78,30 @@ Quy tắc bắt buộc:
 # Bối cảnh gửi kèm mỗi lượt: giới hạn để không phình prompt khi có nhiều bộ dữ liệu.
 CONTEXT_MAX_TABLES = 30
 CONTEXT_MAX_PERIODS = 12
+
+# Mã nội bộ có thể lọt vào câu trả lời vì kết quả công cụ chứa chúng (ví dụ "kind":
+# "AMBIGUOUS"). Chỉ dẫn hệ thống đã cấm, nhưng model không luôn tuân theo, nên code đổi lại
+# lần cuối trước khi lưu (AI gợi ý, code quyết định phần người dùng thấy).
+PLAIN_LABELS: dict[str, str] = {
+    **TABLE_KIND_LABELS,
+    **recon_api.KIND_LABELS,
+    **EXCEPTION_STATUS_LABELS,
+}
+_CODE = "|".join(sorted(map(re.escape, PLAIN_LABELS), key=len, reverse=True))
+# "(loại AMBIGUOUS)", "(`OPEN`)", "(trạng thái: RESOLVED)": phần trong ngoặc chỉ nhắc lại mã
+# của nhãn đứng ngay trước nên bỏ hẳn.
+_CODE_IN_BRACKETS = re.compile(
+    rf"\s*\(\s*(?:(?:loại|mã|trạng thái|kind|status)\s*:?\s*)?`?(?:{_CODE})`?\s*\)"
+)
+# Mã đứng một mình (kể cả trong `…`) thì thay bằng nhãn tiếng Việt.
+_BARE_CODE = re.compile(rf"`?\b({_CODE})\b`?")
+
+
+def plain_text(text: str) -> str:
+    """Đổi mã kỹ thuật trong câu trả lời thành nhãn tiếng Việt người dùng thấy trên giao diện."""
+    text = _CODE_IN_BRACKETS.sub("", text)
+    return _BARE_CODE.sub(lambda match: PLAIN_LABELS[match.group(1)], text)
+
 
 STATUS_TEXT = {
     "PENDING": "đang chờ người dùng xác nhận",
@@ -353,5 +382,5 @@ def _run_turn(reply_id: uuid.UUID) -> None:
                 text, status = error.message, "FAILED"
             if not text:
                 text = "Tôi đã xem dữ liệu nhưng chưa có câu trả lời; bạn nói rõ hơn được không?"
-            _save(session, reply, text=text, status=status)
+            _save(session, reply, text=plain_text(text), status=status)
             trace.update(output={"text": text, "actions": [c["title"] for c in reply.actions]})

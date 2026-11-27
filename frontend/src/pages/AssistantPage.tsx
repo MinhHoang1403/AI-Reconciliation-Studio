@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import {
+  ArrowDown,
   FileSpreadsheet,
   MessageSquarePlus,
   PanelLeftClose,
@@ -96,6 +97,8 @@ export function AssistantPage() {
   const [error, setError] = useState<string | null>(null);
   const [dataSummary, setDataSummary] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -147,12 +150,83 @@ export function AssistantPage() {
     return () => window.clearTimeout(timer);
   }, [thread, pollMiss, refreshList]);
 
-  // Cuộn xuống tin mới nhất khi có thay đổi.
-  const lastMessage = thread?.messages.at(-1);
-  const scrollKey = `${thread?.messages.length ?? 0}:${lastMessage?.steps.length ?? 0}:${lastMessage?.status ?? ""}`;
+  // Cuộn trong khung chat. Màn hình rộng: vùng tin nhắn tự cuộn; điện thoại: cả trang cuộn và
+  // ô nhập dính trên thanh tab. Trước đây scrollIntoView đặt cuối tin nhắn vào đáy cửa sổ nên
+  // trên điện thoại phần mới nhất bị ô nhập che, và cứ mỗi bước mới là kéo người dùng về cuối
+  // dù họ đang đọc phía trên. Nay "đáy" là mép trên ô nhập, và chỉ tự cuộn khi người dùng
+  // đang ở cuối (bám theo tin mới); họ đã lướt lên thì để yên và hiện nút "Xuống cuối".
+  const [atBottom, setAtBottom] = useState(true);
+  const followRef = useRef(true);
+  const lastThreadRef = useRef<string | null>(null);
+  // Lúc người dùng vừa lăn chuột, vuốt, bấm phím hay kéo thanh cuộn. Chỉ cuộn do họ làm mới
+  // được tắt chế độ bám theo; các sự kiện cuộn giữa chừng khi trang tự cuộn mượt thì không.
+  const userInputAt = useRef(0);
+
+  const distanceToEnd = useCallback(() => {
+    const end = endRef.current?.getBoundingClientRect().bottom ?? 0;
+    const visibleBottom = composerRef.current?.getBoundingClientRect().top ?? window.innerHeight;
+    return end - visibleBottom;
+  }, []);
+
+  const scrollToEnd = useCallback(
+    (smooth: boolean) => {
+      const box = scrollRef.current;
+      const distance = distanceToEnd();
+      if (!box || distance <= 0) return;
+      // Cuộn mượt chỉ khi gần (dưới hai màn hình); xa hơn thì nhảy thẳng, khỏi chờ vài giây.
+      const behavior: ScrollBehavior =
+        smooth && distance < window.innerHeight * 2 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "smooth"
+          : "auto";
+      // Vùng tin nhắn chỉ tự cuộn được trên màn hình rộng; trên điện thoại thì cuộn cả trang.
+      userInputAt.current = 0; // cú bấm nút "Xuống cuối" không tính là người dùng lướt lên
+      if (box.scrollHeight > box.clientHeight + 1) box.scrollBy({ top: distance, behavior });
+      else window.scrollBy({ top: distance, behavior });
+      followRef.current = true;
+      setAtBottom(true);
+    },
+    [distanceToEnd],
+  );
+
+  // Ghi lại có đang ở cuối không (cách đáy dưới 80px vẫn tính là cuối). Về tới cuối thì bám
+  // theo lại; rời cuối chỉ tính khi chính người dùng vừa cuộn (trong 1 giây sau thao tác).
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
-  }, [scrollKey]);
+    const box = scrollRef.current;
+    const touched = () => {
+      userInputAt.current = Date.now();
+    };
+    const update = () => {
+      const near = distanceToEnd() < 80;
+      if (near) followRef.current = true;
+      else if (Date.now() - userInputAt.current < 1000) followRef.current = false;
+      // Đang bám theo (trang tự cuộn mượt xuống) thì giữ nút ẩn, không nhấp nháy giữa chừng.
+      setAtBottom(near || followRef.current);
+    };
+    const inputs = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
+    for (const name of inputs) window.addEventListener(name, touched, { passive: true });
+    box?.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      for (const name of inputs) window.removeEventListener(name, touched);
+      box?.removeEventListener("scroll", update);
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [distanceToEnd]);
+
+  // Nội dung đổi (bước mới, câu trả lời xong, thẻ xác nhận đổi trạng thái): mở cuộc trò chuyện
+  // khác thì xuống cuối ngay; cùng cuộc thì chỉ bám theo khi người dùng đang ở cuối.
+  useEffect(() => {
+    const opened = thread?.id ?? null;
+    if (opened !== lastThreadRef.current) {
+      lastThreadRef.current = opened;
+      scrollToEnd(false);
+      return;
+    }
+    if (followRef.current) scrollToEnd(true);
+    else setAtBottom(distanceToEnd() < 80);
+  }, [thread, scrollToEnd, distanceToEnd]);
 
   async function open(id: string) {
     try {
@@ -204,6 +278,7 @@ export function AssistantPage() {
     try {
       const target = thread ?? (await createThread());
       const next = await sendChat(target.id, question.trim(), datasetIds);
+      followRef.current = true; // vừa gửi câu hỏi thì luôn xuống xem câu trả lời
       setThread(next);
       remember(next.id);
       setText("");
@@ -351,7 +426,7 @@ export function AssistantPage() {
             </button>
             <span className="chat__title">{thread?.title || "Cuộc trò chuyện mới"}</span>
           </div>
-          <div className="chat__scroll">
+          <div className="chat__scroll" ref={scrollRef}>
             {!thread || thread.messages.length === 0 ? (
               <div className="chat-empty">
                 <h2>Bắt đầu từ dữ liệu của bạn</h2>
@@ -382,8 +457,21 @@ export function AssistantPage() {
             </div>
           )}
 
-          <form className="chat-composer" onSubmit={onSubmit}>
-            {error && <p className="notice notice--error" role="alert">{error}</p>}
+          <form className="chat-composer" ref={composerRef} onSubmit={onSubmit}>
+            {/* Nút nhỏ nổi ngay trên ô nhập, chỉ hiện khi người dùng đã lướt lên khỏi cuối. */}
+            {!atBottom && thread && thread.messages.length > 0 && (
+              <button
+                type="button"
+                className="chat__to-end"
+                aria-label="Xuống tin nhắn mới nhất"
+                title="Xuống tin nhắn mới nhất"
+                onClick={() => scrollToEnd(true)}
+              >
+                <ArrowDown aria-hidden="true" size={18} strokeWidth={2} />
+                {thread.running && <span className="chat__to-end-dot" aria-hidden="true" />}
+              </button>
+            )}
+            {error &&<p className="notice notice--error" role="alert">{error}</p>}
             {files.length > 0 && (
               <ul className="chat-composer__files" aria-label="Tệp sẽ gửi kèm">
                 {files.map((file) => (

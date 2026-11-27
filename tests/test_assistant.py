@@ -132,6 +132,27 @@ def test_step_limit_stops_a_runaway_turn(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "giới hạn" in answer["text"]
 
 
+def test_internal_codes_never_reach_the_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Gemini đôi khi chép mã trong kết quả công cụ ("1 ca cần chọn (loại AMBIGUOUS)"); người
+    # dùng chỉ được thấy nhãn tiếng Việt như trên giao diện.
+    use(
+        monkeypatch,
+        [
+            ModelTurn(
+                "Còn 1 ca cần bạn chọn (loại AMBIGUOUS), 2 ca `ONLY_IN_A` ở bảng ORDERS_POS; "
+                "ca trùng đang OPEN (trạng thái: OPEN).",
+                [],
+            )
+        ],
+    )
+    text = ask("Còn gì cần xử lý?")["messages"][-1]["text"]
+    assert text == (
+        "Còn 1 ca cần bạn chọn, 2 ca Chỉ có ở A ở bảng Đơn hàng cửa hàng; ca trùng đang Cần xử lý."
+    )
+    # Chữ thường có chứa mã (ví dụ trong mã đơn) không bị đụng tới.
+    assert assistant.plain_text("Đơn OPENING01 và HD000118") == "Đơn OPENING01 và HD000118"
+
+
 def test_missing_gemini_key_is_reported_not_hidden() -> None:
     answer = ask("Xin chào")["messages"][-1]
     assert answer["status"] == "FAILED" and "GEMINI_API_KEY" in answer["text"]
