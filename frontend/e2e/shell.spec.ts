@@ -87,6 +87,22 @@ test("Dashboard không nháy \"chưa có dữ liệu\" khi đang có dữ liệu
   expect(seen.join("|")).not.toContain("Tải bộ dữ liệu đầu tiên");
 });
 
+test("Dashboard: nhãn trạng thái quy trình nằm trong khung ở mọi khổ máy tính", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Điện thoại đã được kiểm ở bài không cuộn ngang");
+  // Owner 27/11/2026: cửa sổ khoảng 1.150px, thanh bên 260px, hai cột ép "Quy trình xử lý" còn
+  // khoảng 250px và nhãn "Đã đọc 4 bộ" tràn ra ngoài khung.
+  for (const width of [900, 1000, 1150, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 850 });
+    await page.goto("/");
+    const pipeline = await page.locator(".pipeline").boundingBox();
+    expect(pipeline, `${width}px`).toBeTruthy();
+    for (const state of await page.locator(".pipeline__state").all()) {
+      const box = await state.boundingBox();
+      if (box && pipeline) expect(box.x + box.width, `${width}px`).toBeLessThanOrEqual(pipeline.x + pipeline.width);
+    }
+  }
+});
+
 test("Không trang nào bị cuộn ngang hay bị thu nhỏ", async ({ page }) => {
   for (const path of ["/", "/assistant", "/du-lieu", "/doi-soat", "/bao-cao", "/lich-su"]) {
     await page.goto(path);

@@ -11,6 +11,11 @@ FROM nginxinc/nginx-unprivileged:1.29-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
+# Chặn bản build hỏng: 27/11/2026 một lần build bị ngắt giữa chừng để lại lớp cache có mọi tệp
+# 0 byte, lần build sau dùng lại, container vẫn "healthy" (Nginx trả 200) mà trang trắng. Tệp
+# trang chính và mọi tệp JS rỗng thì dừng build ngay.
+RUN test -s /usr/share/nginx/html/index.html \
+  && ! find /usr/share/nginx/html/assets -name '*.js' -size 0 | grep -q .
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
   CMD wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1

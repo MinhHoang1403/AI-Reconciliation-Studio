@@ -138,7 +138,7 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 /* ---------- Tổng quan ---------- */
-.overview { display: grid; gap: 28px; }
+.overview { display: grid; gap: 28px; container-type: inline-size; }
 /* Lưới cấp trang: cột không được giãn theo nội dung không xuống dòng (ví dụ thanh chọn kỳ có
    nhiều nút). Cột tự giãn (auto) làm trang Đối soát rộng 466px trên màn 375px, trình duyệt thu
    nhỏ cả trang và cắt chữ; minmax(0, 1fr) giữ cột bằng màn hình, thanh chọn tự cuộn ngang. */
@@ -172,6 +172,19 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
   border: 1px solid var(--line); color: var(--ink-soft); font-weight: 600;
 }
 .pipeline__step p { color: var(--ink-soft); font-size: 15px; }
+/* Bố cục Dashboard theo bề rộng thật của vùng nội dung (container query), không theo bề rộng
+   cửa sổ: thanh bên chiếm 260px nên cửa sổ khoảng 1.150px chỉ còn khoảng 820px cho nội dung;
+   hai cột lúc đó ép "Quy trình xử lý" còn khoảng 250px, nhãn "Đã đọc 4 bộ" tràn ra ngoài
+   (Owner 27/11/2026). Dưới 760px nội dung thì xếp một cột. */
+@container (max-width: 760px) {
+  .overview__grid { grid-template-columns: minmax(0, 1fr); }
+}
+/* Cột quy trình hẹp (dưới 460px): nhãn trạng thái xuống dưới mô tả thay vì chen bên phải. */
+.pipeline { container-type: inline-size; }
+@container (max-width: 460px) {
+  .pipeline__step { grid-template-columns: 36px minmax(0, 1fr); }
+  .pipeline__state { grid-column: 2; justify-self: start; }
+}
 .pipeline__state { font-size: 14px; color: var(--ink-soft); white-space: nowrap; }
 .pipeline__step[data-state="current"] .pipeline__index { background: var(--active); border-color: var(--active); color: #fff; }
 .pipeline__step[data-state="current"] .pipeline__state {
