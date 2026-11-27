@@ -24,7 +24,7 @@ import polars as pl
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
-from studio import audit, database
+from studio import audit, database, workspaces
 from studio.cleaning import latest_version
 from studio.models import (
     CleanVersion,
@@ -63,8 +63,12 @@ STRONG_REASONS = ("KEY", "USER")
 
 
 def ready_tables(session: Session) -> list[DatasetTable]:
-    """Các bảng đã có bộ sạch, dùng được để đối soát."""
-    tables = session.scalars(select(DatasetTable).where(DatasetTable.status == "READY")).all()
+    """Các bảng của phiên đang mở đã có bộ sạch, dùng được để đối soát."""
+    tables = session.scalars(
+        select(DatasetTable).where(
+            DatasetTable.status == "READY", DatasetTable.id.in_(workspaces.table_ids(session))
+        )
+    ).all()
     return [table for table in tables if latest_version(table) is not None]
 
 
@@ -310,6 +314,8 @@ def pending_from_previous(
             run_left is None
             or run_right is None
             or version is None
+            # Kỳ trước phải cùng phiên làm việc: không mang dòng chờ của phiên khác sang.
+            or run_left.dataset.workspace_id != left.dataset.workspace_id
             or run_left.table_kind != left.table_kind
             or run_right.table_kind != right.table_kind
             or run_right.sheet_name != right.sheet_name
@@ -647,6 +653,7 @@ def create_chain(session: Session, tables: list[DatasetTable], label: str) -> Re
         raise ValueError("Bảng chưa có bộ dữ liệu sạch.")
     chain = ReconChain(
         id=uuid.uuid4(),
+        workspace_id=tables[0].dataset.workspace_id,
         status="RUNNING",
         label=label,
         table_ids=[str(table.id) for table in tables],

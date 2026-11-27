@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from studio import assistant, assistant_events, database
+from studio import assistant, assistant_events, database, workspaces
 from studio.assistant_tools import TOOLS_BY_NAME, ToolError
 from studio.database import get_session
 from studio.datasets_api import fail
@@ -60,7 +60,7 @@ def thread_view(thread: ChatThread) -> dict[str, Any]:
 
 
 def _thread(session: Session, thread_id: uuid.UUID) -> ChatThread:
-    thread = session.get(ChatThread, thread_id)
+    thread = workspaces.owned(session, session.get(ChatThread, thread_id))
     if thread is None:
         raise fail(404, "THREAD_NOT_FOUND", "Không tìm thấy cuộc trò chuyện.")
     return thread
@@ -68,7 +68,11 @@ def _thread(session: Session, thread_id: uuid.UUID) -> ChatThread:
 
 @router.get("/threads")
 def list_threads(session: SessionDep) -> list[dict[str, Any]]:
-    threads = session.scalars(select(ChatThread).order_by(ChatThread.updated_at.desc())).all()
+    threads = session.scalars(
+        select(ChatThread)
+        .where(ChatThread.workspace_id == workspaces.current_id(session))
+        .order_by(ChatThread.updated_at.desc())
+    ).all()
     return [
         {
             "id": str(thread.id),
@@ -82,7 +86,11 @@ def list_threads(session: SessionDep) -> list[dict[str, Any]]:
 
 @router.post("/threads", status_code=201)
 def create_thread(request: NewThread, session: SessionDep) -> dict[str, Any]:
-    thread = ChatThread(id=uuid.uuid4(), title=request.title or "Cuộc trò chuyện mới")
+    thread = ChatThread(
+        id=uuid.uuid4(),
+        workspace_id=workspaces.current_id(session),
+        title=request.title or "Cuộc trò chuyện mới",
+    )
     session.add(thread)
     session.commit()
     return thread_view(thread)
@@ -114,7 +122,7 @@ def send_message(
         raise fail(409, "ASSISTANT_BUSY", "Assistant đang trả lời câu trước, hãy đợi một chút.")
     attachments = []
     for dataset_id in dict.fromkeys(request.dataset_ids):
-        dataset = session.get(Dataset, dataset_id)
+        dataset = workspaces.owned(session, session.get(Dataset, dataset_id))
         if dataset is None:
             raise fail(404, "DATASET_NOT_FOUND", "Không tìm thấy tệp đính kèm.")
         attachments.append({"dataset_id": str(dataset.id), "name": dataset.original_filename})
@@ -167,7 +175,9 @@ def decide_card(
     Khóa dòng tin nhắn khi đọc (SELECT … FOR UPDATE): bấm hai lần liền hoặc mở hai tab thì yêu
     cầu sau phải chờ yêu cầu trước xong và thấy thẻ đã xử lý, thao tác không bao giờ chạy hai
     lần."""
-    message = session.get(ChatMessage, message_id, with_for_update=True)
+    message = workspaces.owned(
+        session, session.get(ChatMessage, message_id, with_for_update=True)
+    )
     if message is None:
         raise fail(404, "MESSAGE_NOT_FOUND", "Không tìm thấy tin nhắn.")
     cards = [dict(card) for card in message.actions]
@@ -208,9 +218,10 @@ def decide_card(
 
 def _message_snapshot(message_id: uuid.UUID) -> dict[str, Any] | None:
     """Đọc tin nhắn bằng phiên riêng, ngắn: kết nối SSE sống lâu nên không giữ phiên của yêu
-    cầu (và không giữ kết nối cơ sở dữ liệu) suốt thời gian nghe."""
+    cầu (và không giữ kết nối cơ sở dữ liệu) suốt thời gian nghe. Tin nhắn của phiên làm việc
+    khác coi như không có."""
     with database.SessionFactory() as session:
-        message = session.get(ChatMessage, message_id)
+        message = workspaces.owned(session, session.get(ChatMessage, message_id))
         return assistant.message_view(message) if message is not None else None
 
 

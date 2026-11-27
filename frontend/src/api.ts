@@ -1,4 +1,7 @@
 // Kiểu dữ liệu và hàm gọi API backend. Mọi đường dẫn đi qua Nginx cùng địa chỉ (/api).
+// Mỗi lời gọi gửi kèm mã phiên làm việc đang mở (workspace.ts).
+
+import { setWorkspaceId, withWorkspace, workspaceHeaders } from "./workspace";
 
 export type ProviderState = "CONFIGURED" | "NEEDS_CONFIGURATION";
 
@@ -166,7 +169,12 @@ export class ApiError extends Error {
 
 async function errorFrom(reply: Response): Promise<ApiError> {
   try {
-    const body = (await reply.json()) as { detail?: { message?: string } };
+    const body = (await reply.json()) as { detail?: { code?: string; message?: string } };
+    if (body.detail?.code === "WORKSPACE_NOT_FOUND" && !reply.url.includes("/api/workspaces")) {
+      // Phiên đang mở vừa bị xóa (ví dụ ở tab khác): quên nó và mở lại ứng dụng ở phiên còn lại.
+      setWorkspaceId(null);
+      window.location.assign("/");
+    }
     if (body.detail?.message) return new ApiError(body.detail.message, reply.status);
   } catch {
     // Không đọc được nội dung lỗi; dùng thông điệp chung bên dưới.
@@ -175,7 +183,7 @@ async function errorFrom(reply: Response): Promise<ApiError> {
 }
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const reply = await fetch(path, { signal });
+  const reply = await fetch(path, { signal, headers: workspaceHeaders() });
   if (!reply.ok) throw await errorFrom(reply);
   return (await reply.json()) as T;
 }
@@ -183,12 +191,32 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
 async function sendJson<T>(path: string, method: string, body?: unknown): Promise<T> {
   const reply = await fetch(path, {
     method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    headers: { ...workspaceHeaders(), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!reply.ok) throw await errorFrom(reply);
   return (reply.status === 204 ? undefined : await reply.json()) as T;
 }
+
+// ---------------------------------------------------------------- phiên làm việc
+
+export type Workspace = {
+  id: string;
+  name: string;
+  domain: string;
+  domain_label: string;
+  datasets: number;
+  reconciliations: number;
+  threads: number;
+  created_at: string | null;
+  last_activity: string | null;
+};
+
+export const listWorkspaces = (signal?: AbortSignal) => getJson<Workspace[]>("/api/workspaces", signal);
+export const createWorkspace = (name: string) => sendJson<Workspace>("/api/workspaces", "POST", { name });
+export const renameWorkspace = (id: string, name: string) =>
+  sendJson<Workspace>(`/api/workspaces/${id}`, "PATCH", { name });
+export const deleteWorkspace = (id: string) => sendJson<undefined>(`/api/workspaces/${id}`, "DELETE");
 
 export const fetchSystemStatus = (signal?: AbortSignal) => getJson<SystemStatus>("/api/status", signal);
 export const listDatasets = (signal?: AbortSignal) => getJson<DatasetSummary[]>("/api/datasets", signal);
@@ -242,6 +270,7 @@ export function uploadDataset(file: File, onProgress: (share: number) => void): 
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", "/api/datasets");
+    for (const [name, value] of Object.entries(workspaceHeaders())) request.setRequestHeader(name, value);
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress(event.loaded / event.total);
     };
@@ -617,7 +646,7 @@ export const getReport = (chainId: string, signal?: AbortSignal) =>
 export const writeReportComment = (chainId: string) =>
   sendJson<{ text: string; created_at: string; stale: boolean }>(`/api/reports/${chainId}/comment`, "POST");
 export const reportExportUrl = (chainId: string, format: "xlsx" | "csv") =>
-  `/api/reports/${chainId}/export.${format}`;
+  withWorkspace(`/api/reports/${chainId}/export.${format}`);
 
 /** Tải tệp xuất về dạng blob (để giao diện hiện "đang tạo tệp" trong lúc chờ và báo lỗi rõ
  *  ràng, thay vì một liên kết im lặng hàng chục giây với kỳ lớn). */

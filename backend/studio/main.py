@@ -4,10 +4,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI, Response, status
+from fastapi import Depends, FastAPI, Response, status
 from pydantic import BaseModel
 
-from studio import data_docs, database, ingestion
+from studio import data_docs, database, ingestion, workspaces
 from studio.assistant_api import router as assistant_router
 from studio.cleaning_api import router as cleaning_router
 from studio.config import settings
@@ -16,6 +16,7 @@ from studio.mapping_api import router as mapping_router
 from studio.recon_api import router as recon_router
 from studio.report_api import router as report_router
 from studio.tracing import flush_traces, langfuse_configured, warm_up
+from studio.workspaces_api import router as workspaces_router
 
 
 @asynccontextmanager
@@ -33,12 +34,17 @@ app = FastAPI(
     title="AI Reconciliation Studio", docs_url="/api/docs", openapi_url="/api/openapi.json",
     lifespan=lifespan,
 )
-app.include_router(datasets_router)
-app.include_router(mapping_router)
-app.include_router(cleaning_router)
-app.include_router(recon_router)
-app.include_router(assistant_router)
-app.include_router(report_router)
+# Mọi API dữ liệu làm việc trong phiên mà giao diện gửi kèm (header X-Workspace-Id).
+for router in (
+    datasets_router,
+    mapping_router,
+    cleaning_router,
+    recon_router,
+    assistant_router,
+    report_router,
+):
+    app.include_router(router, dependencies=[Depends(workspaces.use_workspace)])
+app.include_router(workspaces_router)
 
 # Trạng thái cấu hình của một provider. Chỉ kiểm cấu hình cục bộ, không gọi ra ngoài
 # (RULES R11: không tự gọi API trả phí khi kiểm tra sức khỏe hệ thống).

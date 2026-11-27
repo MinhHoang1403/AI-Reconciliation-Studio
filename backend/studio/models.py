@@ -35,18 +35,42 @@ class Base(DeclarativeBase):
     type_annotation_map = {dict[str, Any]: JSON, list[Any]: JSON}
 
 
+class Workspace(Base):
+    """Một phiên làm việc: không gian riêng có tệp, kỳ, kết quả đối soát, báo cáo, cuộc trò
+    chuyện, nhật ký và bộ nhớ ánh xạ của riêng nó. Mở phiên mới là bắt đầu từ trang trắng.
+
+    `domain` là lĩnh vực đối soát của phiên; hiện chỉ có bán hàng (SALES), các lĩnh vực khác
+    (kế toán, công nợ…) thêm sau mà không phải đổi cấu trúc."""
+
+    __tablename__ = "workspaces"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(80))
+    domain: Mapped[str] = mapped_column(String(32), default="SALES")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+def _workspace_column() -> Mapped[uuid.UUID]:
+    """Cột phiên làm việc của các bảng gốc; xóa phiên thì xóa theo."""
+    return mapped_column(Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+
+
 class Dataset(Base):
     """Một tệp người dùng đã tải lên. Tệp gốc được giữ nguyên, nhận diện bằng SHA-256."""
 
     __tablename__ = "datasets"
+    # Cùng một tệp được tải vào hai phiên khác nhau là hai bộ dữ liệu riêng; trong một phiên
+    # thì tải lại đúng tệp cũ được nhận ra là trùng.
+    __table_args__ = (UniqueConstraint("workspace_id", "sha256"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = _workspace_column()
     name: Mapped[str] = mapped_column(String(255))
     original_filename: Mapped[str] = mapped_column(String(255))
     file_format: Mapped[str] = mapped_column(String(8))
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     # Dấu vân tay của tệp gốc; tải lại đúng tệp cũ thì nhận ra nhờ cột này.
-    sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    sha256: Mapped[str] = mapped_column(String(64))
     storage_path: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(16), default="READING")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -125,10 +149,14 @@ class ColumnMapping(Base):
 
 
 class MappingMemory(Base):
-    """Ánh xạ đã được xác nhận, nhớ theo chữ ký cấu trúc bảng (tập tên cột đã chuẩn hóa)."""
+    """Ánh xạ đã được xác nhận, nhớ theo chữ ký cấu trúc bảng (tập tên cột đã chuẩn hóa),
+    riêng cho từng phiên làm việc (phiên mới không mang theo ánh xạ của phiên khác)."""
 
     __tablename__ = "mapping_memory"
 
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
     signature: Mapped[str] = mapped_column(String(64), primary_key=True)
     table_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # {tên cột: mã cột chuẩn hoặc null}
@@ -284,6 +312,7 @@ class ReconChain(Base):
     __tablename__ = "recon_chains"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = _workspace_column()
     # RUNNING (đang chạy), READY (xong), FAILED (lỗi).
     status: Mapped[str] = mapped_column(String(16), default="RUNNING")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -352,6 +381,8 @@ class AuditLog(Base):
     __tablename__ = "audit_log"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    # Nhật ký thuộc phiên nơi thao tác diễn ra; chỉ mất khi cả phiên bị xóa.
+    workspace_id: Mapped[uuid.UUID] = _workspace_column()
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
@@ -372,6 +403,7 @@ class ChatThread(Base):
     __tablename__ = "chat_threads"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = _workspace_column()
     title: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -314,7 +314,13 @@ def _suggest_mapping(table_id: uuid.UUID, use_memory: bool) -> None:
         profile = TableProfile.model_validate(table.profile)
         names = [column.name for column in profile.columns]
 
-        memory = session.get(MappingMemory, structure_signature(names)) if use_memory else None
+        # Bộ nhớ ánh xạ riêng của phiên chứa bảng này.
+        workspace_id = table.dataset.workspace_id
+        memory = (
+            session.get(MappingMemory, (workspace_id, structure_signature(names)))
+            if use_memory
+            else None
+        )
         if memory is not None:
             # Bộ nhớ nhận ra cấu trúc theo tên cột đã chuẩn hóa (bỏ dấu, chữ thường), nên tra
             # theo tên chuẩn hóa: "Mã ĐH" của tệp mới vẫn lấy được ánh xạ đã nhớ của "MA DH".
@@ -389,7 +395,10 @@ def remember(session: Session, table: DatasetTable) -> None:
         return
     names = [mapping.column_name for mapping in table.mappings]
     signature = structure_signature(names)
-    record = session.get(MappingMemory, signature) or MappingMemory(signature=signature, mapping={})
+    workspace_id = table.dataset.workspace_id
+    record = session.get(MappingMemory, (workspace_id, signature)) or MappingMemory(
+        workspace_id=workspace_id, signature=signature, mapping={}
+    )
     record.mapping = {mapping.column_name: mapping.field_key for mapping in table.mappings}
     record.table_kind = table.table_kind
     session.add(record)

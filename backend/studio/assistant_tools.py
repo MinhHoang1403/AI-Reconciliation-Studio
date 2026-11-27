@@ -33,6 +33,7 @@ from studio import (
     recon_service,
     report_ai,
     reporting,
+    workspaces,
 )
 from studio.cleaning import latest_version, parse_user_value, source_cell
 from studio.masking import mask_sample
@@ -102,21 +103,21 @@ def _uuid(value: str, what: str) -> uuid.UUID:
 
 
 def _table(session: Session, table_id: str) -> DatasetTable:
-    table = session.get(DatasetTable, _uuid(table_id, "bảng"))
+    table = workspaces.owned(session, session.get(DatasetTable, _uuid(table_id, "bảng")))
     if table is None:
         raise ToolError("Không tìm thấy bảng này; hãy gọi list_datasets để lấy mã bảng.")
     return table
 
 
 def _run(session: Session, run_id: str) -> ReconRun:
-    run = session.get(ReconRun, _uuid(run_id, "lần đối soát"))
+    run = workspaces.owned(session, session.get(ReconRun, _uuid(run_id, "lần đối soát")))
     if run is None:
         raise ToolError("Không tìm thấy lần đối soát; hãy gọi get_reconciliation để lấy mã.")
     return run
 
 
 def _result(session: Session, result_id: str) -> MatchResult:
-    item = session.get(MatchResult, _uuid(result_id, "kết quả"))
+    item = workspaces.owned(session, session.get(MatchResult, _uuid(result_id, "kết quả")))
     if item is None:
         raise ToolError("Không tìm thấy kết quả này; hãy gọi list_exceptions để lấy mã.")
     return item
@@ -169,6 +170,7 @@ def _latest_chain(session: Session) -> ReconChain | None:
     return session.scalar(
         select(ReconChain)
         .where(
+            ReconChain.workspace_id == workspaces.current_id(session),
             ReconChain.status == "READY",
             select(ReconRun.id).where(ReconRun.chain_id == ReconChain.id).exists(),
         )
@@ -181,7 +183,11 @@ def _latest_pair_run(session: Session) -> ReconRun | None:
     """Lần đối soát hai bảng (ngoài chuỗi) mới nhất đã chạy xong."""
     return session.scalar(
         select(ReconRun)
-        .where(ReconRun.status == "READY", ReconRun.chain_id.is_(None))
+        .where(
+            ReconRun.status == "READY",
+            ReconRun.chain_id.is_(None),
+            ReconRun.left_table_id.in_(workspaces.table_ids(session)),
+        )
         .order_by(ReconRun.created_at.desc())
         .limit(1)
     )
@@ -193,7 +199,9 @@ def _runs_in_scope(session: Session, run_id: str | None, chain_id: str | None) -
     if run_id:
         return [_run(session, run_id)]
     chain = (
-        session.get(ReconChain, _uuid(chain_id, "chuỗi")) if chain_id else _latest_chain(session)
+        workspaces.owned(session, session.get(ReconChain, _uuid(chain_id, "chuỗi")))
+        if chain_id
+        else _latest_chain(session)
     )
     if not chain_id:
         pair = _latest_pair_run(session)
@@ -240,7 +248,11 @@ class TableArgs(BaseModel):
 
 
 def list_datasets(session: Session, _: NoArgs) -> dict[str, Any]:
-    datasets = session.scalars(select(Dataset).order_by(Dataset.created_at.desc())).all()
+    datasets = session.scalars(
+        select(Dataset)
+        .where(Dataset.workspace_id == workspaces.current_id(session))
+        .order_by(Dataset.created_at.desc())
+    ).all()
     return {
         "datasets": [
             {
@@ -544,14 +556,18 @@ class TraceArgs(TableArgs):
 def trace_row(session: Session, args: TraceArgs) -> dict[str, Any]:
     table = _table(session, args.table_id)
     if args.chain_id:
-        chain = session.get(ReconChain, _uuid(args.chain_id, "chuỗi"))
+        found = session.get(ReconChain, _uuid(args.chain_id, "chuỗi"))
+        chain = workspaces.owned(session, found)
     else:
         chain = next(
             (
                 item
                 for item in session.scalars(
                     select(ReconChain)
-                    .where(ReconChain.status == "READY")
+                    .where(
+                        ReconChain.status == "READY",
+                        ReconChain.workspace_id == workspaces.current_id(session),
+                    )
                     .order_by(ReconChain.created_at.desc())
                 )
                 if str(table.id) in item.table_ids
@@ -574,7 +590,12 @@ class HistoryArgs(BaseModel):
 
 
 def get_history(session: Session, args: HistoryArgs) -> dict[str, Any]:
-    items = session.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(args.limit))
+    items = session.scalars(
+        select(AuditLog)
+        .where(AuditLog.workspace_id == workspaces.current_id(session))
+        .order_by(AuditLog.created_at.desc())
+        .limit(args.limit)
+    )
     return {
         "entries": [
             {

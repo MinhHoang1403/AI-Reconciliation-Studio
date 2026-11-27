@@ -27,7 +27,7 @@ test("hỏi Assistant một câu chỉ đọc, xem các bước và câu trả l
     // từ khối bối cảnh gửi kèm mỗi lượt nên có thể không có bước nào.
     await input.fill("Còn bao nhiêu ca cần tôi xem?");
     // Câu trả lời đang soạn đến qua luồng SSE (stage, delta, complete), không hỏi lại mỗi giây.
-    const streamed = page.waitForResponse((response) => /\/api\/assistant\/messages\/[^/]+\/events$/.test(response.url()));
+    const streamed = page.waitForResponse((response) => /\/api\/assistant\/messages\/[^/]+\/events\?workspace=/.test(response.url()));
     let threadReads = 0;
     page.on("request", (request) => {
       if (request.method() === "GET" && /\/api\/assistant\/threads\/[^/]+$/.test(new URL(request.url()).pathname)) threadReads += 1;

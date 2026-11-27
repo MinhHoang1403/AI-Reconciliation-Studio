@@ -17,7 +17,8 @@ export const ROUTES: readonly Route[] = [
 /** Trang con thuộc mục nào (ví dụ /du-lieu/abc thuộc mục Dữ liệu). */
 export function sectionOf(path: string): string {
   if (path === "/") return "/";
-  return ROUTES.find((route) => route.path !== "/" && path.startsWith(route.path))?.path ?? "/";
+  // Trang không thuộc mục nào trên thanh điều hướng (ví dụ Quản lý phiên): không tô mục nào.
+  return ROUTES.find((route) => route.path !== "/" && path.startsWith(route.path))?.path ?? "";
 }
 
 /** Đường dẫn hiện tại, cập nhật khi bấm liên kết nội bộ hoặc nút Back/Forward. */

@@ -29,6 +29,7 @@ erDiagram
     }
     audit_log {
         UUID id PK
+        UUID workspace_id FK
         TIMESTAMPTZ created_at
         VARCHAR actor
         VARCHAR action
@@ -65,6 +66,7 @@ erDiagram
     }
     chat_threads {
         UUID id PK
+        UUID workspace_id FK
         TEXT title
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
@@ -114,6 +116,7 @@ erDiagram
     }
     datasets {
         UUID id PK
+        UUID workspace_id FK
         VARCHAR name
         VARCHAR original_filename
         VARCHAR file_format
@@ -125,6 +128,7 @@ erDiagram
         TIMESTAMPTZ created_at
     }
     mapping_memory {
+        UUID workspace_id PK
         VARCHAR signature PK
         VARCHAR table_kind
         JSON mapping
@@ -148,6 +152,7 @@ erDiagram
     }
     recon_chains {
         UUID id PK
+        UUID workspace_id FK
         VARCHAR status
         TEXT error_message
         TEXT label
@@ -193,13 +198,24 @@ erDiagram
         VARCHAR reason
         TIMESTAMPTZ created_at
     }
+    workspaces {
+        UUID id PK
+        VARCHAR name
+        VARCHAR domain
+        TIMESTAMPTZ created_at
+    }
     dataset_tables ||--o{ ai_cell_suggestions : "table_id"
+    workspaces ||--o{ audit_log : "workspace_id"
     dataset_tables ||--o{ cell_corrections : "table_id"
     chat_threads ||--o{ chat_messages : "thread_id"
+    workspaces ||--o{ chat_threads : "workspace_id"
     dataset_tables ||--o{ clean_versions : "table_id"
     dataset_tables ||--o{ column_mappings : "table_id"
     datasets ||--o{ dataset_tables : "dataset_id"
+    workspaces ||--o{ datasets : "workspace_id"
+    workspaces ||--o{ mapping_memory : "workspace_id"
     recon_runs ||--o{ match_results : "run_id"
+    workspaces ||--o{ recon_chains : "workspace_id"
     dataset_tables ||--o{ recon_choices : "left_table_id"
     dataset_tables ||--o{ recon_choices : "right_table_id"
     recon_chains ||--o{ recon_runs : "chain_id"

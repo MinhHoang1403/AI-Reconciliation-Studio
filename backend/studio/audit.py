@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from studio import workspaces
 from studio.models import AuditLog, DatasetTable
 
 USER = "Người dùng"
@@ -35,6 +36,8 @@ def record(
     session.add(
         AuditLog(
             id=uuid.uuid4(),
+            # Nhật ký thuộc phiên làm việc của yêu cầu đang chạy.
+            workspace_id=workspaces.current_id(session),
             # Ghi giờ từ ứng dụng (tới micro giây) để thứ tự nhật ký luôn đúng thứ tự thao tác.
             created_at=datetime.now(UTC),
             actor=USER,

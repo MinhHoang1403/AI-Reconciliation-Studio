@@ -15,6 +15,7 @@ const OBJECT_LABELS: Record<string, string> = {
   TABLE: "Bảng",
   RECON_RUN: "Đối soát",
   RECON_CHAIN: "Đối soát cả chuỗi",
+  WORKSPACE: "Phiên làm việc",
 };
 
 export function HistoryPage() {

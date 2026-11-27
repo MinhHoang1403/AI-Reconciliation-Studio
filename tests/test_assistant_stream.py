@@ -23,7 +23,15 @@ from fastapi.testclient import TestClient
 from google.genai import types
 from test_assistant import call, upload, use
 
-from studio import assistant, assistant_api, assistant_events, database, gemini_client, main
+from studio import (
+    assistant,
+    assistant_api,
+    assistant_events,
+    database,
+    gemini_client,
+    main,
+    workspaces,
+)
 from studio.gemini_client import ModelTurn
 from studio.models import ChatMessage, ChatThread
 
@@ -138,7 +146,9 @@ def test_a_turn_streams_stages_then_text_then_complete(monkeypatch: pytest.Monke
 def running_message() -> uuid.UUID:
     """Một câu trả lời đang soạn (như lúc lượt chat còn chạy nền)."""
     with database.SessionFactory() as session:
-        thread = ChatThread(id=uuid.uuid4(), title="Thử luồng")
+        thread = ChatThread(
+            id=uuid.uuid4(), workspace_id=workspaces.oldest(session).id, title="Thử luồng"
+        )
         reply = ChatMessage(
             id=uuid.uuid4(), thread=thread, position=0, role="assistant", text="",
             status="RUNNING", attachments=[], steps=[], actions=[], links=[],

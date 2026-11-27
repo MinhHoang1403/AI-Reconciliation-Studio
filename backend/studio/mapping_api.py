@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from studio import audit, mapping_service
+from studio import audit, mapping_service, workspaces
 from studio.cleaning_ai import refresh_clean_data
 from studio.database import get_session
 from studio.datasets_api import fail
@@ -60,7 +60,7 @@ class FieldChoice(BaseModel):
 
 
 def _table_or_404(session: Session, table_id: uuid.UUID) -> DatasetTable:
-    table = session.get(DatasetTable, table_id)
+    table = workspaces.owned(session, session.get(DatasetTable, table_id))
     if table is None:
         raise fail(404, "TABLE_NOT_FOUND", "Không tìm thấy bảng dữ liệu.")
     return table

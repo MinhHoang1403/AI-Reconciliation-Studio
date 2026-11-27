@@ -15,7 +15,7 @@ from conftest import FIXTURES
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from studio import database, ingestion, main, mapping_service, reading
+from studio import database, ingestion, main, mapping_service, reading, workspaces
 from studio.models import MatchResult, ReconChain, ReconRun
 from studio.reading import ROW_REF
 from studio.reconciliation import ReconConfig, Side, reconcile
@@ -124,7 +124,13 @@ def test_failed_resuggest_does_not_leave_the_table_stuck(monkeypatch: Any) -> No
 
 def test_restart_fails_interrupted_reconciliations() -> None:
     with database.SessionFactory() as session:
-        chain = ReconChain(id=uuid.uuid4(), status="RUNNING", label="Kỳ thử", table_ids=[])
+        chain = ReconChain(
+            id=uuid.uuid4(),
+            workspace_id=workspaces.oldest(session).id,
+            status="RUNNING",
+            label="Kỳ thử",
+            table_ids=[],
+        )
         run = ReconRun(
             id=uuid.uuid4(),
             left_table_id=uuid.uuid4(),

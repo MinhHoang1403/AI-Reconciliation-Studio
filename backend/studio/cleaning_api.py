@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from studio import audit
+from studio import audit, workspaces
 from studio.cleaning import latest_version, parse_user_value, source_cell
 from studio.cleaning_ai import refresh_clean_data
 from studio.database import get_session
@@ -40,7 +40,7 @@ class DateOrderChoice(BaseModel):
 
 
 def _table_or_404(session: Session, table_id: uuid.UUID) -> DatasetTable:
-    table = session.get(DatasetTable, table_id)
+    table = workspaces.owned(session, session.get(DatasetTable, table_id))
     if table is None:
         raise fail(404, "TABLE_NOT_FOUND", "Không tìm thấy bảng dữ liệu.")
     return table

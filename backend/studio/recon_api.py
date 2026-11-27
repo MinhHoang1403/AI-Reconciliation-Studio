@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from studio import audit, recon_ai, recon_service
+from studio import audit, recon_ai, recon_service, workspaces
 from studio.cleaning import latest_version
 from studio.database import get_session
 from studio.datasets_api import fail
@@ -121,7 +121,7 @@ def parse_tolerance(text: str) -> Decimal:
 
 
 def _table(session: Session, table_id: uuid.UUID) -> DatasetTable:
-    table = session.get(DatasetTable, table_id)
+    table = workspaces.owned(session, session.get(DatasetTable, table_id))
     if table is None:
         raise fail(404, "TABLE_NOT_FOUND", "Không tìm thấy bảng dữ liệu.")
     if latest_version(table) is None:
@@ -130,7 +130,8 @@ def _table(session: Session, table_id: uuid.UUID) -> DatasetTable:
 
 
 def _run(session: Session, run_id: uuid.UUID) -> ReconRun:
-    run = session.get(ReconRun, run_id)
+    """Lần đối soát của phiên đang mở (kết quả mở theo mã cũng đi qua đây để kiểm phiên)."""
+    run = workspaces.owned(session, session.get(ReconRun, run_id))
     if run is None:
         raise fail(404, "RUN_NOT_FOUND", "Không tìm thấy lần đối soát.")
     return run
@@ -467,7 +468,12 @@ def list_runs(
     """Các lần đối soát mới nhất. `standalone`: chỉ lần chạy hai bảng đứng riêng (không thuộc
     chuỗi) — trang Đối soát chỉ cần chúng cho mục "hai bảng tự chọn"; kết quả theo kỳ đọc qua
     chuỗi. Trước đây trang tải 20 lần chạy kể cả của chuỗi (69 KB, khoảng 0,7 giây)."""
-    query = select(ReconRun).order_by(ReconRun.created_at.desc()).limit(limit)
+    query = (
+        select(ReconRun)
+        .where(ReconRun.left_table_id.in_(workspaces.table_ids(session)))
+        .order_by(ReconRun.created_at.desc())
+        .limit(limit)
+    )
     if standalone:
         query = query.where(ReconRun.chain_id.is_(None))
     return [run_view(session, run) for run in session.scalars(query)]
@@ -717,7 +723,13 @@ def recon_periods(session: SessionDep) -> list[dict[str, Any]]:
     tables = recon_service.ready_tables(session)
     labels = {str(table.id): _table_view(table) for table in tables}
     periods = recon_service.detect_periods(tables)
-    chains = list(session.scalars(select(ReconChain).order_by(ReconChain.created_at.desc())))
+    chains = list(
+        session.scalars(
+            select(ReconChain)
+            .where(ReconChain.workspace_id == workspaces.current_id(session))
+            .order_by(ReconChain.created_at.desc())
+        )
+    )
     result = []
     for period in periods:
         latest = next(
@@ -773,7 +785,7 @@ def start_chain(
 
 @router.get("/recon/chains/{chain_id}")
 def get_chain(chain_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
-    chain = session.get(ReconChain, chain_id)
+    chain = workspaces.owned(session, session.get(ReconChain, chain_id))
     if chain is None:
         raise fail(404, "CHAIN_NOT_FOUND", "Không tìm thấy chuỗi đối soát.")
     return chain_view(session, chain)
@@ -784,7 +796,7 @@ def chain_trace(
     chain_id: uuid.UUID, table_id: uuid.UUID, row_ref: int, session: SessionDep
 ) -> dict[str, Any]:
     """Đường đi của một dòng qua các cặp trong chuỗi (đơn → giao dịch cổng → dòng sao kê)."""
-    chain = session.get(ReconChain, chain_id)
+    chain = workspaces.owned(session, session.get(ReconChain, chain_id))
     if chain is None:
         raise fail(404, "CHAIN_NOT_FOUND", "Không tìm thấy chuỗi đối soát.")
     return {"steps": recon_service.trace(session, chain, table_id, row_ref)}
@@ -1041,9 +1053,11 @@ def audit_log(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> dict[str, Any]:
-    total = session.scalar(select(func.count()).select_from(AuditLog)) or 0
+    mine = AuditLog.workspace_id == workspaces.current_id(session)
+    total = session.scalar(select(func.count()).select_from(AuditLog).where(mine)) or 0
     items = session.scalars(
         select(AuditLog)
+        .where(mine)
         .order_by(AuditLog.created_at.desc(), AuditLog.id)
         .offset(offset)
         .limit(limit)

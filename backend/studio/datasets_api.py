@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from studio import audit, ingestion, reading, recon_service, storage
+from studio import audit, ingestion, reading, recon_service, storage, workspaces
 from studio.config import settings
 from studio.database import get_session
 from studio.models import Dataset, DatasetTable
@@ -130,7 +130,7 @@ def summarize(dataset: Dataset) -> DatasetSummary:
 
 
 def _dataset_or_404(session: Session, dataset_id: uuid.UUID) -> Dataset:
-    dataset = session.get(Dataset, dataset_id)
+    dataset = workspaces.owned(session, session.get(Dataset, dataset_id))
     if dataset is None:
         raise fail(404, "DATASET_NOT_FOUND", "Không tìm thấy bộ dữ liệu.")
     return dataset
@@ -138,7 +138,7 @@ def _dataset_or_404(session: Session, dataset_id: uuid.UUID) -> Dataset:
 
 def _ready_table_or_error(session: Session, table_id: uuid.UUID) -> tuple[DatasetTable, str]:
     """Bảng đã đọc xong cùng đường dẫn tệp Parquet của nó."""
-    table = session.get(DatasetTable, table_id)
+    table = workspaces.owned(session, session.get(DatasetTable, table_id))
     if table is None:
         raise fail(404, "TABLE_NOT_FOUND", "Không tìm thấy bảng dữ liệu.")
     if table.status != "READY" or table.parquet_path is None:
@@ -178,7 +178,7 @@ def upload_dataset(
             upload.temp_path.unlink(missing_ok=True)
             raise fail(422, "UNSUPPORTED_ENCODING", str(error)) from error
 
-    existing = session.scalar(select(Dataset).where(Dataset.sha256 == upload.sha256))
+    existing = session.scalar(_same_file(session, upload.sha256))
     if existing is not None:
         upload.temp_path.unlink(missing_ok=True)
         response.status_code = 200
@@ -187,6 +187,7 @@ def upload_dataset(
     raw_path = storage.keep_raw_file(upload, extension)
     dataset = Dataset(
         id=uuid.uuid4(),
+        workspace_id=workspaces.current_id(session),
         name=filename.rsplit(".", 1)[0],
         original_filename=filename,
         file_format=FORMATS[extension],
@@ -211,7 +212,7 @@ def upload_dataset(
         # Hai lần tải cùng một tệp chạy song song: lần sau vấp ràng buộc duy nhất của SHA-256.
         # Tệp gốc đặt tên theo SHA-256 nên vẫn là tệp của lần trước; trả về như tải trùng.
         session.rollback()
-        existing = session.scalar(select(Dataset).where(Dataset.sha256 == upload.sha256))
+        existing = session.scalar(_same_file(session, upload.sha256))
         if existing is None:
             raise
         response.status_code = 200
@@ -226,7 +227,11 @@ def upload_dataset(
 
 @router.get("/datasets")
 def list_datasets(session: SessionDep) -> list[DatasetSummary]:
-    datasets = session.scalars(select(Dataset).order_by(Dataset.created_at.desc())).all()
+    datasets = session.scalars(
+        select(Dataset)
+        .where(Dataset.workspace_id == workspaces.current_id(session))
+        .order_by(Dataset.created_at.desc())
+    ).all()
     return [summarize(dataset) for dataset in datasets]
 
 
@@ -269,7 +274,7 @@ def table_profile(table_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
 def choose_header_row(
     table_id: uuid.UUID, choice: HeaderChoice, session: SessionDep, background: BackgroundTasks
 ) -> TableSummary:
-    table = session.get(DatasetTable, table_id)
+    table = workspaces.owned(session, session.get(DatasetTable, table_id))
     if table is None:
         raise fail(404, "TABLE_NOT_FOUND", "Không tìm thấy bảng dữ liệu.")
     if table.status == "READING":
@@ -323,10 +328,6 @@ def reread_dataset(
 def delete_dataset(dataset_id: uuid.UUID, session: SessionDep) -> Response:
     """Xóa hẳn bộ dữ liệu: tệp gốc, các bảng đã đọc, các bộ sạch và bản ghi trong DB."""
     dataset = _dataset_or_404(session, dataset_id)
-    paths = [
-        dataset.storage_path,
-        *(path for table in dataset.tables for path in _table_files(table)),
-    ]
     audit.record(
         session,
         "DATASET_DELETED",
@@ -336,9 +337,30 @@ def delete_dataset(dataset_id: uuid.UUID, session: SessionDep) -> Response:
         f"Xóa bộ dữ liệu “{dataset.name}” cùng tệp gốc và các bảng đã đọc.",
         {"file": dataset.original_filename, "sha256": dataset.sha256},
     )
-    recon_service.forget_chains(session, [table.id for table in dataset.tables])
-    session.delete(dataset)
+    paths = remove_dataset(session, dataset)
     session.commit()
     for path in paths:
         storage.delete_file(path)
     return Response(status_code=204)
+
+
+def remove_dataset(session: Session, dataset: Dataset) -> list[str | None]:
+    """Xóa bộ dữ liệu khỏi DB (cùng các chuỗi đối soát dùng bảng của nó); trả về các tệp cần
+    xóa sau khi lưu. Tệp gốc đặt tên theo SHA-256 nên có thể dùng chung với bộ dữ liệu cùng
+    nội dung ở phiên khác: còn bộ nào dùng thì giữ lại."""
+    paths = [path for table in dataset.tables for path in _table_files(table)]
+    shared = session.scalar(
+        select(Dataset.id).where(Dataset.sha256 == dataset.sha256, Dataset.id != dataset.id)
+    )
+    if shared is None:
+        paths.append(dataset.storage_path)
+    recon_service.forget_chains(session, [table.id for table in dataset.tables])
+    session.delete(dataset)
+    return paths
+
+
+def _same_file(session: Session, sha256: str) -> Any:
+    """Bộ dữ liệu cùng nội dung trong phiên đang mở (tải trùng chỉ tính trong một phiên)."""
+    return select(Dataset).where(
+        Dataset.workspace_id == workspaces.current_id(session), Dataset.sha256 == sha256
+    )

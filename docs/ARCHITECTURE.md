@@ -188,6 +188,7 @@ Gemini có **gọi công cụ** (function calling): model không tự chạy hà
 
 | Bảng | Nội dung |
 | --- | --- |
+| `workspaces` | Phiên làm việc: tên, lĩnh vực (hiện chỉ `SALES`). Bộ dữ liệu, chuỗi đối soát, cuộc trò chuyện, nhật ký kiểm toán và bộ nhớ ánh xạ có cột `workspace_id`; các bảng khác thuộc phiên qua bảng gốc **(đã có)** |
 | `datasets`, `dataset_tables` | Tệp gốc (SHA-256), mỗi bảng đã đọc (một sheet), đường dẫn Parquet, hồ sơ cột, trạng thái đọc/ánh xạ/làm sạch **(đã có)** |
 | `column_mappings`, `mapping_memory` | Ánh xạ từng cột kèm điểm, nguồn, trạng thái; ánh xạ đã xác nhận nhớ theo cấu trúc tệp **(đã có)** |
 | `clean_versions` | Các phiên bản bộ dữ liệu sạch (Parquet), nhật ký sửa tự động và danh sách vấn đề **(đã có)** |
@@ -201,6 +202,8 @@ Gemini có **gọi công cụ** (function calling): model không tự chạy hà
 Tác vụ nền chạy bằng FastAPI BackgroundTasks; trạng thái nằm ngay trên các bảng trên, chưa cần bảng `jobs` riêng ([R5](../RULES.md)).
 
 Demo chỉ có **một người dùng**, không làm đăng nhập. Chỉ mở cổng trên `127.0.0.1`.
+
+**Phiên làm việc.** Người dùng tách công việc thành nhiều phiên (mỗi cửa hàng, khách hàng hay đợt làm việc một phiên); phiên mới là trang trắng. Giao diện gửi mã phiên đang mở trong header `X-Workspace-Id` (luồng SSE, liên kết tải tệp: `?workspace=`); phụ thuộc `workspaces.use_workspace` gắn cho mọi router dữ liệu kiểm phiên có thật rồi đặt vào một ContextVar (giá trị riêng cho từng yêu cầu, PEP 567). Danh sách chỉ lấy của phiên, dữ liệu mới gắn vào phiên, đối tượng mở theo mã mà thuộc phiên khác trả 404. Tải trùng tệp chỉ tính trong một phiên; dòng chờ tiền về chỉ mang sang kỳ sau trong cùng phiên. Xóa phiên xóa mọi thứ bên trong (tệp gốc giữ lại nếu phiên khác cũng tải đúng tệp đó); luôn còn ít nhất một phiên. Không gửi mã phiên (công cụ dòng lệnh) thì dùng phiên tạo sớm nhất.
 
 ## 8. Báo cáo
 
@@ -229,6 +232,7 @@ Mỗi bước của luồng dữ liệu (mục 4) nằm ở đúng một nhóm f
 | Nhật ký kiểm toán | `audit.py` | `recon_api.py` (`/audit`) | `pages/HistoryPage` | các bài có kiểm `audit_log` |
 | 10. Báo cáo, KPI, xuất tệp | `reporting.py` (số liệu từ kết quả đã lưu), `report_export.py` (XLSX/CSV), `report_ai.py` (nhận xét AI có kiểm số) | `report_api.py` (`/api/reports`) | `pages/ReportsPage`, `ReportCharts`, khối số chính trên `OverviewPage` | `test_reports` |
 | Data model, data catalog, nhật ký AI ra tệp | `data_docs.py` (phần tĩnh sinh từ code; ghi mỗi lần gọi Gemini và catalog động của từng bộ dữ liệu ra `data-docs/runtime/`) | — | — | `test_data_docs`; sinh lại: `tools/export_data_docs.py` |
+| Phiên làm việc | `workspaces.py` (phiên của mỗi yêu cầu, kiểm đối tượng thuộc phiên) | `workspaces_api.py` (`/api/workspaces`) | `workspace.ts`, `WorkspaceContext.tsx`, `WorkspaceSwitcher`, `pages/WorkspacesPage` | `test_workspaces`; E2E `workspaces` |
 | Khung | `main.py`, `config.py`, `database.py`, `models.py`, `migrate.py` + `migrations/` | `/api/health`, `/api/ready`, `/api/status` | `App.tsx`, `navigation.ts`, `OverviewPage` | `test_status_api`, `test_migrations` |
 
 Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foundation_review.py`. Ghép tay, gỡ ghép: `recon_api.py` (`/match`, `/unmatch`, `/match-candidates`), `MatchPicker`, `test_manual_match.py`. Kiểm mù đối soát: `tools/make_blind_fixtures.py` → `tests/fixtures/blind/`, đo ở `test_blind.py`. Đo tốc độ trọn luồng ở quy mô lớn: `tools/measure_scale.py` (cơ sở dữ liệu tạm, không gọi Gemini). E2E: `frontend/e2e/` (`data`, `recon`, `chain`, `assistant`, `shell`).

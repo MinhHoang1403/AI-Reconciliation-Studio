@@ -29,6 +29,7 @@ import {
 import { ChatMessageView } from "../components/ChatMessageView";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { formatCount, formatDateTime } from "../format";
+import { withWorkspace, workspaceId } from "../workspace";
 
 // Trang AI Assistant (docs/DECISIONS.md 2026-11-23): danh sách cuộc trò chuyện bên trái,
 // khung chat bên phải. Tệp kéo-thả hoặc đính kèm được tải lên bằng đúng API của trang Dữ
@@ -39,7 +40,8 @@ import { formatCount, formatDateTime } from "../format";
 // Luồng SSE bị đóng hẳn (lỗi mạng kéo dài, backend khởi động lại): chờ bấy nhiêu rồi đọc lại
 // cuộc trò chuyện và mở luồng mới. Mất kết nối tạm thời thì trình duyệt tự nối lại.
 const STREAM_RETRY_MS = 2000;
-const LAST_THREAD = "assistant.thread";
+// Cuộc trò chuyện mở gần nhất, nhớ riêng cho từng phiên làm việc.
+const lastThreadKey = () => `assistant.thread.${workspaceId() ?? ""}`;
 const THREADS_COLLAPSED = "assistant.threads-collapsed";
 const ACCEPT = ".csv,.xlsx";
 const SUGGESTIONS = [
@@ -55,8 +57,8 @@ const message = (reason: unknown, fallback: string) => (reason instanceof Error 
 
 function remember(id: string | null) {
   try {
-    if (id) window.localStorage.setItem(LAST_THREAD, id);
-    else window.localStorage.removeItem(LAST_THREAD);
+    if (id) window.localStorage.setItem(lastThreadKey(), id);
+    else window.localStorage.removeItem(lastThreadKey());
   } catch {
     // Trình duyệt chặn lưu trữ: chỉ mất việc nhớ cuộc trò chuyện gần nhất.
   }
@@ -80,7 +82,7 @@ function store(key: string, value: string) {
 
 function recalled(): string | null {
   try {
-    return window.localStorage.getItem(LAST_THREAD);
+    return window.localStorage.getItem(lastThreadKey());
   } catch {
     return null;
   }
@@ -103,6 +105,9 @@ export function AssistantPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Người dùng đã tự chọn (mở cuộc khác, bắt đầu cuộc mới) trước khi lần tải đầu xong: lần tải
+  // đầu không được mở lại cuộc trò chuyện cũ đè lên lựa chọn đó.
+  const choseRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refreshList = useCallback(() => {
@@ -116,7 +121,11 @@ export function AssistantPage() {
       .then((found) => {
         setThreads(found);
         const wanted = found.find((item) => item.id === recalled()) ?? found[0];
-        if (wanted) return getThread(wanted.id, controller.signal).then(setThread);
+        if (wanted && !choseRef.current) {
+          return getThread(wanted.id, controller.signal).then((next) => {
+            if (!choseRef.current) setThread(next);
+          });
+        }
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setError(message(reason, "Không tải được cuộc trò chuyện."));
@@ -146,7 +155,7 @@ export function AssistantPage() {
   const [streamRound, setStreamRound] = useState(0);
   useEffect(() => {
     if (!threadId || !runningId) return;
-    const source = new EventSource(`/api/assistant/messages/${runningId}/events`);
+    const source = new EventSource(withWorkspace(`/api/assistant/messages/${runningId}/events`));
     let draft = "";
     let timer = 0;
     const patch = (update: (current: ChatMessage) => ChatMessage) =>
@@ -268,6 +277,7 @@ export function AssistantPage() {
   }, [thread, scrollToEnd, distanceToEnd]);
 
   async function open(id: string) {
+    choseRef.current = true;
     try {
       setThread(await getThread(id));
       remember(id);
@@ -278,6 +288,7 @@ export function AssistantPage() {
   }
 
   function startNew() {
+    choseRef.current = true;
     setThread(null);
     remember(null);
     setText("");

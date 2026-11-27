@@ -27,7 +27,7 @@ from typing import Any
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from studio import assistant_events, audit, database, gemini_client, recon_api
+from studio import assistant_events, audit, database, gemini_client, recon_api, workspaces
 from studio.assistant_tools import (
     TOOLS,
     TOOLS_BY_NAME,
@@ -427,6 +427,8 @@ def _run_turn(reply_id: uuid.UUID) -> None:
         if reply is None or reply.status != "RUNNING":
             return
         thread = reply.thread
+        # Mọi công cụ trong lượt này chỉ thấy dữ liệu của phiên chứa cuộc trò chuyện.
+        workspaces.enter(thread.workspace_id)
         user = next(m for m in reversed(thread.messages) if m.position < reply.position)
         with observation(
             "assistant-turn", "agent", {"text": user.text}, {"thread_id": str(thread.id)}

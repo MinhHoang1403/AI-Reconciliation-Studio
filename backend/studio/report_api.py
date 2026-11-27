@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from studio import report_ai, report_export, reporting
+from studio import report_ai, report_export, reporting, workspaces
 from studio.database import get_session
 from studio.datasets_api import fail
 from studio.models import ReconChain
@@ -22,7 +22,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 
 def _chain(session: Session, chain_id: uuid.UUID) -> ReconChain:
-    chain = session.get(ReconChain, chain_id)
+    chain = workspaces.owned(session, session.get(ReconChain, chain_id))
     if chain is None:
         raise fail(404, "CHAIN_NOT_FOUND", "Không tìm thấy lần đối soát của kỳ này.")
     if chain.status != "READY":
