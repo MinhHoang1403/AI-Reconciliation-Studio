@@ -633,10 +633,18 @@ def chain_pairs(session: Session, tables: list[DatasetTable]) -> list[ChainPair]
     )
 
 
+NO_PAIRS = "Không tìm được cặp bảng nào nối được với nhau trong các bảng đã chọn."
+
+
 def create_chain(session: Session, tables: list[DatasetTable], label: str) -> ReconChain:
-    pairs = chain_pairs(session, tables)
-    if not pairs:
-        raise ValueError("Không tìm được cặp bảng nào nối được với nhau trong các bảng đã chọn.")
+    """Tạo chuỗi RUNNING và trả về ngay; các cặp được dò và tạo ở tác vụ nền (execute_chain).
+
+    Dò cặp phải đọc dữ liệu và thử chọn trường cho từng cặp bảng: đo 27/11/2026 ở 30.000 đơn
+    mất 5,7 giây, khi còn làm ngay trong lời gọi API thì nút "Đối soát cả chuỗi" (và mọi lần
+    chạy lại sau khi ghép tay, chọn ca mơ hồ) đứng im chừng ấy. Ở đây chỉ kiểm nhanh điều kiện
+    bắt buộc (mỗi bảng đã có bộ sạch) để báo lỗi ngay."""
+    if any(latest_version(table) is None for table in tables):
+        raise ValueError("Bảng chưa có bộ dữ liệu sạch.")
     chain = ReconChain(
         id=uuid.uuid4(),
         status="RUNNING",
@@ -645,9 +653,24 @@ def create_chain(session: Session, tables: list[DatasetTable], label: str) -> Re
     )
     session.add(chain)
     session.flush()
+    return chain
+
+
+def _create_chain_runs(session: Session, chain: ReconChain) -> bool:
+    """Dò các cặp nối được của chuỗi và tạo lần chạy cho từng cặp (trong tác vụ nền). Không có
+    cặp nào thì chuỗi thành FAILED kèm lý do để giao diện báo đúng như trước."""
+    tables = [session.get(DatasetTable, uuid.UUID(table_id)) for table_id in chain.table_ids]
+    pairs = chain_pairs(session, [table for table in tables if table is not None])
+    if not pairs:
+        chain.status = "FAILED"
+        chain.error_message = NO_PAIRS
+        chain.finished_at = datetime.now(UTC)
+        session.commit()
+        return False
     for pair in pairs:
         create_run(session, pair.left, pair.right, pair.config, chain.id)
-    return chain
+    session.commit()  # giao diện thấy ngay các cặp đang chạy
+    return True
 
 
 def _strong(item: Result) -> bool:
@@ -737,6 +760,9 @@ def execute_chain(chain_id: uuid.UUID) -> None:
         with database.SessionFactory() as session:
             chain = session.get(ReconChain, chain_id)
             if chain is None:
+                return
+            has_runs = session.scalar(select(ReconRun.id).where(ReconRun.chain_id == chain.id))
+            if has_runs is None and not _create_chain_runs(session, chain):
                 return
             runs = list(session.scalars(select(ReconRun).where(ReconRun.chain_id == chain.id)))
             runs.sort(key=lambda run: (*chain_order(session, run), str(run.id)))

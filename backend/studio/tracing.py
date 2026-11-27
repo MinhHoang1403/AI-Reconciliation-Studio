@@ -6,6 +6,7 @@ Lỗi của Langfuse không được làm hỏng tính năng chính: ghi không 
 """
 
 import logging
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
@@ -75,8 +76,37 @@ def observation(
     try:
         yield observation
     finally:
+        # Chỉ đóng bước; SDK tự gửi trace theo lô ở luồng nền. Không gọi flush() ở đây: flush
+        # đứng chờ gửi xong, khi Langfuse tắt hay chậm mỗi bước bị chậm thêm 4–11 giây (đo
+        # 27/11/2026), một lượt Assistant nhiều bước có thể chậm thêm cả phút. Tài liệu
+        # Langfuse: flush() chỉ cần ở tiến trình chạy ngắn; máy chủ chạy lâu thì gửi nốt lúc tắt.
         try:
             manager.__exit__(None, None, None)
-            _client().flush()
         except Exception:
-            logger.warning("Không gửi được trace Langfuse (bỏ qua).", exc_info=True)
+            logger.warning("Không đóng được trace Langfuse (bỏ qua).", exc_info=True)
+
+
+def warm_up() -> None:
+    """Khởi tạo client Langfuse ở luồng nền lúc backend khởi động. Khởi tạo mất 3–4 giây (đo
+    27/11/2026); không làm trước thì lần gọi AI đầu tiên của người dùng phải chờ phần này.
+    Chỉ nối tới Langfuse tự host trên máy, không gọi dịch vụ trả phí (R11)."""
+    if not langfuse_configured():
+        return
+
+    def start() -> None:
+        try:
+            _client()
+        except Exception:
+            logger.warning("Không khởi tạo được Langfuse (bỏ qua).", exc_info=True)
+
+    threading.Thread(target=start, name="langfuse-warm-up", daemon=True).start()
+
+
+def flush_traces() -> None:
+    """Gửi nốt trace còn trong hàng đợi khi backend tắt (không khởi tạo client nếu chưa dùng)."""
+    if not langfuse_configured() or _client.cache_info().currsize == 0:
+        return
+    try:
+        _client().flush()
+    except Exception:
+        logger.warning("Không gửi được trace Langfuse khi tắt (bỏ qua).", exc_info=True)

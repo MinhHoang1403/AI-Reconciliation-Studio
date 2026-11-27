@@ -15,7 +15,7 @@ from studio.datasets_api import router as datasets_router
 from studio.mapping_api import router as mapping_router
 from studio.recon_api import router as recon_router
 from studio.report_api import router as report_router
-from studio.tracing import langfuse_configured
+from studio.tracing import flush_traces, langfuse_configured, warm_up
 
 
 @asynccontextmanager
@@ -24,7 +24,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     ingestion.recover_interrupted()
     # Catalog động trong data-docs/runtime luôn khớp PostgreSQL sau mỗi lần khởi động.
     data_docs.sync_catalogs()
+    warm_up()
     yield
+    flush_traces()
 
 
 app = FastAPI(

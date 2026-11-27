@@ -388,3 +388,23 @@ def test_results_store_carried_rows() -> None:
     assert carried and all(
         row.get("version_id") for item in carried for row in item.carried_left or []
     )
+
+
+def test_chain_request_returns_before_pairs_are_found() -> None:
+    # Dò cặp chạy ở tác vụ nền: API trả về ngay (chưa có cặp nào), các cặp xuất hiện sau.
+    tables = upload_all(PERIOD1)
+    ids = [table["id"] for table in tables.values()]
+    reply = client.post("/api/recon/chains", json={"table_ids": ids})
+    assert reply.status_code == 202
+    assert reply.json()["status"] == "RUNNING" and reply.json()["runs"] == []
+    chain = client.get(f"/api/recon/chains/{reply.json()['id']}").json()
+    assert chain["status"] == "READY" and len(chain["runs"]) == 4
+
+
+def test_chain_without_connectable_pairs_fails_with_a_clear_reason() -> None:
+    # Hai bảng đơn hàng không nối được với nhau: chuỗi báo lỗi rõ ràng thay vì treo.
+    tables = upload_all(["don-hang-cua-hang.csv", "don-hang-san-tmdt.xlsx"])
+    ids = [table["id"] for table in tables.values() if table["row_count"]]
+    reply = client.post("/api/recon/chains", json={"table_ids": ids})
+    chain = client.get(f"/api/recon/chains/{reply.json()['id']}").json()
+    assert chain["status"] == "FAILED" and "Không tìm được cặp" in chain["error_message"]

@@ -653,6 +653,9 @@ def reconcile_period(session: Session, args: PeriodArgs) -> dict[str, Any]:
     chain = _call(recon_api.start_chain, request, session, BackgroundTasks())
     recon_service.execute_chain(uuid.UUID(chain["id"]))  # chờ xong trong lượt
     session.expire_all()
+    done = session.get(ReconChain, uuid.UUID(chain["id"]))
+    if done is not None and done.status == "FAILED":
+        raise ToolError(done.error_message or "Đối soát cả chuỗi không chạy xong; hãy thử lại.")
     return get_reconciliation(session, ScopeArgs(chain_id=chain["id"]))
 
 
