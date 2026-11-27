@@ -407,8 +407,9 @@ export const explainPreview = (pair: Pair) => sendJson<{ text: string }>("/api/r
 export const startRun = (
   body: Pair & { tolerance?: string; date_window_days?: number; excluded?: ReconConfig["excluded"] },
 ) => sendJson<ReconRun>("/api/recon/runs", "POST", body);
-export const listRuns = (limit: number, signal?: AbortSignal) =>
-  getJson<ReconRun[]>(`/api/recon/runs?limit=${limit}`, signal);
+/** `standalone`: chỉ các lần chạy hai bảng đứng riêng (không thuộc chuỗi của một kỳ). */
+export const listRuns = (limit: number, signal?: AbortSignal, standalone = false) =>
+  getJson<ReconRun[]>(`/api/recon/runs?limit=${limit}${standalone ? "&standalone=true" : ""}`, signal);
 export const getRun = (id: string, signal?: AbortSignal) => getJson<ReconRun>(`/api/recon/runs/${id}`, signal);
 export const getResults = (
   runId: string,

@@ -287,15 +287,18 @@ def run_view(session: Session, run: ReconRun) -> dict[str, Any]:
         },
         "open_by_kind": {kind: open_by_kind.get(kind, 0) for kind in KINDS},
         # Số kết quả của từng nhóm hiển thị (cùng điều kiện lọc với API danh sách kết quả).
-        "group_counts": {
-            group: session.scalar(
-                select(func.count())
-                .select_from(MatchResult)
-                .where((MatchResult.run_id == run.id) & _group_filter(group))
+        # Đếm cả 7 nhóm trong một câu truy vấn (COUNT … FILTER), trước đây mỗi nhóm một câu.
+        "group_counts": dict(
+            zip(
+                GROUPS,
+                session.execute(
+                    select(*(func.count().filter(_group_filter(group)) for group in GROUPS))
+                    .select_from(MatchResult)
+                    .where(MatchResult.run_id == run.id)
+                ).one(),
+                strict=True,
             )
-            or 0
-            for group in GROUPS
-        },
+        ),
         "kind_labels": KIND_LABELS,
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
@@ -457,10 +460,17 @@ def start_run(
 
 @router.get("/recon/runs")
 def list_runs(
-    session: SessionDep, limit: Annotated[int, Query(ge=1, le=50)] = 10
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    standalone: bool = False,
 ) -> list[dict[str, Any]]:
-    runs = session.scalars(select(ReconRun).order_by(ReconRun.created_at.desc()).limit(limit))
-    return [run_view(session, run) for run in runs]
+    """Các lần đối soát mới nhất. `standalone`: chỉ lần chạy hai bảng đứng riêng (không thuộc
+    chuỗi) — trang Đối soát chỉ cần chúng cho mục "hai bảng tự chọn"; kết quả theo kỳ đọc qua
+    chuỗi. Trước đây trang tải 20 lần chạy kể cả của chuỗi (69 KB, khoảng 0,7 giây)."""
+    query = select(ReconRun).order_by(ReconRun.created_at.desc()).limit(limit)
+    if standalone:
+        query = query.where(ReconRun.chain_id.is_(None))
+    return [run_view(session, run) for run in session.scalars(query)]
 
 
 @router.get("/recon/runs/{run_id}")

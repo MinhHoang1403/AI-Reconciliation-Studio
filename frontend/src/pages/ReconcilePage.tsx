@@ -45,7 +45,7 @@ export function ReconcilePage() {
   // đối soát (để dòng chờ tiền về được mang sang đúng thứ tự), nếu đã hết thì kỳ mới nhất.
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([getReconTables(controller.signal), listRuns(20, controller.signal), getPeriods(controller.signal)])
+    Promise.all([getReconTables(controller.signal), listRuns(20, controller.signal, true), getPeriods(controller.signal)])
       .then(([data, recent, found]) => {
         setTables(data.tables);
         setRuns(recent);
@@ -139,6 +139,32 @@ export function ReconcilePage() {
 
   const earlierMissing = periods?.slice(0, periodIndex).some((item) => !item.chain_id) ?? false;
   const shownChain = chain && period?.chain_id === chain.id ? chain : null;
+  // Kỳ đã có lần đối soát (đang chạy hoặc xong): khối chọn kỳ thu gọn.
+  const reconciled = Boolean(period?.chain_id);
+  const periodRows = period?.tables.reduce((sum, table) => sum + table.row_count, 0) ?? 0;
+  const tableList = period && (
+    <ul className="period-panel__tables" aria-label="Các bảng thuộc kỳ">
+      {period.tables.map((table) => (
+        <li key={table.id}>
+          <span className="period-panel__name">{table.label}</span>
+          <span className="period-panel__kind">
+            {table.table_kind_label} · {formatCount(table.row_count)} dòng
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+  const runButton = (
+    <button
+      className={reconciled ? "button button--quiet" : "button button--primary"}
+      type="button"
+      disabled={starting || shownChain?.status === "RUNNING"}
+      onClick={() => void runChain()}
+    >
+      <Play aria-hidden="true" size={reconciled ? 15 : 17} strokeWidth={2} />
+      {shownChain?.status === "RUNNING" ? "Đang đối soát…" : reconciled ? "Chạy lại cả chuỗi" : "Đối soát cả chuỗi"}
+    </button>
+  );
   const pairMode = tables !== null && tables.length >= 2 && pair && (
     <>
       <ReconSetup
@@ -196,36 +222,36 @@ export function ReconcilePage() {
               </div>
             )}
           </div>
-          <ul className="period-panel__tables" aria-label="Các bảng thuộc kỳ">
-            {period.tables.map((table) => (
-              <li key={table.id}>
-                <span className="period-panel__name">{table.label}</span>
-                <span className="period-panel__kind">
-                  {table.table_kind_label} · {formatCount(table.row_count)} dòng
-                </span>
-              </li>
-            ))}
-          </ul>
-          {earlierMissing && (
-            <p className="recon-setup__warn">
-              Kỳ trước chưa được đối soát: các khoản chờ tiền về của kỳ trước sẽ chưa được mang sang kỳ này.
-            </p>
+          {/* Kỳ đã đối soát: việc chính là xử lý các ca bên dưới, nên danh sách bảng thu vào một
+              dòng tóm tắt và "Chạy lại" thành nút phụ; trên điện thoại khối này trước đây chiếm
+              hết màn hình đầu, phải cuộn mới thấy số ca cần xem. */}
+          {reconciled ? (
+            <div className="period-panel__compact">
+              <details className="period-panel__more">
+                <summary>
+                  {formatCount(period.tables.length)} bảng · {formatCount(periodRows)} dòng
+                </summary>
+                {tableList}
+              </details>
+              {runButton}
+            </div>
+          ) : (
+            <>
+              {tableList}
+              {earlierMissing && (
+                <p className="recon-setup__warn">
+                  Kỳ trước chưa được đối soát: các khoản chờ tiền về của kỳ trước sẽ chưa được mang sang kỳ này.
+                </p>
+              )}
+              <div className="period-panel__actions">
+                <p>
+                  Hệ thống tự nhận các cặp nối được (đơn hàng ↔ cổng ↔ sao kê), tự tách mã trong nội dung chuyển
+                  khoản và ghép nhóm theo tổng tiền.
+                </p>
+                {runButton}
+              </div>
+            </>
           )}
-          <div className="period-panel__actions">
-            <p>
-              Hệ thống tự nhận các cặp nối được (đơn hàng ↔ cổng ↔ sao kê), tự tách mã trong nội dung chuyển khoản
-              và ghép nhóm theo tổng tiền.
-            </p>
-            <button
-              className="button button--primary"
-              type="button"
-              disabled={starting || shownChain?.status === "RUNNING"}
-              onClick={() => void runChain()}
-            >
-              <Play aria-hidden="true" size={17} strokeWidth={2} />
-              {shownChain?.status === "RUNNING" ? "Đang đối soát…" : shownChain ? "Chạy lại cả chuỗi" : "Đối soát cả chuỗi"}
-            </button>
-          </div>
         </section>
       )}
 

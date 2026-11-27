@@ -95,6 +95,25 @@ test("Không trang nào bị cuộn ngang hay bị thu nhỏ", async ({ page }) 
   }
 });
 
+test("Trang không nhúng được vào trang khác và chỉ chạy script của chính ứng dụng", async ({ page, request }) => {
+  for (const path of ["/", "/assets/does-not-matter.js", "/doi-soat"]) {
+    const headers = (await request.get(path)).headers();
+    expect(headers["x-frame-options"], path).toBe("DENY");
+    expect(headers["content-security-policy"], path).toContain("frame-ancestors 'none'");
+    expect(headers["x-content-type-options"], path).toBe("nosniff");
+  }
+  // CSP không chặn chính ứng dụng: các trang vẫn chạy, không có lỗi vi phạm CSP.
+  const violations: string[] = [];
+  page.on("console", (message) => {
+    if (/Content Security Policy/i.test(message.text())) violations.push(message.text());
+  });
+  for (const path of ["/", "/assistant", "/du-lieu", "/doi-soat", "/bao-cao", "/lich-su"]) {
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+  }
+  expect(violations).toEqual([]);
+});
+
 test("API trạng thái không trả khóa bí mật", async ({ request }) => {
   const reply = await request.get("/api/status");
   expect(reply.ok()).toBeTruthy();

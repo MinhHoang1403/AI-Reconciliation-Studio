@@ -194,3 +194,8 @@ def test_unmatch_inside_a_chain_reruns_the_whole_chain() -> None:
     assert reply["chain_id"] and reply["chain_id"] != chain["id"]
     rerun = client.get(f"/api/recon/chains/{reply['chain_id']}").json()
     assert rerun["status"] == "READY" and rerun["verified"]
+    # Trang Đối soát chỉ tải lần chạy hai bảng đứng riêng; lần chạy của chuỗi không lẫn vào.
+    assert client.get("/api/recon/runs", params={"standalone": True}).json() == []
+    latest = client.get("/api/recon/runs", params={"limit": 1}).json()[0]
+    # Số đếm theo nhóm (một câu truy vấn) cộng lại đúng tổng số kết quả của lần chạy.
+    assert sum(latest["group_counts"].values()) == latest["summary"]["total_results"]

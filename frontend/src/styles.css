@@ -789,6 +789,16 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .period-panel__kind { font-size: 13px; color: var(--ink-soft); }
 .period-panel__actions { display: flex; align-items: center; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; }
 .period-panel__actions p { color: var(--ink-soft); font-size: 15px; max-width: 62ch; }
+/* Kỳ đã đối soát: một dòng "5 bảng · 587 dòng" (mở ra xem các bảng) và nút phụ "Chạy lại". */
+.period-panel:has(.period-panel__compact) { gap: 10px; padding: 14px 20px; }
+.period-panel__compact { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px 16px; }
+.period-panel__more { flex: 1 1 260px; min-width: 0; }
+.period-panel__more summary {
+  cursor: pointer; padding: 6px 0; font-size: 15px; font-weight: 500; color: var(--ink-soft);
+}
+.period-panel__more summary:hover { color: var(--primary-ink); }
+.period-panel__more[open] .period-panel__tables { margin-top: 8px; }
+.period-panel__compact .button { min-height: 38px; }
 
 /* ---------- Kết quả cả chuỗi ---------- */
 .chain { display: grid; gap: 18px; }
