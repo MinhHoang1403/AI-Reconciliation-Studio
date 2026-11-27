@@ -62,6 +62,68 @@ KIND_DESCRIPTIONS = {
     "OUT_OF_SCOPE": "Dòng không thuộc phạm vi bên kia (tiền mặt, đơn hủy, tiền ra, đã ghép ở cặp "
     "khác); người dùng đổi lại được.",
 }
+
+# Nhãn nhóm của chuỗi (gộp nhiều cặp): "chỉ có ở một bên" gọi theo ý nghĩa tiền.
+CHAIN_KIND_LABELS = KIND_LABELS | {
+    "ONLY_IN_A": "Thiếu tiền về",
+    "ONLY_IN_B": "Tiền về chưa rõ nguồn",
+}
+
+# Engine viết nhãn và lý do chung cho mọi cặp ("Chỉ có ở A", "Không có dòng tương ứng ở bên B",
+# "Tổng 2 dòng A = 1 dòng B"). Khi hiển thị, "A"/"B" được đổi thành tên bảng thật của cặp để
+# người đọc biết ngay là tập dữ liệu nào (Owner 27/11/2026). Đổi lúc hiển thị nên áp dụng cả
+# cho kết quả đã lưu từ trước.
+_SIDE_WORD = re.compile(r"\b(bên|Bên|ở|Ở) ([AB])\b")
+_SIDE_ROWS = re.compile(r"\b(dòng|Dòng) ([AB])\b")
+# Mẫu câu lệch tiền của engine trước 27/11/2026: "Lệch tiền: A 2.482.000đ, B 2.432.000đ (B thiếu
+# 50.000đ)". Chỉ đổi đúng mẫu này (không đổi chữ A/B bất kỳ trước số, vì tên hay nội dung
+# chuyển khoản có thể chứa "VAN A 500000"); từ nay engine ghi "bên A", "bên B".
+_OLD_MISMATCH = re.compile(r"Lệch tiền: A (\S+), B (\S+) \(B (thừa|thiếu)")
+
+
+def name_sides(text: str, left: str, right: str) -> str:
+    """Đổi "bên A", "ở B", "dòng A"… thành tên bảng bên trái / bên phải của cặp."""
+
+    def name(side: str) -> str:
+        return left if side == "A" else right
+
+    text = _OLD_MISMATCH.sub(
+        lambda m: f"Lệch tiền: bên A {m.group(1)}, bên B {m.group(2)} (bên B {m.group(3)}", text
+    )
+    text = _SIDE_WORD.sub(lambda m: f"{m.group(1)} {name(m.group(2))}", text)
+    return _SIDE_ROWS.sub(lambda m: f"{m.group(1)} của {name(m.group(2))}", text)
+
+
+def _named_verification(
+    verification: dict[str, Any] | None, sides: tuple[str, str]
+) -> dict[str, Any] | None:
+    """Kết quả kiểm chứng đã lưu ghi "bên A/B" ("Tổng tiền bên A được bảo toàn"): đổi thành
+    tên bảng khi hiển thị, không sửa bản đã lưu."""
+    if not verification:
+        return verification
+    return verification | {
+        "checks": [
+            check
+            | {
+                "label": name_sides(check["label"], *sides),
+                "detail": name_sides(check.get("detail") or "", *sides),
+            }
+            for check in verification.get("checks", [])
+        ]
+    }
+
+
+def side_labels(session: Session, run: ReconRun) -> tuple[str, str]:
+    """Tên hai bảng của một lần đối soát (bảng đã xóa thì ghi rõ)."""
+    left, right = (
+        session.get(DatasetTable, table_id) for table_id in (run.left_table_id, run.right_table_id)
+    )
+    return (
+        audit.table_label(left) if left else "bảng đã xóa",
+        audit.table_label(right) if right else "bảng đã xóa",
+    )
+
+
 # Nhóm hiển thị: việc cần làm trước, phần đã xong thu gọn (nguyên tắc giao diện Giai đoạn 4–7).
 type ResultGroup = Literal[
     "todo", "explained", "resolved", "matched", "pending", "out_of_scope"
@@ -153,7 +215,13 @@ def _field_label(key: str | None) -> str | None:
     return FIELDS_BY_KEY[key].label if key and key in FIELDS_BY_KEY else None
 
 
-def config_view(config: ReconConfig, evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+def config_view(
+    config: ReconConfig,
+    evidence: dict[str, Any] | None = None,
+    sides: tuple[str, str] | None = None,
+) -> dict[str, Any]:
+    """Cấu hình kèm mô tả bằng lời; có `sides` (tên hai bảng) thì "bên A/B" trong mô tả được
+    đổi thành tên bảng."""
     """Cấu hình kèm nhãn tiếng Việt và câu mô tả do engine sinh (không cần AI)."""
     lines = []
     if config.key_left and config.extract:
@@ -225,7 +293,7 @@ def config_view(config: ReconConfig, evidence: dict[str, Any] | None = None) -> 
             for name in ("key_left", "key_right", "amount_left", "amount_right", "date_left",
                          "date_right")
         },
-        "description": lines,
+        "description": [name_sides(line, *sides) for line in lines] if sides else lines,
         "scope_options": [
             item for item in (evidence or {}).get("scope", [])
         ],
@@ -276,11 +344,11 @@ def run_view(session: Session, run: ReconRun) -> dict[str, Any]:
         "carried_count": len(run.carried or []),
         "left": _table_view(left) if left else None,
         "right": _table_view(right) if right else None,
-        "config": config_view(ReconConfig.from_json(run.config)),
+        "config": config_view(ReconConfig.from_json(run.config), sides=side_labels(session, run)),
         "period_start": run.period_start.isoformat() if run.period_start else None,
         "period_end": run.period_end.isoformat() if run.period_end else None,
         "summary": run.summary,
-        "verification": run.verification,
+        "verification": _named_verification(run.verification, side_labels(session, run)),
         "exceptions": {
             "OPEN": statuses.get("OPEN", 0),
             "EXPLAINED": statuses.get("EXPLAINED", 0),
@@ -300,7 +368,11 @@ def run_view(session: Session, run: ReconRun) -> dict[str, Any]:
                 strict=True,
             )
         ),
-        "kind_labels": KIND_LABELS,
+        # Nhãn loại theo đúng cặp: "Chỉ có ở bo-1-don-hang-cua-hang" thay cho "Chỉ có ở A".
+        "kind_labels": {
+            kind: name_sides(label, *side_labels(session, run))
+            for kind, label in KIND_LABELS.items()
+        },
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
     }
@@ -379,7 +451,8 @@ def _refs_text(session: Session, run: ReconRun, left_refs: list[int], right_refs
 
 def _result_label(session: Session, run: ReconRun, item: MatchResult) -> str:
     sides = _refs_text(session, run, list(item.left_refs), list(item.right_refs))
-    return f"{KIND_LABELS.get(item.kind, item.kind)}: {sides}"
+    kind = name_sides(KIND_LABELS.get(item.kind, item.kind), *side_labels(session, run))
+    return f"{kind}: {sides}"
 
 
 # ---------------------------------------------------------------- chọn bảng, cấu hình
@@ -411,7 +484,9 @@ def preview(choice: PairChoice, session: SessionDep) -> dict[str, Any]:
     return {
         "left": _table_view(left),
         "right": _table_view(right),
-        "config": config_view(config, evidence),
+        "config": config_view(
+            config, evidence, (audit.table_label(left), audit.table_label(right))
+        ),
     }
 
 
@@ -451,7 +526,12 @@ def start_run(
         "RECON_RUN",
         run.id,
         f"{audit.table_label(left)} ↔ {audit.table_label(right)}",
-        "Chạy đối soát. " + " ".join(config_view(config)["description"]),
+        "Chạy đối soát. "
+        + " ".join(
+            config_view(
+                config, sides=(audit.table_label(left), audit.table_label(right))
+            )["description"]
+        ),
         after={"config": config.to_json()},
     )
     session.commit()
@@ -536,13 +616,17 @@ def _result_views(
         config.amount_right,
     )
     carried = _carried_details(session, items, config)
+    sides = side_labels(session, run)
     return [
         {
             "id": str(item.id),
             "kind": item.kind,
-            "kind_label": KIND_LABELS.get(item.kind, item.kind),
+            # Nhãn và lý do của engine viết "A"/"B" chung cho mọi cặp: đổi thành tên bảng.
+            "kind_label": name_sides(KIND_LABELS.get(item.kind, item.kind), *sides),
             "score": item.score,
-            "reasons": item.reasons,
+            "reasons": [
+                reason | {"text": name_sides(reason["text"], *sides)} for reason in item.reasons
+            ],
             "amount_left": None if item.amount_left is None else str(item.amount_left),
             "amount_right": None if item.amount_right is None else str(item.amount_right),
             "exception_status": item.exception_status,
@@ -685,7 +769,9 @@ def explain_result(result_id: uuid.UUID, session: SessionDep) -> dict[str, Any]:
         raise fail(404, "RESULT_NOT_FOUND", "Không tìm thấy kết quả.")
     run = _run(session, item.run_id)
     view = _result_views(session, run, [item])[0]
-    return recon_ai.explain_result(view, config_view(ReconConfig.from_json(run.config)))
+    return recon_ai.explain_result(
+        view, config_view(ReconConfig.from_json(run.config), sides=side_labels(session, run))
+    )
 
 
 # ---------------------------------------------------------------- chuỗi ba bên, ca mơ hồ
@@ -702,6 +788,9 @@ def chain_view(session: Session, chain: ReconChain) -> dict[str, Any]:
         "status": chain.status,
         "error_message": chain.error_message,
         "label": chain.label,
+        # Nhãn nhóm khi gộp ngoại lệ của nhiều cặp: gọi theo ý nghĩa tiền (như trang Báo cáo),
+        # tên bảng ghi ở từng ca.
+        "kind_labels": CHAIN_KIND_LABELS,
         "table_ids": chain.table_ids,
         "period_start": chain.period_start.isoformat() if chain.period_start else None,
         "period_end": chain.period_end.isoformat() if chain.period_end else None,
@@ -935,6 +1024,8 @@ def match_candidates(result_id: uuid.UUID, session: SessionDep) -> dict[str, Any
     ranked = sorted(views[1:], key=closeness)[:MAX_MATCH_CANDIDATES]
     return {
         "side": side,
+        # Tên bảng của các ứng viên (giao diện ghi "dòng chưa ghép ở <bảng>", không "bên A/B").
+        "side_label": side_labels(session, run)[0 if side == "A" else 1],
         "target": target,
         "candidates": [
             {

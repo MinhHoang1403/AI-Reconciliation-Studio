@@ -711,8 +711,10 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 /* Một bên của kết quả: mã, số tiền thẳng cột phải, dòng gốc và ngày. */
 .side { display: grid; gap: 6px; min-width: 0; }
 .side__tag {
-  justify-self: start; padding: 0 7px; border-radius: 5px; background: var(--primary-tint);
+  justify-self: start; max-width: 100%; padding: 0 7px; border-radius: 5px; background: var(--primary-tint);
   color: var(--primary-ink); font-size: 12px; font-weight: 700; line-height: 20px;
+  /* Nhãn là tên bảng (có thể dài): cắt gọn một dòng, tên đầy đủ trong title. */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .side--empty { color: var(--ink-soft); font-size: 14px; }
 .side--empty .side__tag { background: var(--attention-tint); color: var(--attention); }

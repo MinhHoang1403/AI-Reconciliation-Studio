@@ -91,7 +91,7 @@ export function ChainView({ chain, onChain, onRerun }: Props) {
 
   const replaceRun = (run: ReconRun) => onChain({ ...chain, runs: chain.runs.map((item) => (item.id === run.id ? run : item)) });
   const selected = chain.runs.find((run) => run.id === tab);
-  const kindLabels = chain.runs[0]?.kind_labels;
+  const kindLabels = chain.kind_labels;
   const rings = mergedRings(chain.runs);
   // Số ca đang mở theo loại, cộng mọi cặp (backend đếm, đúng cả khi danh sách mới tải một phần).
   const openByKind: Partial<Record<ReconKind, number>> = {};

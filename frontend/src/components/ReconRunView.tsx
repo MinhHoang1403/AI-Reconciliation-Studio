@@ -59,18 +59,43 @@ const GROUPS: { key: ResultGroup; label: string }[] = [
   { key: "out_of_scope", label: "Ngoài phạm vi" },
 ];
 
-// Thứ tự nhóm ngoại lệ (cần quyết định trước) và giải thích bằng lời thường.
-export const KIND_HELP: [ReconKind, string][] = [
-  ["AMBIGUOUS", "Có nhiều ứng viên ngang nhau; hệ thống không tự chọn. Hãy chọn cặp đúng."],
-  ["AMOUNT_MISMATCH", "Ghép được nhưng số tiền hai bên khác nhau."],
-  ["DUPLICATE", "Một mã xuất hiện nhiều lần; dòng thừa có thể là thu tiền hai lần."],
-  ["ONLY_IN_A", "Có ở bên A nhưng không thấy ở bên B, ví dụ đơn chưa có tiền về và đã quá hạn chờ."],
-  ["ONLY_IN_B", "Có ở bên B nhưng không có ở bên A, ví dụ tiền về không rõ của đơn nào."],
-  ["NEEDS_CLEANING", "Dòng còn lỗi ở bước làm sạch; sửa xong rồi chạy lại."],
-  ["MATCHED", "Đã ghép được nhưng cần xem lại, ví dụ đơn đã hủy vẫn có tiền về."],
-  ["MANY_TO_ONE", "Đã ghép nhóm nhưng cần xem lại."],
-  ["ONE_TO_MANY", "Đã ghép nhóm nhưng cần xem lại."],
+// Thứ tự nhóm ngoại lệ (cần quyết định trước).
+export const KIND_ORDER: ReconKind[] = [
+  "AMBIGUOUS",
+  "AMOUNT_MISMATCH",
+  "DUPLICATE",
+  "ONLY_IN_A",
+  "ONLY_IN_B",
+  "NEEDS_CLEANING",
+  "MATCHED",
+  "MANY_TO_ONE",
+  "ONE_TO_MANY",
 ];
+
+/** Giải thích một nhóm bằng lời thường, gọi đúng tên hai bảng khi nhóm thuộc một cặp (không
+ *  nói "bên A/bên B": người đọc phải biết ngay là tập dữ liệu nào). */
+export function kindHelp(kind: ReconKind, left?: string, right?: string): string {
+  const mine = left ? `bảng ${left}` : "bảng ghi nhận (đơn hàng, giao dịch cổng)";
+  const theirs = right ? `bảng ${right}` : "bảng đối chiếu tiền về";
+  switch (kind) {
+    case "AMBIGUOUS":
+      return "Có nhiều ứng viên ngang nhau; hệ thống không tự chọn. Hãy chọn cặp đúng.";
+    case "AMOUNT_MISMATCH":
+      return `Ghép được nhưng số tiền ở ${mine} và ${theirs} khác nhau.`;
+    case "DUPLICATE":
+      return "Một mã xuất hiện nhiều lần; dòng thừa có thể là thu tiền hai lần.";
+    case "ONLY_IN_A":
+      return `Có ở ${mine} nhưng không thấy ở ${theirs}, ví dụ đơn chưa có tiền về và đã quá hạn chờ.`;
+    case "ONLY_IN_B":
+      return `Có ở ${theirs} nhưng không có ở ${mine}, ví dụ tiền về không rõ của đơn nào.`;
+    case "NEEDS_CLEANING":
+      return "Dòng còn lỗi ở bước làm sạch; sửa xong rồi chạy lại.";
+    case "MATCHED":
+      return "Đã ghép được nhưng cần xem lại, ví dụ đơn đã hủy vẫn có tiền về.";
+    default:
+      return "Đã ghép nhóm nhưng cần xem lại.";
+  }
+}
 const PAGE = 50;
 const MATCHED_KINDS: ReconKind[] = ["MATCHED", "MANY_TO_ONE", "ONE_TO_MANY"];
 const ATTENTION_KINDS: ReconKind[] = ["AMBIGUOUS", "AMOUNT_MISMATCH", "DUPLICATE", "ONLY_IN_A", "ONLY_IN_B", "NEEDS_CLEANING"];
@@ -307,11 +332,14 @@ export function TodoGroups({
   }
   return (
     <div className="recon-groups">
-      {KIND_HELP.map(([kind, help]) => {
+      {KIND_ORDER.map((kind) => {
         const group = items.filter(({ item }) => item.kind === kind);
         if (group.length === 0) return null;
         const runs = new Set(group.map(({ context }) => context.run.id));
         const first = group[0]?.context;
+        // Nhóm thuộc một cặp: gọi đúng tên hai bảng; gộp nhiều cặp: tên bảng ghi ở từng ca.
+        const help =
+          runs.size === 1 && first ? kindHelp(kind, first.run.left?.label, first.run.right?.label) : kindHelp(kind);
         return (
           <section key={kind} className="recon-group" aria-labelledby={`group-${kind}`}>
             <div className="recon-group__head">
@@ -372,7 +400,7 @@ export function ResultItem({ item, context }: { item: ReconResult; context: Item
   const reasons = item.reasons.filter(
     (reason) => !["AMOUNT_EQUAL", "DATE", "KEY", "CANDIDATES"].includes(reason.code),
   );
-  // "Không có dòng tương ứng ở bên B (mã …)" chỉ nhắc lại ô trống bên B và mã ngay phía trên
+  // "Không có dòng tương ứng ở <bảng> (mã …)" chỉ nhắc lại ô trống của bảng đó và mã ngay phía trên
   // thẻ, nên không in lại; các lý do khác giữ nguyên.
   const repeatsEmptySide = (code: string) => code === "NO_MATCH";
   const shown = (reasons.length ? reasons : item.reasons).filter((reason) => !repeatsEmptySide(reason.code));
@@ -434,9 +462,9 @@ export function ResultItem({ item, context }: { item: ReconResult; context: Item
     <li className="result" data-kind={item.kind}>
       {pairLabel && <span className="result__pair">{pairLabel}</span>}
       <div className="result__sides">
-        <Side label="A" rows={item.left} kind={item.kind} />
+        <Side label={run.left?.label ?? "Bảng ghi nhận"} rows={item.left} kind={item.kind} />
         <ArrowLeftRight className="result__link" aria-hidden="true" size={16} strokeWidth={1.8} />
-        <Side label="B" rows={item.right} kind={item.kind} />
+        <Side label={run.right?.label ?? "Bảng đối chiếu"} rows={item.right} kind={item.kind} />
       </div>
       {shown.length > 0 && <p className="result__reason">{shown.map((reason) => reason.text).join(" ")}</p>}
 
@@ -575,14 +603,14 @@ function Side({ label, rows, kind }: { label: string; rows: ResultRow[]; kind: R
   if (rows.length === 0) {
     return (
       <div className="side side--empty" data-kind={kind}>
-        <span className="side__tag">{label}</span>
+        <span className="side__tag" title={label}>{label}</span>
         <span>{EMPTY_SIDE[kind] ?? "Không có dòng tương ứng"}</span>
       </div>
     );
   }
   return (
     <div className="side">
-      <span className="side__tag">
+      <span className="side__tag" title={label}>
         {label}
         {rows.length > 1 && ` · ${rows.length} dòng`}
       </span>

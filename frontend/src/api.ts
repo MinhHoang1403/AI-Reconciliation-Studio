@@ -479,6 +479,7 @@ export type ReconChain = {
   period_start: string | null;
   period_end: string | null;
   runs: ReconRun[];
+  kind_labels: Record<ReconKind, string>;
   exceptions: { OPEN: number; EXPLAINED: number; RESOLVED: number };
   pending: number;
   verified: boolean;
@@ -513,6 +514,7 @@ export type Rerun = { chain_id: string | null; run_id: string | null };
 
 export type MatchCandidates = {
   side: "A" | "B";  // bên của các ứng viên
+  side_label: string;  // tên bảng của các ứng viên
   target: ResultRow;
   candidates: { result_id: string; row: ResultRow; amount_gap: string | null }[];
 };

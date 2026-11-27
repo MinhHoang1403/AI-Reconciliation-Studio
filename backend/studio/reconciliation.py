@@ -643,11 +643,14 @@ def _pair_result(left: Row, right: Row, config: ReconConfig, how: str) -> Result
 
 
 def _difference_text(left: Decimal | None, right: Decimal | None) -> str:
-    text = f"Lệch tiền: A {money_dong(left)}, B {money_dong(right)}"
+    # "bên A/bên B" để lớp hiển thị đổi thành tên bảng thật (recon_api.name_sides).
+    text = f"Lệch tiền: bên A {money_dong(left)}, bên B {money_dong(right)}"
     if left is None or right is None:
         return text + "."
     difference = right - left
-    return text + f" (B {'thừa' if difference > 0 else 'thiếu'} {money_dong(abs(difference))})."
+    return text + (
+        f" (bên B {'thừa' if difference > 0 else 'thiếu'} {money_dong(abs(difference))})."
+    )
 
 
 def _group_result(lefts: list[Row], rights: list[Row], how: str, config: ReconConfig) -> Result:

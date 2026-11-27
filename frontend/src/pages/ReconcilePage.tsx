@@ -357,7 +357,7 @@ function ReconSetup({ tables, pair, hasRun, busy, onPair, onStarted }: SetupProp
       <h2 id="recon-setup-title" className="visually-hidden">Chọn dữ liệu và cấu hình</h2>
       <div className="recon-setup__pair">
         <label className="recon-setup__side">
-          <span>Bên A</span>
+          <span>Bảng ghi nhận (đơn hàng, giao dịch)</span>
           <select value={pair.left} onChange={(event) => onPair({ ...pair, left: event.target.value })}>
             {tables.map(option)}
           </select>
@@ -372,7 +372,7 @@ function ReconSetup({ tables, pair, hasRun, busy, onPair, onStarted }: SetupProp
           <ArrowLeftRight aria-hidden="true" size={18} strokeWidth={1.8} />
         </button>
         <label className="recon-setup__side">
-          <span>Bên B</span>
+          <span>Bảng đối chiếu (tiền về)</span>
           <select value={pair.right} onChange={(event) => onPair({ ...pair, right: event.target.value })}>
             {tables.map(option)}
           </select>
@@ -441,9 +441,10 @@ function ReconSetup({ tables, pair, hasRun, busy, onPair, onStarted }: SetupProp
                   <label key={`${item.side}:${item.field}:${item.value}`}>
                     <input type="checkbox" checked={isExcluded(item)} onChange={() => toggleScope(item)} />
                     <span>
-                      Bên {item.side === "LEFT" ? "A" : "B"} · “{item.value}”
+                      {(item.side === "LEFT" ? left : right)?.label ?? (item.side === "LEFT" ? "Bảng ghi nhận" : "Bảng đối chiếu")} · “{item.value}”
                       <small>
-                        {formatCount(item.rows)} dòng, {formatCount(item.matched)} có mã ở bên kia
+                        {formatCount(item.rows)} dòng, {formatCount(item.matched)} có mã ở{" "}
+                        {(item.side === "LEFT" ? right : left)?.label ?? "bảng kia"}
                       </small>
                     </span>
                   </label>

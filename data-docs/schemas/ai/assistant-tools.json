@@ -303,11 +303,11 @@
     "parameters": {
       "properties": {
         "left_table_id": {
-          "description": "Bảng bên A (thường là đơn hàng).",
+          "description": "Bảng ghi nhận (thường là đơn hàng).",
           "type": "string"
         },
         "right_table_id": {
-          "description": "Bảng bên B (cổng thanh toán hoặc sao kê).",
+          "description": "Bảng đối chiếu tiền về (cổng thanh toán, sao kê).",
           "type": "string"
         }
       },

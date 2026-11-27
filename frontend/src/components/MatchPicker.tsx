@@ -64,11 +64,11 @@ export function MatchPicker({ runId, item, onDone, onCancel }: Props) {
 
   return (
     <fieldset className="match-picker" disabled={saving}>
-      <legend>Ghép tay với dòng chưa ghép ở bên {data?.side ?? "kia"}</legend>
+      <legend>Ghép tay với dòng chưa ghép ở {data?.side_label ?? "bảng kia"}</legend>
       {error && <p className="result__error">{error}</p>}
       {!data && !error && <p className="match-picker__hint">Đang tìm dòng chưa ghép…</p>}
       {data && data.candidates.length === 0 && (
-        <p className="match-picker__hint">Bên {data.side} không còn dòng nào chưa ghép.</p>
+        <p className="match-picker__hint">{data.side_label} không còn dòng nào chưa ghép.</p>
       )}
       {data && data.candidates.length > 0 && (
         <>

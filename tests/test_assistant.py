@@ -6,6 +6,7 @@ chỉ chạy khi người dùng bấm, lệnh cài trong dữ liệu không thay
 """
 
 import json
+import re
 import time
 import uuid
 from collections.abc import Callable
@@ -16,7 +17,7 @@ from conftest import FIXTURES, ROOT
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from studio import assistant, assistant_tools, database, main
+from studio import assistant, assistant_tools, database, main, recon_api
 from studio.assistant_tools import TOOLS_BY_NAME
 from studio.gemini_client import ModelTurn, ToolCall
 from studio.models import AuditLog, ChatMessage, RowDecision
@@ -424,10 +425,15 @@ def test_unexpected_error_marks_the_card_failed(monkeypatch: pytest.MonkeyPatch)
 def test_exceptions_name_real_tables_not_a_or_b() -> None:
     """Owner thấy Assistant nói "bên A", "bên B": kết quả công cụ và số liệu báo cáo phải mang
     tên bảng thật của từng cặp."""
-    assert assistant_tools.name_sides(
+    assert recon_api.name_sides(
         "Chỉ có ở A, không tìm được dòng tương ứng bên B (mã HD1).", "don-hang", "sao-ke › TK"
     ) == "Chỉ có ở don-hang, không tìm được dòng tương ứng bên sao-ke › TK (mã HD1)."
-    assert assistant_tools.name_sides("Mã A43 ở dòng B7", "x", "y") == "Mã A43 ở dòng B7"
+    assert recon_api.name_sides("Mã A43 ở dòng B7", "x", "y") == "Mã A43 ở dòng B7"
+    # Mẫu lệch tiền cũ đã lưu trong cơ sở dữ liệu; chữ "A" trong tên khách thì giữ nguyên.
+    assert recon_api.name_sides(
+        "Lệch tiền: A 2.482.000đ, B 2.432.000đ (B thiếu 50.000đ).", "don-hang", "sao-ke"
+    ) == "Lệch tiền: bên don-hang 2.482.000đ, bên sao-ke 2.432.000đ (bên sao-ke thiếu 50.000đ)."
+    assert recon_api.name_sides("CK NGUYEN VAN A 500000", "x", "y") == "CK NGUYEN VAN A 500000"
     pos, gateway = upload(FIXTURES / "don-hang-cua-hang.csv"), upload(
         FIXTURES / "giao-dich-cong-thanh-toan.csv"
     )
@@ -448,3 +454,25 @@ def test_exceptions_name_real_tables_not_a_or_b() -> None:
         "giao-dich-cong-thanh-toan",
     )
     assert "bên B" not in " ".join(item["reasons"]) and " A" not in item["kind_label"]
+
+
+def test_pages_cards_and_exports_name_tables_not_a_or_b(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Không chỗ nào người dùng đọc còn "A"/"B": nhãn loại, lý do ở trang Đối soát, thẻ xác nhận
+    của Assistant và tệp xuất đều ghi tên bảng thật."""
+    pos = upload(FIXTURES / "don-hang-cua-hang.csv")["tables"][0]
+    gateway = upload(FIXTURES / "giao-dich-cong-thanh-toan.csv")["tables"][0]
+    run = client.post(
+        "/api/recon/runs", json={"left_table_id": pos["id"], "right_table_id": gateway["id"]}
+    ).json()
+    assert run["kind_labels"]["ONLY_IN_A"] == "Chỉ có ở don-hang-cua-hang"
+    page = client.get(
+        f"/api/recon/runs/{run['id']}/results", params={"group": "todo", "limit": 200}
+    ).json()
+    texts = [reason["text"] for item in page["items"] for reason in item["reasons"]]
+    assert texts and not any(re.search(r"\b(bên|ở|dòng) [AB]\b", text) for text in texts)
+    target = next(item for item in page["items"] if item["kind"] == "ONLY_IN_A")
+    note = call("set_note", result_id=target["id"], note="Đã gọi khách")
+    use(monkeypatch, [note, ModelTurn("", [])])
+    card = ask("Ghi chú cho ca này")["messages"][-1]["actions"][0]
+    assert "A:" not in card["detail"] and "don-hang-cua-hang:" in card["detail"]
+    assert "giao-dich-cong-thanh-toan:" in card["detail"]

@@ -220,7 +220,7 @@ function ReportBody({ report, periods, onReload }: { report: Report; periods: Re
         <div className="report__charts">
           <ChartPanel
             title="Theo ngày"
-            note="Số giao dịch mỗi ngày của kỳ, theo ngày của dòng bên A."
+            note="Số giao dịch mỗi ngày của kỳ, theo ngày ở bảng ghi nhận (ngày đơn hàng, ngày giao dịch cổng)."
             table={<DayTable days={report.by_day} />}
           >
             {report.by_day.length ? <DayColumns days={report.by_day} /> : <p className="report-chart__empty">Không có ngày nào để vẽ.</p>}

@@ -12,7 +12,6 @@ ngày, số tiền, danh mục, số đếm và lý do của engine; chữ tự 
 được che bằng `masking` như ở bước ánh xạ (quyết định 2026-11-20).
 """
 
-import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -530,11 +529,7 @@ def _append_views(
 ) -> None:
     if not items:
         return
-    left, right = (
-        session.get(DatasetTable, table_id) for table_id in (run.left_table_id, run.right_table_id)
-    )
-    left_name = audit.table_label(left) if left else "bảng đã xóa"
-    right_name = audit.table_label(right) if right else "bảng đã xóa"
+    left_name, right_name = recon_api.side_labels(session, run)
     for view in recon_api._result_views(session, run, items):
         found.append(
             {
@@ -542,11 +537,9 @@ def _append_views(
                 "run_id": str(run.id),
                 "pair": f"{left_name} ↔ {right_name}",
                 "kind": view["kind"],
-                "kind_label": name_sides(view["kind_label"], left_name, right_name),
+                "kind_label": view["kind_label"],
                 "status": view["exception_status"],
-                "reasons": [
-                    name_sides(reason["text"], left_name, right_name) for reason in view["reasons"]
-                ],
+                "reasons": [reason["text"] for reason in view["reasons"]],
                 "candidates": [
                     pair for reason in view["reasons"] for pair in reason.get("pairs", [])
                 ],
@@ -560,12 +553,6 @@ def _append_views(
         )
 
 
-# "bên A", "ở B"… trong nhãn và lý do của engine (viết cho mọi cặp) → tên bảng thật của cặp.
-_SIDE = re.compile(r"\b(bên|ở) ([AB])\b")
-
-
-def name_sides(text: str, left: str, right: str) -> str:
-    return _SIDE.sub(lambda m: f"{m.group(1)} {left if m.group(2) == 'A' else right}", text)
 
 
 class TraceArgs(TableArgs):
@@ -701,8 +688,8 @@ def reconcile_period(session: Session, args: PeriodArgs) -> dict[str, Any]:
 
 
 class PairArgs(BaseModel):
-    left_table_id: str = Field(description="Bảng bên A (thường là đơn hàng).")
-    right_table_id: str = Field(description="Bảng bên B (cổng thanh toán hoặc sao kê).")
+    left_table_id: str = Field(description="Bảng ghi nhận (thường là đơn hàng).")
+    right_table_id: str = Field(description="Bảng đối chiếu tiền về (cổng thanh toán, sao kê).")
 
 
 def reconcile_pair(session: Session, args: PairArgs) -> dict[str, Any]:
@@ -941,6 +928,34 @@ def _candidate_pair(
     return item, sorted(wanted[0]["left"]), sorted(wanted[0]["right"])
 
 
+def _run_of(session: Session, target: ReconRun | MatchResult) -> ReconRun:
+    if isinstance(target, ReconRun):
+        return target
+    run = session.get(ReconRun, target.run_id)
+    assert run is not None
+    return run
+
+
+def _side_rows(
+    session: Session,
+    target: ReconRun | MatchResult,
+    rows_a: list[dict[str, Any]],
+    rows_b: list[dict[str, Any]],
+    joiner: str,
+) -> str:
+    """Dòng hai bên kèm tên bảng thật, ví dụ "bo-1-don-hang-cua-hang: HD100043 · 1.824.000đ
+    (dòng 44); bo-1-sao-ke-ngan-hang › TK chinh: không có dòng" (không ghi "A:", "B:")."""
+    left, right = recon_api.side_labels(session, _run_of(session, target))
+    return f"{left}: {_rows_text(rows_a)}{joiner}{right}: {_rows_text(rows_b)}"
+
+
+def _kind_label(session: Session, item: MatchResult) -> str:
+    return recon_api.name_sides(
+        recon_api.KIND_LABELS.get(item.kind, item.kind),
+        *recon_api.side_labels(session, _run_of(session, item)),
+    )
+
+
 def _rows_text(rows: list[dict[str, Any]]) -> str:
     """Các dòng của một bên, đọc được bằng mắt: mã · số tiền (dòng gốc).
 
@@ -986,7 +1001,7 @@ def _candidate_propose(session: Session, args: CandidateArgs) -> Proposal:
     chosen_b = [row for row in rows_b if row["row_ref"] in right]
     return Proposal(
         "Chọn cặp cho ca mơ hồ",
-        f"Ghép A: {_rows_text(chosen_a)} với B: {_rows_text(chosen_b)}; "
+        f"Ghép {_side_rows(session, item, chosen_a, chosen_b, ' với ')}; "
         "hệ thống sẽ đối soát lại.",
         RECON_LINK,
     )
@@ -1018,12 +1033,13 @@ def _match_propose(session: Session, args: MatchArgs) -> Proposal:
         if item.kind in recon_api.UNMATCHED_RIGHT:
             free["B"].update(item.right_refs)
     if not set(args.left_refs) <= free["A"] or not set(args.right_refs) <= free["B"]:
-        raise ToolError("Chỉ ghép tay được các dòng chưa được ghép (chỉ có ở A/B, chờ tiền về).")
+        raise ToolError(
+            "Chỉ ghép tay được các dòng chưa được ghép (chỉ có ở một bảng, chờ tiền về)."
+        )
     rows_a, rows_b = _free_rows(session, run, args.left_refs, args.right_refs)
     return Proposal(
         "Ghép tay",
-        f"{recon_service.run_label(session, run)}. A: {_rows_text(rows_a)} ↔ B: "
-        f"{_rows_text(rows_b)}; hệ thống sẽ đối soát lại.",
+        f"{_side_rows(session, run, rows_a, rows_b, ' ↔ ')}; hệ thống sẽ đối soát lại.",
         RECON_LINK,
     )
 
@@ -1050,8 +1066,11 @@ def _unmatch_propose(session: Session, args: ResultArgs) -> Proposal:
     rows_a, rows_b = _result_rows(session, item)
     return Proposal(
         "Gỡ ghép",
-        f"Gỡ A: {_rows_text([row for row in rows_a if not row.get('carried')])} khỏi B: "
-        f"{_rows_text(rows_b)}; hệ thống sẽ không tự ghép lại chúng.",
+        "Gỡ "
+        + _side_rows(
+            session, item, [row for row in rows_a if not row.get("carried")], rows_b, " khỏi "
+        )
+        + "; hệ thống sẽ không tự ghép lại chúng.",
         RECON_LINK,
     )
 
@@ -1119,8 +1138,8 @@ def _note_propose(session: Session, args: NoteArgs) -> Proposal:
     rows_a, rows_b = _result_rows(session, item)
     return Proposal(
         "Ghi chú cho ngoại lệ",
-        f"{recon_api.KIND_LABELS.get(item.kind, item.kind)} (A: {_rows_text(rows_a)}; "
-        f"B: {_rows_text(rows_b)}): “{args.note}”.",
+        f"{_kind_label(session, item)} ({_side_rows(session, item, rows_a, rows_b, '; ')}): "
+        f"“{args.note}”.",
         RECON_LINK,
     )
 

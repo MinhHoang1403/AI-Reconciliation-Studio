@@ -24,11 +24,15 @@ RESULT_HEADERS = (
     "Trạng thái",
     "Mã",
     "Ngày",
-    "Số tiền bên A",
-    "Số tiền bên B",
+    # Mỗi dòng có thể thuộc một cặp khác nhau, nên ghi rõ tên hai bảng của chính dòng đó thay
+    # cho "bên A/bên B" (Owner 27/11/2026: người đọc phải biết ngay là tập dữ liệu nào).
+    "Bảng ghi nhận",
+    "Số tiền ở bảng ghi nhận",
+    "Dòng ở bảng ghi nhận",
+    "Bảng đối chiếu",
+    "Số tiền ở bảng đối chiếu",
+    "Dòng ở bảng đối chiếu",
     "Số tiền liên quan",
-    "Dòng bên A",
-    "Dòng bên B",
     "Lý do",
     "Ghi chú",
 )
@@ -45,7 +49,7 @@ def _amount(value: str | None) -> Decimal | None:
 
 
 def _left_rows(item: dict[str, Any]) -> str:
-    """Dòng bên A; dòng chờ mang sang từ kỳ trước ghi riêng (thuộc bảng của kỳ trước)."""
+    """Dòng ở bảng ghi nhận; dòng chờ mang sang từ kỳ trước ghi riêng (thuộc bảng kỳ trước)."""
     text = ", ".join(str(ref) for ref in item["left_rows"])
     if item.get("carried_rows"):
         carried = "kỳ trước: " + ", ".join(str(ref) for ref in item["carried_rows"])
@@ -60,11 +64,13 @@ def _row(item: dict[str, Any]) -> list[Any]:
         STATUS_LABELS.get(item["status"] or "", ""),
         ", ".join(item["codes"]),
         item["date"] or "",
+        item["left_label"],
         _amount(item["amount_left"]),
-        _amount(item["amount_right"]),
-        _amount(item["amount"]),
         _left_rows(item),
+        item["right_label"],
+        _amount(item["amount_right"]),
         ", ".join(str(ref) for ref in item["right_rows"]),
+        _amount(item["amount"]),
         item["reason"],
         item["note"] or "",
     ]
@@ -92,8 +98,10 @@ def summary_table(report: dict[str, Any]) -> list[list[Any]]:
         ["Số tiền đã khớp", kpis["amount_matched"]],
         ["Số ca cần xử lý", kpis["open_count"]],
         ["Tổng lệch tiền", kpis["mismatch_total"]],
-        ["Thiếu tiền về (chỉ có ở bên A)", kpis["missing_amount"]],
-        ["Tiền về chưa rõ nguồn (chỉ có ở bên B)", kpis["unknown_amount"]],
+        ["Thiếu tiền về (đã ghi nhận đơn hoặc giao dịch, chưa thấy tiền về)",
+         kpis["missing_amount"]],
+        ["Tiền về chưa rõ nguồn (có tiền về, không tìm được đơn hay giao dịch)",
+         kpis["unknown_amount"]],
         ["Số dòng chờ tiền về", kpis["pending_count"]],
         ["Số tiền chờ tiền về", kpis["pending_amount"]],
         [],

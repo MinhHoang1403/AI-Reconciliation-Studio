@@ -239,7 +239,11 @@ def _exception_row(
         "amount_left": None if item.amount_left is None else str(item.amount_left),
         "amount_right": None if item.amount_right is None else str(item.amount_right),
         "amount": str(_result_amount(item)),
-        "reason": "; ".join(reason["text"] for reason in reasons),
+        # Lý do của engine viết "bên A/B": đổi thành tên hai bảng của cặp.
+        "reason": "; ".join(
+            recon_api.name_sides(reason["text"], pair["left_label"], pair["right_label"])
+            for reason in reasons
+        ),
         "note": note,
         # Dòng mang sang từ kỳ trước thuộc bảng của kỳ trước: tách riêng để số dòng không bị
         # hiểu nhầm là dòng của bảng kỳ này.
