@@ -39,18 +39,25 @@ from studio.cleaning import latest_version, parse_user_value, source_cell
 from studio.masking import mask_sample
 from studio.models import (
     AuditLog,
+    CellCorrection,
     CleanVersion,
     Dataset,
     DatasetTable,
     MatchResult,
     ReconChain,
     ReconRun,
+    RowDecision,
 )
 from studio.profiling import TableProfile
 from studio.reading import ROW_REF
 from studio.reconciliation import ReconConfig
 from studio.sales_fields import FIELDS_BY_KEY, TABLE_KIND_LABELS
 from studio.value_parsers import money_vi
+
+# Mã cột chuẩn dưới dạng danh sách cố định trong khuôn tham số (JSON Schema "enum"): Gemini chỉ
+# chọn được mã có thật, không đoán tên khác (đo thật 27/11/2026: Gemini gửi "order_code" thay
+# cho "order_id", bước đó thất bại rồi mới tự sửa, giao diện hiện dấu X khó hiểu).
+FIELD_KEYS: dict[str, Any] = {"enum": list(FIELDS_BY_KEY)}
 
 type ToolKind = Literal["READ", "PROCESS", "CHANGE"]
 MAX_ITEMS = 20
@@ -60,6 +67,11 @@ PAIRED_KINDS = ("MATCHED", "MANY_TO_ONE", "ONE_TO_MANY", "AMOUNT_MISMATCH")
 
 class ToolError(Exception):
     """Lỗi trả về cho Gemini (tiếng Việt) để nó sửa tham số hoặc hỏi lại người dùng."""
+
+
+class NothingToDo(ToolError):
+    """Thao tác không cần làm vì dữ liệu đã đúng như yêu cầu (ví dụ ô đã được sửa đúng giá trị
+    đó). Không phải lỗi: bước hiện "xong", Gemini nhận thông báo để nói lại với người dùng."""
 
 
 @dataclass
@@ -741,7 +753,10 @@ def _confirm_mapping_apply(session: Session, args: TableArgs, _: BackgroundTasks
 
 class ColumnFieldArgs(TableArgs):
     column_name: str = Field(description="Tên cột đúng như trong tệp (từ get_table_mapping).")
-    field_key: str | None = Field(description="Mã cột chuẩn, hoặc null để không ánh xạ cột này.")
+    field_key: str | None = Field(
+        description="Mã cột chuẩn, hoặc null để không ánh xạ cột này.",
+        json_schema_extra={"anyOf": [{"type": "string", **FIELD_KEYS}, {"type": "null"}]},
+    )
 
 
 def _column_position(table: DatasetTable, name: str) -> int:
@@ -786,7 +801,10 @@ def _column_field_apply(
 
 class CellArgs(TableArgs):
     row_ref: int = Field(description="Số dòng gốc.")
-    field_key: str = Field(description="Mã cột chuẩn của ô, ví dụ amount, order_date.")
+    field_key: str = Field(
+        description="Mã cột chuẩn của ô, ví dụ amount, order_date, order_id.",
+        json_schema_extra=FIELD_KEYS,
+    )
     value: str = Field(min_length=1, max_length=200, description="Giá trị đúng của ô.")
 
 
@@ -798,11 +816,29 @@ def _cell_propose(session: Session, args: CellArgs) -> Proposal:
     if cell is None:
         raise ToolError("Không tìm thấy ô này (dòng không có hoặc cột chuẩn chưa được ánh xạ).")
     label = FIELDS_BY_KEY[args.field_key].label.lower()
-    if parse_user_value(args.value, args.field_key).state != "VALID":
+    wanted = parse_user_value(args.value, args.field_key)
+    if wanted.state != "VALID":
         raise ToolError(f"“{args.value}” không phải {label} hợp lệ.")
+    # Ô đã được sửa trước đó: cùng giá trị thì không tạo thẻ nữa (gửi lại câu cũ không sửa lặp),
+    # khác giá trị thì thẻ ghi giá trị đang dùng chứ không phải ô gốc trong tệp.
+    before = f"“{cell[1] or ''}”"
+    earlier = session.scalar(
+        select(CellCorrection).where(
+            CellCorrection.table_id == table.id,
+            CellCorrection.row_ref == args.row_ref,
+            CellCorrection.field_key == args.field_key,
+        )
+    )
+    if earlier is not None:
+        if parse_user_value(earlier.value, args.field_key).value == wanted.value:
+            raise NothingToDo(
+                f"Ô {label} dòng {args.row_ref} đã được sửa thành “{earlier.value}” từ trước; "
+                "không cần sửa lại. Hãy báo người dùng là ô này đã đúng."
+            )
+        before = f"“{earlier.value}” (đã sửa trước đó; ô gốc “{cell[1] or ''}”)"
     return Proposal(
         f"Sửa ô {label} dòng {args.row_ref}",
-        f"{audit.table_label(table)}, dòng {args.row_ref}: “{cell[1] or ''}” → “{args.value}”.",
+        f"{audit.table_label(table)}, dòng {args.row_ref}: {before} → “{args.value}”.",
         _data_link(table),
     )
 
@@ -831,6 +867,26 @@ ROW_VERBS = {"EXCLUDE": "Loại", "KEEP": "Giữ", "UNDO": "Bỏ quyết định
 
 def _rows_propose(session: Session, args: RowsArgs) -> Proposal:
     table = _table(session, args.table_id)
+    decided = {
+        row.row_ref: row.decision
+        for row in session.execute(
+            select(RowDecision.row_ref, RowDecision.decision).where(
+                RowDecision.table_id == table.id, RowDecision.row_ref.in_(args.row_refs)
+            )
+        )
+    }
+    already = [
+        ref
+        for ref in args.row_refs
+        if (ref not in decided if args.decision == "UNDO" else decided.get(ref) == args.decision)
+    ]
+    if len(already) == len(args.row_refs):
+        state = "chưa có quyết định nào" if args.decision == "UNDO" else "đã được " + (
+            ROW_VERBS[args.decision].lower()
+        )
+        raise NothingToDo(
+            f"Dòng {', '.join(map(str, already[:10]))} {state} từ trước; không cần làm lại."
+        )
     refs = ", ".join(map(str, args.row_refs[:10])) + ("…" if len(args.row_refs) > 10 else "")
     return Proposal(
         f"{ROW_VERBS[args.decision]} {len(args.row_refs)} dòng",
@@ -859,7 +915,7 @@ def _duplicates_propose(session: Session, args: TableArgs) -> Proposal:
         if issue["kind"] == "DUPLICATE_ROW" and issue["status"] == "OPEN"
     )
     if extra == 0:
-        raise ToolError("Bảng không còn gợi ý dòng trùng nào.")
+        raise NothingToDo("Bảng không còn dòng trùng nào chờ xử lý (có thể đã bỏ từ trước).")
     return Proposal(
         "Bỏ các dòng lặp",
         f"{audit.table_label(table)}: bỏ {extra} dòng lặp, giữ dòng đầu của mỗi nhóm.",
@@ -875,7 +931,10 @@ def _duplicates_apply(session: Session, args: TableArgs, background: BackgroundT
 
 
 class DateOrderArgs(TableArgs):
-    field_key: str = Field(description="Mã cột ngày, ví dụ order_date, transaction_date.")
+    field_key: str = Field(
+        description="Mã cột ngày, ví dụ order_date, transaction_date.",
+        json_schema_extra=FIELD_KEYS,
+    )
     order: Literal["DMY", "MDY"] = Field(description="DMY: ngày/tháng; MDY: tháng/ngày.")
 
 
@@ -1097,9 +1156,18 @@ def _resolve_targets(session: Session, args: ResolveArgs) -> int:
         condition = (
             condition & (MatchResult.kind == args.kind) & (MatchResult.exception_status == "OPEN")
         )
-    count = session.scalar(select(func.count()).select_from(MatchResult).where(condition)) or 0
-    if count == 0:
+    found = session.scalar(select(func.count()).select_from(MatchResult).where(condition)) or 0
+    if found == 0:
         raise ToolError("Không có ngoại lệ nào khớp yêu cầu.")
+    target = "RESOLVED" if args.action == "RESOLVE" else "OPEN"
+    count = session.scalar(
+        select(func.count())
+        .select_from(MatchResult)
+        .where(condition & (MatchResult.exception_status != target))
+    ) or 0
+    if count == 0:
+        state = "đã xử lý" if target == "RESOLVED" else "đang mở"
+        raise NothingToDo(f"Các ngoại lệ này {state} từ trước; không cần làm lại.")
     return count
 
 
@@ -1109,7 +1177,16 @@ def _resolve_propose(session: Session, args: ResolveArgs) -> Proposal:
     return Proposal(
         f"{verb} {count} ngoại lệ",
         f"{recon_service.run_label(session, _run(session, args.run_id))}"
-        + (f", loại {recon_api.KIND_LABELS.get(args.kind, args.kind)}." if args.kind else "."),
+        + (
+            ", loại "
+            + recon_api.name_sides(
+                recon_api.KIND_LABELS.get(args.kind, args.kind),
+                *recon_api.side_labels(session, _run(session, args.run_id)),
+            )
+            + "."
+            if args.kind
+            else "."
+        ),
         RECON_LINK,
     )
 
@@ -1135,6 +1212,8 @@ class NoteArgs(ResultArgs):
 
 def _note_propose(session: Session, args: NoteArgs) -> Proposal:
     item = _result(session, args.result_id)
+    if (item.note or "").strip() == args.note.strip():
+        raise NothingToDo("Ngoại lệ này đã có đúng ghi chú đó từ trước; không cần ghi lại.")
     rows_a, rows_b = _result_rows(session, item)
     return Proposal(
         "Ghi chú cho ngoại lệ",

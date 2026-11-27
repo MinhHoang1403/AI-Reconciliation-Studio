@@ -476,3 +476,63 @@ def test_pages_cards_and_exports_name_tables_not_a_or_b(monkeypatch: pytest.Monk
     card = ask("Ghi chú cho ca này")["messages"][-1]["actions"][0]
     assert "A:" not in card["detail"] and "don-hang-cua-hang:" in card["detail"]
     assert "giao-dich-cong-thanh-toan:" in card["detail"]
+
+
+def test_fixing_an_already_fixed_cell_makes_no_new_card(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner gửi lại câu "sửa mã đơn dòng 224" sau khi đã sửa: không tạo thẻ sửa lặp; sửa sang
+    giá trị khác thì thẻ ghi giá trị đang dùng, không ghi ô gốc trống. Mã cột chuẩn là danh
+    sách cố định trong khuôn tham số để Gemini không đoán tên khác (ví dụ "order_code")."""
+    schema = TOOLS_BY_NAME["fix_cell"].schema()["properties"]["field_key"]
+    assert "order_id" in schema["enum"] and "order_code" not in schema["enum"]
+    table = upload(FIXTURES / "don-hang-cua-hang.csv")["tables"][0]
+    fix = call(
+        "fix_cell", table_id=table["id"], row_ref=224, field_key="order_id", value="HD000999"
+    )
+    use(monkeypatch, [fix, ModelTurn("Chờ bạn.", [])])
+    first = ask("Sửa mã đơn dòng 224 thành HD000999")["messages"][-1]
+    message_id, card = first["id"], first["actions"][0]
+    assert "“” → “HD000999”" in card["detail"]
+    decided = client.post(
+        f"/api/assistant/messages/{message_id}/actions/{card['id']}", json={"decision": "CONFIRM"}
+    )
+    assert decided.status_code == 200
+
+    fake = use(monkeypatch, [fix, ModelTurn("Ô đã đúng rồi.", [])])
+    again = ask("Sửa mã đơn dòng 224 thành HD000999")["messages"][-1]
+    assert again["actions"] == []
+    response = fake.tool_results()[0]["response"]
+    assert response["status"] == "NO_CHANGE_NEEDED"
+    assert "đã được sửa thành “HD000999” từ trước" in response["note"]
+    assert again["steps"][0]["status"] == "DONE"  # không hiện dấu X: đây không phải lỗi
+
+    other = call(
+        "fix_cell", table_id=table["id"], row_ref=224, field_key="order_id", value="HD000998"
+    )
+    use(monkeypatch, [other, ModelTurn("Chờ bạn.", [])])
+    changed = ask("Đổi mã đơn dòng 224 thành HD000998")["messages"][-1]["actions"][0]
+    assert "“HD000999” (đã sửa trước đó; ô gốc “”) → “HD000998”" in changed["detail"]
+
+
+def test_repeating_a_done_change_is_not_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Loại lại dòng đã loại, bỏ dòng lặp khi đã bỏ: không tạo thẻ, bước hiện "xong"."""
+    table = upload(FIXTURES / "don-hang-cua-hang.csv")["tables"][0]
+    exclude = call("decide_rows", table_id=table["id"], row_refs=[224], decision="EXCLUDE")
+    use(monkeypatch, [exclude, ModelTurn("Chờ bạn.", [])])
+    first = ask("Loại dòng 224")["messages"][-1]
+    card = first["actions"][0]
+    client.post(
+        f"/api/assistant/messages/{first['id']}/actions/{card['id']}", json={"decision": "CONFIRM"}
+    )
+    duplicates = call("accept_duplicates", table_id=table["id"])
+    use(monkeypatch, [duplicates, ModelTurn("Chờ bạn.", [])])
+    second = ask("Bỏ dòng lặp")["messages"][-1]
+    client.post(
+        f"/api/assistant/messages/{second['id']}/actions/{second['actions'][0]['id']}",
+        json={"decision": "CONFIRM"},
+    )
+    fake = use(monkeypatch, [exclude, duplicates, ModelTurn("Đã đúng từ trước.", [])])
+    again = ask("Loại dòng 224 và bỏ dòng lặp")["messages"][-1]
+    assert again["actions"] == []
+    assert [step["status"] for step in again["steps"]] == ["DONE", "DONE"]
+    statuses = [item["response"].get("status") for item in fake.tool_results()]
+    assert statuses == ["NO_CHANGE_NEEDED", "NO_CHANGE_NEEDED"]

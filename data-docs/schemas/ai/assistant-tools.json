@@ -366,6 +366,25 @@
         "field_key": {
           "anyOf": [
             {
+              "enum": [
+                "order_id",
+                "order_date",
+                "customer_name",
+                "customer_phone",
+                "amount",
+                "fee",
+                "net_amount",
+                "payment_method",
+                "status",
+                "payment_id",
+                "payment_batch",
+                "transaction_date",
+                "bank_ref",
+                "debit",
+                "credit",
+                "balance",
+                "description"
+              ],
               "type": "string"
             },
             {
@@ -397,7 +416,26 @@
           "type": "integer"
         },
         "field_key": {
-          "description": "Mã cột chuẩn của ô, ví dụ amount, order_date.",
+          "description": "Mã cột chuẩn của ô, ví dụ amount, order_date, order_id.",
+          "enum": [
+            "order_id",
+            "order_date",
+            "customer_name",
+            "customer_phone",
+            "amount",
+            "fee",
+            "net_amount",
+            "payment_method",
+            "status",
+            "payment_id",
+            "payment_batch",
+            "transaction_date",
+            "bank_ref",
+            "debit",
+            "credit",
+            "balance",
+            "description"
+          ],
           "type": "string"
         },
         "value": {
@@ -479,6 +517,25 @@
         },
         "field_key": {
           "description": "Mã cột ngày, ví dụ order_date, transaction_date.",
+          "enum": [
+            "order_id",
+            "order_date",
+            "customer_name",
+            "customer_phone",
+            "amount",
+            "fee",
+            "net_amount",
+            "payment_method",
+            "status",
+            "payment_id",
+            "payment_batch",
+            "transaction_date",
+            "bank_ref",
+            "debit",
+            "credit",
+            "balance",
+            "description"
+          ],
           "type": "string"
         },
         "order": {

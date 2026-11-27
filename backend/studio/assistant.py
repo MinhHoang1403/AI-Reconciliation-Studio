@@ -32,6 +32,7 @@ from studio.assistant_tools import (
     TOOLS,
     TOOLS_BY_NAME,
     NoArgs,
+    NothingToDo,
     ToolError,
     list_datasets,
     list_periods,
@@ -394,6 +395,11 @@ def _execute(session: Session, reply: ChatMessage, call: ToolCall) -> dict[str, 
                 result = tool.run(session, args)
                 _add_link(session, reply, result.pop("_link", None))
             _finish_step(session, reply, index, "DONE")
+        except NothingToDo as notice:
+            # Dữ liệu đã đúng như yêu cầu: không có gì để làm, không phải lỗi.
+            session.rollback()
+            _finish_step(session, reply, index, "DONE")
+            result = {"status": "NO_CHANGE_NEEDED", "note": str(notice)}
         except ToolError as error:
             session.rollback()
             _finish_step(session, reply, index, "FAILED")
