@@ -49,7 +49,7 @@ KIND_LABELS = {
     "AMOUNT_MISMATCH": "lệch tiền",
     "ONLY_IN_A": "chỉ có ở bên trái (thiếu tiền về)",
     "ONLY_IN_B": "chỉ có ở bên phải (tiền về chưa rõ nguồn)",
-    "DUPLICATE": "trùng (trừ tiền hai lần)",
+    "DUPLICATE": "trùng (dòng lặp hoặc khách bị trừ tiền hai lần)",
     "AMBIGUOUS": "mơ hồ, cần người dùng chọn",
     "NEEDS_CLEANING": "dòng còn lỗi ở bước làm sạch",
     "OUT_OF_SCOPE": "ngoài phạm vi (tiền ra)",
