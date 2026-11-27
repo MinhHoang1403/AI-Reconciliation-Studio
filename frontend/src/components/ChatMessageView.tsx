@@ -137,7 +137,9 @@ export function ChatMessageView({ message, busy, onDecide }: Props) {
       </li>
     );
   }
-  const thinking = message.status === "RUNNING" && !message.steps.some((step) => step.status === "RUNNING");
+  // "Đang suy nghĩ…" chỉ khi không có bước nào đang chạy và chữ chưa bắt đầu hiện.
+  const thinking =
+    message.status === "RUNNING" && !message.text && !message.steps.some((step) => step.status === "RUNNING");
   return (
     <li className="chat-message" data-role="assistant" data-status={message.status} aria-busy={message.status === "RUNNING"}>
       <span className="chat-message__who">AI Assistant</span>

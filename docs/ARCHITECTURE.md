@@ -178,6 +178,8 @@ Gemini có **gọi công cụ** (function calling): model không tự chạy hà
 - Gemini chỉ nhận câu chat, tên cột, thống kê và vài giá trị mẫu; không nhận toàn bộ dữ liệu.
 - Mỗi lần gọi có timeout, giới hạn token. Chỉ gọi khi người dùng thao tác, không gọi lúc khởi động ([R11](../RULES.md)).
 
+**Hiện câu trả lời đang soạn bằng SSE** (Server-Sent Events, luồng một chiều từ máy chủ tới trình duyệt qua HTTP thường; FastAPI có sẵn `EventSourceResponse` ([FastAPI SSE][fastapi-sse]), Nginx không giữ lại dữ liệu nhờ header `X-Accel-Buffering: no` ([Nginx][nginx-buffering])). Lượt chat vẫn chạy nền, không phụ thuộc kết nối; `GET /api/assistant/messages/{id}/events` chỉ chuyển tiếp: `stage` (trạng thái đầy đủ của các bước, thẻ, nút dẫn trang sau mỗi lần ghi), `delta` (đoạn chữ mới; Gemini gọi bằng `generate_content_stream`), `complete` (tin nhắn đã lưu, rồi đóng luồng). Kết nối mới hay nối lại nhận ảnh chụp trước nên không mất, không lặp chữ. Mã kỹ thuật được đổi ngay trên từng đoạn: từ cuối và ngoặc chưa đóng được giữ lại tới khi đủ để đổi. Bộ phát sự kiện nằm trong bộ nhớ của tiến trình backend (chạy một tiến trình).
+
 **Theo dõi bằng Langfuse:** mỗi câu chat là một *trace* (dấu vết), bên trong có các *span* (từng bước): lần gọi Gemini, từng công cụ, thời gian, token, lỗi. Langfuse SDK Python dựng trên OpenTelemetry ([Langfuse SDK][langfuse-sdk]); backend tự ghi mỗi lần gọi Gemini thành một *generation* (đầu vào đã che, đầu ra, token, lỗi) thay vì dùng gói tự ghi của bên thứ ba, để kiểm soát được nội dung gửi lên. Dùng bộ Langfuse **đã có trên máy**, nên dữ liệu trace không rời máy. Bên cạnh đó, bảng `ai_calls` lưu token và thời gian của mọi lần gọi kể cả khi Langfuse tắt, và mỗi lần gọi được ghi thành một tệp JSON trong `data-docs/runtime/ai-calls/` (đầu vào đã che, khuôn JSON hoặc khai báo công cụ, câu trả lời) làm bằng chứng cho người lập trình.
 
 **Nhật ký kiểm toán.** Mọi thay đổi của người dùng (xác nhận/đổi ánh xạ, sửa ô, giữ/loại dòng, đổi cách đọc ngày, xử lý ngoại lệ) được ghi tự động vào `audit_log`: ai, lúc nào, đối tượng, giá trị trước và sau. Phần mềm đối soát chuyên nghiệp đều ghi lại từng lần ghép, ngoại lệ, duyệt và điều chỉnh kèm thời điểm để phục vụ kiểm toán ([HighRadius][highradius]). Xem ở trang "Lịch sử".
@@ -223,7 +225,7 @@ Mỗi bước của luồng dữ liệu (mục 4) nằm ở đúng một nhóm f
 | Kỳ, chuỗi ba bên, lưu kết quả | `recon_service.py` (kỳ, cặp nối được, hai lượt của chuỗi, dòng chờ kỳ trước, lựa chọn của người dùng) | `recon_api.py` | `ChainView` | `test_phase5` |
 | 9. Kiểm chứng | `recon_verification.py` (độc lập với engine) | `recon_api.py` (`/verify`) | `VerificationSeal` | `test_reconciliation`, `test_phase5` |
 | AI giải thích | `gemini_client.py` (timeout, thử lại, bảng `ai_calls`), `tracing.py` (Langfuse), `recon_ai.py` | (trong các API trên) | nút "Giải thích" | `test_mapping`, `test_recon_review_fixes` |
-| AI Assistant | `assistant.py` (vòng gọi công cụ, tối đa 8 bước), `assistant_tools.py` (25 công cụ: 10 đọc gồm `get_report`, 4 xử lý, 11 thay đổi qua thẻ xác nhận), `gemini_client.generate_with_tools` | `assistant_api.py` | `pages/AssistantPage`, `ChatMessageView` | `test_assistant`; đo Gemini thật: `tools/evaluate_assistant.py` |
+| AI Assistant | `assistant.py` (vòng gọi công cụ, tối đa 8 bước, chữ đang viết), `assistant_events.py` (bộ phát sự kiện SSE), `assistant_tools.py` (25 công cụ: 10 đọc gồm `get_report`, 4 xử lý, 11 thay đổi qua thẻ xác nhận), `gemini_client.generate_with_tools` | `assistant_api.py` | `pages/AssistantPage`, `ChatMessageView` | `test_assistant`, `test_assistant_stream`; đo Gemini thật: `tools/evaluate_assistant.py` |
 | Nhật ký kiểm toán | `audit.py` | `recon_api.py` (`/audit`) | `pages/HistoryPage` | các bài có kiểm `audit_log` |
 | 10. Báo cáo, KPI, xuất tệp | `reporting.py` (số liệu từ kết quả đã lưu), `report_export.py` (XLSX/CSV), `report_ai.py` (nhận xét AI có kiểm số) | `report_api.py` (`/api/reports`) | `pages/ReportsPage`, `ReportCharts`, khối số chính trên `OverviewPage` | `test_reports` |
 | Data model, data catalog, nhật ký AI ra tệp | `data_docs.py` (phần tĩnh sinh từ code; ghi mỗi lần gọi Gemini và catalog động của từng bộ dữ liệu ra `data-docs/runtime/`) | — | — | `test_data_docs`; sinh lại: `tools/export_data_docs.py` |
@@ -269,6 +271,8 @@ Kiểm hồi quy cho các lỗi tìm thấy khi rà toàn bộ nền: `test_foun
 [gemini-model]: https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite
 [gemini-fc]: https://ai.google.dev/gemini-api/docs/function-calling
 [gemini-structured]: https://ai.google.dev/gemini-api/docs/structured-output
+[fastapi-sse]: https://fastapi.tiangolo.com/tutorial/server-sent-events/
+[nginx-buffering]: https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_buffering
 [langfuse-sdk]: https://langfuse.com/docs/observability/sdk/python/setup
 [langfuse-gemini]: https://langfuse.com/integrations/model-providers/google-gemini
 [paychex]: https://www.paychex.com/articles/finance/what-is-a-bank-reconciliation

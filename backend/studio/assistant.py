@@ -6,7 +6,9 @@ Mỗi lượt (docs/PLAN.md GĐ6, docs/DECISIONS.md 2026-11-23):
    tên công cụ + tham số (function calling; SDK không tự gọi hàm).
 3. Backend kiểm tham số theo khuôn rồi chạy công cụ đọc/xử lý; công cụ thay đổi chỉ tạo thẻ
    xác nhận. Kết quả công cụ gửi lại Gemini dưới dạng dữ liệu JSON. Lặp tối đa 8 bước.
-4. Mỗi bước được ghi ngay vào tin nhắn để giao diện hiện "đang làm gì"; không streaming.
+4. Mỗi bước được ghi ngay vào tin nhắn và phát qua SSE (`assistant_events`): sự kiện `stage`
+   cho các bước, thẻ, nút dẫn trang; `delta` cho từng đoạn chữ Gemini đang viết; `complete` khi
+   câu trả lời đã lưu (DECISIONS 2026-11-27).
 
 Mỗi lượt là một trace Langfuse: bước "agent" bao các lần gọi Gemini ("generation") và các
 công cụ ("tool"). Gemini không bao giờ tự quyết định con số hay cặp ghép: mọi con số trong
@@ -18,13 +20,14 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import Callable
 from datetime import date
 from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from studio import audit, database, gemini_client, recon_api
+from studio import assistant_events, audit, database, gemini_client, recon_api
 from studio.assistant_tools import (
     TOOLS,
     TOOLS_BY_NAME,
@@ -103,6 +106,53 @@ def plain_text(text: str) -> str:
     return _BARE_CODE.sub(lambda match: PLAIN_LABELS[match.group(1)], text)
 
 
+class DraftText:
+    """Gom từng đoạn chữ Gemini đang viết và phát phần đã chắc chắn (sự kiện `delta`).
+
+    Bộ đổi mã kỹ thuật (`plain_text`) cần thấy trọn từ và trọn cặp ngoặc: một mã có thể bị cắt
+    giữa hai đoạn ("AMBIG" + "UOUS"), cụm "(loại AMBIGUOUS)" có thể tới nửa chừng. Vì vậy giữ
+    lại từ cuối chưa có khoảng trắng phía sau, mọi phần từ dấu "(" chưa đóng, và khoảng trắng
+    ngay trước chúng; phần còn lại được đổi mã rồi mới phát. Thông thường phần đã đổi chỉ dài
+    thêm nên chỉ phát đoạn mới; nếu bản đổi lại khác phần đã phát thì phát cả bản (`reset`).
+    Bản chuẩn cuối cùng vẫn là câu trả lời lưu trong sự kiện `complete`."""
+
+    def __init__(self, emit: Callable[[dict[str, Any]], None]) -> None:
+        self.emit = emit
+        self.raw = ""
+        self.sent = ""
+
+    def add(self, piece: str) -> None:
+        self.raw += piece
+        self._send(self._settled())
+
+    def _settled(self) -> str:
+        text = self.raw
+        # Từ cuối có thể còn đang viết dở.
+        cut = max(text.rfind(" "), text.rfind("\n"), text.rfind("\t"))
+        text = text[: cut + 1] if cut >= 0 else ""
+        # Ngoặc chưa đóng: chờ tới dấu ")" mới biết có phải chỉ nhắc lại mã hay không.
+        opened = text.rfind("(")
+        if opened > text.rfind(")"):
+            text = text[:opened]
+        return text.rstrip()
+
+    def _send(self, settled: str) -> None:
+        clean = plain_text(settled)
+        if clean == self.sent:
+            return
+        if clean.startswith(self.sent):
+            self.emit({"text": clean[len(self.sent) :]})
+        else:
+            self.emit({"text": clean, "reset": True})
+        self.sent = clean
+
+    def clear(self) -> None:
+        """Lượt này Gemini gọi công cụ: bỏ phần chữ mở đầu đã phát (câu trả lời thật tới sau)."""
+        if self.sent:
+            self.emit({"text": "", "reset": True})
+        self.raw = self.sent = ""
+
+
 STATUS_TEXT = {
     "PENDING": "đang chờ người dùng xác nhận",
     "DONE": "người dùng đã đồng ý, đã thực hiện",
@@ -111,13 +161,19 @@ STATUS_TEXT = {
 }
 
 
-def ask_model(conversation: list[dict[str, Any]], tools: list[dict[str, Any]]) -> ModelTurn:
-    """Một lần gọi Gemini (tách riêng để kiểm thử thay bằng câu trả lời giả lập)."""
+def ask_model(
+    conversation: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    on_text: Callable[[str], None] | None = None,
+) -> ModelTurn:
+    """Một lần gọi Gemini (tách riêng để kiểm thử thay bằng câu trả lời giả lập). Có `on_text`
+    thì Gemini trả từng đoạn (streaming) và mỗi đoạn chữ được chuyển ngay cho `on_text`."""
     return gemini_client.generate_with_tools(
         purpose="assistant",
         system_instruction=SYSTEM_INSTRUCTION,
         conversation=conversation,
         tools=tools,
+        on_text=on_text,
     )
 
 
@@ -131,13 +187,39 @@ def tool_declarations() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------- ghi bước vào tin nhắn
 
 
+def message_view(message: ChatMessage) -> dict[str, Any]:
+    """Tin nhắn như giao diện thấy: dùng chung cho API và cho sự kiện SSE."""
+    return {
+        "id": str(message.id),
+        "role": message.role,
+        # Câu trả lời lưu trước khi có bước đổi mã kỹ thuật (27/11/2026) cũng hiện nhãn tiếng
+        # Việt; câu của người dùng giữ nguyên chữ họ gõ.
+        "text": plain_text(message.text)
+        if message.role == "assistant" and message.text
+        else message.text,
+        "status": message.status,
+        "attachments": message.attachments,
+        "steps": message.steps,
+        "actions": [
+            {key: card[key] for key in ("id", "title", "detail", "status", "result")}
+            for card in message.actions
+        ],
+        "links": message.links,
+        "created_at": message.created_at.isoformat() if message.created_at else None,
+    }
+
+
 def _save(session: Session, reply: ChatMessage, **changes: Any) -> None:
-    """Ghi thay đổi của tin nhắn ngay (giao diện hỏi lại mỗi giây để hiện từng bước).
+    """Ghi thay đổi của tin nhắn ngay rồi phát cho giao diện: còn đang soạn thì `stage`, đã
+    xong (DONE/FAILED) thì `complete`. Phát sau khi ghi để kết nối mới đọc cơ sở dữ liệu luôn
+    thấy ít nhất những gì đã phát.
 
     Cột JSON phải được gán danh sách mới thì SQLAlchemy mới thấy thay đổi."""
     for name, value in changes.items():
         setattr(reply, name, value)
     session.commit()
+    event = "stage" if reply.status == "RUNNING" else "complete"
+    assistant_events.publish(reply.id, event, message_view(reply))
 
 
 def _add_step(
@@ -353,12 +435,14 @@ def _run_turn(reply_id: uuid.UUID) -> None:
             conversation = _history(thread, reply, extra + _workspace_context(session))
             tools = tool_declarations()
             text = ""
+            draft = DraftText(lambda data: assistant_events.publish(reply.id, "delta", data))
             try:
                 for _ in range(MAX_STEPS):
-                    turn = ask_model(conversation, tools)
+                    turn = ask_model(conversation, tools, draft.add)
                     if not turn.calls:
                         text = turn.text
                         break
+                    draft.clear()
                     conversation.append(
                         {
                             "role": "model",

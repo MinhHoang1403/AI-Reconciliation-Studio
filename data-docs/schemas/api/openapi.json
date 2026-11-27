@@ -2126,6 +2126,62 @@
         }
       }
     },
+    "/api/assistant/messages/{message_id}/events": {
+      "get": {
+        "summary": "Message Events",
+        "description": "Luồng SSE của một câu trả lời: `stage` (các bước, thẻ, nút), `delta` (chữ đang viết),\n`complete` (tin nhắn cuối cùng, rồi đóng luồng).\n\nBắt đầu nghe trước rồi mới đọc ảnh chụp, nên không lọt sự kiện nào ở giữa; sự kiện có số\nthứ tự không lớn hơn ảnh chụp thì đã nằm trong ảnh chụp nên bỏ qua. Mỗi lần trình duyệt nối\nlại là một lần gọi mới, nhận ảnh chụp mới, nên không cần phát lại theo Last-Event-ID.",
+        "operationId": "message_events_api_assistant_messages__message_id__events_get",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/event-stream": {
+                "itemSchema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "string"
+                    },
+                    "event": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "retry": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/reports": {
       "get": {
         "summary": "List Reports",

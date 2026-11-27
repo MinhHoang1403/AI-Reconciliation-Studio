@@ -25,6 +25,7 @@ client = TestClient(main.app)
 PROMPTS = ROOT / "tests" / "fixtures" / "assistant" / "cau-lenh-mau.json"
 INJECTED = ROOT / "tests" / "fixtures" / "assistant" / "sao-ke-cai-lenh.csv"
 
+STREAM_PIECE = 7  # số ký tự mỗi đoạn chữ giả lập
 type Step = ModelTurn | Callable[[list[dict[str, Any]]], ModelTurn]
 
 
@@ -36,11 +37,19 @@ class FakeGemini:
         self.seen: list[list[dict[str, Any]]] = []
 
     def __call__(
-        self, conversation: list[dict[str, Any]], tools: list[dict[str, Any]]
+        self,
+        conversation: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        on_text: Callable[[str], None] | None = None,
     ) -> ModelTurn:
         self.seen.append([dict(entry) for entry in conversation])
         step = self.steps.pop(0) if self.steps else ModelTurn("Xong.", [])
-        return step(conversation) if callable(step) else step
+        turn = step(conversation) if callable(step) else step
+        # Như Gemini streaming: chữ tới thành từng đoạn ngắn, cắt ngang cả từ và mã.
+        for start in range(0, len(turn.text), STREAM_PIECE):
+            if on_text is not None:
+                on_text(turn.text[start : start + STREAM_PIECE])
+        return turn
 
     def tool_results(self) -> list[dict[str, Any]]:
         last = self.seen[-1]

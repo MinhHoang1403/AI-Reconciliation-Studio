@@ -14,6 +14,7 @@ import re
 import threading
 import time
 import uuid
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -327,15 +328,48 @@ def _to_contents(conversation: list[dict[str, Any]]) -> list[Any]:
     return contents
 
 
+def collect_stream(chunks: Iterable[Any], on_text: Callable[[str], None]) -> Any:
+    """Gom các đoạn của `generate_content_stream` thành một câu trả lời như gọi thường.
+
+    Giữ nguyên mọi phần (part) theo đúng thứ tự nhận, không nối hay bỏ phần nào (kể cả phần
+    chữ rỗng): model Gemini 3 gắn "chữ ký suy nghĩ" (thought signature) vào các phần của câu
+    trả lời và câu trả lời phải được gửi lại nguyên vẹn ở lần gọi sau trong cùng lượt (xem
+    `ModelTurn.raw`). Tài liệu chưa nói chữ ký nằm ở đoạn nào khi streaming, nên không gộp gì
+    là cách an toàn; đã thử với Gemini thật qua các lượt nhiều bước công cụ (DECISIONS
+    2026-11-27). Lời gọi công cụ cũng đọc từ chính các phần này. Phần suy nghĩ (`thought`)
+    không bao giờ được hiện cho người dùng. Số token lấy từ đoạn cuối có thống kê."""
+    from google.genai import types
+
+    parts: list[Any] = []
+    usage = None
+    for chunk in chunks:
+        usage = chunk.usage_metadata or usage
+        content = chunk.candidates[0].content if chunk.candidates else None
+        for part in (content.parts or []) if content else []:
+            parts.append(part)
+            if part.text and not part.thought:
+                on_text(part.text)
+    return types.GenerateContentResponse(
+        candidates=[types.Candidate(content=types.Content(role="model", parts=parts))],
+        usage_metadata=usage,
+    )
+
+
 def generate_with_tools(
     *,
     purpose: str,
     system_instruction: str,
     conversation: list[dict[str, Any]],
     tools: list[dict[str, Any]],
+    on_text: Callable[[str], None] | None = None,
 ) -> ModelTurn:
     """Gửi hội thoại cho Gemini kèm danh sách công cụ; Gemini chỉ trả tên công cụ và tham số,
-    không tự chạy gì (tắt tự gọi hàm của SDK). Backend kiểm tham số rồi mới chạy công cụ."""
+    không tự chạy gì (tắt tự gọi hàm của SDK). Backend kiểm tham số rồi mới chạy công cụ.
+
+    Có `on_text` thì gọi dạng streaming (`generate_content_stream`): mỗi đoạn chữ tới được
+    chuyển ngay cho `on_text` để giao diện hiện dần; các đoạn được gom lại thành một câu trả
+    lời đầy đủ nên phần sau (đọc công cụ, ghi token, Langfuse, data-docs) giữ nguyên như gọi
+    thường. Vẫn là một lần gọi Gemini, cùng hạn mức."""
     from google.genai import types
 
     config = types.GenerateContentConfig(
@@ -371,13 +405,21 @@ def generate_with_tools(
         turn = ModelTurn(text=text.strip(), calls=calls, raw=content)
         return turn, {"text": turn.text, "calls": [call.__dict__ for call in calls]}
 
+    def request(client: Any) -> Any:
+        if on_text is None:
+            return client.models.generate_content(
+                model=settings.gemini_model, contents=contents, config=config
+            )
+        chunks = client.models.generate_content_stream(
+            model=settings.gemini_model, contents=contents, config=config
+        )
+        return collect_stream(chunks, on_text)
+
     turn: ModelTurn = _generate(
         purpose,
         traced,
         None,
-        lambda client: client.models.generate_content(
-            model=settings.gemini_model, contents=contents, config=config
-        ),
+        request,
         read,
         None,
         {
@@ -389,6 +431,7 @@ def generate_with_tools(
                 "temperature": 0,
                 "max_output_tokens": settings.gemini_max_output_tokens,
                 "automatic_function_calling": False,
+                "stream": on_text is not None,
             },
         },
     )

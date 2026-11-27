@@ -1,16 +1,21 @@
-"""API của AI Assistant: hội thoại, gửi câu chat, đồng ý hoặc bỏ qua thẻ xác nhận."""
+"""API của AI Assistant: hội thoại, gửi câu chat, theo dõi câu trả lời đang soạn (SSE), đồng ý
+hoặc bỏ qua thẻ xác nhận."""
 
+import asyncio
 import logging
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Response
+from fastapi.concurrency import run_in_threadpool
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from studio import assistant
+from studio import assistant, assistant_events, database
 from studio.assistant_tools import TOOLS_BY_NAME, ToolError
 from studio.database import get_session
 from studio.datasets_api import fail
@@ -20,6 +25,11 @@ router = APIRouter(prefix="/api/assistant")
 logger = logging.getLogger(__name__)
 SessionDep = Annotated[Session, Depends(get_session)]
 TITLE_LENGTH = 60
+# Kết nối SSE im lặng quá lâu thì đọc lại cơ sở dữ liệu một lần: phòng khi lượt chat kết thúc
+# mà không phát được `complete` (ví dụ backend vừa khởi động lại, tin nhắn bị đánh dấu lỗi).
+STREAM_RECHECK_SECONDS = 10.0
+# Thời gian trình duyệt chờ trước khi tự nối lại khi mất kết nối (mili giây).
+STREAM_RETRY_MS = 2000
 
 
 class NewThread(BaseModel):
@@ -35,27 +45,6 @@ class CardDecision(BaseModel):
     decision: Literal["CONFIRM", "CANCEL"]
 
 
-def _message_view(message: ChatMessage) -> dict[str, Any]:
-    return {
-        "id": str(message.id),
-        "role": message.role,
-        # Câu trả lời lưu trước khi có bước đổi mã kỹ thuật (27/11/2026) cũng hiện nhãn tiếng
-        # Việt; câu của người dùng giữ nguyên chữ họ gõ.
-        "text": assistant.plain_text(message.text)
-        if message.role == "assistant" and message.text
-        else message.text,
-        "status": message.status,
-        "attachments": message.attachments,
-        "steps": message.steps,
-        "actions": [
-            {key: card[key] for key in ("id", "title", "detail", "status", "result")}
-            for card in message.actions
-        ],
-        "links": message.links,
-        "created_at": message.created_at.isoformat() if message.created_at else None,
-    }
-
-
 def _running(thread: ChatThread) -> bool:
     return any(message.status == "RUNNING" for message in thread.messages)
 
@@ -66,7 +55,7 @@ def thread_view(thread: ChatThread) -> dict[str, Any]:
         "title": thread.title,
         "running": _running(thread),
         "updated_at": thread.updated_at.isoformat() if thread.updated_at else None,
-        "messages": [_message_view(message) for message in thread.messages],
+        "messages": [assistant.message_view(message) for message in thread.messages],
     }
 
 
@@ -212,3 +201,69 @@ def decide_card(
     message.thread.updated_at = datetime.now(UTC)
     session.commit()
     return thread_view(message.thread)
+
+
+# ---------------------------------------------------------------- theo dõi câu trả lời (SSE)
+
+
+def _message_snapshot(message_id: uuid.UUID) -> dict[str, Any] | None:
+    """Đọc tin nhắn bằng phiên riêng, ngắn: kết nối SSE sống lâu nên không giữ phiên của yêu
+    cầu (và không giữ kết nối cơ sở dữ liệu) suốt thời gian nghe."""
+    with database.SessionFactory() as session:
+        message = session.get(ChatMessage, message_id)
+        return assistant.message_view(message) if message is not None else None
+
+
+def _existing_message(message_id: uuid.UUID) -> uuid.UUID:
+    """Kiểm tin nhắn có thật trước khi mở luồng (sau khi luồng mở thì không trả lỗi 404 được)."""
+    if _message_snapshot(message_id) is None:
+        raise fail(404, "MESSAGE_NOT_FOUND", "Không tìm thấy tin nhắn.")
+    return message_id
+
+
+@router.get("/messages/{message_id}/events", response_class=EventSourceResponse)
+async def message_events(
+    message_id: Annotated[uuid.UUID, Depends(_existing_message)],
+) -> AsyncIterator[ServerSentEvent]:
+    """Luồng SSE của một câu trả lời: `stage` (các bước, thẻ, nút), `delta` (chữ đang viết),
+    `complete` (tin nhắn cuối cùng, rồi đóng luồng).
+
+    Bắt đầu nghe trước rồi mới đọc ảnh chụp, nên không lọt sự kiện nào ở giữa; sự kiện có số
+    thứ tự không lớn hơn ảnh chụp thì đã nằm trong ảnh chụp nên bỏ qua. Mỗi lần trình duyệt nối
+    lại là một lần gọi mới, nhận ảnh chụp mới, nên không cần phát lại theo Last-Event-ID."""
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[assistant_events.Event] = asyncio.Queue()
+
+    def listen(event: assistant_events.Event) -> None:
+        # Gọi từ luồng nền của lượt chat: chuyển sự kiện về vòng sự kiện của kết nối này.
+        loop.call_soon_threadsafe(queue.put_nowait, event)
+
+    draft, seq = assistant_events.subscribe(message_id, listen)
+    try:
+        view = await run_in_threadpool(_message_snapshot, message_id)
+        if view is None or view["status"] != "RUNNING":
+            if view is not None:
+                yield ServerSentEvent(event="complete", data=view, id=str(seq))
+            return
+        yield ServerSentEvent(event="stage", data=view, id=str(seq), retry=STREAM_RETRY_MS)
+        if draft:
+            yield ServerSentEvent(event="delta", data={"text": draft, "reset": True}, id=str(seq))
+        while True:
+            try:
+                number, name, data = await asyncio.wait_for(
+                    queue.get(), timeout=STREAM_RECHECK_SECONDS
+                )
+            except TimeoutError:
+                view = await run_in_threadpool(_message_snapshot, message_id)
+                if view is None or view["status"] != "RUNNING":
+                    if view is not None:
+                        yield ServerSentEvent(event="complete", data=view)
+                    return
+                continue
+            if number <= seq:
+                continue
+            yield ServerSentEvent(event=name, data=data, id=str(number))
+            if name == "complete":
+                return
+    finally:
+        assistant_events.unsubscribe(message_id, listen)

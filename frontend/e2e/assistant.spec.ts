@@ -26,6 +26,12 @@ test("hỏi Assistant một câu chỉ đọc, xem các bước và câu trả l
     // Câu phải tra công cụ (số ca cần xem); câu hỏi chỉ về danh sách tệp giờ được trả lời thẳng
     // từ khối bối cảnh gửi kèm mỗi lượt nên có thể không có bước nào.
     await input.fill("Còn bao nhiêu ca cần tôi xem?");
+    // Câu trả lời đang soạn đến qua luồng SSE (stage, delta, complete), không hỏi lại mỗi giây.
+    const streamed = page.waitForResponse((response) => /\/api\/assistant\/messages\/[^/]+\/events$/.test(response.url()));
+    let threadReads = 0;
+    page.on("request", (request) => {
+      if (request.method() === "GET" && /\/api\/assistant\/threads\/[^/]+$/.test(new URL(request.url()).pathname)) threadReads += 1;
+    });
     await input.press("Enter");
 
     const answer = page.locator(".chat-message[data-role='assistant']").last();
@@ -34,6 +40,10 @@ test("hỏi Assistant một câu chỉ đọc, xem các bước và câu trả l
     await expect(answer).toHaveAttribute("aria-busy", "false", { timeout: 120_000 });
     await expect(answer.locator(".chat-steps li").first()).toBeVisible();
     await expect(answer.locator(".chat-text, .chat-message__error")).toBeVisible();
+    const stream = await streamed;
+    expect(stream.headers()["content-type"]).toContain("text/event-stream");
+    // Sau `complete` trang đọc lại cuộc trò chuyện đúng một lần cho chắc.
+    expect(threadReads).toBeLessThanOrEqual(2);
 
     const width = await horizontalOverflow(page);
     expect(width).toBeLessThanOrEqual(0);

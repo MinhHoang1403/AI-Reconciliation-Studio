@@ -977,6 +977,16 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 @keyframes chat-pulse { from { opacity: 0.35; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
 
 .chat-text { display: grid; gap: 8px; line-height: 1.6; overflow-wrap: anywhere; }
+/* Chữ đang hiện dần: con trỏ nhấp nháy ở cuối đoạn cuối (không nháy khi giảm chuyển động). */
+.chat-message[data-status="RUNNING"] .chat-text > :last-child:not(ul):not(ol)::after,
+.chat-message[data-status="RUNNING"] .chat-text > :is(ul, ol):last-child > li:last-child::after {
+  content: ""; display: inline-block; width: 2px; height: 1.1em; margin-left: 3px; vertical-align: -0.2em;
+  background: var(--active); border-radius: 1px; animation: chat-caret 1s steps(1) infinite;
+}
+@keyframes chat-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .chat-message[data-status="RUNNING"] .chat-text *::after { animation: none; }
+}
 .chat-text ul, .chat-text ol { display: grid; gap: 4px; padding-left: 22px; }
 .chat-text ul { list-style: disc; }
 .chat-text ol { list-style: decimal; }

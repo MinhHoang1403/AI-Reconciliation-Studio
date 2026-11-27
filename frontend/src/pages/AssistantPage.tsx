@@ -33,9 +33,12 @@ import { formatCount, formatDateTime } from "../format";
 // Trang AI Assistant (docs/DECISIONS.md 2026-11-23): danh sách cuộc trò chuyện bên trái,
 // khung chat bên phải. Tệp kéo-thả hoặc đính kèm được tải lên bằng đúng API của trang Dữ
 // liệu rồi gửi kèm câu chat; Assistant chờ đọc, ánh xạ, làm sạch xong mới trả lời. Câu trả
-// lời đang soạn được hỏi lại mỗi giây để hiện từng bước (không streaming).
+// lời đang soạn được theo dõi qua luồng SSE (DECISIONS 2026-11-27): `stage` cho các bước, thẻ,
+// nút dẫn trang; `delta` cho chữ đang viết; `complete` khi đã lưu.
 
-const POLL_MS = 1000;
+// Luồng SSE bị đóng hẳn (lỗi mạng kéo dài, backend khởi động lại): chờ bấy nhiêu rồi đọc lại
+// cuộc trò chuyện và mở luồng mới. Mất kết nối tạm thời thì trình duyệt tự nối lại.
+const STREAM_RETRY_MS = 2000;
 const LAST_THREAD = "assistant.thread";
 const THREADS_COLLAPSED = "assistant.threads-collapsed";
 const ACCEPT = ".csv,.xlsx";
@@ -134,21 +137,57 @@ export function AssistantPage() {
     return () => controller.abort();
   }, []);
 
-  // Câu trả lời đang soạn: hỏi lại mỗi giây để hiện từng bước. Một lần hỏi lỗi (mạng chập
-  // chờn, backend khởi động lại) thì vẫn hỏi lại lần sau, không đứng hình ở "đang suy nghĩ".
-  const [pollMiss, setPollMiss] = useState(0);
+  // Câu trả lời đang soạn: nghe luồng SSE của đúng tin nhắn đó thay vì hỏi lại mỗi giây.
+  // Mỗi lần kết nối (kể cả trình duyệt tự nối lại) backend gửi trước ảnh chụp đầy đủ (`stage`
+  // và bản nháp chữ), nên không mất bước hay chữ nào. `complete` mang tin nhắn đã lưu: thay bản
+  // nháp bằng bản chuẩn rồi đọc lại cả cuộc trò chuyện một lần cho chắc.
+  const threadId = thread?.id ?? null;
+  const runningId = thread?.messages.find((item) => item.status === "RUNNING")?.id ?? null;
+  const [streamRound, setStreamRound] = useState(0);
   useEffect(() => {
-    if (!thread?.running) return;
-    const timer = window.setTimeout(() => {
-      getThread(thread.id)
-        .then((next) => {
-          setThread(next);
-          if (!next.running) refreshList();
-        })
-        .catch(() => setPollMiss((value) => value + 1));
-    }, POLL_MS);
-    return () => window.clearTimeout(timer);
-  }, [thread, pollMiss, refreshList]);
+    if (!threadId || !runningId) return;
+    const source = new EventSource(`/api/assistant/messages/${runningId}/events`);
+    let draft = "";
+    let timer = 0;
+    const patch = (update: (current: ChatMessage) => ChatMessage) =>
+      setThread((current) => {
+        if (!current || current.id !== threadId) return current;
+        const messages = current.messages.map((item) => (item.id === runningId ? update(item) : item));
+        return { ...current, messages, running: messages.some((item) => item.status === "RUNNING") };
+      });
+    const reload = () =>
+      getThread(threadId)
+        .then((next) => setThread((current) => (current?.id === threadId ? next : current)))
+        .catch(() => undefined);
+    const read = <T,>(event: Event) => JSON.parse((event as MessageEvent<string>).data) as T;
+
+    source.addEventListener("stage", (event) => {
+      const next = read<ChatMessage>(event);
+      patch(() => ({ ...next, text: draft }));
+    });
+    source.addEventListener("delta", (event) => {
+      const piece = read<{ text: string; reset?: boolean }>(event);
+      draft = piece.reset ? piece.text : draft + piece.text;
+      patch((current) => ({ ...current, text: draft }));
+    });
+    source.addEventListener("complete", (event) => {
+      source.close();
+      patch(() => read<ChatMessage>(event));
+      void reload();
+      refreshList();
+    });
+    source.onerror = () => {
+      // CONNECTING: trình duyệt đang tự nối lại. CLOSED: luồng bị từ chối hẳn, tự mở lại sau.
+      if (source.readyState !== EventSource.CLOSED) return;
+      timer = window.setTimeout(() => {
+        void reload().then(() => setStreamRound((value) => value + 1));
+      }, STREAM_RETRY_MS);
+    };
+    return () => {
+      source.close();
+      window.clearTimeout(timer);
+    };
+  }, [threadId, runningId, streamRound, refreshList]);
 
   // Cuộn trong khung chat. Màn hình rộng: vùng tin nhắn tự cuộn; điện thoại: cả trang cuộn và
   // ô nhập dính trên thanh tab. Trước đây scrollIntoView đặt cuối tin nhắn vào đáy cửa sổ nên
