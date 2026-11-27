@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from test_phase5 import PERIOD1, PERIOD2
 
-from studio import database, main
+from studio import assistant, database, main
+from studio.gemini_client import ModelTurn, ToolCall
 from studio.models import ChatMessage, ChatThread, Dataset, MappingMemory
 
 plain = TestClient(main.app)
@@ -218,3 +219,26 @@ def test_list_counts_what_is_inside(field: str) -> None:
     found = next(item for item in plain.get("/api/workspaces").json() if item["name"] == "Đếm")
     assert found[field] == {"datasets": 1, "threads": 1, "reconciliations": 0}[field]
     assert found["last_activity"]
+
+
+def test_assistant_only_sees_its_own_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gemini (giả lập) chỉ nhận dữ liệu của phiên chứa cuộc trò chuyện: khối bối cảnh và công cụ
+    list_datasets không có tệp của phiên khác."""
+    _, first = first_workspace()
+    _, second = open_workspace("Phiên của Assistant")
+    upload(first, "don-hang-cua-hang.csv")
+    mine = upload(second, "giao-dich-cong-thanh-toan.csv")
+    seen: list[list[dict[str, Any]]] = []
+    steps = [ModelTurn("", [ToolCall("list_datasets", {})]), ModelTurn("Xong.", [])]
+
+    def fake(conversation: list[dict[str, Any]], tools: Any, on_text: Any = None) -> ModelTurn:
+        seen.append([dict(entry) for entry in conversation])
+        return steps.pop(0)
+
+    monkeypatch.setattr(assistant, "ask_model", fake)
+    thread = second.post("/api/assistant/threads", json={}).json()
+    second.post(f"/api/assistant/threads/{thread['id']}/messages", json={"text": "Có tệp nào?"})
+    context = seen[0][-1]["text"]
+    assert mine["tables"][0]["id"] in context and "don-hang-cua-hang" not in context
+    listed = next(entry for entry in seen[1] if entry["role"] == "tool")["results"][0]["response"]
+    assert [item["file"] for item in listed["datasets"]] == ["giao-dich-cong-thanh-toan.csv"]

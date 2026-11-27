@@ -95,6 +95,23 @@ test("Không trang nào bị cuộn ngang hay bị thu nhỏ", async ({ page }) 
   }
 });
 
+test("AI Assistant: ô nhập luôn nằm trong màn hình, trên thanh tab, trang không cuộn", async ({ page }) => {
+  await page.goto("/assistant");
+  const composer = page.locator(".chat-composer");
+  await expect(composer).toBeVisible();
+  const box = await composer.boundingBox();
+  const rail = await page.getByRole("navigation", { name: "Điều hướng chính" }).boundingBox();
+  const viewport = page.viewportSize();
+  expect(box && viewport).toBeTruthy();
+  if (!box || !viewport || !rail) return;
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+  // Điện thoại: thanh tab ở đáy; ô nhập phải nằm trên nó (dải chọn phiên ở đầu trang không
+  // được đẩy ô nhập xuống dưới thanh tab).
+  if (rail.y > viewport.height / 2) expect(box.y + box.height).toBeLessThanOrEqual(rail.y);
+  const scroll = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+  expect(scroll).toBeLessThanOrEqual(1);
+});
+
 test("Trang không nhúng được vào trang khác và chỉ chạy script của chính ứng dụng", async ({ page, request }) => {
   for (const path of ["/", "/assets/does-not-matter.js", "/doi-soat"]) {
     const headers = (await request.get(path)).headers();

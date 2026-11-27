@@ -312,6 +312,20 @@ class SalesFixtureBuilder:
                     "Đơn quẹt thẻ nhưng cổng không có giao dịch",
                 )
                 continue
+            if special and pos_line == 2:
+                # Đơn đầu tiên bị cài trùng mã (khác số tiền) ở bước làm sạch: chưa xử lý thì đơn
+                # là "dữ liệu chưa sạch", còn giao dịch của nó tạm là "chỉ có ở B" (bộ mẫu: đơn
+                # đầu tiên trả chuyển khoản nên ca này nằm ở sao kê, xem build_bank).
+                line = emit(txn, code, moment, total)
+                self.answers.add(
+                    f"POS-GW-{code}", relation, "NEEDS_CLEANING", pos_ref, None,
+                    "Đơn còn lỗi trùng mã ở bước làm sạch",
+                )
+                self.answers.add(
+                    f"POS-GW-{code}-TIEN", relation, "ONLY_IN_B", None,
+                    Ref(gateway_file, "", line), "Tiền của đơn còn lỗi trùng mã",
+                )
+                continue
             kind, note, shown_code, charged = "MATCHED", "", code, total
             if special and index == self.GW_SHORT_PAID_AT:
                 kind, charged = "AMOUNT_MISMATCH", total - 20_000
@@ -335,10 +349,15 @@ class SalesFixtureBuilder:
                     "Khách bị trừ tiền hai lần",
                 )
         if special:
-            # Giao dịch có mã đơn không tồn tại trong phần mềm bán hàng → ONLY_IN_B.
-            stray = emit("GD9000000001", "HD000950", dt.datetime(2026, 10, 5, 14, 20, 0), 780_000)
+            # Giao dịch có mã đơn không tồn tại trong phần mềm bán hàng → ONLY_IN_B. Mã nằm ngoài
+            # dải mã đơn của kỳ (bộ mẫu: HD000950), ngày thứ 5 của kỳ.
+            stray_code = f"HD{self.code_start + max(849, self.pos_count + 629):06d}"
+            stray_time = dt.datetime.combine(
+                self.period_start + dt.timedelta(days=4), dt.time(14, 20)
+            )
+            stray = emit("GD9000000001", stray_code, stray_time, 780_000)
             self.answers.add(
-                "GW-ONLY-HD000950",
+                f"GW-ONLY-{stray_code}",
                 relation,
                 "ONLY_IN_B",
                 None,
@@ -497,9 +516,11 @@ class SalesFixtureBuilder:
         if not self.special_cases:
             return
         # Giao dịch không liên quan đơn hàng: tiền ra (phí, lương) ngoài phạm vi; tiền vào lạ.
+        month = self.period_start.month
+        last_month = 12 if month == 1 else month - 1
         for content, debit, credit in [
-            ("PHI QUAN LY TAI KHOAN T10", 22_000, 0),
-            ("CHI LUONG NHAN VIEN T9", 18_500_000, 0),
+            (f"PHI QUAN LY TAI KHOAN T{month}", 22_000, 0),
+            (f"CHI LUONG NHAN VIEN T{last_month}", 18_500_000, 0),
             ("NOP TIEN MAT VAO TK", 0, 5_000_000),
         ]:
             item = BankLine(
@@ -663,7 +684,14 @@ class SalesFixtureBuilder:
         self.build_bank()  # có thể sửa vài đơn cửa hàng để cài ca đặc biệt, nên chạy trước khi ghi
         return {
             self.files["platform"]: self.write_platform(platform_rows),
-            self.files["pos"]: pos_csv(pos_rows) if self.special_cases else plain_pos_csv(pos_rows),
+            self.files["pos"]: pos_csv(
+                pos_rows,
+                injected_errors(
+                    pos_rows, self.period_start, self.code_start + max(800, self.pos_count + 580)
+                ),
+            )
+            if self.special_cases
+            else plain_pos_csv(pos_rows),
             self.files["gateway"]: csv_bytes(
                 [
                     "Mã giao dịch",
@@ -771,35 +799,44 @@ def csv_bytes(
     return ("﻿" if bom else "").encode() + text.getvalue().encode("utf-8")
 
 
-# Lỗi cài sẵn ở cuối tệp đơn hàng cửa hàng; đáp án cho bước làm sạch nằm ở loi-cai-san.csv.
-# Toàn bộ là đơn trả tiền mặt nên không ảnh hưởng đáp án đối soát (dap-an.csv).
-POS_INJECTED_ERRORS = [
-    ["", "06/10/2026 10:15", "Nguyễn Văn Khoa", "0912000111", "450000", "Tiền mặt"],  # thiếu mã
-    ["HD000901", "07/10/2026 11:00", "Lê Thị Mai", "0913000222", "1tr2", "Tiền mặt"],  # viết tắt
-    ["HD000902", "07/10/2026 11:30", "Phạm Văn Tú", "0914000333", "khoảng 500k", "Tiền mặt"],
-    ["HD000903", "5/10/2026 9:05", "Võ Thị Lan", "84915000444", "320000", "Tiền mặt"],  # đầu 84
-    ["HD000904", "08/10/2026 15:20", "  Trần   Thị  Bình ", "0916000555", "275000", "Tiền mặt"],
-    [
-        "HD000101",
-        "01/10/2026 09:00",
-        "Nguyễn Văn An",
-        "0917000666",
-        "999000",
-        "Tiền mặt",
-    ],  # trùng mã
-    ["HD000905", "ngày 9 tháng 10", "Đỗ Văn Hùng", "0918000777", "150000", "Tiền mặt"],  # ngày lạ
-]
+def injected_errors(rows: list[list[str]], start: dt.date, code_base: int) -> list[list[str]]:
+    """Lỗi cài sẵn ở cuối tệp đơn hàng cửa hàng; đáp án cho bước làm sạch của bộ mẫu nằm ở
+    loi-cai-san.csv. Toàn bộ là đơn trả tiền mặt nên không ảnh hưởng đáp án đối soát. Ngày tính
+    theo ngày đầu kỳ, mã mới nằm ngoài dải mã đơn của kỳ (bộ mẫu: HD000901–HD000905)."""
+
+    def on(days: int) -> dt.date:
+        return start + dt.timedelta(days=days)
+
+    def code(offset: int) -> str:
+        return f"HD{code_base + offset:06d}"
+
+    odd = on(4)  # ngày tháng không có số 0 ở đầu, giờ một chữ số
+    strange = on(8)  # ngày viết bằng chữ
+    return [
+        ["", f"{on(5):%d/%m/%Y} 10:15", "Nguyễn Văn Khoa", "0912000111", "450000", "Tiền mặt"],
+        [code(0), f"{on(6):%d/%m/%Y} 11:00", "Lê Thị Mai", "0913000222", "1tr2", "Tiền mặt"],
+        [code(1), f"{on(6):%d/%m/%Y} 11:30", "Phạm Văn Tú", "0914000333", "khoảng 500k",
+         "Tiền mặt"],
+        [code(2), f"{odd.day}/{odd.month:02d}/{odd.year} 9:05", "Võ Thị Lan", "84915000444",
+         "320000", "Tiền mặt"],  # đầu 84
+        [code(3), f"{on(7):%d/%m/%Y} 15:20", "  Trần   Thị  Bình ", "0916000555", "275000",
+         "Tiền mặt"],  # khoảng trắng thừa
+        [rows[0][0], f"{on(0):%d/%m/%Y} 09:00", "Nguyễn Văn An", "0917000666", "999000",
+         "Tiền mặt"],  # trùng mã đơn đầu tiên, khác số tiền
+        [code(4), f"ngày {strange.day} tháng {strange.month}", "Đỗ Văn Hùng", "0918000777",
+         "150000", "Tiền mặt"],  # ngày lạ
+    ]
 
 
-def pos_csv(rows: list[list[str]]) -> bytes:
+def pos_csv(rows: list[list[str]], errors: list[list[str]]) -> bytes:
     """CSV phần mềm bán hàng: có BOM, một dòng trùng y hệt và một dòng trống cài sẵn.
 
     Dòng cài thêm được chèn ở cuối để không làm lệch số dòng của các đơn đã ghi trong đáp án.
     """
     extra = [
-        ["", "", "", "", "", ""],  # dòng 222: trống (đứng trước để không bị coi là đuôi tệp)
-        rows[10],  # dòng 223: trùng y hệt dòng 12
-        *POS_INJECTED_ERRORS,  # dòng 224–230: lỗi cài sẵn cho bước làm sạch (xem loi-cai-san.csv)
+        ["", "", "", "", "", ""],  # bộ mẫu dòng 222: trống (đứng trước để không bị coi là đuôi tệp)
+        rows[10],  # bộ mẫu dòng 223: trùng y hệt dòng 12
+        *errors,  # bộ mẫu dòng 224–230: lỗi cài sẵn cho bước làm sạch (xem loi-cai-san.csv)
     ]
     return csv_bytes(
         ["MaHD", "NgayBan", "KhachHang", "DienThoai", "TongTien", "ThanhToan"],

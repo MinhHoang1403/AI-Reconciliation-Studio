@@ -1070,12 +1070,16 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 @media (max-width: 760px) {
   /* Điện thoại, khung hẹp: trang chat cao đúng phần màn hình trên thanh tab, đầu trang và ô nhập
      đứng yên, chỉ vùng tin nhắn cuộn (Owner 27/11/2026: trước đây cả trang cuộn nên ô nhập dịch
-     chuyển theo, khó chịu). 72px là chỗ thanh tab ở đáy (.shell padding-bottom). */
-  .page:has(> .assistant) { padding-top: 16px; padding-bottom: 12px; }
-  .assistant {
-    display: flex; flex-direction: column;
-    height: calc(100dvh - 72px - 28px - env(safe-area-inset-bottom)); min-height: 420px;
+     chuyển theo, khó chịu). 72px là chỗ thanh tab ở đáy (.shell padding-bottom). Trang là cột
+     flex cao đúng phần đó; dải chọn phiên ở trên giữ chiều cao của nó, khung chat lấy phần còn
+     lại (không tính cứng chiều cao, nên thêm gì ở đầu trang cũng không đẩy ô nhập xuống dưới
+     thanh tab). */
+  .page:has(> .assistant) {
+    display: flex; flex-direction: column; padding-top: 16px; padding-bottom: 12px;
+    height: calc(100dvh - 72px - env(safe-area-inset-bottom)); min-height: 480px;
   }
+  .page:has(> .assistant) > .workspace-switch { flex: none; margin: 0 0 12px; }
+  .assistant { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .assistant .page__header { flex: none; margin-bottom: 12px; }
   /* Mô tả trang đã có ở màn hình đầu của khung chat; bỏ trên khổ hẹp để khung chat đủ cao. */
   .assistant .page__header p { display: none; }
@@ -1357,7 +1361,7 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 
 /* Danh sách phiên mở ra: đặt cố định theo vị trí nút (thanh bên cắt phần tràn khi co giãn). */
 .workspace-switch__menu {
-  position: fixed; z-index: 30; width: 300px; max-width: calc(100vw - 32px);
+  position: fixed; z-index: 30; max-width: calc(100vw - 32px);
   max-height: min(70dvh, 480px); overflow-y: auto;
   padding: 6px; border: 1px solid var(--line-soft); border-radius: var(--radius);
   background: var(--surface); box-shadow: 0 14px 32px rgb(20 35 58 / 0.16);

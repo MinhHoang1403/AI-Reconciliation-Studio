@@ -37,3 +37,6 @@ Desktop.ini
 
 # data-docs phần chạy: nhật ký gọi Gemini, catalog động (có mẫu dữ liệu đã che); backend ghi khi chạy
 data-docs/runtime/
+
+# Bộ dữ liệu thử lớn (sinh lại bằng tools/make_test_sets.py)
+du-lieu-thu/

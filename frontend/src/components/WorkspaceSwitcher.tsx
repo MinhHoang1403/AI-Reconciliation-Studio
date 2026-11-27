@@ -16,7 +16,7 @@ export function WorkspaceSwitcher({ variant }: Props) {
   const { workspaces, current } = useWorkspaces();
   const [open, setOpen] = useState(false);
   // Vị trí danh sách: ngay dưới nút, căn trái theo nút (đo khi mở).
-  const [place, setPlace] = useState({ top: 0, left: 0 });
+  const [place, setPlace] = useState({ top: 0, left: 0, width: 300 });
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menuId = useId();
@@ -60,7 +60,8 @@ export function WorkspaceSwitcher({ variant }: Props) {
         title={variant === "rail" ? `Phiên: ${current.name}` : undefined}
         onClick={() => {
           const rect = button.current?.getBoundingClientRect();
-          if (rect) setPlace({ top: rect.bottom + 6, left: rect.left });
+          // Rộng ít nhất 300px, bằng nút nếu nút rộng hơn (dải đầu trang trên điện thoại).
+          if (rect) setPlace({ top: rect.bottom + 6, left: rect.left, width: Math.max(rect.width, 300) });
           setOpen((value) => !value);
         }}
       >

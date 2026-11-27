@@ -27,6 +27,8 @@ Thư mục `data-docs/` (xem `data-docs/README.md`): data model, data catalog, s
 
 Đo độ chính xác ánh xạ: `uv run --locked python tools/evaluate_mapping.py` (chỉ quy tắc, miễn phí); thêm `--with-ai` để gọi Gemini thật (tốn phí, cần nạp khóa từ `.env` vào biến môi trường). Langfuse tự host ở <http://127.0.0.1:3000> (bộ container `langfuse` riêng); khóa trong `.env`.
 
+Bộ dữ liệu thử lớn cho Owner (7.000–10.000 đơn, có đáp án): `uv run --locked python tools/make_test_sets.py` → `du-lieu-thu/` (Git bỏ qua).
+
 Bộ dữ liệu mẫu có đáp án ở `tests/fixtures/sales/`, sinh lại bằng `uv run --locked python tools/make_sales_fixtures.py` (kết quả luôn giống hệt).
 
 ## Tra cứu code và bộ nhớ phiên (trước khi đọc file)

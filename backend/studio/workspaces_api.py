@@ -24,6 +24,7 @@ from studio.models import (
     DatasetTable,
     MappingMemory,
     ReconChain,
+    ReconRun,
     Workspace,
 )
 
@@ -178,13 +179,21 @@ def _busy(session: Session, workspace_id: uuid.UUID) -> bool:
             ReconChain.workspace_id == workspace_id, ReconChain.status == "RUNNING"
         )
     )
+    # Lần đối soát hai bảng đứng riêng (không thuộc chuỗi) đang chạy nền.
+    runs = session.scalar(
+        select(func.count())
+        .select_from(ReconRun)
+        .join(DatasetTable, ReconRun.left_table_id == DatasetTable.id)
+        .join(Dataset, DatasetTable.dataset_id == Dataset.id)
+        .where(Dataset.workspace_id == workspace_id, ReconRun.status == "RUNNING")
+    )
     replies = session.scalar(
         select(func.count())
         .select_from(ChatMessage)
         .join(ChatThread, ChatMessage.thread_id == ChatThread.id)
         .where(ChatThread.workspace_id == workspace_id, ChatMessage.status == "RUNNING")
     )
-    return bool(tables or reading or chains or replies)
+    return bool(tables or reading or chains or runs or replies)
 
 
 @router.delete("/{workspace_id}", status_code=204)
