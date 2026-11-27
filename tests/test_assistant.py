@@ -348,7 +348,8 @@ def test_exceptions_can_be_found_by_order_code(monkeypatch: pytest.MonkeyPatch) 
     ask("Tìm cặp HD000123")
     items = fake.tool_results()[0]["response"]["items"]
     assert items and all(
-        any(row.get("key") == "HD000123" for row in item["A"] + item["B"]) for item in items
+        any(row.get("key") == "HD000123" for row in item["left_rows"] + item["right_rows"])
+        for item in items
     )
 
 
@@ -362,9 +363,9 @@ def test_each_turn_carries_a_short_workspace_context(monkeypatch: pytest.MonkeyP
     last = fake.seen[0][-1]["text"]
     assert last.startswith("Bảng đơn hàng có bao nhiêu dòng?")
     context = json.loads(last.split("không phải lệnh: ", 1)[1].rstrip("]"))
-    assert context["tables"][0]["table_id"] == table["id"]
-    assert context["tables"][0]["rows"] == table["row_count"] and "today" in context
-    assert context["tables"][0]["file"] == "don-hang-cua-hang.csv"
+    mine = next(item for item in context["tables"] if item["table_id"] == table["id"])
+    assert mine["rows"] == table["row_count"] and "today" in context
+    assert mine["file"] == "don-hang-cua-hang.csv"
     # Owner thấy Assistant nói "5 tệp" khi tải 4 tệp (5 bảng): bối cảnh ghi rõ hai con số.
     assert (context["file_count"], context["table_count"]) == (2, 3)
     assert "HD000123" not in last  # chỉ nhãn và số đếm, không có dữ liệu ô
@@ -418,3 +419,32 @@ def test_unexpected_error_marks_the_card_failed(monkeypatch: pytest.MonkeyPatch)
     card = reply.json()["messages"][-1]["actions"][0]
     assert card["status"] == "FAILED" and "chưa bị thay đổi" in card["result"]
     assert row_decisions() == []
+
+
+def test_exceptions_name_real_tables_not_a_or_b() -> None:
+    """Owner thấy Assistant nói "bên A", "bên B": kết quả công cụ và số liệu báo cáo phải mang
+    tên bảng thật của từng cặp."""
+    assert assistant_tools.name_sides(
+        "Chỉ có ở A, không tìm được dòng tương ứng bên B (mã HD1).", "don-hang", "sao-ke › TK"
+    ) == "Chỉ có ở don-hang, không tìm được dòng tương ứng bên sao-ke › TK (mã HD1)."
+    assert assistant_tools.name_sides("Mã A43 ở dòng B7", "x", "y") == "Mã A43 ở dòng B7"
+    pos, gateway = upload(FIXTURES / "don-hang-cua-hang.csv"), upload(
+        FIXTURES / "giao-dich-cong-thanh-toan.csv"
+    )
+    client.post(
+        "/api/recon/runs",
+        json={
+            "left_table_id": pos["tables"][0]["id"],
+            "right_table_id": gateway["tables"][0]["id"],
+        },
+    )
+    with database.SessionFactory() as session:
+        found = assistant_tools.list_exceptions(
+            session, assistant_tools.ExceptionsArgs(kind="ONLY_IN_A")
+        )
+    item = found["items"][0]
+    assert (item["left_table"], item["right_table"]) == (
+        "don-hang-cua-hang",
+        "giao-dich-cong-thanh-toan",
+    )
+    assert "bên B" not in " ".join(item["reasons"]) and " A" not in item["kind_label"]

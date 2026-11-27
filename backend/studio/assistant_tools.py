@@ -12,6 +12,7 @@ ngày, số tiền, danh mục, số đếm và lý do của engine; chữ tự 
 được che bằng `masking` như ở bước ánh xạ (quyết định 2026-11-20).
 """
 
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -438,9 +439,9 @@ class ExceptionsArgs(ScopeArgs):
         description=(
             "Lọc theo loại kết quả. Nghĩa từng loại: "
             "AMOUNT_MISMATCH = ghép được nhưng lệch tiền; "
-            "ONLY_IN_A = chỉ có ở bên A (đơn hàng) mà không thấy ở bên B, đã quá hạn chờ tiền "
-            "về, tức đơn chưa thấy tiền về; "
-            "ONLY_IN_B = chỉ có ở bên B (tiền về) mà không rõ của đơn nào; "
+            "ONLY_IN_A = có ở bảng bên trái của cặp (đơn hàng hoặc giao dịch cổng) mà không thấy "
+            "ở bảng bên phải, đã quá hạn chờ, tức chưa thấy tiền về; "
+            "ONLY_IN_B = có ở bảng bên phải (tiền về) mà không rõ của dòng nào bên trái; "
             "PENDING_SETTLEMENT = chưa thấy tiền về nhưng CHƯA quá hạn chờ (còn trong T+3 ngày "
             "làm việc), không phải lỗi; "
             "AMBIGUOUS = nhiều ứng viên ngang nhau, hệ thống không tự chọn, cần người dùng chọn; "
@@ -529,23 +530,42 @@ def _append_views(
 ) -> None:
     if not items:
         return
+    left, right = (
+        session.get(DatasetTable, table_id) for table_id in (run.left_table_id, run.right_table_id)
+    )
+    left_name = audit.table_label(left) if left else "bảng đã xóa"
+    right_name = audit.table_label(right) if right else "bảng đã xóa"
     for view in recon_api._result_views(session, run, items):
         found.append(
             {
                 "result_id": view["id"],
                 "run_id": str(run.id),
-                "pair": recon_service.run_label(session, run),
+                "pair": f"{left_name} ↔ {right_name}",
                 "kind": view["kind"],
-                "kind_label": view["kind_label"],
+                "kind_label": name_sides(view["kind_label"], left_name, right_name),
                 "status": view["exception_status"],
-                "reasons": [reason["text"] for reason in view["reasons"]],
+                "reasons": [
+                    name_sides(reason["text"], left_name, right_name) for reason in view["reasons"]
+                ],
                 "candidates": [
                     pair for reason in view["reasons"] for pair in reason.get("pairs", [])
                 ],
-                "A": _safe_rows(view["left"]),
-                "B": _safe_rows(view["right"]),
+                # Ghi rõ tên bảng của từng bên (Owner 27/11/2026: Assistant từng trả lời "bên A",
+                # "bên B" khiến người dùng không biết là bảng nào).
+                "left_table": left_name,
+                "left_rows": _safe_rows(view["left"]),
+                "right_table": right_name,
+                "right_rows": _safe_rows(view["right"]),
             }
         )
+
+
+# "bên A", "ở B"… trong nhãn và lý do của engine (viết cho mọi cặp) → tên bảng thật của cặp.
+_SIDE = re.compile(r"\b(bên|ở) ([AB])\b")
+
+
+def name_sides(text: str, left: str, right: str) -> str:
+    return _SIDE.sub(lambda m: f"{m.group(1)} {left if m.group(2) == 'A' else right}", text)
 
 
 class TraceArgs(TableArgs):

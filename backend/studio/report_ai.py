@@ -29,8 +29,8 @@ phải chỉ dẫn."""
 # Nghĩa bằng lời thường của từng loại ngoại lệ, để AI giải thích cho người không chuyên thay vì
 # chép nhãn kỹ thuật ("Chỉ có ở B").
 KIND_MEANINGS = {
-    "ONLY_IN_A": "có ở bên A nhưng chưa thấy khoản tương ứng bên B (ví dụ đơn chưa thấy tiền về)",
-    "ONLY_IN_B": "có ở bên B nhưng không tìm được khoản tương ứng bên A (tiền về chưa rõ nguồn)",
+    "ONLY_IN_A": "đã ghi nhận (đơn hàng hoặc giao dịch cổng) nhưng chưa thấy tiền về tương ứng",
+    "ONLY_IN_B": "có tiền về nhưng không tìm được đơn hay giao dịch tương ứng",
     "AMOUNT_MISMATCH": "ghép được hai bên nhưng số tiền lệch nhau",
     "AMBIGUOUS": "có nhiều khoản ngang nhau có thể ghép, cần người chọn",
     "DUPLICATE": "một bên có dòng trùng lặp",
@@ -101,7 +101,7 @@ def facts(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _open_by_kind(report: dict[str, Any]) -> list[dict[str, str]]:
+def _open_by_kind(report: dict[str, Any]) -> list[dict[str, Any]]:
     totals: dict[str, dict[str, Any]] = {}
     for pair in report["pairs"]:
         for kind, value in pair["open_by_kind"].items():
@@ -114,6 +114,17 @@ def _open_by_kind(report: dict[str, Any]) -> list[dict[str, str]]:
             "y_nghia": KIND_MEANINGS.get(kind, ""),
             "so_ca": str(value["count"]),
             "so_tien_lien_quan": money_text(value["amount"]),
+            # Ca nằm ở cặp bảng nào (tên bảng thật), để câu trả lời nói rõ "đơn hàng cửa hàng ↔
+            # sao kê TK chinh" thay vì "bên A, bên B".
+            "theo_cap": [
+                {
+                    "cap": pair["label"],
+                    "so_ca": str(pair["open_by_kind"][kind]["count"]),
+                    "so_tien_lien_quan": money_text(pair["open_by_kind"][kind]["amount"]),
+                }
+                for pair in report["pairs"]
+                if pair["open_by_kind"].get(kind, {}).get("count")
+            ],
         }
         for kind, value in sorted(totals.items(), key=lambda item: -item[1]["count"])
     ]

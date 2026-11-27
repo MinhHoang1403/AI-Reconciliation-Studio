@@ -191,7 +191,7 @@
             }
           ],
           "default": null,
-          "description": "Lọc theo loại kết quả. Nghĩa từng loại: AMOUNT_MISMATCH = ghép được nhưng lệch tiền; ONLY_IN_A = chỉ có ở bên A (đơn hàng) mà không thấy ở bên B, đã quá hạn chờ tiền về, tức đơn chưa thấy tiền về; ONLY_IN_B = chỉ có ở bên B (tiền về) mà không rõ của đơn nào; PENDING_SETTLEMENT = chưa thấy tiền về nhưng CHƯA quá hạn chờ (còn trong T+3 ngày làm việc), không phải lỗi; AMBIGUOUS = nhiều ứng viên ngang nhau, hệ thống không tự chọn, cần người dùng chọn; DUPLICATE = mã trùng, dòng thừa có thể là thu hai lần; NEEDS_CLEANING = dòng còn lỗi ở bước làm sạch; MATCHED = khớp 1:1; MANY_TO_ONE = nhiều đơn ghép với một khoản tiền."
+          "description": "Lọc theo loại kết quả. Nghĩa từng loại: AMOUNT_MISMATCH = ghép được nhưng lệch tiền; ONLY_IN_A = có ở bảng bên trái của cặp (đơn hàng hoặc giao dịch cổng) mà không thấy ở bảng bên phải, đã quá hạn chờ, tức chưa thấy tiền về; ONLY_IN_B = có ở bảng bên phải (tiền về) mà không rõ của dòng nào bên trái; PENDING_SETTLEMENT = chưa thấy tiền về nhưng CHƯA quá hạn chờ (còn trong T+3 ngày làm việc), không phải lỗi; AMBIGUOUS = nhiều ứng viên ngang nhau, hệ thống không tự chọn, cần người dùng chọn; DUPLICATE = mã trùng, dòng thừa có thể là thu hai lần; NEEDS_CLEANING = dòng còn lỗi ở bước làm sạch; MATCHED = khớp 1:1; MANY_TO_ONE = nhiều đơn ghép với một khoản tiền."
         },
         "code": {
           "anyOf": [
