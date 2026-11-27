@@ -1048,12 +1048,24 @@ h3 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .chat-composer__files .icon-button { width: 28px; height: 28px; }
 
 @media (max-width: 760px) {
-  /* Điện thoại: danh sách cuộc trò chuyện thu gọn phía trên; trang tự cuộn, ô nhập dính trên thanh tab. */
-  .assistant__layout { height: auto; grid-template-rows: auto auto; }
+  /* Điện thoại, khung hẹp: trang chat cao đúng phần màn hình trên thanh tab, đầu trang và ô nhập
+     đứng yên, chỉ vùng tin nhắn cuộn (Owner 27/11/2026: trước đây cả trang cuộn nên ô nhập dịch
+     chuyển theo, khó chịu). 72px là chỗ thanh tab ở đáy (.shell padding-bottom). */
+  .page:has(> .assistant) { padding-top: 16px; padding-bottom: 12px; }
+  .assistant {
+    display: flex; flex-direction: column;
+    height: calc(100dvh - 72px - 28px - env(safe-area-inset-bottom)); min-height: 420px;
+  }
+  .assistant .page__header { flex: none; margin-bottom: 12px; }
+  /* Mô tả trang đã có ở màn hình đầu của khung chat; bỏ trên khổ hẹp để khung chat đủ cao. */
+  .assistant .page__header p { display: none; }
+  .assistant__layout { flex: 1; min-height: 0; height: auto; grid-template-rows: auto minmax(0, 1fr); gap: 10px; }
   .chat-threads__new { flex: 1 1 100%; }
-  .chat { overflow: visible; min-height: 60dvh; grid-template-rows: 1fr auto; }
-  .chat__scroll { padding: 16px; }
-  .chat-composer { position: sticky; bottom: 72px; border-radius: 0 0 var(--radius) var(--radius); }
+  /* Danh sách cuộc trò chuyện mở ra không đẩy khung chat ra khỏi màn hình. */
+  .chat-threads__fold .chat-threads__list { max-height: 40dvh; overflow-y: auto; }
+  .chat { grid-template-rows: minmax(0, 1fr) auto; }
+  .chat__scroll { padding: 16px; overscroll-behavior: contain; }
+  .chat-composer { padding: 10px 12px 12px; }
   .chat-composer__send span { display: none; }
   .chat-composer__send { width: 44px; padding: 0; justify-content: center; }
   .chat-empty__suggestions { grid-template-columns: 1fr; }

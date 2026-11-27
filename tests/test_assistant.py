@@ -149,6 +149,17 @@ def test_internal_codes_never_reach_the_user(monkeypatch: pytest.MonkeyPatch) ->
     assert text == (
         "Còn 1 ca cần bạn chọn, 2 ca Chỉ có ở A ở bảng Đơn hàng cửa hàng; ca trùng đang Cần xử lý."
     )
+    # Câu trả lời lưu từ trước cũng được hiện bằng nhãn; câu người dùng gõ giữ nguyên.
+    with database.SessionFactory() as session:
+        thread_id = session.scalars(select(ChatMessage.thread_id)).first()
+        old = ChatMessage(
+            thread_id=thread_id, position=99, role="assistant", status="DONE",
+            text="Ca DUPLICATE (loại DUPLICATE).", attachments=[], steps=[], actions=[], links=[],
+        )
+        session.add(old)
+        session.commit()
+    shown = client.get(f"/api/assistant/threads/{thread_id}").json()["messages"]
+    assert shown[-1]["text"] == "Ca Trùng."
     # Chữ thường có chứa mã (ví dụ trong mã đơn) không bị đụng tới.
     assert assistant.plain_text("Đơn OPENING01 và HD000118") == "Đơn OPENING01 và HD000118"
 

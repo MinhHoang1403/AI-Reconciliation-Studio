@@ -39,7 +39,11 @@ def _message_view(message: ChatMessage) -> dict[str, Any]:
     return {
         "id": str(message.id),
         "role": message.role,
-        "text": message.text,
+        # Câu trả lời lưu trước khi có bước đổi mã kỹ thuật (27/11/2026) cũng hiện nhãn tiếng
+        # Việt; câu của người dùng giữ nguyên chữ họ gõ.
+        "text": assistant.plain_text(message.text)
+        if message.role == "assistant" and message.text
+        else message.text,
         "status": message.status,
         "attachments": message.attachments,
         "steps": message.steps,
