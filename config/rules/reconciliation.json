@@ -1,0 +1,36 @@
+{
+  "rounds": [
+    {
+      "round": "key_match",
+      "enabled": true,
+      "note": "Khớp theo mã: cùng mã đơn/mã giao dịch (kể cả mã tách từ nội dung chuyển khoản)."
+    },
+    {
+      "round": "score_match",
+      "enabled": true,
+      "note": "Khớp theo điểm 1:1: cùng số tiền, gần ngày, giống mã/tên; ca ngang điểm để người chọn."
+    },
+    {
+      "round": "group_match",
+      "enabled": true,
+      "note": "Khớp nhóm: nhiều dòng cộng lại đúng bằng một dòng bên kia (gộp thanh toán)."
+    }
+  ],
+  "key_selection": {
+    "weights": {"match_rate": 0.6, "fill": 0.2, "unique": 0.2},
+    "min_match_rate": 0.05,
+    "extract_codes_below_rate": 0.5,
+    "group_when_unique_below": 0.5
+  },
+  "score_match": {
+    "weights": {"date": 0.5, "key": 0.3, "name": 0.2},
+    "min_score": 0.7,
+    "date_window_days": 3,
+    "amount_tolerance": 0
+  },
+  "group_match": {"max_rows": 5, "max_candidates": 20},
+  "code_extraction": {"min_precision": 0.9, "min_hits": 3},
+  "settlement": {"business_days": 3, "min_late_share": 0.05},
+  "scope": {"fields": ["payment_method"], "min_other_rate": 0.5, "max_own_rate": 0.05},
+  "chain": {"min_pair_match_rate": 0.05, "min_pair_amount_rate": 0.5, "period_lead_days": 3}
+}

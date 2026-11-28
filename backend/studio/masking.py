@@ -8,15 +8,13 @@ tên người…) nhưng không lộ dữ liệu cá nhân. Đây là che bớt 
 import re
 import unicodedata
 
+from studio import config_files
 from studio.profiling import ObservedKind
 
 # Từ nghiệp vụ hay gặp trong nội dung chuyển khoản; giữ nguyên để AI hiểu ngữ cảnh.
 # Không đưa vào các từ cũng là tên người phổ biến (ví dụ "thanh" trong Trần Thanh Châu).
-KEEP_WORDS = {
-    "ck", "tt", "dh", "hd", "chuyen", "tien", "khoan", "don", "hang", "toan", "ngay",
-    "dot", "phi", "san", "tmdt", "cong", "doanh", "thu", "nop", "rut", "luong", "chi", "tra",
-    "mua", "ban", "the", "qr", "ma", "so", "tk", "tai", "quan", "ly", "nhan", "gui", "vao",
-}
+# Danh sách ở config/domains/sales/vocabulary.json ("masking_keep_words").
+KEEP_WORDS = set(config_files.vocabulary().masking_keep_words)
 
 _PHONE = re.compile(r"^(\+?84|0)\d{8,10}$")
 _EMAIL = re.compile(r"^([^@\s])[^@\s]*@([^@.\s])[^@\s]*(\.[A-Za-z.]+)$")

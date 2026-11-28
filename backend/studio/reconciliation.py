@@ -37,6 +37,7 @@ import polars as pl
 from rapidfuzz import fuzz
 from scipy.optimize import linear_sum_assignment
 
+from studio import config_files
 from studio.reading import ROW_REF
 from studio.sales_fields import FIELDS_BY_KEY
 from studio.value_parsers import HONORIFICS, money_vi, name_match_key
@@ -56,37 +57,38 @@ KINDS = (
     "NEEDS_CLEANING",
     "OUT_OF_SCOPE",
 )
+# Ngưỡng và trọng số: config/rules/reconciliation.json.
+_RULES = config_files.reconciliation_rules()
+_KEYS = _RULES.key_selection
+_SCORE = _RULES.score_match
 # Trọng số điểm khớp theo điểm (chỉ tính các thành phần cả hai bên đều có).
-SCORE_WEIGHTS = {"date": 0.5, "key": 0.3, "name": 0.2}
+SCORE_WEIGHTS: dict[str, float] = {name: weight for name, weight in _SCORE.weights.items()}
 # Cột phân loại có thể dùng để để dòng ra ngoài phạm vi (trạng thái đơn xử lý riêng).
-SCOPE_FIELDS = ("payment_method",)
+SCOPE_FIELDS = _RULES.scope.fields
 # Một giá trị bị coi là ngoài phạm vi khi gần như không dòng nào của nó khớp mã với bên kia
-# (≤ 5%, chừa chỗ cho dòng nhập nhầm), trong khi giá trị khớp nhiều nhất đạt ít nhất 50%.
-SCOPE_MIN_OTHER_RATE = 0.5
-SCOPE_MAX_OWN_RATE = 0.05
+# (chừa chỗ cho dòng nhập nhầm), trong khi giá trị khớp nhiều nhất đạt mức tối thiểu.
+SCOPE_MIN_OTHER_RATE = _RULES.scope.min_other_rate
+SCOPE_MAX_OWN_RATE = _RULES.scope.max_own_rate
 # Giới hạn để ghép không chậm theo bình phương số dòng khi dữ liệu có rất nhiều dòng giống nhau.
 MAX_SAME_KEY_PAIRS = 10_000
 MAX_CANDIDATES_PER_ROW = 50
 MAX_COMPONENT_ROWS = 400
-# Khớp nhóm theo tổng tiền: tối đa 5 dòng một nhóm, xét tối đa 20 ứng viên mỗi dòng
+# Khớp nhóm theo tổng tiền: số dòng mỗi nhóm và số ứng viên mỗi dòng có giới hạn
 # (ARCHITECTURE 5.2: giới hạn tổ hợp để không bùng nổ).
-MAX_GROUP_ROWS = 5
-MAX_SUBSET_CANDIDATES = 20
-# Khung chờ tiền về mặc định: 3 ngày làm việc (docs/DECISIONS.md 2026-11-23).
-DEFAULT_SETTLE_DAYS = 3
-# Tách mã từ nội dung: mẫu tự học phải đúng với ≥ 90% mã tách được và có ≥ 3 dòng khớp.
-EXTRACT_MIN_PRECISION = 0.9
-EXTRACT_MIN_HITS = 3
-# Có độ trễ tiền về khi ít nhất 5% cặp đã ghép có ngày bên B sau ngày bên A.
-SETTLEMENT_LAG_SHARE = 0.05
+MAX_GROUP_ROWS = _RULES.group_match.max_rows
+MAX_SUBSET_CANDIDATES = _RULES.group_match.max_candidates
+# Khung chờ tiền về mặc định, tính bằng ngày làm việc (docs/DECISIONS.md 2026-11-23).
+DEFAULT_SETTLE_DAYS = _RULES.settlement.business_days
+# Tách mã từ nội dung: mẫu tự học phải đủ đúng và đủ số dòng khớp.
+EXTRACT_MIN_PRECISION = _RULES.code_extraction.min_precision
+EXTRACT_MIN_HITS = _RULES.code_extraction.min_hits
+# Có độ trễ tiền về khi đủ tỷ lệ cặp đã ghép có ngày bên B sau ngày bên A.
+SETTLEMENT_LAG_SHARE = _RULES.settlement.min_late_share
 # Ngày trong nội dung chuyển khoản, kiểu Việt Nam ngày/tháng/năm.
 DATE_IN_TEXT = r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{4})(?!\d)"
-# Từ nghiệp vụ trong nội dung chuyển khoản, bỏ đi khi lấy tên người chuyển.
-NOISE_WORDS = {
-    "ck", "chuyen", "tien", "khoan", "tt", "thanh", "toan", "don", "hang", "cong", "ngay",
-    "doanh", "thu", "san", "tmdt", "nhan", "ho", "qua", "cho", "mua", "ban", "ib", "ft",
-    "mbvcb", "noi", "dung", "gd", "giao", "dich", "tk", "so", "tai",
-}
+# Từ nghiệp vụ trong nội dung chuyển khoản, bỏ đi khi lấy tên người chuyển
+# (config/domains/sales/vocabulary.json, "transfer_noise_words").
+NOISE_WORDS = set(config_files.vocabulary().transfer_noise_words)
 
 
 @dataclass
@@ -99,9 +101,10 @@ class ReconConfig:
     amount_right: str
     date_left: str | None = None
     date_right: str | None = None
-    tolerance: Decimal = Decimal("0")  # sai số tiền tuyệt đối (đồng), chỉ cho ghép 1:1
-    date_window_days: int = 3  # khung ngày cho khớp theo điểm và khớp nhóm
-    min_score: float = 0.7
+    # Mặc định lấy từ config/rules/reconciliation.json ("score_match").
+    tolerance: Decimal = Decimal(_SCORE.amount_tolerance)  # sai số tiền (đồng), chỉ ghép 1:1
+    date_window_days: int = _SCORE.date_window_days  # khung ngày cho khớp điểm và khớp nhóm
+    min_score: float = _SCORE.min_score
     # Giá trị phân loại để ngoài phạm vi: {"LEFT": {"payment_method": ["Tiền mặt"]}}
     excluded: dict[str, dict[str, list[str]]] = field(default_factory=dict)
     # Tách khóa bên B từ chữ: {"source": "description", "kind": "code"|"date", "pattern": ...}
@@ -483,9 +486,11 @@ def suggest_config(left: pl.DataFrame, right: pl.DataFrame) -> tuple[ReconConfig
     for left_candidate in _fields_of(left, "IDENTIFIER"):
         for right_candidate in _fields_of(right, "IDENTIFIER"):
             stats = _key_stats(left[left_candidate], right[right_candidate])
-            score = 0.6 * stats["match_rate"] + 0.2 * stats["fill"] + 0.2 * stats["unique"]
+            score = sum(weight * stats[name] for name, weight in _KEYS.weights.items())
             evidence["keys"].append({"left": left_candidate, "right": right_candidate, **stats})
-            if stats["match_rate"] >= 0.05 and (best_key is None or score > best_key[0]):
+            if stats["match_rate"] >= _KEYS.min_match_rate and (
+                best_key is None or score > best_key[0]
+            ):
                 best_key = (score, left_candidate, right_candidate)
                 best_rate = stats["match_rate"]
     config = ReconConfig(
@@ -494,7 +499,7 @@ def suggest_config(left: pl.DataFrame, right: pl.DataFrame) -> tuple[ReconConfig
         amount_left="",
         amount_right="",
     )
-    if best_rate < 0.5:  # không có cột mã chung đủ tốt: thử tách mã từ nội dung
+    if best_rate < _KEYS.extract_codes_below_rate:  # không có mã chung đủ tốt: tách từ nội dung
         extraction, evidence["extract"] = _suggest_extraction(left, right)
         if extraction is not None:
             config.key_left, config.key_right = extraction[0], None
@@ -502,7 +507,9 @@ def suggest_config(left: pl.DataFrame, right: pl.DataFrame) -> tuple[ReconConfig
     if config.key_left:
         values = left[config.key_left].drop_nulls()
         # Mã đợt, ngày dùng chung cho nhiều dòng A → ghép nhóm theo tổng tiền.
-        config.group_left = len(values) > 0 and values.n_unique() / len(values) < 0.5
+        config.group_left = (
+            len(values) > 0 and values.n_unique() / len(values) < _KEYS.group_when_unique_below
+        )
     if (
         "customer_name_key" in left.columns
         and "customer_name_key" not in right.columns

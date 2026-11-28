@@ -20,7 +20,7 @@ from typing import Any
 import polars as pl
 from sqlalchemy import func, select
 
-from studio import database, storage
+from studio import database, sales_fields, storage
 from studio.models import CellCorrection, CleanVersion, DatasetTable, RowDecision
 from studio.reading import ROW_REF
 from studio.sales_fields import FIELDS_BY_KEY
@@ -44,19 +44,9 @@ from studio.value_parsers import (
 
 logger = logging.getLogger(__name__)
 
-# Trường bắt buộc theo loại bảng; mỗi phần tử là nhóm "ít nhất một trong các cột này".
-REQUIRED_FIELDS: dict[str, list[tuple[str, ...]]] = {
-    "ORDERS_PLATFORM": [("order_id",), ("amount",)],
-    "ORDERS_POS": [("order_id",), ("amount",)],
-    "PAYMENT_GATEWAY": [("amount",), ("payment_id", "order_id")],
-    "BANK_STATEMENT": [("transaction_date",), ("debit", "credit")],
-}
-# Cột mã mà mỗi dòng phải khác nhau; cùng mã nhưng khác số tiền là mâu thuẫn.
-KEY_FIELD = {
-    "ORDERS_PLATFORM": "order_id",
-    "ORDERS_POS": "order_id",
-    "PAYMENT_GATEWAY": "payment_id",
-}
+# Trường bắt buộc và cột khóa theo loại bảng: config/domains/sales/table-kinds.json.
+REQUIRED_FIELDS = sales_fields.REQUIRED_FIELDS
+KEY_FIELD = sales_fields.KEY_FIELD
 EXAMPLES_PER_FIX = 3
 CENT = Decimal("0.01")
 

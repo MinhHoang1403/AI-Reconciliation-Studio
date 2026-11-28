@@ -1,0 +1,41 @@
+{
+  "unknown_label": "Chưa rõ loại",
+  "kinds": [
+    {
+      "key": "ORDERS_PLATFORM",
+      "label": "Đơn hàng sàn TMĐT",
+      "family": "ORDERS",
+      "chain_order": 0,
+      "detect": {"priority": 3, "all": ["fee", "net_amount", "order_id"]},
+      "required": [["order_id"], ["amount"]],
+      "key_field": "order_id"
+    },
+    {
+      "key": "ORDERS_POS",
+      "label": "Đơn hàng cửa hàng",
+      "family": "ORDERS",
+      "chain_order": 0,
+      "detect": {"priority": 4, "all": ["order_id"]},
+      "required": [["order_id"], ["amount"]],
+      "key_field": "order_id"
+    },
+    {
+      "key": "PAYMENT_GATEWAY",
+      "label": "Giao dịch cổng thanh toán",
+      "family": "PAYMENT_GATEWAY",
+      "chain_order": 1,
+      "detect": {"priority": 2, "any": ["payment_batch", "payment_id"]},
+      "required": [["amount"], ["payment_id", "order_id"]],
+      "key_field": "payment_id"
+    },
+    {
+      "key": "BANK_STATEMENT",
+      "label": "Sao kê ngân hàng",
+      "family": "BANK_STATEMENT",
+      "chain_order": 2,
+      "detect": {"priority": 1, "any": ["debit", "credit"]},
+      "required": [["transaction_date"], ["debit", "credit"]],
+      "key_field": null
+    }
+  ]
+}

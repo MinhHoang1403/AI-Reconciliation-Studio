@@ -12,6 +12,8 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
+from studio import config_files
+
 type ParseState = Literal["VALID", "EMPTY", "INVALID"]
 # Thứ tự ngày tháng của một cột: ngày/tháng/năm hoặc tháng/ngày/năm.
 type DateOrder = Literal["DMY", "MDY"]
@@ -37,23 +39,19 @@ def is_blank(text: str | None) -> bool:
 
 # ---------------------------------------------------------------- tiền
 
-_CURRENCY = re.compile(r"\s*(vnđ|vnd|đồng|dong|đ|₫)\s*$", re.IGNORECASE)
+# Đơn vị tiền và chữ viết tắt (tr, k, triệu…): config/domains/sales/vocabulary.json.
+_WORDS = config_files.vocabulary()
+_CURRENCY = re.compile(
+    r"\s*(" + "|".join(map(re.escape, _WORDS.currency_words)) + r")\s*$", re.IGNORECASE
+)
 # Viết tắt hay gặp: 1tr2 = 1.200.000; 1,5tr / 1.5 triệu = 1.500.000; 500k / 500 nghìn = 500.000.
 _SHORTHAND = re.compile(
-    r"^(?P<whole>\d+)(?:[.,](?P<frac>\d+))?\s*(?P<unit>tr|triệu|trieu|k|nghìn|nghin|ngàn|ngan)"
-    r"(?P<rest>\d{1,3})?$",
+    r"^(?P<whole>\d+)(?:[.,](?P<frac>\d+))?\s*(?P<unit>"
+    + "|".join(map(re.escape, _WORDS.money_units))
+    + r")(?P<rest>\d{1,3})?$",
     re.IGNORECASE,
 )
-_UNIT_VALUE = {
-    "tr": 1_000_000,
-    "triệu": 1_000_000,
-    "trieu": 1_000_000,
-    "k": 1_000,
-    "nghìn": 1_000,
-    "nghin": 1_000,
-    "ngàn": 1_000,
-    "ngan": 1_000,
-}
+_UNIT_VALUE = dict(_WORDS.money_units)
 
 
 def detect_number_style(values: list[str]) -> NumberStyle:
@@ -218,27 +216,7 @@ def parse_text(raw: str | None) -> Parsed:
 
 
 # Danh xưng bỏ đi khi so khớp tên (anh Hoàng, chú Hoàng, Mr Hoàng… đều là "hoang").
-HONORIFICS = {
-    "anh",
-    "chi",
-    "chu",
-    "co",
-    "bac",
-    "em",
-    "ong",
-    "ba",
-    "a",
-    "c",
-    "mr",
-    "mrs",
-    "ms",
-    "miss",
-    "cau",
-    "di",
-    "thim",
-    "mo",
-    "ban",
-}
+HONORIFICS = set(_WORDS.honorifics)
 
 
 def name_match_key(name: str) -> str:
@@ -252,10 +230,7 @@ def name_match_key(name: str) -> str:
 
 
 # Từ cho biết đơn đã hủy hoặc hoàn tiền (so sau khi bỏ dấu).
-CANCELLED_WORDS = (
-    "huy", "da huy", "cancel", "cancelled", "canceled", "hoan tien", "hoan hang", "refund",
-    "refunded", "return", "returned", "tra hang",
-)
+CANCELLED_WORDS = _WORDS.cancelled_status_words
 
 
 def is_cancelled_status(status: str) -> bool:
