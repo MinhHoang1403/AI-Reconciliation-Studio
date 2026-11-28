@@ -75,6 +75,7 @@ MAX_COMPONENT_ROWS = 400
 # (ARCHITECTURE 5.2: giới hạn tổ hợp để không bùng nổ).
 MAX_GROUP_ROWS = _RULES.group_match.max_rows
 MAX_SUBSET_CANDIDATES = _RULES.group_match.max_candidates
+GROUP_MIN_NAME_SCORE = _RULES.group_match.min_name_score
 # Khung chờ tiền về mặc định, tính bằng ngày làm việc (docs/DECISIONS.md 2026-11-23).
 DEFAULT_SETTLE_DAYS = _RULES.settlement.business_days
 # Tách mã từ nội dung: mẫu tự học phải đủ đúng và đủ số dòng khớp.

@@ -123,7 +123,7 @@ Chạy theo thứ tự từ chắc chắn tới kém chắc chắn; dòng đã g
 
 1. **Khớp khóa chính xác 1:1:** cùng khóa, tiền trong sai số.
 2. **Khớp theo điểm 1:1:** trong mỗi khối ứng viên (cùng khung ngày, tiền gần nhau), chấm điểm từng cặp từ nhiều trường (lệch tiền, cách ngày, độ giống tên bằng RapidFuzz). Cặp tốt nhất được chọn bằng thuật toán phân công tối ưu (assignment): `scipy.optimize.linear_sum_assignment`, thuật toán Jonker-Volgenant cải tiến ([SciPy][scipy-lsa]). Nó bảo đảm mỗi dòng chỉ dùng một lần và tổng điểm là cao nhất.
-3. **Khớp nhóm 1:N, N:1:** trong cùng khối, tìm tổ hợp dòng có **tổng tiền khớp đúng**, giới hạn kích thước tổ hợp (mặc định ≤ 5 dòng) để không bùng nổ tổ hợp. Không áp sai số tiền cho khớp nhóm, như Oracle quy định ([Oracle tolerance][oracle-tolerance]).
+3. **Khớp nhóm 1:N, N:1:** trong cùng khối, tìm tổ hợp dòng có **tổng tiền khớp đúng**, giới hạn kích thước tổ hợp (mặc định ≤ 5 dòng) để không bùng nổ tổ hợp. Không áp sai số tiền cho khớp nhóm, như Oracle quy định ([Oracle tolerance][oracle-tolerance]). Tổng trùng có thể chỉ là ngẫu nhiên, nên đơn đã hủy không được ghép nhóm, dòng mang mã hay tên người khác bị loại khỏi nhóm, và nhóm không có mã hay tên ủng hộ cho mọi dòng thì chỉ đề xuất (nằm ở "Cần xử lý"), không tự xác nhận (phân tầng độ tin cậy, mục 2).
 4. **Còn lại** thì phân loại.
 
 Mỗi kết quả thuộc một loại:

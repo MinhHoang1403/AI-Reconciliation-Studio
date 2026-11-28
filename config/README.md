@@ -58,7 +58,7 @@ Engine chạy theo thứ tự, dòng đã ghép ở bước trước không tham
 | --- | --- | --- |
 | `key_match` | `backend/studio/matching_rounds/key_match.py` | Cùng mã đơn / mã giao dịch (kể cả mã tách từ nội dung chuyển khoản); một mã nhiều dòng thì dòng thừa là "Trùng" |
 | `score_match` | `backend/studio/matching_rounds/score_match.py` | Không có mã chung: cùng số tiền, gần ngày, giống mã/tên; chấm điểm và chọn cặp tốt nhất; ngang điểm thì để người chọn |
-| `group_match` | `backend/studio/matching_rounds/group_match.py` | Nhiều dòng cộng lại đúng bằng một dòng bên kia (khách trả gộp, cổng chuyển theo đợt) |
+| `group_match` | `backend/studio/matching_rounds/group_match.py` | Nhiều dòng cộng lại đúng bằng một dòng bên kia (khách trả gộp, cổng chuyển theo đợt). Không xét đơn đã hủy và dòng mang tên/mã người khác; nhóm chỉ trùng tổng tiền thì chờ bạn xác nhận |
 
 4. *(khóa)* Xếp loại phần còn lại: đơn đã hủy, chờ tiền về, chỉ có ở một bên.
 
@@ -94,6 +94,7 @@ chứng). Muốn **thêm vòng mới**: xem hướng dẫn đầu tệp `backend
 | `score_match.date_window_days` | Hai dòng cách nhau quá số ngày này thì không là ứng viên |
 | `score_match.amount_tolerance` | Sai số tiền cho ghép 1:1 (đồng); 0 là khớp tuyệt đối |
 | `group_match.max_rows`, `max_candidates` | Số dòng tối đa một nhóm, số ứng viên xét mỗi dòng |
+| `group_match.min_name_score` | Ghép nhóm theo tổng: tên hai bên giống từ mức này trở lên là bằng chứng ủng hộ; thấp hơn là tên người khác nên dòng đó bị loại khỏi nhóm. Nhóm không có tên hay mã ủng hộ cho mọi dòng thì không tự xác nhận, nằm ở "Cần xử lý" |
 | `code_extraction.min_precision`, `min_hits` | Mẫu mã tự học từ nội dung phải đúng với tỷ lệ này và đủ số dòng |
 | `settlement.business_days` | Khung chờ tiền về (ngày làm việc) |
 | `settlement.min_late_share` | Chỉ áp khung chờ khi đủ tỷ lệ cặp có tiền về sau ngày đơn |

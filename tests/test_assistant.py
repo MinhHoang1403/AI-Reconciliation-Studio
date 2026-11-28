@@ -110,7 +110,8 @@ def test_reconcile_period_runs_the_chain_and_reports_engine_numbers(
     answer = ask("Đối soát kỳ đầu tiên")["messages"][-1]
     summary = fake.tool_results()[0]["response"]
     assert len(summary["pairs"]) == 4 and all(pair["verified"] for pair in summary["pairs"])
-    assert sum(pair["open_exceptions"] for pair in summary["pairs"]) == 10
+    # 10 ngoại lệ của đáp án + nhóm "hai đơn, một lần chuyển, không ghi mã" chờ xác nhận.
+    assert sum(pair["open_exceptions"] for pair in summary["pairs"]) == 11
     assert {"label": "Mở trang Đối soát", "path": "/doi-soat"} in answer["links"]
 
 

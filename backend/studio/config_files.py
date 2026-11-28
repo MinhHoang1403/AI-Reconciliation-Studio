@@ -147,6 +147,7 @@ class ScoreMatch(_Strict):
 class GroupMatch(_Strict):
     max_rows: int = Field(ge=2, le=8)
     max_candidates: int = Field(ge=2, le=40)
+    min_name_score: float = Field(ge=0, le=1)
 
 
 class CodeExtraction(_Strict):

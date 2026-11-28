@@ -28,7 +28,7 @@
     "date_window_days": 3,
     "amount_tolerance": 0
   },
-  "group_match": {"max_rows": 5, "max_candidates": 20},
+  "group_match": {"max_rows": 5, "max_candidates": 20, "min_name_score": 0.7},
   "code_extraction": {"min_precision": 0.9, "min_hits": 3},
   "settlement": {"business_days": 3, "min_late_share": 0.05},
   "scope": {"fields": ["payment_method"], "min_other_rate": 0.5, "max_own_rate": 0.05},

@@ -17,12 +17,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from studio import database, main
+from studio.matching_rounds import group_match
 from studio.matching_rounds.group_match import subsets
 from studio.models import MatchResult
 from studio.reading import ROW_REF
 from studio.recon_verification import verify
 from studio.reconciliation import (
     ReconConfig,
+    Result,
     Row,
     Side,
     add_business_days,
@@ -408,3 +410,42 @@ def test_chain_without_connectable_pairs_fails_with_a_clear_reason() -> None:
     reply = client.post("/api/recon/chains", json={"table_ids": ids})
     chain = client.get(f"/api/recon/chains/{reply.json()['id']}").json()
     assert chain["status"] == "FAILED" and "Không tìm được cặp" in chain["error_message"]
+
+
+def _group_rows(
+    order: tuple[str | None, list[str], bool], bank: list[tuple[int, str | None, list[str]]]
+) -> list[Result]:
+    """Một đơn 505.000đ và các dòng sao kê cùng ngày; chạy riêng vòng ghép nhóm theo tổng."""
+    day = date(2026, 11, 19)
+    name, keys, cancelled = order
+    left = [Row(1, keys, Decimal(505000), day, name, cancelled, {})]
+    right = [
+        Row(10 + index, codes, Decimal(amount), day, sender, False, {})
+        for index, (amount, sender, codes) in enumerate(bank)
+    ]
+    config = ReconConfig(None, None, "amount", "amount", "d", "d", name_right="description")
+    return group_match.run(left, right, config).results
+
+
+def test_group_by_sum_skips_cancelled_orders_and_other_peoples_money() -> None:
+    """Tổng trùng ngẫu nhiên (lỗi tìm được ở bộ kiểm mù): đơn đã hủy 505.000đ từng bị ghép với
+    100.000đ của khách khác + 405.000đ nộp tiền mặt. Đơn hủy không ghép nhóm; dòng mang tên
+    hay mã người khác không được vào nhóm."""
+    bank: list[tuple[int, str | None, list[str]]] = [
+        (100000, "pham van nga", []),
+        (405000, None, []),
+    ]
+    assert _group_rows(("nguyen duc son", [], True), bank) == []
+    assert _group_rows(("nguyen duc son", [], False), bank) == []
+    assert _group_rows((None, ["HD000001"], False), [(100000, None, ["HD000002"]),
+                                                     (405000, None, [])]) == []
+
+
+def test_group_by_sum_needs_evidence_to_be_confirmed_automatically() -> None:
+    supported = _group_rows(
+        ("tran van an", [], False), [(100000, "an", []), (405000, "van an", [])]
+    )
+    assert [(item.kind, item.needs_review) for item in supported] == [("ONE_TO_MANY", False)]
+    sum_only = _group_rows(("tran van an", [], False), [(100000, None, []), (405000, None, [])])
+    assert [(item.kind, item.needs_review) for item in sum_only] == [("ONE_TO_MANY", True)]
+    assert "SUM_ONLY" in [reason["code"] for reason in sum_only[0].reasons]

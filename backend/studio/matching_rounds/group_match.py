@@ -5,6 +5,13 @@ Cho các dòng còn lại sau hai vòng trước: tìm vài dòng bên A cộng 
 nhiều dòng B. Tổng phải bằng đúng, không áp sai số (theo Oracle Cash Management). Số dòng mỗi
 nhóm và số ứng viên có giới hạn ("group_match" trong tệp cấu hình) để không bùng nổ tổ hợp.
 Nhiều tổ hợp cùng đúng thì không tự chọn mà xếp "Cần bạn chọn".
+
+Tổng tiền trùng nhau có thể chỉ là ngẫu nhiên (ví dụ 100.000 + 405.000 = 505.000 của một đơn
+khác), nên vòng này đòi thêm bằng chứng, theo phân tầng độ tin cậy của kiến trúc (mục 2):
+- Đơn đã hủy không được ghép nhóm (đơn hủy không chờ tiền về; vòng khớp theo mã cũng bỏ qua).
+- Dòng có bằng chứng ngược với dòng gộp (mã khác nhau, hoặc tên người khác) bị loại khỏi nhóm.
+- Nhóm mà mọi dòng đều có mã hoặc tên ủng hộ thì tự ghép; nhóm chỉ trùng tổng tiền thì vẫn đề
+  xuất nhưng để ở "Cần xử lý" cho người dùng xác nhận hoặc gỡ ghép.
 """
 
 import bisect
@@ -12,6 +19,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from studio.reconciliation import (
+    GROUP_MIN_NAME_SCORE,
     MAX_GROUP_ROWS,
     MAX_SUBSET_CANDIDATES,
     ReconConfig,
@@ -21,8 +29,24 @@ from studio.reconciliation import (
     _ambiguous_result,
     _blocked,
     _group_result,
+    _name_score,
+    _reason,
     money_dong,
 )
+
+
+def evidence(a: Row, b: Row, config: ReconConfig) -> bool | None:
+    """Bằng chứng ngoài số tiền cho việc dòng A `a` và dòng B `b` thuộc cùng một nhóm.
+
+    True: cùng mã, hoặc tên giống từ ngưỡng `min_name_score`. False: hai bên đều có mã mà khác
+    nhau, hoặc đều có tên mà khác người. None: thiếu thông tin để nói gì (chỉ còn số tiền).
+    Mã được xét trước tên: hai dòng cùng mã là cùng chứng từ dù tên ghi khác.
+    """
+    if a.keys and b.keys:
+        return bool({key.upper() for key in a.keys} & {key.upper() for key in b.keys})
+    if a.name and b.name:
+        return _name_score(a.name, b.name, config.name_right is not None) >= GROUP_MIN_NAME_SCORE
+    return None
 
 
 def subsets(candidates: list[Row], target: Decimal, limit: int = 2) -> list[list[Row]]:
@@ -68,14 +92,22 @@ def run(left: list[Row], right: list[Row], config: ReconConfig) -> RoundOutcome:
         # Lọc ứng viên theo ngày bằng tìm nhị phân trên danh sách đã sắp theo ngày, để không
         # phải so mọi dòng với mọi dòng (hai bảng lớn không có mã chung vẫn chạy nhanh).
         dated = sorted(
-            (row for row in many if row.day and row.amount is not None and row.amount > 0),
+            (
+                row for row in many
+                if row.day and row.amount is not None and row.amount > 0 and not row.cancelled
+            ),
             key=lambda row: (row.day, row.ref),
         )
         days = [row.day for row in dated if row.day]
+        def support(target: Row, row: Row, one_side: str = one_side) -> bool | None:
+            """Bằng chứng giữa dòng gộp `target` và một dòng thành phần `row`."""
+            pair = (row, target) if one_side == "B" else (target, row)
+            return evidence(*pair, config)
+
         for target in sorted(one, key=lambda row: row.ref):
             if target.ref in used_one or target.amount is None or target.amount <= 0:
                 continue
-            if target.day is None:
+            if target.day is None or target.cancelled:
                 continue
             # Dòng gộp ghi sau (hoặc cùng ngày) các dòng thành phần, trong khung ngày: B gộp
             # nhiều A thì A nằm trong [ngày B − khung, ngày B]; A trả bằng nhiều B thì ngược lại.
@@ -90,6 +122,7 @@ def run(left: list[Row], right: list[Row], config: ReconConfig) -> RoundOutcome:
                 and row.amount < target.amount
                 and ((row.ref, target.ref) if one_side == "B" else (target.ref, row.ref))
                 not in blocked
+                and support(target, row) is not False
             ]
             if len(pool) < 2 or len(pool) > MAX_SUBSET_CANDIDATES:
                 continue
@@ -100,7 +133,17 @@ def run(left: list[Row], right: list[Row], config: ReconConfig) -> RoundOutcome:
             members = list({row.ref: row for row in members}.values())
             lefts, rights = (members, [target]) if one_side == "B" else ([target], members)
             if len(solutions) == 1:
-                results.append(_group_result(lefts, rights, "SUM", config))
+                result = _group_result(lefts, rights, "SUM", config)
+                if not all(support(target, row) for row in members):
+                    result.needs_review = True
+                    result.reasons.append(
+                        _reason(
+                            "SUM_ONLY",
+                            "Chỉ trùng tổng tiền, không có tên hay mã xác nhận cho mọi dòng. Hãy "
+                            "kiểm lại: đúng thì đánh dấu đã xử lý, sai thì gỡ ghép.",
+                        )
+                    )
+                results.append(result)
             else:
                 results.append(
                     _ambiguous_result(
