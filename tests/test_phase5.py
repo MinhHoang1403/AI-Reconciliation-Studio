@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from studio import database, main
+from studio.matching_rounds.group_match import subsets
 from studio.models import MatchResult
 from studio.reading import ROW_REF
 from studio.recon_verification import verify
@@ -24,7 +25,6 @@ from studio.reconciliation import (
     ReconConfig,
     Row,
     Side,
-    _subsets,
     add_business_days,
     description_name,
     extract_keys,
@@ -304,11 +304,11 @@ def test_subset_search_finds_unique_and_multiple_solutions() -> None:
     def row(ref: int, amount: int) -> Row:
         return Row(ref, [], Decimal(amount), date(2026, 10, 1), None, False, {})
 
-    one = _subsets([row(1, 100), row(2, 250), row(3, 400)], Decimal(350))
+    one = subsets([row(1, 100), row(2, 250), row(3, 400)], Decimal(350))
     assert [[item.ref for item in group] for group in one] == [[1, 2]]
-    two = _subsets([row(1, 100), row(2, 200), row(3, 300)], Decimal(300))
+    two = subsets([row(1, 100), row(2, 200), row(3, 300)], Decimal(300))
     assert len(two) == 1  # chỉ tổ hợp ≥ 2 dòng: 100 + 200
-    many = _subsets([row(1, 100), row(2, 200), row(3, 100), row(4, 200)], Decimal(300))
+    many = subsets([row(1, 100), row(2, 200), row(3, 100), row(4, 200)], Decimal(300))
     assert len(many) == 2
 
 
