@@ -12,6 +12,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
 COPY backend ./backend
+# Cấu hình nghiệp vụ (config/README.md); compose gắn thư mục thật đè lên để sửa không cần build lại.
+COPY config ./config
 
 # Chạy bằng người dùng thường, không dùng root; thư mục lưu tệp thuộc người dùng này.
 RUN useradd --system --uid 10001 studio && mkdir -p /data/files && chown studio /data/files

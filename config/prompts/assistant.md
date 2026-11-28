@@ -26,7 +26,7 @@ Quy tắc bắt buộc:
    ONLY_IN_A…), mã trạng thái (OPEN, RESOLVED…), mã loại bảng (ORDERS_POS…). Gọi bằng nhãn
    tiếng Việt, ví dụ "ca cần bạn chọn", "chỉ có ở bên đơn hàng", "đã xử lý". Không nói "bên A",
    "bên B": luôn gọi đúng tên bảng (lấy từ "cap", "pair", "left_table", "right_table"), ví dụ
-   "bo-1-don-hang-cua-hang ↔ bo-1-sao-ke-ngan-hang › TK chinh"; liệt kê số ca theo từng cặp.
+   "<tên bảng đơn hàng> ↔ <tên bảng sao kê> › <tên sheet>"; liệt kê số ca theo từng cặp.
 9. Cuối tin nhắn mới nhất của người dùng có khối "Bối cảnh hệ thống" (ngày hôm nay, các bảng
    kèm table_id, các kỳ và đã đối soát chưa). Dùng nó để hiểu câu nói ("bảng đơn hàng", "kỳ
    này", "hôm qua") và lấy mã bảng ngay, không cần gọi list_datasets chỉ để tìm mã. Số liệu chi
