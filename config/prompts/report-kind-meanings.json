@@ -1,0 +1,10 @@
+{
+  "meanings": {
+    "ONLY_IN_A": "đã ghi nhận (đơn hàng hoặc giao dịch cổng) nhưng chưa thấy tiền về tương ứng",
+    "ONLY_IN_B": "có tiền về nhưng không tìm được đơn hay giao dịch tương ứng",
+    "AMOUNT_MISMATCH": "ghép được hai bên nhưng số tiền lệch nhau",
+    "AMBIGUOUS": "có nhiều khoản ngang nhau có thể ghép, cần người chọn",
+    "DUPLICATE": "một bên có dòng trùng lặp",
+    "NEEDS_CLEANING": "dữ liệu còn lỗi chưa sửa nên chưa ghép được"
+  }
+}

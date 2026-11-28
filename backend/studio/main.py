@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import Depends, FastAPI, Response, status
 from pydantic import BaseModel
 
-from studio import data_docs, database, ingestion, workspaces
+from studio import config_files, database, ingestion, matching_rounds, workspaces
 from studio.assistant_api import router as assistant_router
 from studio.cleaning_api import router as cleaning_router
 from studio.config import settings
@@ -21,10 +21,11 @@ from studio.workspaces_api import router as workspaces_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # Tệp cấu hình nghiệp vụ (config/) sai ở đâu thì dừng ngay, báo rõ tệp và khóa sai.
+    config_files.check_all()
+    matching_rounds.check_configured_rounds()
     # Việc đọc tệp dở dang từ lần chạy trước không thể tiếp tục; đánh dấu để người dùng đọc lại.
     ingestion.recover_interrupted()
-    # Catalog động trong data-docs/runtime luôn khớp PostgreSQL sau mỗi lần khởi động.
-    data_docs.sync_catalogs()
     warm_up()
     yield
     flush_traces()

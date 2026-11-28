@@ -1,0 +1,46 @@
+{
+  "column_abbreviations": {
+    "sdt": "so dien thoai",
+    "dt": "dien thoai",
+    "hd": "hoa don",
+    "dh": "don hang",
+    "kh": "khach hang",
+    "gd": "giao dich",
+    "tt": "thanh toan",
+    "nh": "ngan hang",
+    "ck": "chuyen khoan",
+    "tk": "tai khoan",
+    "sl": "so luong",
+    "ct": "chung tu"
+  },
+  "row_number_column_names": ["#", "no", "so thu tu", "so tt", "stt"],
+  "currency_words": ["vnđ", "vnd", "đồng", "dong", "đ", "₫"],
+  "money_units": {
+    "tr": 1000000,
+    "triệu": 1000000,
+    "trieu": 1000000,
+    "k": 1000,
+    "nghìn": 1000,
+    "nghin": 1000,
+    "ngàn": 1000,
+    "ngan": 1000
+  },
+  "honorifics": [
+    "ms", "ba", "mo", "cau", "ban", "em", "mr", "anh", "chi", "c", "thim", "bac", "ong", "mrs",
+    "a", "co", "miss", "di", "chu"
+  ],
+  "cancelled_status_words": [
+    "huy", "da huy", "cancel", "cancelled", "canceled", "hoan tien", "hoan hang", "refund",
+    "refunded", "return", "returned", "tra hang"
+  ],
+  "transfer_noise_words": [
+    "ban", "cho", "chuyen", "ck", "cong", "dich", "doanh", "don", "dung", "ft", "gd", "giao",
+    "hang", "ho", "ib", "khoan", "mbvcb", "mua", "ngay", "nhan", "noi", "qua", "san", "so",
+    "tai", "thanh", "thu", "tien", "tk", "tmdt", "toan", "tt"
+  ],
+  "masking_keep_words": [
+    "ban", "chi", "chuyen", "ck", "cong", "dh", "doanh", "don", "dot", "gui", "hang", "hd",
+    "khoan", "luong", "ly", "ma", "mua", "ngay", "nhan", "nop", "phi", "qr", "quan", "rut",
+    "san", "so", "tai", "the", "thu", "tien", "tk", "tmdt", "toan", "tra", "tt", "vao"
+  ]
+}

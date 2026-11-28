@@ -1,27 +1,18 @@
-"""Bộ cột chuẩn của miền bán hàng (đơn hàng, thanh toán, sao kê ngân hàng).
+"""Bộ cột chuẩn và các loại bảng của miền bán hàng (đơn hàng, thanh toán, sao kê ngân hàng).
 
-Mỗi cột trong tệp của người dùng sẽ được ánh xạ về một cột chuẩn dưới đây (hoặc không
-ánh xạ). Các bước sau (chuẩn hóa, đối soát) chỉ làm việc với cột chuẩn.
+Nội dung (tên, nghĩa, tên cột hay gặp, cột bắt buộc theo loại bảng, cách nhận ra loại bảng…)
+nằm trong config/domains/sales/fields.json và table-kinds.json; module này đọc chúng và đưa ra
+dạng các module khác dùng. Mỗi cột trong tệp của người dùng sẽ được ánh xạ về một cột chuẩn
+(hoặc không ánh xạ); các bước sau (chuẩn hóa, đối soát) chỉ làm việc với cột chuẩn.
 """
 
 from dataclasses import dataclass
 from typing import Literal
 
+from studio import config_files
+
 # Kiểu giá trị của cột chuẩn; quyết định cách chuẩn hóa ở Giai đoạn 3.
 type FieldType = Literal["IDENTIFIER", "MONEY", "DATE", "PHONE", "TEXT", "CATEGORY"]
-
-# Loại bảng dữ liệu mà hệ thống có thể nhận ra.
-type TableKind = Literal[
-    "ORDERS_PLATFORM", "ORDERS_POS", "PAYMENT_GATEWAY", "BANK_STATEMENT", "UNKNOWN"
-]
-
-TABLE_KIND_LABELS: dict[str, str] = {
-    "ORDERS_PLATFORM": "Đơn hàng sàn TMĐT",
-    "ORDERS_POS": "Đơn hàng cửa hàng",
-    "PAYMENT_GATEWAY": "Giao dịch cổng thanh toán",
-    "BANK_STATEMENT": "Sao kê ngân hàng",
-    "UNKNOWN": "Chưa rõ loại",
-}
 
 
 @dataclass(frozen=True)
@@ -33,69 +24,39 @@ class StandardField:
     aliases: tuple[str, ...]  # các tên cột hay gặp (viết không dấu, chữ thường)
 
 
-SALES_FIELDS: tuple[StandardField, ...] = (
-    StandardField("order_id", "Mã đơn hàng", "IDENTIFIER",
-                  "Mã định danh đơn hàng hoặc hóa đơn bán",
-                  ("ma don hang", "ma don", "ma hoa don", "so hoa don", "order id", "order code",
-                   "invoice", "ma dh", "so don")),
-    StandardField("order_date", "Ngày đặt hàng", "DATE",
-                  "Ngày hoặc thời điểm tạo đơn, ngày bán",
-                  ("ngay dat hang", "ngay ban", "ngay tao don", "order date", "ngay don hang",
-                   "thoi gian dat hang", "ngay hoa don")),
-    StandardField("customer_name", "Tên khách hàng", "TEXT",
-                  "Tên người mua hoặc khách hàng",
-                  ("ten khach hang", "khach hang", "ten nguoi mua", "nguoi mua", "customer name",
-                   "ho ten", "ten khach")),
-    StandardField("customer_phone", "Điện thoại khách", "PHONE",
-                  "Số điện thoại của khách hàng hoặc người nhận",
-                  ("so dien thoai", "dien thoai", "so dien thoai nguoi nhan", "phone",
-                   "so dt", "dien thoai khach hang")),
-    StandardField("amount", "Số tiền", "MONEY",
-                  "Tổng giá trị đơn hoặc số tiền của giao dịch, trước khi trừ phí",
-                  ("so tien", "tong tien", "tong tien hang", "thanh tien", "gia tri", "amount",
-                   "tong cong", "tong thanh toan")),
-    StandardField("fee", "Phí", "MONEY",
-                  "Phí sàn, phí cổng thanh toán hoặc phí giao dịch bị trừ",
-                  ("phi", "phi san", "phi giao dich", "phi thanh toan", "fee", "phi dich vu")),
-    StandardField("net_amount", "Thực nhận", "MONEY",
-                  "Số tiền thực nhận sau khi trừ phí",
-                  ("thuc nhan", "so tien thuc nhan", "tien thuc nhan", "net amount",
-                   "so tien nhan duoc", "doanh thu thuan")),
-    StandardField("payment_method", "Phương thức thanh toán", "CATEGORY",
-                  "Hình thức khách trả tiền: tiền mặt, chuyển khoản, thẻ...",
-                  ("thanh toan", "phuong thuc thanh toan", "hinh thuc thanh toan", "payment method",
-                   "kenh thanh toan")),
-    StandardField("status", "Trạng thái", "CATEGORY",
-                  "Trạng thái đơn hàng hoặc giao dịch: hoàn thành, đã hủy...",
-                  ("trang thai", "tinh trang", "status", "trang thai don hang")),
-    StandardField("payment_id", "Mã giao dịch thanh toán", "IDENTIFIER",
-                  "Mã giao dịch do cổng thanh toán hoặc ví điện tử cấp",
-                  ("ma giao dich", "ma gd", "transaction id", "ma thanh toan", "so giao dich")),
-    StandardField("payment_batch", "Mã đợt chuyển tiền", "IDENTIFIER",
-                  "Mã đợt mà cổng thanh toán hoặc sàn gộp nhiều giao dịch rồi chuyển về tài khoản",
-                  ("ma dot chuyen", "dot chuyen tien", "ma dot", "payout id", "ma doi soat",
-                   "settlement id")),
-    StandardField("transaction_date", "Ngày giao dịch", "DATE",
-                  "Ngày hoặc thời điểm phát sinh giao dịch thanh toán hoặc ngân hàng",
-                  ("ngay giao dich", "thoi gian", "thoi gian giao dich", "ngay gd",
-                   "transaction date", "ngay hach toan", "ngay")),
-    StandardField("bank_ref", "Số tham chiếu ngân hàng", "IDENTIFIER",
-                  "Số tham chiếu hoặc mã bút toán của ngân hàng",
-                  ("so tham chieu", "ma tham chieu", "so but toan", "reference", "ref no",
-                   "so ct")),
-    StandardField("debit", "Ghi nợ (tiền ra)", "MONEY",
-                  "Số tiền đi ra khỏi tài khoản trên sao kê",
-                  ("no", "ghi no", "so tien ghi no", "tien ra", "debit", "phat sinh no", "rut")),
-    StandardField("credit", "Ghi có (tiền vào)", "MONEY",
-                  "Số tiền đi vào tài khoản trên sao kê",
-                  ("co", "ghi co", "so tien ghi co", "tien vao", "credit", "phat sinh co", "nop")),
-    StandardField("balance", "Số dư", "MONEY",
-                  "Số dư tài khoản sau giao dịch",
-                  ("so du", "so du cuoi", "balance", "so du con lai")),
-    StandardField("description", "Nội dung", "TEXT",
-                  "Nội dung hoặc diễn giải giao dịch, thường chứa mã đơn và tên người chuyển",
-                  ("noi dung", "dien giai", "mo ta", "description", "noi dung chuyen khoan",
-                   "ghi chu giao dich", "chi tiet")),
+SALES_FIELDS: tuple[StandardField, ...] = tuple(
+    StandardField(item.key, item.label, item.type, item.meaning, item.aliases)
+    for item in config_files.fields().fields
 )
-
 FIELDS_BY_KEY: dict[str, StandardField] = {field.key: field for field in SALES_FIELDS}
+
+_KINDS = config_files.table_kinds()
+# Tên hiển thị của từng loại bảng (đúng thứ tự trong tệp), cuối cùng là "chưa rõ loại".
+TABLE_KIND_LABELS: dict[str, str] = {kind.key: kind.label for kind in _KINDS.kinds} | {
+    "UNKNOWN": _KINDS.unknown_label
+}
+# Trường bắt buộc theo loại bảng; mỗi phần tử là nhóm "ít nhất một trong các cột này".
+REQUIRED_FIELDS: dict[str, list[tuple[str, ...]]] = {
+    kind.key: list(kind.required) for kind in _KINDS.kinds if kind.required
+}
+# Cột mã mà mỗi dòng phải khác nhau; cùng mã nhưng khác số tiền là mâu thuẫn.
+KEY_FIELD: dict[str, str] = {kind.key: kind.key_field for kind in _KINDS.kinds if kind.key_field}
+# Vai trong chuỗi đối soát: số nhỏ là bên ghi nhận (đơn hàng), số lớn là nơi tiền về (sao kê).
+CHAIN_ORDER: dict[str, int] = {kind.key: kind.chain_order for kind in _KINDS.kinds}
+# Họ loại bảng: các loại cùng họ (đơn sàn, đơn cửa hàng) có cùng vai trò khi đối soát.
+KIND_FAMILY: dict[str, str] = {kind.key: kind.family for kind in _KINDS.kinds}
+
+
+def infer_table_kind(fields: set[str]) -> str:
+    """Đoán loại bảng từ các cột chuẩn đã ánh xạ: xét các loại theo "priority" trong
+    table-kinds.json, loại đầu tiên có đủ dấu hiệu ("any": có ít nhất một cột, "all": có đủ
+    mọi cột) là loại của bảng."""
+    for kind in sorted(_KINDS.kinds, key=lambda item: item.detect.priority):
+        detect = kind.detect
+        if detect.any and not set(detect.any) & fields:
+            continue
+        if detect.all and not set(detect.all) <= fields:
+            continue
+        if detect.any or detect.all:
+            return kind.key
+    return "UNKNOWN"

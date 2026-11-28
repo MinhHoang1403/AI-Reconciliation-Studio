@@ -24,7 +24,7 @@ import polars as pl
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
-from studio import audit, database, workspaces
+from studio import audit, config_files, database, workspaces
 from studio.cleaning import latest_version
 from studio.models import (
     CleanVersion,
@@ -44,18 +44,19 @@ from studio.reconciliation import (
     suggest_config,
     summarize,
 )
-from studio.sales_fields import FIELDS_BY_KEY
+from studio.sales_fields import CHAIN_ORDER, FIELDS_BY_KEY
 
 logger = logging.getLogger(__name__)
 
 # Thứ tự bên A → B theo loại bảng: đơn hàng ở bên A, tiền về ở bên B.
-SIDE_RANK = {"ORDERS_POS": 0, "ORDERS_PLATFORM": 0, "PAYMENT_GATEWAY": 1, "BANK_STATEMENT": 2}
-# Tỷ lệ khớp mã tối thiểu để gợi ý một cặp bảng.
-MIN_PAIR_MATCH_RATE = 0.05
-# Trong chuỗi: tỷ lệ tối thiểu các dòng nối được có tổng tiền hai bên bằng nhau.
-MIN_PAIR_AMOUNT_RATE = 0.5
-# Bảng thuộc kỳ của một sao kê khi ngày sớm nhất của nó không trước ngày đầu sao kê quá 3 ngày.
-PERIOD_LEAD_DAYS = 3
+# Vai trong chuỗi theo loại bảng (config/domains/sales/table-kinds.json, "chain_order"):
+# đơn hàng ở bên A, tiền về ở bên B.
+SIDE_RANK = CHAIN_ORDER
+# Ngưỡng nối cặp và khung kỳ: config/rules/reconciliation.json ("chain").
+_CHAIN = config_files.reconciliation_rules().chain
+MIN_PAIR_MATCH_RATE = _CHAIN.min_pair_match_rate
+MIN_PAIR_AMOUNT_RATE = _CHAIN.min_pair_amount_rate
+PERIOD_LEAD_DAYS = _CHAIN.period_lead_days
 # Loại kết quả đã ghép (dòng không còn là "chỉ có ở một bên").
 PAIRED_KINDS = ("MATCHED", "MANY_TO_ONE", "ONE_TO_MANY", "AMOUNT_MISMATCH", "DUPLICATE")
 # Ghép chắc chắn: theo mã hoặc do người dùng chọn (không phải theo điểm hay tổng tiền).

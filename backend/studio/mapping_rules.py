@@ -13,35 +13,30 @@ from dataclasses import dataclass
 
 from rapidfuzz import fuzz
 
+from studio import config_files
 from studio.profiling import ColumnProfile, TableProfile
 from studio.sales_fields import SALES_FIELDS, FieldType, StandardField
 
+# Trọng số, ngưỡng và từ điển: config/rules/mapping.json, config/domains/sales/vocabulary.json.
+_RULES = config_files.mapping_rules()
+_WORDS = config_files.vocabulary()
 # Trọng số gộp hai lớp tín hiệu.
-NAME_WEIGHT = 0.65
-VALUE_WEIGHT = 0.35
-EMPTY_COLUMN_VALUE_SCORE = 0.5
+NAME_WEIGHT = _RULES.name_weight
+VALUE_WEIGHT = _RULES.value_weight
+EMPTY_COLUMN_VALUE_SCORE = _RULES.empty_column_value_score
 # Tên cột quá khác mọi tên hay gặp thì giá trị hợp kiểu cũng không đủ để ánh xạ:
 # điểm bị giới hạn dưới ngưỡng gợi ý (ví dụ cột STT toàn số không phải cột tiền).
-MIN_NAME_SCORE = 0.5
-WEAK_NAME_CAP = 0.4
+MIN_NAME_SCORE = _RULES.min_name_score
+WEAK_NAME_CAP = _RULES.weak_name_cap
 # Tên cột chỉ số thứ tự dòng, không bao giờ là cột chuẩn.
-ROW_NUMBER_NAMES = {"stt", "so thu tu", "so tt", "no", "#"}
+ROW_NUMBER_NAMES = set(_WORDS.row_number_column_names)
 
 # Viết tắt hay gặp trong tên cột tiếng Việt; mở rộng trước khi so.
-ABBREVIATIONS = {
-    "sdt": "so dien thoai", "dt": "dien thoai", "hd": "hoa don", "dh": "don hang",
-    "kh": "khach hang", "gd": "giao dich", "tt": "thanh toan", "nh": "ngan hang",
-    "ck": "chuyen khoan", "tk": "tai khoan", "sl": "so luong", "ct": "chung tu",
-}
+ABBREVIATIONS = dict(_WORDS.column_abbreviations)
 
 # Mức hợp giữa dạng quan sát được và kiểu cột chuẩn (0 = không thể, 1 = rất hợp).
 COMPATIBILITY: dict[FieldType, dict[str, float]] = {
-    "IDENTIFIER": {"CODE": 1.0, "NUMBER": 0.6, "TEXT": 0.3, "PHONE": 0.2},
-    "MONEY": {"NUMBER": 1.0},
-    "DATE": {"DATE": 1.0},
-    "PHONE": {"PHONE": 1.0, "NUMBER": 0.4},
-    "TEXT": {"TEXT": 1.0, "CODE": 0.3},
-    "CATEGORY": {"TEXT": 1.0, "CODE": 0.4},
+    kind: dict(levels) for kind, levels in _RULES.type_compatibility.items()
 }
 
 

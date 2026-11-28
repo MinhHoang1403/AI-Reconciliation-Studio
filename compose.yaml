@@ -32,13 +32,12 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_BASE_URL: ${LANGFUSE_DOCKER_URL:-http://host.docker.internal:3000}
-      # Nhật ký gọi Gemini và catalog động ghi ra data-docs/runtime trên máy (xem data-docs/README.md).
-      DATA_DOCS_DIR: /data/data-docs
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - files:/data/files
-      - ./data-docs/runtime:/data/data-docs
+      # Cấu hình nghiệp vụ: sửa tệp trong config/ rồi `docker compose restart backend` (config/README.md).
+      - ./config:/app/config:ro
     depends_on:
       postgres:
         condition: service_healthy

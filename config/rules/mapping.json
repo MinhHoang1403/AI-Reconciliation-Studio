@@ -1,0 +1,21 @@
+{
+  "name_weight": 0.65,
+  "value_weight": 0.35,
+  "empty_column_value_score": 0.5,
+  "min_name_score": 0.5,
+  "weak_name_cap": 0.4,
+  "type_compatibility": {
+    "IDENTIFIER": {"CODE": 1.0, "NUMBER": 0.6, "TEXT": 0.3, "PHONE": 0.2},
+    "MONEY": {"NUMBER": 1.0},
+    "DATE": {"DATE": 1.0},
+    "PHONE": {"PHONE": 1.0, "NUMBER": 0.4},
+    "TEXT": {"TEXT": 1.0, "CODE": 0.3},
+    "CATEGORY": {"TEXT": 1.0, "CODE": 0.4}
+  },
+  "auto_apply_rule_score": 0.8,
+  "auto_apply_rule_margin": 0.1,
+  "auto_apply_combined_score": 0.75,
+  "min_suggest_score": 0.45,
+  "rule_weight_with_ai": 0.5,
+  "ai_sample_values": 5
+}

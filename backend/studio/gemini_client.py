@@ -18,7 +18,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from studio import data_docs, database
+from studio import database
 from studio.config import settings
 from studio.models import AiCall
 from studio.tracing import ai_generation
@@ -160,7 +160,6 @@ def _generate(
     request: Any,
     read: Any,
     attempts: int | None = None,
-    request_doc: dict[str, Any] | None = None,
 ) -> Any:
     """Một lần gọi Gemini dùng chung: thử lại (trong SDK), ghi token, trace và lỗi.
 
@@ -185,47 +184,12 @@ def _generate(
             code = _error_code(error)
             logger.warning("Gọi Gemini (%s) thất bại: %s", purpose, code)
             trace.update(level="ERROR", status_message=code)
-            call_id = _record_call(purpose, table_id, "FAILED", started, error_code=code)
-            _write_doc(call_id, purpose, table_id, started, request_doc, None, "FAILED", code)
+            _record_call(purpose, table_id, "FAILED", started, error_code=code)
             raise AiUnavailable(*explain_error(error, code)) from error
         trace.update(output=traced, usage_details={"input": input_tokens, "output": output_tokens})
-        call_id = _record_call(purpose, table_id, "OK", started, input_tokens, output_tokens)
-        _write_doc(
-            call_id, purpose, table_id, started, request_doc, traced, "OK", None,
-            input_tokens, output_tokens,
-        )
+        _record_call(purpose, table_id, "OK", started, input_tokens, output_tokens)
         return result
 
-
-def _write_doc(
-    call_id: uuid.UUID,
-    purpose: str,
-    table_id: uuid.UUID | None,
-    started: float,
-    request_doc: dict[str, Any] | None,
-    response: Any,
-    status: str,
-    error_code: str | None,
-    input_tokens: int = 0,
-    output_tokens: int = 0,
-) -> None:
-    """Lưu bằng chứng của lần gọi ra data-docs/runtime/ai-calls (nếu bật): đúng nội dung đã
-    gửi (đã che), khuôn JSON hoặc công cụ, câu trả lời; khớp với dòng ai_calls qua ai_call_id.
-    Không có khóa API: khóa chỉ nằm trong client SDK, không bao giờ vào request_doc."""
-    data_docs.write_ai_call(
-        {
-            "ai_call_id": str(call_id),
-            "purpose": purpose,
-            "model": settings.gemini_model,
-            "table_id": str(table_id) if table_id else None,
-            "status": status,
-            "error_code": error_code,
-            "latency_ms": int((time.perf_counter() - started) * 1000),
-            "tokens": {"input": input_tokens, "output": output_tokens},
-            "request": request_doc,
-            "response": response,
-        }
-    )
 
 
 def generate_json(
@@ -268,13 +232,6 @@ def generate_json(
         ),
         read,
         attempts,
-        {
-            "kind": "structured_output",
-            "system_instruction": system_instruction,
-            "input": payload,
-            "response_schema": response_schema,
-            "config": {"temperature": 0, "max_output_tokens": settings.gemini_max_output_tokens},
-        },
     )
     return reply
 
@@ -368,7 +325,7 @@ def generate_with_tools(
 
     Có `on_text` thì gọi dạng streaming (`generate_content_stream`): mỗi đoạn chữ tới được
     chuyển ngay cho `on_text` để giao diện hiện dần; các đoạn được gom lại thành một câu trả
-    lời đầy đủ nên phần sau (đọc công cụ, ghi token, Langfuse, data-docs) giữ nguyên như gọi
+    lời đầy đủ nên phần sau (đọc công cụ, ghi token, Langfuse) giữ nguyên như gọi
     thường. Vẫn là một lần gọi Gemini, cùng hạn mức."""
     from google.genai import types
 
@@ -421,18 +378,5 @@ def generate_with_tools(
         None,
         request,
         read,
-        None,
-        {
-            "kind": "function_calling",
-            "system_instruction": system_instruction,
-            "conversation": traced,
-            "tools": tools,
-            "config": {
-                "temperature": 0,
-                "max_output_tokens": settings.gemini_max_output_tokens,
-                "automatic_function_calling": False,
-                "stream": on_text is not None,
-            },
-        },
     )
     return turn
